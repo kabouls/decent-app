@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "DECENT",
+    "slug": "decent-portfolio-app",
+    "version": "0.2.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0F17"
+      },
+      "package": "com.kabouls.decent",
+      "googleServicesFile": "./google-services.json"
+    },
+    "plugins": [
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "react-native",
+          "organization": "decent-app"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b06967a0-c1fa-4747-a9d8-50385a7b19b9"
+      }
+    },
+    "owner": "iputra07s-team"
+  }
+}
