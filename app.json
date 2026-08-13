@@ -3,8 +3,10 @@
     "name": "DECENT",
     "slug": "decent-portfolio-app",
     "version": "0.2.0",
+    "scheme": "decent",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -13,10 +15,14 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0B0F17"
+        "backgroundColor": "#0B0F17",
+        "foregroundImage": "./assets/adaptive-icon.png"
       },
       "package": "com.kabouls.decent",
       "googleServicesFile": "./google-services.json"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       [
@@ -26,7 +32,8 @@
           "project": "react-native",
           "organization": "decent-app"
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {
