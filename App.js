@@ -5694,10 +5694,13 @@ function App() {
   // Initial-load routing for all page types this app has real URLs for:
   // /for-you, /circle, /search, /profile (tabs), /p/:id (portfolio),
   // /@:handleOrId (designer profile). Runs once on mount, web only - the
-  // native equivalent is the Linking-based effect further below. Cleans
-  // the URL back to the site root after landing - this handler only deals
-  // with where the page LANDS, not keeping the URL in sync with ongoing
-  // navigation afterward (that's the separate sync effect below).
+  // native equivalent is the Linking-based effect further below. Deliberately
+  // does NOT reset the URL afterward (used to unconditionally replaceState
+  // back to '/' here) - that raced against the separate URL-sync effect
+  // above, which runs once this handler's state changes land and correctly
+  // derives the final URL from state instead. Letting both effects write
+  // was the source of the "shared link opens then bounces to the homepage"
+  // bug - now there's a single writer for steady-state URL display.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     // Wait for the initial supabase.auth.getSession() restore to finish
@@ -5712,9 +5715,7 @@ function App() {
     if (!authChecked) return;
     if (initialRouteHandledRef.current) return;
     initialRouteHandledRef.current = true;
-    handleIncomingRoute(window.location.pathname).finally(() => {
-      window.history.replaceState({}, document.title, '/');
-    });
+    handleIncomingRoute(window.location.pathname);
   }, [handleIncomingRoute, authChecked]);
 
   // Same routing, for native - Android App Links (configured in app.json's
@@ -5742,6 +5743,14 @@ function App() {
     return () => subscription.remove();
   }, [handleIncomingRoute]);
 
+  // Skips this effect's very first run on mount - without this, it fires
+  // immediately with default state (bottomNav: 'forYou', nothing open) and
+  // overwrites the real incoming URL (e.g. a shared /@handle link) to
+  // /for-you before the auth-gated deep-link effect below even gets a
+  // chance to read window.location.pathname. Every subsequent run (once
+  // real state changes happen) behaves normally.
+  const urlSyncSkippedInitialRef = useRef(false);
+
   // Keeps the visible URL bar in sync with whatever's actually on screen,
   // for readability/shareability while browsing - NOT a routing system.
   // Uses replaceState (never pushState) specifically so this never creates
@@ -5752,6 +5761,10 @@ function App() {
   // This effect only ever changes what the address bar displays.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    if (!urlSyncSkippedInitialRef.current) {
+      urlSyncSkippedInitialRef.current = true;
+      return;
+    }
     let path = '/for-you';
     // Portfolio and designer-profile modals can both be mounted at once
     // (e.g. opening a designer's profile from on top of an already-open
@@ -7893,7 +7906,7 @@ function App() {
             </View>
             <Text style={styles.logoText}>ECENT</Text>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.260.0</Text>
+              <Text style={styles.versionText}>v0.261.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10225,7 +10238,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.260.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.261.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11424,7 +11437,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.260.0</Text>
+                    <Text style={styles.settingItemValue}>v0.261.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
