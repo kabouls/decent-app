@@ -7906,7 +7906,7 @@ function App() {
             </View>
             <Text style={styles.logoText}>ECENT</Text>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.261.0</Text>
+              <Text style={styles.versionText}>v0.262.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10238,7 +10238,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.261.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.262.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11437,7 +11437,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.261.0</Text>
+                    <Text style={styles.settingItemValue}>v0.262.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
@@ -11826,7 +11826,7 @@ function App() {
                   <ShareIconSVG color={theme.accentLight} />
                 </BouncyButton>
                 {session && selectedDesigner.id && selectedDesigner.id !== session.user.id && (
-                  <View>
+                  <View style={{ zIndex: 100 }}>
                     <BouncyButton
                       style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
                       onPress={() => setDesignerOptionsMenuVisible(!designerOptionsMenuVisible)}
@@ -11838,7 +11838,7 @@ function App() {
                       <>
                         <View
                           pointerEvents="box-none"
-                          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 19 }}
+                          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99998 }}
                         >
                           <TouchableOpacity
                             style={{ flex: 1 }}
@@ -11849,7 +11849,7 @@ function App() {
                         <View style={{
                           position: 'absolute', top: '100%', right: 0, marginTop: 8, width: 220,
                           backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
-                          padding: 6, zIndex: 20,
+                          padding: 6, zIndex: 99999,
                           shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                         }}>
                           <BouncyButton
@@ -11902,7 +11902,7 @@ function App() {
                       <ShareIconSVG color={theme.accentLight} />
                     </BouncyButton>
                     {session && selectedDesigner.id && selectedDesigner.id !== session.user.id && (
-                      <View>
+                      <View style={{ zIndex: 100 }}>
                         <BouncyButton
                           style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
                           onPress={() => setDesignerOptionsMenuVisible(!designerOptionsMenuVisible)}
@@ -11914,7 +11914,7 @@ function App() {
                           <>
                             <View
                               pointerEvents="box-none"
-                              style={{ position: Platform.OS === 'web' ? 'fixed' : 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 19 }}
+                              style={{ position: Platform.OS === 'web' ? 'fixed' : 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99998 }}
                             >
                               <TouchableOpacity
                                 style={{ flex: 1 }}
@@ -11925,7 +11925,7 @@ function App() {
                             <View style={{
                               position: 'absolute', top: '100%', right: 0, marginTop: 8, width: 220,
                               backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
-                              padding: 6, zIndex: 20,
+                              padding: 6, zIndex: 99999,
                               shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                             }}>
                               <BouncyButton
@@ -13462,7 +13462,7 @@ function App() {
                   <ShareIconSVG color={theme.accentLight} />
                 </BouncyButton>
 
-                <View>
+                <View style={{ zIndex: 100 }}>
                   <BouncyButton
                     style={styles.ownerIconBtn}
                     onPress={() => setPortfolioOptionsMenuVisible(!portfolioOptionsMenuVisible)}
@@ -13481,7 +13481,7 @@ function App() {
                   <>
                     <View
                       pointerEvents="box-none"
-                      style={{ position: Platform.OS === 'web' ? 'fixed' : 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 19 }}
+                      style={{ position: Platform.OS === 'web' ? 'fixed' : 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99998 }}
                     >
                       <TouchableOpacity
                         style={{ flex: 1 }}
@@ -13492,7 +13492,7 @@ function App() {
                     <View style={{
                       position: 'absolute', top: '100%', right: 0, marginTop: 8, width: 220,
                       backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
-                      padding: 6, zIndex: 20,
+                      padding: 6, zIndex: 99999,
                       shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                     }}>
                       {session && activeProject.ownerId === session.user.id ? (
