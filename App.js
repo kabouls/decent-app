@@ -4264,6 +4264,7 @@ function App() {
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [shareModalUrl, setShareModalUrl] = useState('');
   const [shareType, setShareType] = useState('profile'); // 'profile' | 'portfolio'
+  const [shareIsOwnProfile, setShareIsOwnProfile] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
 
   const handleShareDesigner = (designer) => {
@@ -4276,6 +4277,11 @@ function App() {
     const shareUrl = `${DECENT_APP_DOMAIN}/@${designer.handle || designer.id}`;
     setShareModalUrl(shareUrl);
     setShareType('profile');
+    // QR code is only shown when sharing your own profile - showing one
+    // for someone else's profile makes it look like the QR is "theirs" to
+    // scan-and-follow, which isn't the intent (there's no comparable use
+    // case for someone else's profile QR the way there is for your own).
+    setShareIsOwnProfile(!!(session && designer.id === session.user.id));
     setShareCopied(false);
     setShareModalVisible(true);
   };
@@ -4289,6 +4295,7 @@ function App() {
     const shareUrl = `${DECENT_APP_DOMAIN}/p/${portfolio.id}`;
     setShareModalUrl(shareUrl);
     setShareType('portfolio');
+    setShareIsOwnProfile(false);
     setShareCopied(false);
     setShareModalVisible(true);
   };
@@ -5735,9 +5742,18 @@ function App() {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     let path = '/for-you';
-    if (modalVisible && activeProject) {
+    // Portfolio and designer-profile modals can both be mounted at once
+    // (e.g. opening a designer's profile from on top of an already-open
+    // portfolio, kept mounted underneath for the back stack) - topStackedPage
+    // is the existing source of truth for which one is actually visible on
+    // screen, so it decides the URL here too. Without this, the portfolio
+    // branch always won since it was checked first, permanently masking the
+    // profile URL any time a profile was opened from on top of a portfolio.
+    const portfolioOnTop = modalVisible && activeProject && (!designerModalVisible || topStackedPage === 'portfolio');
+    const designerOnTop = designerModalVisible && selectedDesigner && selectedDesigner.id && (!modalVisible || topStackedPage === 'designer');
+    if (portfolioOnTop) {
       path = `/p/${activeProject.id}`;
-    } else if (designerModalVisible && selectedDesigner && selectedDesigner.id) {
+    } else if (designerOnTop) {
       path = `/@${selectedDesigner.handle || selectedDesigner.id}`;
     } else if (bottomNav === 'followed') {
       path = '/circle';
@@ -5749,7 +5765,7 @@ function App() {
     if (window.location.pathname !== path) {
       window.history.replaceState(window.history.state, document.title, path);
     }
-  }, [bottomNav, modalVisible, activeProject, designerModalVisible, selectedDesigner]);
+  }, [bottomNav, modalVisible, activeProject, designerModalVisible, selectedDesigner, topStackedPage]);
 
   const handleBackFromDesignerProfile = useCallback(() => {
     if (designerBackStack.length > 0) {
@@ -7866,7 +7882,7 @@ function App() {
             </View>
             <Text style={styles.logoText}>ECENT</Text>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.258.0</Text>
+              <Text style={styles.versionText}>v0.259.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10198,7 +10214,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.258.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.259.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11397,7 +11413,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.258.0</Text>
+                    <Text style={styles.settingItemValue}>v0.259.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
@@ -14181,7 +14197,7 @@ function App() {
               {shareType === 'portfolio' ? 'Anyone with this link can view this portfolio.' : 'Anyone with this link can view this profile.'}
             </Text>
 
-            {shareType === 'profile' && shareModalUrl ? (
+            {shareType === 'profile' && shareIsOwnProfile && shareModalUrl ? (
               <View style={{ alignItems: 'center', marginBottom: 16 }}>
                 <View style={{ padding: 10, backgroundColor: '#FFFFFF', borderRadius: 12 }}>
                   <Image
