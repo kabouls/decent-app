@@ -2576,6 +2576,15 @@ function App() {
   // forward navigation and push again, undoing the pop).
   const [designerBackStack, setDesignerBackStack] = useState([]);
   const designerNavIsGoingBackRef = useRef(false);
+  // Guards the initial-load deep-link effect below so it only ever processes
+  // the URL's incoming route ONCE. Without this, since handleIncomingRoute's
+  // identity changes on every unrelated designer-profile open (it depends on
+  // openDesignerProfileById, which depends on [designerModalVisible,
+  // selectedDesigner]), that effect was re-firing on every single profile
+  // navigation and unconditionally resetting the URL to '/' in its .finally()
+  // - permanently stomping the separate URL-sync effect's correct output
+  // right after it ran.
+  const initialRouteHandledRef = useRef(false);
   // Designer Profile is declared earlier in this file than Portfolio Detail,
   // so with equal zIndex, normal stacking rules mean Portfolio Detail
   // always paints on top regardless of which actually opened more recently
@@ -5701,6 +5710,8 @@ function App() {
     // because openPortfolioById depends on [session]) - so the first real
     // invocation below now always has the correct, resolved session.
     if (!authChecked) return;
+    if (initialRouteHandledRef.current) return;
+    initialRouteHandledRef.current = true;
     handleIncomingRoute(window.location.pathname).finally(() => {
       window.history.replaceState({}, document.title, '/');
     });
@@ -7882,7 +7893,7 @@ function App() {
             </View>
             <Text style={styles.logoText}>ECENT</Text>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.259.0</Text>
+              <Text style={styles.versionText}>v0.260.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10214,7 +10225,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.259.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.260.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11413,7 +11424,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.259.0</Text>
+                    <Text style={styles.settingItemValue}>v0.260.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
