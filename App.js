@@ -5540,6 +5540,60 @@ function App() {
   // what each URL shape means, rather than duplicating this across two
   // platform-specific effects that could drift out of sync with each
   // other.
+  const openPortfolioById = useCallback(async (portfolioId) => {
+    if (!portfolioId) return;
+    const found = projectsRef.current.find((p) => p.id === portfolioId);
+    if (found) {
+      setDesignerModalVisible(false);
+      openProjectModal(found);
+      return;
+    }
+    // Not in the currently-loaded feed (e.g. opened from a notification for
+    // a portfolio outside whatever's paginated in right now) - fetch it
+    // directly instead. Same field shape as mapPortfolioRow used elsewhere,
+    // kept local here rather than extracting a shared helper to avoid
+    // touching that already-working call site.
+    const [{ data: p, error }, { data: likeRow }] = await Promise.all([
+      supabase.from('portfolios').select('*').eq('id', portfolioId).single(),
+      session
+        ? supabase.from('likes').select('id').eq('user_id', session.user.id).eq('portfolio_id', portfolioId).maybeSingle()
+        : Promise.resolve({ data: null })
+    ]);
+    if (error || !p) {
+      showToast('Portfolio not found - it may have been removed.');
+      return;
+    }
+    setDesignerModalVisible(false);
+    openProjectModal({
+      id: p.id,
+      ownerId: p.user_id || null,
+      title: p.title,
+      designer: p.user_name || 'Unknown Designer',
+      designerHandle: p.user_handle || '',
+      designerAvatar: p.user_avatar || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
+      category: p.categories && p.categories[0] ? p.categories[0] : 'Mobile App',
+      categories: p.categories || ['Mobile App'],
+      liked: !!likeRow,
+      likesCount: p.likes_count ?? 0,
+      visitsCount: p.visits_count || 0,
+      figmaProfile: p.figma_profile || '',
+      liveLinks: p.live_links || [],
+      isNsfw: !!p.is_nsfw,
+      showcaseAspectRatio: p.showcase_aspect_ratio || '16:9',
+      figmaProto: p.figma_proto || '',
+      desktopProto: p.desktop_proto || '',
+      figmaFile: p.figma_file || '',
+      brief: p.brief || '',
+      longDescription: p.long_description || '',
+      contentBlocks: getContentBlocksFromRow(p),
+      pinned: !!p.is_pinned,
+      cover: p.cover_url || '',
+      images: getShowcaseImagesFromRow(p),
+      videoLinks: [],
+      caseStudy: p.brief || ''
+    });
+  }, [session]);
+
   const handleIncomingRoute = useCallback(async (path) => {
     const tabRoutes = { '/for-you': 'forYou', '/circle': 'followed', '/search': 'search', '/profile': 'profile' };
     if (tabRoutes[path]) {
@@ -5706,61 +5760,6 @@ function App() {
       setDesignerModalVisible(false);
     }
   }, [cameFromPortfolioId, designerBackStack, openDesignerProfileById]);
-
-
-  const openPortfolioById = useCallback(async (portfolioId) => {
-    if (!portfolioId) return;
-    const found = projectsRef.current.find((p) => p.id === portfolioId);
-    if (found) {
-      setDesignerModalVisible(false);
-      openProjectModal(found);
-      return;
-    }
-    // Not in the currently-loaded feed (e.g. opened from a notification for
-    // a portfolio outside whatever's paginated in right now) - fetch it
-    // directly instead. Same field shape as mapPortfolioRow used elsewhere,
-    // kept local here rather than extracting a shared helper to avoid
-    // touching that already-working call site.
-    const [{ data: p, error }, { data: likeRow }] = await Promise.all([
-      supabase.from('portfolios').select('*').eq('id', portfolioId).single(),
-      session
-        ? supabase.from('likes').select('id').eq('user_id', session.user.id).eq('portfolio_id', portfolioId).maybeSingle()
-        : Promise.resolve({ data: null })
-    ]);
-    if (error || !p) {
-      showToast('Portfolio not found - it may have been removed.');
-      return;
-    }
-    setDesignerModalVisible(false);
-    openProjectModal({
-      id: p.id,
-      ownerId: p.user_id || null,
-      title: p.title,
-      designer: p.user_name || 'Unknown Designer',
-      designerHandle: p.user_handle || '',
-      designerAvatar: p.user_avatar || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
-      category: p.categories && p.categories[0] ? p.categories[0] : 'Mobile App',
-      categories: p.categories || ['Mobile App'],
-      liked: !!likeRow,
-      likesCount: p.likes_count ?? 0,
-      visitsCount: p.visits_count || 0,
-      figmaProfile: p.figma_profile || '',
-      liveLinks: p.live_links || [],
-      isNsfw: !!p.is_nsfw,
-      showcaseAspectRatio: p.showcase_aspect_ratio || '16:9',
-      figmaProto: p.figma_proto || '',
-      desktopProto: p.desktop_proto || '',
-      figmaFile: p.figma_file || '',
-      brief: p.brief || '',
-      longDescription: p.long_description || '',
-      contentBlocks: getContentBlocksFromRow(p),
-      pinned: !!p.is_pinned,
-      cover: p.cover_url || '',
-      images: getShowcaseImagesFromRow(p),
-      videoLinks: [],
-      caseStudy: p.brief || ''
-    });
-  }, [session]);
 
   const promptDeletePortfolio = (proj) => {
     setProjectToDelete(proj);
@@ -7857,7 +7856,7 @@ function App() {
             </View>
             <Text style={styles.logoText}>ECENT</Text>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.256.0</Text>
+              <Text style={styles.versionText}>v0.257.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10189,7 +10188,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.256.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.257.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11388,7 +11387,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.256.0</Text>
+                    <Text style={styles.settingItemValue}>v0.257.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
