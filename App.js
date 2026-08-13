@@ -7686,7 +7686,7 @@ function App() {
             </View>
             <Text style={styles.logoText}>ECENT</Text>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.251.0</Text>
+              <Text style={styles.versionText}>v0.252.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -8387,7 +8387,7 @@ function App() {
               <View style={styles.profileCard}>
                 <BouncyButton
                   style={styles.profileTopRightShareBtn}
-                  onPress={() => handleShareDesigner({ name: userProfile.name, figma: (userProfile.links && userProfile.links[0]) || userProfile.handle || '' })}
+                  onPress={() => handleShareDesigner({ id: session.user.id, name: userProfile.name, handle: userProfile.handle })}
                 >
                   <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
                 </BouncyButton>
@@ -10018,7 +10018,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.251.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.252.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11217,7 +11217,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.251.0</Text>
+                    <Text style={styles.settingItemValue}>v0.252.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
