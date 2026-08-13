@@ -2250,6 +2250,13 @@ function App() {
   const projectsRef = useRef(projects);
   useEffect(() => { projectsRef.current = projects; }, [projects]);
   const [session, setSession] = useState(null);
+  // Mirrors `session` for use inside the mount-only auth effect below
+  // (empty deps array - the AppState listener and interval it sets up are
+  // created once and would otherwise always see `session` as it was at
+  // mount, i.e. always null, permanently - not what's actually happening
+  // right now).
+  const sessionRef = useRef(null);
+  useEffect(() => { sessionRef.current = session; }, [session]);
   const [authChecked, setAuthChecked] = useState(false);
   // Guest browsing: the app is viewable without an account. This only
   // controls whether the sign-in screen is shown ON TOP of/instead of the
@@ -3460,7 +3467,14 @@ function App() {
   const appStateSub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         supabase.auth.startAutoRefresh();
-        validateSessionStillExists();
+        // Guests have no session to validate - supabase.auth.getUser()
+        // always errors with nothing to fetch, which was falling straight
+        // into the "session no longer valid" branch and reloading the page
+        // every time a guest switched back to this tab. sessionRef (not
+        // the closured `session` above) since this listener is set up once
+        // on mount and needs the CURRENT session, not whatever it was at
+        // that moment.
+        if (sessionRef.current) validateSessionStillExists();
       } else {
         supabase.auth.stopAutoRefresh();
       }
@@ -3471,7 +3485,7 @@ function App() {
     // transitions, so an account deleted while the app is never
     // backgrounded would otherwise go undetected indefinitely.
     const sessionCheckInterval = setInterval(() => {
-      if (AppState.currentState === 'active') validateSessionStillExists();
+      if (AppState.currentState === 'active' && sessionRef.current) validateSessionStillExists();
     }, 60000);
 
     return () => {
@@ -3527,13 +3541,16 @@ function App() {
   }, [session]);
 
   useEffect(() => {
-    if (!session) return;
+    // Used to bail out entirely for guests (`if (!session) return`), which
+    // is why Discover Designers showed (0) when logged out - profiles is a
+    // publicly readable table (confirmed no RLS restriction), this was
+    // purely a client-side gate that had no reason to exist. Now runs for
+    // everyone; only the session-specific pieces (excluding your own
+    // profile, your follow counts, who follows you) are conditional.
     (async () => {
-      const { data: profileRows } = await supabase
-        .from('profiles')
-        .select('*')
-        .neq('id', session.user.id)
-        .neq('name', '');
+      let profileQuery = supabase.from('profiles').select('*').neq('name', '');
+      if (session) profileQuery = profileQuery.neq('id', session.user.id);
+      const { data: profileRows } = await profileQuery;
 
       const { data: followRows } = await supabase.from('follows').select('follower_id, following_id');
 
@@ -3543,15 +3560,17 @@ function App() {
       (followRows || []).forEach((r) => {
         followerCounts[r.following_id] = (followerCounts[r.following_id] || 0) + 1;
         followingCounts[r.follower_id] = (followingCounts[r.follower_id] || 0) + 1;
-        if (r.following_id === session.user.id) myFollowers.add(r.follower_id);
+        if (session && r.following_id === session.user.id) myFollowers.add(r.follower_id);
       });
 
-      setFollowersOfMe(myFollowers);
-      setProjects((prev) => prev.map((p) => ({ ...p, followsMe: p.ownerId ? myFollowers.has(p.ownerId) : false })));
-      setMyFollowStats({
-        followersCount: followerCounts[session.user.id] || 0,
-        followingCount: followingCounts[session.user.id] || 0
-      });
+      if (session) {
+        setFollowersOfMe(myFollowers);
+        setProjects((prev) => prev.map((p) => ({ ...p, followsMe: p.ownerId ? myFollowers.has(p.ownerId) : false })));
+        setMyFollowStats({
+          followersCount: followerCounts[session.user.id] || 0,
+          followingCount: followingCounts[session.user.id] || 0
+        });
+      }
 
       if (!profileRows || profileRows.length === 0) {
         setLiveDesigners([]);
@@ -5502,6 +5521,18 @@ function App() {
     // liveDesigners yet (e.g. a brand new account not yet in that list).
     const canonical = liveDesignersRef.current.find((d) => d.id === designer.id) || designer;
     setDesignerProfileTab('myWork');
+    // designerProfileTabSlideAnim/designerProfileTabContentAnim are
+    // useRef'd Animated.Values that live for the component's whole
+    // lifetime, not per-designer - without resetting them here too, the
+    // sliding pill stays wherever it was left from the PREVIOUS designer's
+    // profile (e.g. sitting on "Liked") even though designerProfileTab
+    // state above is already correctly back to 'myWork'. That mismatch is
+    // exactly what made the tab look stuck: the first tap did nothing
+    // because state already silently matched, and only a second tap onto
+    // the other tab actually changed state, which happened to also
+    // re-sync the pill.
+    designerProfileTabSlideAnim.setValue(0);
+    designerProfileTabContentAnim.setValue(1);
     setSelectedDesigner(canonical);
     setDesignerModalVisible(true);
     fetchDesignerLikedProjects(canonical.id);
@@ -5532,6 +5563,16 @@ function App() {
       setCameFromPortfolioId(null);
     }
     setTopStackedPage('designer');
+    // Same tab-state and pill-animation reset as openDesignerModal above -
+    // this function is the far more common way profiles actually get
+    // opened (portfolio owner tap, followers/following list, deep links),
+    // so leaving this reset out of it entirely is why the stuck-tab bug
+    // showed up so often: without it, a brand new designer's profile
+    // inherits whichever tab (and stale pill position) was left over from
+    // whatever profile was viewed before.
+    setDesignerProfileTab('myWork');
+    designerProfileTabSlideAnim.setValue(0);
+    designerProfileTabContentAnim.setValue(1);
 
     // Designer-to-designer chaining: if you're already viewing someone's
     // profile and tap into a DIFFERENT designer (e.g. from their Followers/
@@ -7920,7 +7961,7 @@ function App() {
             </View>
             <Text style={styles.logoText}>ECENT</Text>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.265.0</Text>
+              <Text style={styles.versionText}>v0.267.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10252,7 +10293,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.265.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.267.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11451,7 +11492,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.265.0</Text>
+                    <Text style={styles.settingItemValue}>v0.267.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
