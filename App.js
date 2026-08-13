@@ -7920,7 +7920,7 @@ function App() {
             </View>
             <Text style={styles.logoText}>ECENT</Text>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.264.0</Text>
+              <Text style={styles.versionText}>v0.265.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10252,7 +10252,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.264.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.265.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11451,7 +11451,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.264.0</Text>
+                    <Text style={styles.settingItemValue}>v0.265.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
@@ -11822,102 +11822,118 @@ function App() {
             </View>
             )}
 
-            {Platform.OS === 'web' && (
-              <BouncyButton
-                style={{ position: 'fixed', top: 44, left: 44, zIndex: 30, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
-                onPress={handleBackFromDesignerProfile}
-              >
-                <ChevronLeftSVG color={theme.accentLight} size={22} />
-              </BouncyButton>
-            )}
+            <ScrollView style={styles.caseScrollView} contentContainerStyle={styles.caseContent}>
+              {Platform.OS === 'web' && (
+                // position:'sticky' (not 'fixed') deliberately - this needs to
+                // stay pinned to the top of THIS card's own scroll area and
+                // respect the card's own bounds/padding, not the whole
+                // viewport. 'fixed' was tried first and looked right on a
+                // full-screen mobile modal, but on the wide-web layout this
+                // page is really a bounded card next to a sidebar - 'fixed'
+                // anchored to the viewport's edges instead of the card's,
+                // floating outside it. 'sticky' stays within the card
+                // because it's a normal in-flow child (inherits caseContent's
+                // padding automatically) that only stops scrolling once it
+                // reaches the top - exactly the "in-card, not viewport" fix
+                // that was actually being asked for.
+                <View style={{
+                  position: 'sticky', top: 0, zIndex: 30, marginHorizontal: -20, marginTop: -20, marginBottom: 12,
+                  paddingHorizontal: 20, paddingVertical: 12,
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                  backgroundColor: theme.bg
+                }}>
+                  <BouncyButton
+                    style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+                    onPress={handleBackFromDesignerProfile}
+                  >
+                    <ChevronLeftSVG color={theme.accentLight} size={22} />
+                  </BouncyButton>
 
-            {Platform.OS === 'web' && (
-              <View style={{ position: 'fixed', top: 44, right: 44, zIndex: 30, flexDirection: 'row', gap: 8 }}>
-                <BouncyButton
-                  style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
-                  onPress={() => handleShareDesigner(selectedDesigner)}
-                >
-                  <ShareIconSVG color={theme.accentLight} />
-                </BouncyButton>
-                {session && selectedDesigner.id && selectedDesigner.id !== session.user.id && (
-                  <View ref={designerDotsWrapRef} style={{ zIndex: 100 }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
                     <BouncyButton
                       style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
-                      onPress={() => {
-                        const next = !designerOptionsMenuVisible;
-                        if (next && designerDotsWrapRef.current) {
-                          designerDotsWrapRef.current.measureInWindow((x, y, width, height) => {
-                            const screenWidth = Platform.OS === 'web' ? window.innerWidth : Dimensions.get('window').width;
-                            setDesignerMenuPos({ top: y + height + 8, right: Math.max(8, screenWidth - (x + width)) });
-                          });
-                        }
-                        setDesignerOptionsMenuVisible(next);
-                      }}
+                      onPress={() => handleShareDesigner(selectedDesigner)}
                     >
-                      <Text style={{ color: theme.accentLight, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
+                      <ShareIconSVG color={theme.accentLight} />
                     </BouncyButton>
+                    {session && selectedDesigner.id && selectedDesigner.id !== session.user.id && (
+                      <View ref={designerDotsWrapRef} style={{ zIndex: 100 }}>
+                        <BouncyButton
+                          style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+                          onPress={() => {
+                            const next = !designerOptionsMenuVisible;
+                            if (next && designerDotsWrapRef.current) {
+                              designerDotsWrapRef.current.measureInWindow((x, y, width, height) => {
+                                const screenWidth = Platform.OS === 'web' ? window.innerWidth : Dimensions.get('window').width;
+                                setDesignerMenuPos({ top: y + height + 8, right: Math.max(8, screenWidth - (x + width)) });
+                              });
+                            }
+                            setDesignerOptionsMenuVisible(next);
+                          }}
+                        >
+                          <Text style={{ color: theme.accentLight, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
+                        </BouncyButton>
 
-                    <Modal
-                      transparent
-                      visible={designerOptionsMenuVisible}
-                      animationType="none"
-                      onRequestClose={() => setDesignerOptionsMenuVisible(false)}
-                    >
-                      <View
-                        pointerEvents="box-none"
-                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                      >
-                        <TouchableOpacity
-                          style={{ flex: 1 }}
-                          activeOpacity={1}
-                          onPress={() => setDesignerOptionsMenuVisible(false)}
-                        />
-                        <View style={{
-                          position: 'absolute', top: designerMenuPos.top, right: designerMenuPos.right, width: 220,
-                          backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
-                          padding: 6,
-                          shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
-                        }}>
-                          <BouncyButton
-                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
-                            onPress={() => {
-                              setDesignerOptionsMenuVisible(false);
-                              handleReportContent('user', selectedDesigner.id, selectedDesigner.name);
-                            }}
+                        <Modal
+                          transparent
+                          visible={designerOptionsMenuVisible}
+                          animationType="none"
+                          onRequestClose={() => setDesignerOptionsMenuVisible(false)}
+                        >
+                          <View
+                            pointerEvents="box-none"
+                            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
                           >
-                            <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
-                          </BouncyButton>
-                          <BouncyButton
-                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
-                            onPress={() => {
-                              setDesignerOptionsMenuVisible(false);
-                              mutedIds.has(selectedDesigner.id)
-                                ? handleUnmuteDesigner(selectedDesigner.id, selectedDesigner.name)
-                                : handleMuteDesigner(selectedDesigner.id, selectedDesigner.name);
-                            }}
-                          >
-                            <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
-                              {mutedIds.has(selectedDesigner.id) ? 'Unmute Posts' : 'Mute Posts'}
-                            </Text>
-                          </BouncyButton>
-                          <BouncyButton
-                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
-                            onPress={() => {
-                              setDesignerOptionsMenuVisible(false);
-                              handleBlockUser(selectedDesigner.id, selectedDesigner.name);
-                            }}
-                          >
-                            <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
-                          </BouncyButton>
-                        </View>
+                            <TouchableOpacity
+                              style={{ flex: 1 }}
+                              activeOpacity={1}
+                              onPress={() => setDesignerOptionsMenuVisible(false)}
+                            />
+                            <View style={{
+                              position: 'absolute', top: designerMenuPos.top, right: designerMenuPos.right, width: 220,
+                              backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                              padding: 6,
+                              shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                            }}>
+                              <BouncyButton
+                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                                onPress={() => {
+                                  setDesignerOptionsMenuVisible(false);
+                                  handleReportContent('user', selectedDesigner.id, selectedDesigner.name);
+                                }}
+                              >
+                                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
+                              </BouncyButton>
+                              <BouncyButton
+                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                                onPress={() => {
+                                  setDesignerOptionsMenuVisible(false);
+                                  mutedIds.has(selectedDesigner.id)
+                                    ? handleUnmuteDesigner(selectedDesigner.id, selectedDesigner.name)
+                                    : handleMuteDesigner(selectedDesigner.id, selectedDesigner.name);
+                                }}
+                              >
+                                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
+                                  {mutedIds.has(selectedDesigner.id) ? 'Unmute Posts' : 'Mute Posts'}
+                                </Text>
+                              </BouncyButton>
+                              <BouncyButton
+                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                                onPress={() => {
+                                  setDesignerOptionsMenuVisible(false);
+                                  handleBlockUser(selectedDesigner.id, selectedDesigner.name);
+                                }}
+                              >
+                                <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
+                              </BouncyButton>
+                            </View>
+                          </View>
+                        </Modal>
                       </View>
-                    </Modal>
+                    )}
                   </View>
-                )}
-              </View>
-            )}
-
-            <ScrollView style={styles.caseScrollView} contentContainerStyle={styles.caseContent}>
+                </View>
+              )}
               <View style={styles.profileCard}>
                 {Platform.OS !== 'web' && (
                 <View style={{ position: 'absolute', top: 12, right: 12, flexDirection: 'row', gap: 8, zIndex: 10 }}>
