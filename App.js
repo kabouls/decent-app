@@ -54,6 +54,7 @@ import * as Updates from 'expo-updates';
 import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
 import * as ExpoLinking from 'expo-linking';
+import * as MediaLibrary from 'expo-media-library';
 
 // KeyboardAwareScrollView is a mobile-only concept (compensating for a
 // virtual keyboard covering content). On web there's no virtual keyboard to
@@ -838,6 +839,13 @@ const CopyIconSVG = React.memo(({ color = '#FFFFFF', size = 16 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="9" y="9" width="12" height="12" rx="2" stroke={color} strokeWidth="2" />
     <Path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke={color} strokeWidth="2" />
+  </Svg>
+));
+
+const DownloadIconSVG = React.memo(({ color = '#FFFFFF', size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M12 3v12M7 10l5 5 5-5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M4 19h16" stroke={color} strokeWidth="2" strokeLinecap="round" />
   </Svg>
 ));
 
@@ -4255,6 +4263,7 @@ function App() {
 
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [shareModalUrl, setShareModalUrl] = useState('');
+  const [shareType, setShareType] = useState('profile'); // 'profile' | 'portfolio'
   const [shareCopied, setShareCopied] = useState(false);
 
   const handleShareDesigner = (designer) => {
@@ -4262,10 +4271,24 @@ function App() {
     // portfolio link) instead of a link back to their DECENT profile -
     // fixed to build a proper profile URL. DECENT_APP_DOMAIN is a
     // placeholder until the real domain is live - update that one constant
-    // and every share link (this one, and the portfolio share link nearby)
+    // and every share link (this one, and handleSharePortfolio below)
     // picks it up automatically.
     const shareUrl = `${DECENT_APP_DOMAIN}/@${designer.handle || designer.id}`;
     setShareModalUrl(shareUrl);
+    setShareType('profile');
+    setShareCopied(false);
+    setShareModalVisible(true);
+  };
+
+  // Uses the exact same /p/:id format the URL-sync effect displays in the
+  // address bar while viewing a portfolio, and that the initial-load
+  // routing effect knows how to open - so a shared link and the URL you'd
+  // see by just copying the address bar while on that page are always
+  // identical, and both actually work when opened fresh.
+  const handleSharePortfolio = (portfolio) => {
+    const shareUrl = `${DECENT_APP_DOMAIN}/p/${portfolio.id}`;
+    setShareModalUrl(shareUrl);
+    setShareType('portfolio');
     setShareCopied(false);
     setShareModalVisible(true);
   };
@@ -4274,6 +4297,57 @@ function App() {
     await Clipboard.setStringAsync(shareModalUrl);
     setShareCopied(true);
     setTimeout(() => setShareCopied(false), 1500);
+  };
+
+  // QR image comes from a public generation API (same pattern already used
+  // for avatar fallbacks via ui-avatars.com) rather than adding a new
+  // native QR-rendering package that isn't already a verified dependency
+  // of this project.
+  const getShareQrUrl = (url, size = 400) =>
+    `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(url)}`;
+
+  const handleDownloadQrCode = async () => {
+    const qrUrl = getShareQrUrl(shareModalUrl);
+    if (Platform.OS === 'web') {
+      // Genuine file download - fetch as a blob rather than just linking
+      // directly to the API url, since a plain <a href> to a cross-origin
+      // image opens/previews it in most browsers instead of downloading,
+      // and the filename would be whatever the API returns rather than
+      // something readable.
+      try {
+        const response = await fetch(qrUrl);
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = `decent-profile-qr-${userProfile.handle || 'code'}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(objectUrl);
+      } catch (e) {
+        console.warn('QR download failed:', e);
+        showToast('Could not download QR code - try again.');
+      }
+    } else {
+      // True one-tap gallery save: download the QR image to a temp file
+      // first (MediaLibrary needs a local file URI, not a remote one),
+      // then save that into the device's Photos/gallery.
+      try {
+        const permission = await MediaLibrary.requestPermissionsAsync();
+        if (!permission.granted) {
+          showToast('Photo library permission needed to save the QR code.');
+          return;
+        }
+        const localUri = `${FileSystem.cacheDirectory}decent-profile-qr-${Date.now()}.png`;
+        const { uri: downloadedUri } = await FileSystem.downloadAsync(qrUrl, localUri);
+        await MediaLibrary.saveToLibraryAsync(downloadedUri);
+        showToast('QR code saved to your photos.');
+      } catch (e) {
+        console.warn('QR save failed:', e);
+        showToast('Could not save QR code - try again.');
+      }
+    }
   };
 
   const handleOpenAccountSettingsModal = () => {
@@ -5403,7 +5477,7 @@ function App() {
     fetchDesignerLikedProjects(canonical.id);
   }, []);
 
-  const openDesignerProfileById = useCallback((designerId) => {
+  const openDesignerProfileById = useCallback((designerId, preloadedData = null) => {
     if (session && designerId === session.user.id) {
       setModalVisible(false);
       setDesignerModalVisible(false);
@@ -5451,6 +5525,8 @@ function App() {
     const found = liveDesignersRef.current.find((d) => d.id === designerId);
     if (found) {
       openDesignerModal(found);
+    } else if (preloadedData) {
+      openDesignerModal(preloadedData);
     } else {
       // Portfolio owner not in liveDesigners yet (e.g. very new account) -
       // pass a minimal object; openDesignerModal will try liveDesigners
@@ -5459,62 +5535,157 @@ function App() {
     }
   }, [session, openDesignerModal, modalVisible, activeProject, designerModalVisible, selectedDesigner]);
 
-  // Deep-linking for shared profile URLs (handleShareDesigner builds
-  // {DECENT_APP_DOMAIN}/@{handle}). Runs once on initial web load - checks
-  // the URL path, and if it matches /@something, looks that designer up
-  // directly via Supabase (not dependent on liveDesigners already being
-  // populated from some other fetch, since the shared designer might not
-  // be in whatever feed data happens to have loaded yet) and opens their
-  // profile. Doesn't attempt full bidirectional routing (the URL staying
-  // in sync with all ongoing in-app navigation) - that's a much bigger
-  // feature than "shared links should actually work". Once the profile
-  // opens, the URL is cleaned back to the site root so a later refresh
-  // doesn't keep re-triggering the same deep link.
+  // Shared route-matching logic for both web (parses window.location) and
+  // native (parses incoming Linking URLs, added below) - one definition of
+  // what each URL shape means, rather than duplicating this across two
+  // platform-specific effects that could drift out of sync with each
+  // other.
+  const handleIncomingRoute = useCallback(async (path) => {
+    const tabRoutes = { '/for-you': 'forYou', '/circle': 'followed', '/search': 'search', '/profile': 'profile' };
+    if (tabRoutes[path]) {
+      setBottomNav(tabRoutes[path]);
+      return;
+    }
+
+    const portfolioMatch = path.match(/^\/p\/([^/]+)$/);
+    if (portfolioMatch) {
+      const portfolioId = decodeURIComponent(portfolioMatch[1]);
+      await openPortfolioById(portfolioId);
+      return;
+    }
+
+    const designerMatch = path.match(/^\/@([^/]+)$/);
+    if (!designerMatch) return;
+    const handleOrId = decodeURIComponent(designerMatch[1]);
+    // Skips openDesignerProfileById's own history.pushState (web) - this
+    // deep link already IS the current history entry (the page just
+    // loaded at this URL) - without this it'd push a redundant second
+    // entry. Harmless no-op on native, which doesn't have browser history.
+    designerNavIsGoingBackRef.current = true;
+
+    try {
+      // Fetching complete fields here (not just id) - this data becomes
+      // the fallback openDesignerProfileById uses when liveDesigners
+      // hasn't loaded yet (very likely on a fresh deep-link visit,
+      // especially as a guest, since that fetch is gated behind a
+      // session in some paths). Without this, the profile page was
+      // opening with an empty name/avatar/stats - technically "working"
+      // but visually broken.
+      let { data: profile, error } = await supabase
+        .from('profiles')
+        .select('id, name, role, location, avatar_url, handle, bio, links')
+        .eq('handle', handleOrId)
+        .maybeSingle();
+
+      if (!profile && !error) {
+        const byId = await supabase
+          .from('profiles')
+          .select('id, name, role, location, avatar_url, handle, bio, links')
+          .eq('id', handleOrId)
+          .maybeSingle();
+        profile = byId.data;
+        error = byId.error;
+      }
+
+      if (error) {
+        console.warn('Deep-link profile lookup failed:', error.message);
+        return;
+      }
+      if (!profile) {
+        console.warn('Deep-link: no profile found for', handleOrId);
+        return;
+      }
+
+      // Follower/following counts fetched separately since they're
+      // derived (counted from the follows table), not stored directly on
+      // the profile row.
+      const [{ count: followersCount }, { count: followingCount }] = await Promise.all([
+        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', profile.id),
+        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', profile.id)
+      ]);
+
+      openDesignerProfileById(profile.id, {
+        id: profile.id,
+        name: profile.name || '',
+        role: profile.role || '',
+        location: profile.location || '',
+        avatar: profile.avatar_url || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
+        handle: profile.handle || '',
+        bio: profile.bio || '',
+        followersCount: followersCount || 0,
+        followingCount: followingCount || 0,
+        links: profile.links || []
+      });
+    } catch (e) {
+      console.warn('Deep-link handling failed:', e);
+    }
+  }, [openPortfolioById, openDesignerProfileById]);
+
+  // Initial-load routing for all page types this app has real URLs for:
+  // /for-you, /circle, /search, /profile (tabs), /p/:id (portfolio),
+  // /@:handleOrId (designer profile). Runs once on mount, web only - the
+  // native equivalent is the Linking-based effect further below. Cleans
+  // the URL back to the site root after landing - this handler only deals
+  // with where the page LANDS, not keeping the URL in sync with ongoing
+  // navigation afterward (that's the separate sync effect below).
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-    const match = window.location.pathname.match(/^\/@([^/]+)$/);
-    if (!match) return;
-    const handleOrId = decodeURIComponent(match[1]);
+    handleIncomingRoute(window.location.pathname).finally(() => {
+      window.history.replaceState({}, document.title, '/');
+    });
+  }, [handleIncomingRoute]);
 
-    (async () => {
-      try {
-        // openDesignerProfileById only needs the id - it does its own
-        // canonical lookup against liveDesigners internally, so selecting
-        // more fields here would only add risk (a single wrong column name
-        // fails the entire query) for no actual benefit.
-        let { data: profile, error } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('handle', handleOrId)
-          .maybeSingle();
+  // Same routing, for native - Android App Links (configured in app.json's
+  // android.intentFilters) hand the app a full https:// URL when the link
+  // is tapped and the app is installed; Linking.parse normalizes that (and
+  // the custom decent:// scheme) into a consistent {path} shape regardless
+  // of which form it arrived in. getInitialURL covers a cold start (app
+  // wasn't running, launched directly via the link); the 'url' event
+  // covers the app already being open/backgrounded when the link is
+  // tapped.
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
 
-        if (!profile && !error) {
-          const byId = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('id', handleOrId)
-            .maybeSingle();
-          profile = byId.data;
-          error = byId.error;
-        }
+    ExpoLinking.getInitialURL().then((url) => {
+      if (!url) return;
+      const { path } = ExpoLinking.parse(url);
+      if (path) handleIncomingRoute(`/${path}`);
+    });
 
-        if (error) {
-          console.warn('Deep-link profile lookup failed:', error.message);
-          return;
-        }
-        if (!profile) {
-          console.warn('Deep-link: no profile found for', handleOrId);
-          return;
-        }
+    const subscription = ExpoLinking.addEventListener('url', ({ url }) => {
+      const { path } = ExpoLinking.parse(url);
+      if (path) handleIncomingRoute(`/${path}`);
+    });
 
-        openDesignerProfileById(profile.id);
-      } catch (e) {
-        console.warn('Deep-link handling failed:', e);
-      } finally {
-        window.history.replaceState({}, document.title, '/');
-      }
-    })();
-  }, [openDesignerProfileById]);
+    return () => subscription.remove();
+  }, [handleIncomingRoute]);
+
+  // Keeps the visible URL bar in sync with whatever's actually on screen,
+  // for readability/shareability while browsing - NOT a routing system.
+  // Uses replaceState (never pushState) specifically so this never creates
+  // history entries or interacts with the existing back-button stack logic
+  // (tabVisitStack, designerBackStack, the pushState calls already in
+  // handleNavChange/openDesignerProfileById/openProjectModal) - those
+  // remain the sole source of truth for what the browser back button does.
+  // This effect only ever changes what the address bar displays.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    let path = '/for-you';
+    if (modalVisible && activeProject) {
+      path = `/p/${activeProject.id}`;
+    } else if (designerModalVisible && selectedDesigner && selectedDesigner.id) {
+      path = `/@${selectedDesigner.handle || selectedDesigner.id}`;
+    } else if (bottomNav === 'followed') {
+      path = '/circle';
+    } else if (bottomNav === 'search') {
+      path = '/search';
+    } else if (bottomNav === 'profile') {
+      path = '/profile';
+    }
+    if (window.location.pathname !== path) {
+      window.history.replaceState(window.history.state, document.title, path);
+    }
+  }, [bottomNav, modalVisible, activeProject, designerModalVisible, selectedDesigner]);
 
   const handleBackFromDesignerProfile = useCallback(() => {
     if (designerBackStack.length > 0) {
@@ -7686,7 +7857,7 @@ function App() {
             </View>
             <Text style={styles.logoText}>ECENT</Text>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.252.0</Text>
+              <Text style={styles.versionText}>v0.256.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10018,7 +10189,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.252.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.256.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11217,7 +11388,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.252.0</Text>
+                    <Text style={styles.settingItemValue}>v0.256.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
@@ -13235,6 +13406,13 @@ function App() {
               </Text>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <BouncyButton
+                  style={styles.ownerIconBtn}
+                  onPress={() => handleSharePortfolio(activeProject)}
+                >
+                  <ShareIconSVG color={theme.accentLight} />
+                </BouncyButton>
+
                 <View>
                   <BouncyButton
                     style={styles.ownerIconBtn}
@@ -13989,10 +14167,28 @@ function App() {
             onStartShouldSetResponder={() => Platform.OS === 'web'}
             onResponderRelease={() => {}}
           >
-            <Text style={styles.confirmTitle}>Share Profile</Text>
+            <Text style={styles.confirmTitle}>{shareType === 'portfolio' ? 'Share Portfolio' : 'Share Profile'}</Text>
             <Text style={[styles.confirmSubText, { marginBottom: 16 }]}>
-              Anyone with this link can view this profile.
+              {shareType === 'portfolio' ? 'Anyone with this link can view this portfolio.' : 'Anyone with this link can view this profile.'}
             </Text>
+
+            {shareType === 'profile' && shareModalUrl ? (
+              <View style={{ alignItems: 'center', marginBottom: 16 }}>
+                <View style={{ padding: 10, backgroundColor: '#FFFFFF', borderRadius: 12 }}>
+                  <Image
+                    source={{ uri: getShareQrUrl(shareModalUrl, 160) }}
+                    style={{ width: 160, height: 160 }}
+                  />
+                </View>
+                <BouncyButton
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingVertical: 6, paddingHorizontal: 12 }}
+                  onPress={handleDownloadQrCode}
+                >
+                  <DownloadIconSVG color={theme.accent} size={15} />
+                  <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>Download QR Code</Text>
+                </BouncyButton>
+              </View>
+            ) : null}
 
             <BouncyButton
               style={{
