@@ -5684,10 +5684,20 @@ function App() {
   // navigation afterward (that's the separate sync effect below).
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    // Wait for the initial supabase.auth.getSession() restore to finish
+    // before handling the deep link. Without this, a shared link opened in
+    // a fresh tab races ahead of session restoration - openPortfolioById /
+    // openDesignerProfileById read `session` while it's still null, so the
+    // page opens looking logged-out even though a valid session exists.
+    // authChecked flips true only after that restore resolves, and this
+    // effect re-runs on that flip (handleIncomingRoute's identity changes
+    // because openPortfolioById depends on [session]) - so the first real
+    // invocation below now always has the correct, resolved session.
+    if (!authChecked) return;
     handleIncomingRoute(window.location.pathname).finally(() => {
       window.history.replaceState({}, document.title, '/');
     });
-  }, [handleIncomingRoute]);
+  }, [handleIncomingRoute, authChecked]);
 
   // Same routing, for native - Android App Links (configured in app.json's
   // android.intentFilters) hand the app a full https:// URL when the link
@@ -7856,7 +7866,7 @@ function App() {
             </View>
             <Text style={styles.logoText}>ECENT</Text>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.257.0</Text>
+              <Text style={styles.versionText}>v0.258.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10188,7 +10198,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.257.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.258.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11387,7 +11397,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.257.0</Text>
+                    <Text style={styles.settingItemValue}>v0.258.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
