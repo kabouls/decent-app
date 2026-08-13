@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.kabouls.decent",
+      "sha256_cert_fingerprints": [
+        "75:68:07:C3:BF:DF:3C:D8:B5:51:19:F4:21:49:E0:15:89:C9:F4:43:ED:96:FA:A3:85:FA:BF:CC:63:E5:E9:20"
+      ]
+    }
+  }
+]
