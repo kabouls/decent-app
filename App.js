@@ -7920,7 +7920,7 @@ function App() {
             </View>
             <Text style={styles.logoText}>ECENT</Text>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.263.0</Text>
+              <Text style={styles.versionText}>v0.264.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10252,7 +10252,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.263.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.264.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11451,7 +11451,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.263.0</Text>
+                    <Text style={styles.settingItemValue}>v0.264.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
@@ -11824,7 +11824,7 @@ function App() {
 
             {Platform.OS === 'web' && (
               <BouncyButton
-                style={{ position: 'absolute', top: 44, left: 44, zIndex: 30, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+                style={{ position: 'fixed', top: 44, left: 44, zIndex: 30, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
                 onPress={handleBackFromDesignerProfile}
               >
                 <ChevronLeftSVG color={theme.accentLight} size={22} />
@@ -11832,7 +11832,7 @@ function App() {
             )}
 
             {Platform.OS === 'web' && (
-              <View style={{ position: 'absolute', top: 44, right: 44, zIndex: 30, flexDirection: 'row', gap: 8 }}>
+              <View style={{ position: 'fixed', top: 44, right: 44, zIndex: 30, flexDirection: 'row', gap: 8 }}>
                 <BouncyButton
                   style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
                   onPress={() => handleShareDesigner(selectedDesigner)}
