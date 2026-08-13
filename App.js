@@ -115,10 +115,10 @@ const RAW_WINDOW_WIDTH = Dimensions.get('window').width;
 // images/cards to overflow past the constrained column. Capping this at
 // the source fixes every downstream calculation at once rather than
 // hunting down each individual usage.
-// Placeholder until the real domain exists - every profile share link
-// builds off this one constant, so switching to the real domain later is a
-// one-line change here rather than hunting down every share call site.
-const DECENT_APP_DOMAIN = 'https://decent-app.com';
+// Real live domain - was a placeholder until the app was actually deployed.
+// If the Vercel team slug ever gets renamed, this needs updating to match
+// (the URL includes that slug: <project>-<team-slug>.vercel.app).
+const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 
 const SCREEN_WIDTH = Platform.OS === 'web' ? Math.min(RAW_WINDOW_WIDTH, 480) : RAW_WINDOW_WIDTH;
 // Required by expo-web-browser so the native OAuth browser session (Google
@@ -429,14 +429,6 @@ const EyeViewIconSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
   </Svg>
 ));
 
-const UserFollowIconSVG = React.memo(({ following }) => (
-  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-    <Path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke={following ? '#C084FC' : '#FFFFFF'} strokeWidth="2" strokeLinecap="round" />
-    <Circle cx="8.5" cy="7" r="4" stroke={following ? '#C084FC' : '#FFFFFF'} strokeWidth="2" />
-    <Path d={following ? "M17 11l2 2 4-4" : "M20 8v6M23 11h-6"} stroke={following ? '#10B981' : '#FFFFFF'} strokeWidth="2" strokeLinecap="round" />
-  </Svg>
-));
-
 const BellSVG = React.memo(({ active = false, inactiveColor = '#D8B4FE' }) => (
   <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
     <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke={active ? '#FFFFFF' : inactiveColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -710,14 +702,6 @@ const TextBlockIconSVG = React.memo(({ color = '#8B5CF6', size = 28 }) => (
   </Svg>
 ));
 
-const MoreVertIconSVG = React.memo(({ color = '#94A3B8', size = 18 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Circle cx="12" cy="5" r="1.8" fill={color} />
-    <Circle cx="12" cy="12" r="1.8" fill={color} />
-    <Circle cx="12" cy="19" r="1.8" fill={color} />
-  </Svg>
-));
-
 const GripDotsIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Circle cx="8" cy="5" r="1.6" fill={color} />
@@ -821,23 +805,11 @@ const MoonIconSVG = React.memo(({ color = '#94A3B8', filled = false, size = 16, 
   );
 });
 
-const ExpandIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-  </Svg>
-));
-
 const HelpCircleIconSVG = React.memo(({ color = '#94A3B8', size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Circle cx="12" cy="12" r="9.5" stroke={color} strokeWidth="1.8" />
     <Path d="M9.3 9a2.7 2.7 0 1 1 3.9 2.4c-.8.4-1.2 1-1.2 1.9" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
     <Circle cx="12" cy="16.6" r="1" fill={color} />
-  </Svg>
-));
-
-const CollapseIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M5 8V5a2 2 0 0 1 2-2h3M19 8V5a2 2 0 0 0-2-2h-3M19 16v3a2 2 0 0 1-2 2h-3M5 16v3a2 2 0 0 0 2 2h3" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
@@ -852,13 +824,6 @@ const LockIconSVG = React.memo(({ color = '#334155', size = 13 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="5" y="11" width="14" height="10" rx="2" stroke={color} strokeWidth="2" />
     <Path d="M8 11V7a4 4 0 0 1 8 0v4" stroke={color} strokeWidth="2" strokeLinecap="round" />
-  </Svg>
-));
-
-const VideoIconSVG = React.memo(({ color = '#94A3B8', size = 14 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Rect x="2" y="5" width="15" height="14" rx="2" stroke={color} strokeWidth="2" />
-    <Path d="M17 10L22 7V17L17 14" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
@@ -2400,8 +2365,6 @@ function App() {
   const [linkPreview, setLinkPreview] = useState(null); // { url, name } | null
   // Press-and-hold on a profile link (self or others') opens an in-app
   // preview instead of leaving the app right away.
-  const [linkPreviewUrl, setLinkPreviewUrl] = useState(null);
-  const [linkPreviewLoading, setLinkPreviewLoading] = useState(true);
   // Shrink/expand-to-icon animation (lightweight scale+fade, native driver)
   const [notificationPopupRendered, setNotificationPopupRendered] = useState(false);
   const notificationPopupAnim = useRef(new Animated.Value(0)).current;
@@ -2656,7 +2619,6 @@ function App() {
   // meaningful, since it's genuinely the same ScrollView instance under
   // both tabs' content, not four separate ones.
   const tabScrollOffsetsRef = useRef({ forYou: 0, followed: 0, search: 0, profile: 0 });
-  const [discoverDesignersSectionY, setDiscoverDesignersSectionY] = useState(0);
   const bellButtonRef = useRef(null);
   const [notifDropdownPos, setNotifDropdownPos] = useState({ top: 60, left: 16, right: 16 });
   const [headerBottomY, setHeaderBottomY] = useState(70);
@@ -2908,7 +2870,6 @@ function App() {
     }
   }, [bottomNav]);
 
-  const lastTabTapRef = useRef({ tab: 'forYou', time: 0 });
   // Tab visit history - which of the 4 main tabs were visited before the
   // current one, in order. Android hardware back (and, separately, the web
   // browser's own back button) walks through this instead of always
@@ -2963,7 +2924,6 @@ function App() {
   const [fCategories, setFCategories] = useState([]);
   const [fIsNsfw, setFIsNsfw] = useState(false);
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
-  const [isCategorySearchActive, setIsCategorySearchActive] = useState(false);
   const [categoryPickerModalVisible, setCategoryPickerModalVisible] = useState(false);
   const [masterCategoriesList, setMasterCategoriesList] = useState(ALL_UIUX_CATEGORIES_MASTER);
 
@@ -2984,10 +2944,8 @@ function App() {
 
   const [fBrief, setFBrief] = useState('');
   const [fLongDescription, setFLongDescription] = useState('');
-  const [longDescSelection, setLongDescSelection] = useState({ start: 0, end: 0 });
   const [fullscreenDescEditorVisible, setFullscreenDescEditorVisible] = useState(false);
   const [descEditorMode, setDescEditorMode] = useState('edit'); // 'edit' | 'preview'
-  const [advancedEditingOn, setAdvancedEditingOn] = useState(false);
   // Block editor state (WordPress-style text/image/row blocks for the case study)
   const [fContentBlocks, setFContentBlocks] = useState([]);
   const [blockSelections, setBlockSelections] = useState({}); // per-block text selection, keyed by block id or `${rowId}:${colIdx}`
@@ -4122,9 +4080,6 @@ function App() {
     setTopStackedPage(null);
     setDesignerBackStack([]);
 
-    const now = Date.now();
-    const isDoubleTap = lastTabTapRef.current.tab === newNav && (now - lastTabTapRef.current.time < 350);
-    lastTabTapRef.current = { tab: newNav, time: now };
     playTabBounce(newNav);
     if (newNav === 'forYou') playForYouSparkle();
     if (newNav === 'followed') { /* continuous rotation handles this now, see followedContinuousSpinAnim effect */ }
@@ -4159,6 +4114,9 @@ function App() {
     }
     if (!tabNavIsGoingBackRef.current) {
       setTabVisitStack((prevStack) => [...prevStack, bottomNav]);
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.history.pushState({ decentNavStep: true }, '', window.location.href);
+      }
     }
     tabNavIsGoingBackRef.current = false;
     setBottomNav(newNav);
@@ -5173,11 +5131,6 @@ function App() {
     showToast('Feature request submitted - thank you!');
   };
 
-  const handleDonateConfirm = () => {
-    setDonateModalVisible(false);
-    setDonateSuccessModalVisible(true);
-  };
-
   const handleCloseDonateSuccess = () => {
     setDonateSuccessModalVisible(false);
     if (Platform.OS !== 'web' && returnToOptionsOnClose) {
@@ -5342,6 +5295,9 @@ function App() {
   };
 
   const openProjectModal = (proj) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.history.pushState({ decentNavStep: true }, '', window.location.href);
+    }
     const newVisits = (proj.visitsCount || 0) + 1;
     const updatedProj = { ...proj, visitsCount: newVisits };
 
@@ -5456,6 +5412,9 @@ function App() {
       setDesignerBackStack([]);
       setTabVisitStack([]);
       setBottomNav('profile');
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.history.pushState({ decentNavStep: true }, '', window.location.href);
+      }
       return;
     }
 
@@ -5477,12 +5436,16 @@ function App() {
     // recent one. Doesn't push when this is itself a "go back" call
     // (handleBackFromDesignerProfile pops first, then calls this directly
     // with the popped ID - pushing again here would just undo the pop).
+    const isGoingBack = designerNavIsGoingBackRef.current;
     setDesignerBackStack((prevStack) => {
-      if (designerModalVisible && selectedDesigner && selectedDesigner.id && selectedDesigner.id !== designerId && !designerNavIsGoingBackRef.current) {
+      if (designerModalVisible && selectedDesigner && selectedDesigner.id && selectedDesigner.id !== designerId && !isGoingBack) {
         return [...prevStack, selectedDesigner.id];
       }
       return prevStack;
     });
+    if (!isGoingBack && Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.history.pushState({ decentNavStep: true }, '', window.location.href);
+    }
     designerNavIsGoingBackRef.current = false;
 
     const found = liveDesignersRef.current.find((d) => d.id === designerId);
@@ -5495,6 +5458,63 @@ function App() {
       openDesignerModal({ id: designerId, name: '', role: '', avatar: '', followersCount: 0, followingCount: 0, links: [] });
     }
   }, [session, openDesignerModal, modalVisible, activeProject, designerModalVisible, selectedDesigner]);
+
+  // Deep-linking for shared profile URLs (handleShareDesigner builds
+  // {DECENT_APP_DOMAIN}/@{handle}). Runs once on initial web load - checks
+  // the URL path, and if it matches /@something, looks that designer up
+  // directly via Supabase (not dependent on liveDesigners already being
+  // populated from some other fetch, since the shared designer might not
+  // be in whatever feed data happens to have loaded yet) and opens their
+  // profile. Doesn't attempt full bidirectional routing (the URL staying
+  // in sync with all ongoing in-app navigation) - that's a much bigger
+  // feature than "shared links should actually work". Once the profile
+  // opens, the URL is cleaned back to the site root so a later refresh
+  // doesn't keep re-triggering the same deep link.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const match = window.location.pathname.match(/^\/@([^/]+)$/);
+    if (!match) return;
+    const handleOrId = decodeURIComponent(match[1]);
+
+    (async () => {
+      try {
+        // openDesignerProfileById only needs the id - it does its own
+        // canonical lookup against liveDesigners internally, so selecting
+        // more fields here would only add risk (a single wrong column name
+        // fails the entire query) for no actual benefit.
+        let { data: profile, error } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('handle', handleOrId)
+          .maybeSingle();
+
+        if (!profile && !error) {
+          const byId = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', handleOrId)
+            .maybeSingle();
+          profile = byId.data;
+          error = byId.error;
+        }
+
+        if (error) {
+          console.warn('Deep-link profile lookup failed:', error.message);
+          return;
+        }
+        if (!profile) {
+          console.warn('Deep-link: no profile found for', handleOrId);
+          return;
+        }
+
+        openDesignerProfileById(profile.id);
+      } catch (e) {
+        console.warn('Deep-link handling failed:', e);
+      } finally {
+        window.history.replaceState({}, document.title, '/');
+      }
+    })();
+  }, [openDesignerProfileById]);
 
   const handleBackFromDesignerProfile = useCallback(() => {
     if (designerBackStack.length > 0) {
@@ -6306,69 +6326,96 @@ function App() {
     setDiscardConfirmModalVisible(true);
   };
 
+  // Shared "go back one step" decision logic - same priority order used by
+  // both Android's hardware back button and, further below, the web
+  // browser's back button. Kept as one function rather than duplicated
+  // logic in two places, so the two platforms can't silently drift out of
+  // sync with each other.
+  const performBackNavigation = useCallback(() => {
+    if (linkPreview) {
+      setLinkPreview(null);
+      return true;
+    }
+    if (lightboxImageUri) {
+      setLightboxImageUri(null);
+      return true;
+    }
+    if (settingsModalVisible) {
+      setSettingsModalVisible(false);
+      return true;
+    }
+    if (notificationModalVisible) {
+      setNotificationModalVisible(false);
+      return true;
+    }
+    if (fullscreenDescEditorVisible) {
+      setFullscreenDescEditorVisible(false);
+      return true;
+    }
+    if (addModalVisible) {
+      handleCloseUploadWizard();
+      return true;
+    }
+    if (designerModalVisible) {
+      handleBackFromDesignerProfile();
+      return true;
+    }
+    if (modalVisible) {
+      handleBackFromPortfolioDetail();
+      return true;
+    }
+    if (allCategoriesModalVisible) {
+      setAllCategoriesModalVisible(false);
+      return true;
+    }
+    if (tabVisitStack.length > 0) {
+      const prevTab = tabVisitStack[tabVisitStack.length - 1];
+      setTabVisitStack((prevStack) => prevStack.slice(0, -1));
+      tabNavIsGoingBackRef.current = true;
+      handleNavChange(prevTab);
+      return true;
+    }
+    if (bottomNav !== 'forYou') {
+      tabNavIsGoingBackRef.current = true;
+      handleNavChange('forYou');
+      return true;
+    }
+    return false;
+  }, [
+    linkPreview, lightboxImageUri, settingsModalVisible, notificationModalVisible,
+    fullscreenDescEditorVisible, addModalVisible, designerModalVisible, modalVisible,
+    allCategoriesModalVisible, bottomNav, tabVisitStack,
+    handleNavChange, handleBackFromDesignerProfile, handleBackFromPortfolioDetail, handleCloseUploadWizard
+  ]);
+
   // Android hardware back: close whatever's on top first (checked in a
   // rough "most recently likely opened" order), otherwise treat For You as
   // home - only actually exits the app from there.
   useEffect(() => {
     if (Platform.OS !== 'android') return;
-    const onBackPress = () => {
-      if (linkPreview) {
-        setLinkPreview(null);
-        return true;
-      }
-      if (lightboxImageUri) {
-        setLightboxImageUri(null);
-        return true;
-      }
-      if (settingsModalVisible) {
-        setSettingsModalVisible(false);
-        return true;
-      }
-      if (notificationModalVisible) {
-        setNotificationModalVisible(false);
-        return true;
-      }
-      if (fullscreenDescEditorVisible) {
-        setFullscreenDescEditorVisible(false);
-        return true;
-      }
-      if (addModalVisible) {
-        handleCloseUploadWizard();
-        return true;
-      }
-      if (designerModalVisible) {
-        handleBackFromDesignerProfile();
-        return true;
-      }
-      if (modalVisible) {
-        handleBackFromPortfolioDetail();
-        return true;
-      }
-      if (allCategoriesModalVisible) {
-        setAllCategoriesModalVisible(false);
-        return true;
-      }
-      if (tabVisitStack.length > 0) {
-        const prevTab = tabVisitStack[tabVisitStack.length - 1];
-        setTabVisitStack((prevStack) => prevStack.slice(0, -1));
-        tabNavIsGoingBackRef.current = true;
-        handleNavChange(prevTab);
-        return true;
-      }
-      if (bottomNav !== 'forYou') {
-        tabNavIsGoingBackRef.current = true;
-        handleNavChange('forYou');
-        return true;
-      }
-      return false;
-    };
+    const onBackPress = () => performBackNavigation();
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => subscription.remove();
-  }, [
-    linkPreview, lightboxImageUri, settingsModalVisible, notificationModalVisible,
-    addModalVisible, designerModalVisible, modalVisible, allCategoriesModalVisible, bottomNav,
-    tabVisitStack, handleNavChange, handleBackFromDesignerProfile, handleBackFromPortfolioDetail
-  ]);
+  }, [performBackNavigation]);
+
+  // Web browser back button (and swipe-back gesture on mobile browsers) -
+  // same shared performBackNavigation logic as Android's hardware back
+  // above, so the two platforms can't drift apart. Doesn't attempt to
+  // distinguish the browser's forward button from back - popstate fires for
+  // both, and there's no direction info on the event itself. Treating
+  // forward-button clicks the same as back is a minor imperfection (rare
+  // interaction, worst case it just repeats a back step) rather than
+  // broken behavior, and correctly handling both directions would mean
+  // reimplementing a real state machine against pushed history entries for
+  // a case that's unlikely to come up in practice.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onPopState = () => {
+      performBackNavigation();
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [performBackNavigation]);
 
   const resetFormWizard = () => {
     setEditingProjectId(null);
@@ -6381,7 +6428,6 @@ function App() {
     setFCategories([]);
     setFIsNsfw(false);
     setCategorySearchQuery('');
-    setIsCategorySearchActive(false);
     setFFigmaProto('');
     setFDesktopProto('');
     setFFigmaFile('');
@@ -6609,7 +6655,6 @@ function App() {
   const [searchedProjects, setSearchedProjects] = useState([]);
   const [searchFilterTab, setSearchFilterTab] = useState('all'); // 'all' | 'portfolios' | 'designers'
   const [searchedDesigners, setSearchedDesigners] = useState([]);
-  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     const q = searchQuery.trim().replace(/^@/, '');
@@ -6619,7 +6664,6 @@ function App() {
       return;
     }
 
-    setSearching(true);
     const timeout = setTimeout(async () => {
       const [projectsRes, profilesRes, tagMatchRes] = await Promise.all([
         (() => {
@@ -6754,8 +6798,6 @@ function App() {
         d.location.toLowerCase().includes(q.toLowerCase())
       );
       setSearchedDesigners([...mappedDesigners, ...mockMatches].filter((d) => !blockedIds.has(d.id)));
-
-      setSearching(false);
     }, 350);
 
     return () => clearTimeout(timeout);
@@ -7644,7 +7686,7 @@ function App() {
             </View>
             <Text style={styles.logoText}>ECENT</Text>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.246.0</Text>
+              <Text style={styles.versionText}>v0.251.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -9976,7 +10018,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.246.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.251.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11175,7 +11217,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.246.0</Text>
+                    <Text style={styles.settingItemValue}>v0.251.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
