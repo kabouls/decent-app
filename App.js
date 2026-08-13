@@ -2354,6 +2354,7 @@ function App() {
   const liveDesignersRef = useRef(liveDesigners);
   useEffect(() => { liveDesignersRef.current = liveDesigners; }, [liveDesigners]);
   const [myFollowStats, setMyFollowStats] = useState({ followersCount: 0, followingCount: 0 });
+  const [myWeeklyViews, setMyWeeklyViews] = useState(null); // null = not loaded yet, distinct from 0
   const [hideLikedPortfolios, setHideLikedPortfolios] = useState(false);
   
   const [userProfile, setUserProfile] = useState({
@@ -2562,6 +2563,12 @@ function App() {
   const [projectToDelete, setProjectToDelete] = useState(null);
 
   const [designerModalVisible, setDesignerModalVisible] = useState(false);
+  // Lets openProjectModal below read this without listing it as a
+  // useCallback dependency - same reasoning as selectedDesignerRef just
+  // above (openProjectModal needs both together, to decide whether to
+  // remember "came from a designer profile" for the back button).
+  const designerModalVisibleRef = useRef(false);
+  useEffect(() => { designerModalVisibleRef.current = designerModalVisible; }, [designerModalVisible]);
   // Back-navigation stack, scoped to the Portfolio<->Designer Profile
   // relationship specifically - that's the primary "drill deeper" pattern
   // in this app (view a designer's portfolios, tap one, want to go back to
@@ -3517,6 +3524,40 @@ function App() {
   // or blocking them - they're not notified and can still see/interact
   // with you normally, unlike a block.
   const [mutedIds, setMutedIds] = useState(new Set());
+
+  // "Views this week" stat on the own Profile tab - two-step because
+  // Supabase JS doesn't support a subquery + count in one call: first get
+  // which portfolios are mine, then count how many portfolio_views rows
+  // for those IDs fall inside the last 7 days.
+  useEffect(() => {
+    if (!session) {
+      setMyWeeklyViews(null);
+      return;
+    }
+    (async () => {
+      const { data: myPortfolios } = await supabase
+        .from('portfolios')
+        .select('id')
+        .eq('user_id', session.user.id);
+      const ids = (myPortfolios || []).map((p) => p.id);
+      if (ids.length === 0) {
+        setMyWeeklyViews(0);
+        return;
+      }
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { count, error } = await supabase
+        .from('portfolio_views')
+        .select('id', { count: 'exact', head: true })
+        .in('portfolio_id', ids)
+        .gte('viewed_at', sevenDaysAgo);
+      if (error) {
+        console.warn('Weekly views fetch failed:', error.message);
+        setMyWeeklyViews(0);
+        return;
+      }
+      setMyWeeklyViews(count || 0);
+    })();
+  }, [session, projects.length]);
 
   useEffect(() => {
     if (!session) {
@@ -5417,7 +5458,16 @@ function App() {
     setUserListItems(mapped);
   };
 
-  const openProjectModal = (proj) => {
+  // Passed as `onPress` into every ProjectCard in every grid across the
+  // whole app (For You, Search, Profile, Liked, Designer profile) via
+  // ProjectGrid/TwoRowHorizontalGrid, both React.memo'd - as a plain
+  // function (not useCallback), this was a new reference every single
+  // App() render, which defeated ProjectCard's memoization for literally
+  // every portfolio card everywhere, on every unrelated state change
+  // anywhere in the app. useCallback with an empty dependency array (reads
+  // designerModalVisible/selectedDesigner via their existing refs instead
+  // of closing over the state directly) makes this permanently stable.
+  const openProjectModal = useCallback((proj) => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.history.pushState({ decentNavStep: true }, '', window.location.href);
     }
@@ -5429,8 +5479,8 @@ function App() {
     // stays mounted underneath (never explicitly closed here), so this is
     // just tracking which one to reveal again on back, not closing/
     // reopening anything.
-    if (designerModalVisible && selectedDesigner) {
-      setCameFromDesignerId(selectedDesigner.id);
+    if (designerModalVisibleRef.current && selectedDesignerRef.current) {
+      setCameFromDesignerId(selectedDesignerRef.current.id);
     } else {
       setCameFromDesignerId(null);
     }
@@ -5456,6 +5506,14 @@ function App() {
     supabase.rpc('increment_portfolio_views', { pid: proj.id }).then(({ error }) => {
       if (error) console.warn('View count increment failed:', error);
     });
+    // Logs a timestamped row alongside the existing all-time counter above -
+    // that counter alone can't answer "how many views this week", only a
+    // running total. Fire-and-forget, same as the increment call - a
+    // failed insert here shouldn't block or slow down opening the
+    // portfolio.
+    supabase.from('portfolio_views').insert({ portfolio_id: proj.id }).then(({ error }) => {
+      if (error) console.warn('View event log failed:', error);
+    });
 
     if (proj.caseStudy || proj.brief || proj.images) {
       setActiveTab('case');
@@ -5467,7 +5525,7 @@ function App() {
       setActiveTab('case');
     }
     setModalVisible(true);
-  };
+  }, []);
 
   const [designerLikedProjects, setDesignerLikedProjects] = useState([]);
   const [loadingDesignerLikes, setLoadingDesignerLikes] = useState(false);
@@ -5663,7 +5721,7 @@ function App() {
       videoLinks: [],
       caseStudy: p.brief || ''
     });
-  }, [session]);
+  }, [session, openProjectModal]);
 
   const handleIncomingRoute = useCallback(async (path) => {
     const tabRoutes = { '/for-you': 'forYou', '/circle': 'followed', '/search': 'search', '/profile': 'profile' };
@@ -6601,6 +6659,20 @@ function App() {
     setDiscardConfirmModalVisible(true);
   };
 
+  // Mirrors handleNavChange/handleCloseUploadWizard for performBackNavigation
+  // below to read, instead of closing over the functions directly. Both are
+  // plain functions redefined every render (used in 40+ places throughout
+  // the UI as normal - not touching that), which meant performBackNavigation
+  // had to list them as useCallback deps and therefore got a new identity on
+  // every single render too - and since it backs a BackHandler/popstate
+  // listener, that meant tearing down and re-registering that native
+  // listener every render, not just when back-navigation logic actually
+  // changes. Reading through a ref (updated every render via the effect
+  // below, no dependency array needed for that) breaks that chain without
+  // changing what either function actually does anywhere else.
+  const handleNavChangeRef = useRef(null);
+  const handleCloseUploadWizardRef = useRef(null);
+
   // Shared "go back one step" decision logic - same priority order used by
   // both Android's hardware back button and, further below, the web
   // browser's back button. Kept as one function rather than duplicated
@@ -6628,7 +6700,7 @@ function App() {
       return true;
     }
     if (addModalVisible) {
-      handleCloseUploadWizard();
+      handleCloseUploadWizardRef.current();
       return true;
     }
     if (designerModalVisible) {
@@ -6647,12 +6719,12 @@ function App() {
       const prevTab = tabVisitStack[tabVisitStack.length - 1];
       setTabVisitStack((prevStack) => prevStack.slice(0, -1));
       tabNavIsGoingBackRef.current = true;
-      handleNavChange(prevTab);
+      handleNavChangeRef.current(prevTab);
       return true;
     }
     if (bottomNav !== 'forYou') {
       tabNavIsGoingBackRef.current = true;
-      handleNavChange('forYou');
+      handleNavChangeRef.current('forYou');
       return true;
     }
     return false;
@@ -6660,8 +6732,13 @@ function App() {
     linkPreview, lightboxImageUri, settingsModalVisible, notificationModalVisible,
     fullscreenDescEditorVisible, addModalVisible, designerModalVisible, modalVisible,
     allCategoriesModalVisible, bottomNav, tabVisitStack,
-    handleNavChange, handleBackFromDesignerProfile, handleBackFromPortfolioDetail, handleCloseUploadWizard
+    handleBackFromDesignerProfile, handleBackFromPortfolioDetail
   ]);
+
+  useEffect(() => {
+    handleNavChangeRef.current = handleNavChange;
+    handleCloseUploadWizardRef.current = handleCloseUploadWizard;
+  });
 
   // Android hardware back: close whatever's on top first (checked in a
   // rough "most recently likely opened" order), otherwise treat For You as
@@ -7961,7 +8038,7 @@ function App() {
             </View>
             <Text style={styles.logoText}>ECENT</Text>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.267.0</Text>
+              <Text style={styles.versionText}>v0.270.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -8705,6 +8782,15 @@ function App() {
                     <Text style={styles.statLabel}>Following</Text>
                   </BouncyButton>
                 </View>
+
+                {myWeeklyViews !== null && (
+                  <View style={[styles.iconTextInlineRow, { marginBottom: 8 }]}>
+                    <EyeViewIconSVG size={14} color={theme.textSecondary} />
+                    <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                      {myWeeklyViews} view{myWeeklyViews === 1 ? '' : 's'} this week
+                    </Text>
+                  </View>
+                )}
 
                 {userProfile.links && userProfile.links.length > 0 && (
                   <View style={styles.socialCircularLinksRow}>
@@ -10293,7 +10379,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.267.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.270.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11492,7 +11578,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.267.0</Text>
+                    <Text style={styles.settingItemValue}>v0.270.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
