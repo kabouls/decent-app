@@ -30,7 +30,10 @@
               "host": "decent-portfolio-decent6.vercel.app"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -53,6 +56,12 @@
         "projectId": "b06967a0-c1fa-4747-a9d8-50385a7b19b9"
       }
     },
-    "owner": "iputra07s-team"
+    "owner": "iputra07s-team",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/b06967a0-c1fa-4747-a9d8-50385a7b19b9"
+    }
   }
 }
