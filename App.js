@@ -120,6 +120,12 @@ const RAW_WINDOW_WIDTH = Dimensions.get('window').width;
 // If the Vercel team slug ever gets renamed, this needs updating to match
 // (the URL includes that slug: <project>-<team-slug>.vercel.app).
 const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
+// Fill these in with your real donation links before this goes live -
+// paypal.me/yourname (create at paypal.me) and your Wise payment link
+// (create at wise.com -> Get paid -> Share payment details). Both buttons
+// below already open whichever URL is set here via openExternalLinkWithWarning.
+const PAYPAL_DONATE_URL = 'https://paypal.me/YOUR_USERNAME';
+const WISE_DONATE_URL = 'https://wise.com/pay/me/YOUR_USERNAME';
 
 const SCREEN_WIDTH = Platform.OS === 'web' ? Math.min(RAW_WINDOW_WIDTH, 480) : RAW_WINDOW_WIDTH;
 // Required by expo-web-browser so the native OAuth browser session (Google
@@ -3003,6 +3009,7 @@ function App() {
   const introScrollRef = useRef(null);
   const [fFigmaProto, setFFigmaProto] = useState('');
   const [fDesktopProto, setFDesktopProto] = useState('');
+  const [fComponentProto, setFComponentProto] = useState('');
   const [fFigmaFile, setFFigmaFile] = useState('');
   const [fFigmaProfile, setFFigmaProfile] = useState('');
   const [fHasLiveLink, setFHasLiveLink] = useState(false);
@@ -3258,6 +3265,7 @@ function App() {
           isNsfw: !!p.is_nsfw,
           showcaseAspectRatio: p.showcase_aspect_ratio || '16:9',
           figmaProto: p.figma_proto || '',
+          componentProto: p.component_proto || '',
           desktopProto: p.desktop_proto || '',
           figmaFile: p.figma_file || '',
           brief: p.brief || '',
@@ -3316,6 +3324,7 @@ function App() {
           liveLinks: p.live_links || [],
           isNsfw: !!p.is_nsfw,
           showcaseAspectRatio: p.showcase_aspect_ratio || '16:9',
+          componentProto: p.component_proto || '',
           figmaProto: p.figma_proto || '',
           desktopProto: p.desktop_proto || '',
           figmaFile: p.figma_file || '',
@@ -4435,6 +4444,47 @@ function App() {
       } catch (e) {
         console.warn('QR save failed:', e);
         showToast('Could not save QR code - try again.');
+      }
+    }
+  };
+
+  const handleDownloadQrisCode = async () => {
+    // Same pattern as handleDownloadQrCode above, but the source is a
+    // bundled local asset (require'd, not a remote API) - Image.
+    // resolveAssetSource gives back a usable URL either way (a Metro dev
+    // server URL locally, a packaged/CDN URL in production), so the same
+    // fetch-then-save logic works unchanged for both.
+    const qrisUrl = Image.resolveAssetSource(require('./assets/qris-code.png')).uri;
+    if (Platform.OS === 'web') {
+      try {
+        const response = await fetch(qrisUrl);
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = 'decent-qris-code.png';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(objectUrl);
+      } catch (e) {
+        console.warn('QRIS download failed:', e);
+        showToast('Could not download QRIS code - try again.');
+      }
+    } else {
+      try {
+        const permission = await MediaLibrary.requestPermissionsAsync();
+        if (!permission.granted) {
+          showToast('Photo library permission needed to save the QRIS code.');
+          return;
+        }
+        const localUri = `${FileSystem.cacheDirectory}decent-qris-${Date.now()}.png`;
+        const { uri: downloadedUri } = await FileSystem.downloadAsync(qrisUrl, localUri);
+        await MediaLibrary.saveToLibraryAsync(downloadedUri);
+        showToast('QRIS code saved to your photos.');
+      } catch (e) {
+        console.warn('QRIS save failed:', e);
+        showToast('Could not save QRIS code - try again.');
       }
     }
   };
@@ -5718,6 +5768,7 @@ function App() {
       figmaProfile: p.figma_profile || '',
       liveLinks: p.live_links || [],
       isNsfw: !!p.is_nsfw,
+          componentProto: p.component_proto || '',
       showcaseAspectRatio: p.showcase_aspect_ratio || '16:9',
       figmaProto: p.figma_proto || '',
       desktopProto: p.desktop_proto || '',
@@ -6044,6 +6095,7 @@ function App() {
     );
     setFFigmaProto(proj.figmaProto || '');
     setFDesktopProto(proj.desktopProto || '');
+    setFComponentProto(proj.componentProto || '');
     setFFigmaFile(proj.figmaFile || '');
     setFFigmaProfile(proj.figmaProfile || '');
     setFHasLiveLink(!!(proj.liveLinks && proj.liveLinks.length > 0));
@@ -6463,6 +6515,7 @@ function App() {
           content_blocks: finalContentBlocks,
           cover_url: finalCoverUrl,
           figma_proto: fFigmaProto,
+          component_proto: fComponentProto,
           desktop_proto: fDesktopProto,
           figma_file: fFigmaFile,
           figma_profile: fFigmaProfile,
@@ -6519,6 +6572,7 @@ function App() {
                 figmaProfile: fFigmaProfile,
                 liveLinks: fHasLiveLink ? fLiveLinks.filter((l) => l.url.trim()) : [],
                 figmaProto: fFigmaProto,
+                componentProto: fComponentProto,
                 desktopProto: fDesktopProto,
                 figmaFile: fFigmaFile,
                 brief: fBrief,
@@ -6570,6 +6624,7 @@ function App() {
             content_blocks: finalContentBlocks,
             cover_url: finalCoverUrl,
             figma_proto: fFigmaProto,
+            component_proto: fComponentProto,
             desktop_proto: fDesktopProto,
             figma_file: fFigmaFile,
             figma_profile: fFigmaProfile,
@@ -6617,6 +6672,7 @@ function App() {
         figmaProfile: fFigmaProfile || '',
         liveLinks: fHasLiveLink ? fLiveLinks.filter((l) => l.url.trim()) : [],
         figmaProto: fFigmaProto,
+        componentProto: fComponentProto,
         desktopProto: fDesktopProto,
         figmaFile: fFigmaFile,
         brief: fBrief,
@@ -7062,6 +7118,7 @@ function App() {
         visitsCount: p.visits_count || 120,
         figmaProfile: p.figma_profile || '',
         liveLinks: p.live_links || [],
+          componentProto: p.component_proto || '',
         isNsfw: !!p.is_nsfw,
         showcaseAspectRatio: p.showcase_aspect_ratio || '16:9',
         figmaProto: p.figma_proto || '',
@@ -8050,7 +8107,7 @@ function App() {
               <Text style={styles.logoText}>ECENT</Text>
             </View>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.273.0</Text>
+              <Text style={styles.versionText}>v0.275.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10391,7 +10448,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.273.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.275.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11341,16 +11398,21 @@ function App() {
                       backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 10, overflow: 'hidden'
                     }}>
                       <Image
-                        source={{ uri: 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=DECENT-DEMO-QRIS-MOCKUP' }}
+                        source={require('./assets/qris-code.png')}
                         style={{ width: 180, height: 180 }}
+                        resizeMode="contain"
                       />
                     </View>
-                    <View style={{ backgroundColor: theme.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, marginBottom: 8 }}>
-                      <Text style={{ color: '#FBBF24', fontSize: 11, fontWeight: '700' }}>DEMO QR \u2014 not a real payment code</Text>
-                    </View>
-                    <Text style={{ color: theme.textSecondary, fontSize: 12, textAlign: 'center' }}>
+                    <Text style={{ color: theme.textSecondary, fontSize: 12, textAlign: 'center', marginBottom: 12 }}>
                       Scan with any e-wallet or mobile banking app that supports QRIS.
                     </Text>
+                    <BouncyButton
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: theme.border }}
+                      onPress={handleDownloadQrisCode}
+                    >
+                      <DownloadIconSVG color={theme.accent} size={16} />
+                      <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 12.5 }}>Download QRIS</Text>
+                    </BouncyButton>
                   </View>
                 ) : (
                   <View style={{ gap: 10 }}>
@@ -11362,7 +11424,7 @@ function App() {
                           showAppAlert('Agreement Required', 'Please check the box agreeing to the Terms of Service before donating.');
                           return;
                         }
-                        showAppAlert('Demo Mode', 'This is mockup content. Replace this button\'s link with your real PayPal.me URL to enable it.');
+                        openExternalLinkWithWarning(PAYPAL_DONATE_URL);
                       }}
                     >
                       <Text style={styles.contrastDonateBtnText}>Donate via PayPal</Text>
@@ -11375,7 +11437,7 @@ function App() {
                           showAppAlert('Agreement Required', 'Please check the box agreeing to the Terms of Service before donating.');
                           return;
                         }
-                        showAppAlert('Demo Mode', 'This is mockup content. Replace this button\'s link with your real Wise URL to enable it.');
+                        openExternalLinkWithWarning(WISE_DONATE_URL);
                       }}
                     >
                       <Text style={[styles.contrastDonateBtnText, { color: theme.accent }]}>Donate via Wise</Text>
@@ -11590,7 +11652,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.273.0</Text>
+                    <Text style={styles.settingItemValue}>v0.275.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
@@ -13179,6 +13241,19 @@ function App() {
                     onChangeText={setFDesktopProto}
                   />
 
+                  <Text style={styles.formGroupLabel}>Component Showcase Prototype Link</Text>
+                  <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 6, marginTop: -4 }}>
+                    Optional - a focused prototype demonstrating how a single component works (e.g. a dropdown, toggle, or interaction pattern), separate from the full mobile/desktop flow above.
+                  </Text>
+                  <FocusableTextInput
+                    style={styles.formInput}
+                    placeholder="https://www.figma.com/proto/..."
+                    placeholderTextColor="#94A3B8"
+                    autoCapitalize="none"
+                    value={fComponentProto}
+                    onChangeText={setFComponentProto}
+                  />
+
                   <Text style={styles.formGroupLabel}>Figma Design File Canvas Link (Inspect Mode)</Text>
                   <FocusableTextInput
                     style={styles.formInput}
@@ -13426,6 +13501,12 @@ function App() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                         <DesktopFilledIconSVG size={13} />
                         <Text style={styles.reviewStat}>Desktop Proto: <Text style={{ fontWeight: '800', color: theme.text }}>{fDesktopProto ? 'Attached' : 'None'}</Text></Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <View style={{ width: 13, alignItems: 'center' }}>
+                          <FigmaLogoSVG />
+                        </View>
+                        <Text style={styles.reviewStat}>Component Proto: <Text style={{ fontWeight: '800', color: theme.text }}>{fComponentProto ? 'Attached' : 'None'}</Text></Text>
                       </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                         <ImageFilledIconSVG size={13} />
@@ -13777,8 +13858,8 @@ function App() {
                 this exact original position/styling unchanged for now,
                 pending a separate wider redesign later. */}
             {(
-              (Platform.OS === 'web' && isWebWide && !(activeProject.figmaProto || activeProject.desktopProto)) ||
-              (!(Platform.OS === 'web' && isWebWide) && (activeTab === 'mobile' || activeTab === 'desktop'))
+              (Platform.OS === 'web' && isWebWide && !(activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto)) ||
+              (!(Platform.OS === 'web' && isWebWide) && (activeTab === 'mobile' || activeTab === 'desktop' || activeTab === 'component'))
             ) && (
             <View style={styles.tabBar}>
               <BouncyButton
@@ -13817,17 +13898,33 @@ function App() {
                   </View>
                 </BouncyButton>
               ) : null}
+
+              {activeProject.componentProto ? (
+                <BouncyButton
+                  style={[styles.tabBtn, activeTab === 'component' && styles.tabBtnActive]}
+                  onPress={() => { setActiveTab('component'); setLoadingWebView(true); }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <FigmaLogoSVG />
+                    <Text style={[styles.tabBtnText, activeTab === 'component' && styles.tabBtnTextActive]}>
+                      Component Proto
+                    </Text>
+                  </View>
+                </BouncyButton>
+              ) : null}
             </View>
             )}
 
             <View style={styles.modalBody}>
               {(() => {
-                const hasPrototype = !!(activeProject.figmaProto || activeProject.desktopProto);
+                const hasPrototype = !!(activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto);
                 const showSplitLayout = Platform.OS === 'web' && isWebWide && hasPrototype;
                 const protoUri = getFigmaEmbedUrl(
-                  activeTab === 'desktop'
-                    ? (activeProject.desktopProto || activeProject.figmaProto)
-                    : (activeProject.figmaProto || activeProject.desktopProto)
+                  activeTab === 'component'
+                    ? activeProject.componentProto
+                    : activeTab === 'desktop'
+                    ? (activeProject.desktopProto || activeProject.figmaProto || activeProject.componentProto)
+                    : (activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto)
                 );
 
                 const prototypePane = (
@@ -13983,7 +14080,7 @@ function App() {
                       button. Once a prototype exists, this keeps the same
                       button-styled tabs as before, just relocated. */}
                   {!(Platform.OS === 'web' && isWebWide) && (
-                    !(activeProject.figmaProto || activeProject.desktopProto) ? (
+                    !(activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto) ? (
                       <Text style={[styles.sectionHeader, { marginBottom: 16 }]}>Case Study</Text>
                     ) : (
                       <View style={[styles.tabBar, { marginBottom: 16 }]}>
@@ -14019,6 +14116,20 @@ function App() {
                               <FigmaLogoSVG />
                               <Text style={[styles.tabBtnText, activeTab === 'desktop' && styles.tabBtnTextActive]}>
                                 Desktop Proto
+                              </Text>
+                            </View>
+                          </BouncyButton>
+                        ) : null}
+
+                        {activeProject.componentProto ? (
+                          <BouncyButton
+                            style={[styles.tabBtn, activeTab === 'component' && styles.tabBtnActive]}
+                            onPress={() => { setActiveTab('component'); setLoadingWebView(true); }}
+                          >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                              <FigmaLogoSVG />
+                              <Text style={[styles.tabBtnText, activeTab === 'component' && styles.tabBtnTextActive]}>
+                                Component Proto
                               </Text>
                             </View>
                           </BouncyButton>
@@ -14141,7 +14252,7 @@ function App() {
 
                 // Original behavior, unchanged: single pane, switched via
                 // the tab bar above (Case Study / Mobile Proto / Desktop Proto).
-                return activeTab === 'mobile' || activeTab === 'desktop' ? prototypePane : caseStudyPane;
+                return (activeTab === 'mobile' || activeTab === 'desktop' || activeTab === 'component') ? prototypePane : caseStudyPane;
               })()}
 
               {/* Showcase Jump To Top Floating Button (On Top of Sticky Like Button, Shows on Scroll) */}
