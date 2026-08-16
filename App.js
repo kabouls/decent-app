@@ -8033,14 +8033,14 @@ function App() {
           )}
         <View style={{ minWidth: isAdmin ? 190 : 140, height: 36, justifyContent: 'center' }}>
           <View style={styles.logoRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
               <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
                 <DecentLogoSVG size={15} />
               </View>
               <Text style={styles.logoText}>ECENT</Text>
             </View>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.271.0</Text>
+              <Text style={styles.versionText}>v0.272.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10381,7 +10381,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.271.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.272.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11580,7 +11580,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.271.0</Text>
+                    <Text style={styles.settingItemValue}>v0.272.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
