@@ -1347,17 +1347,17 @@ const INTRO_CAROUSEL_PAGES = [
   {
     icon: 'sparkle',
     title: 'Welcome to DECENT',
-    body: "DECENT exists to put every UI/UX portfolio you've ever made under one roof \u2014 one link you can hand to a hiring manager, and one place to actually showcase the craft behind your work, not just static screenshots buried in a PDF."
+    body: "DECENT exists to put every UI/UX portfolio you've ever made under one roof — one link you can hand to a hiring manager, and one place to actually showcase the craft behind your work, not just static screenshots buried in a PDF."
   },
   {
     icon: 'image',
     title: 'Build a Real Case Study',
-    body: "Each portfolio package can include a live Figma prototype, flat design pages, a cover thumbnail, extra showcase images, and a video link for a walkthrough or demo. Add a detailed, formatted write-up too \u2014 it shows right under your images."
+    body: "Each portfolio package can include a live Figma prototype, flat design pages, a cover thumbnail, extra showcase images, and a video link for a walkthrough or demo. Add a detailed, formatted write-up too — it shows right under your images."
   },
   {
     icon: 'share',
     title: 'Share It Anywhere',
-    body: "Your unique handle is your identity on DECENT. Share it with anyone \u2014 recruiters, clients, fellow designers \u2014 and they can pull up your full profile and every portfolio you've published, all in one place."
+    body: "Your unique handle is your identity on DECENT. Share it with anyone — recruiters, clients, fellow designers — and they can pull up your full profile and every portfolio you've published, all in one place."
   }
 ];
 
@@ -1909,6 +1909,8 @@ function AuthScreen({ onCancel } = {}) {
           textContentType={mode === 'signup' ? 'newPassword' : 'password'}
           value={password}
           onChangeText={setPassword}
+          returnKeyType={mode === 'login' ? 'go' : 'next'}
+          onSubmitEditing={mode === 'login' ? handleSubmit : undefined}
         />
         <BouncyButton
           style={{ position: 'absolute', right: 12, top: 12 }}
@@ -3218,7 +3220,7 @@ function App() {
     } catch (e) {
       console.warn('Update download/apply failed:', e);
       setUpdateDownloading(false);
-      showToast('Update failed \u2014 please try again later');
+      showToast('Update failed — please try again later');
     }
   };
 
@@ -3283,7 +3285,7 @@ function App() {
       }
     } catch (e) {
       console.warn('Failed to load storage', e);
-      showToast('Could not load the feed \u2014 check your connection');
+      showToast('Could not load the feed — check your connection');
     } finally {
       setHydrated(true);
     }
@@ -4091,7 +4093,7 @@ function App() {
       reason: 'reported_as_suspicious'
     });
     setExternalLinkModalVisible(false);
-    showToast(error ? 'Failed to submit report' : 'Link reported \u2014 thank you');
+    showToast(error ? 'Failed to submit report' : 'Link reported — thank you');
   };
 
   const confirmProceedToExternalLink = () => {
@@ -4686,7 +4688,7 @@ function App() {
   const uploadImageChecked = async (uri, path) => {
     const result = await uploadImageToSupabase(uri, path);
     if (result && (result.startsWith('file://') || result.startsWith('content://'))) {
-      showToast('Image upload failed \u2014 using local copy for now');
+      showToast('Image upload failed — using local copy for now');
     }
     return result;
   };
@@ -5031,7 +5033,7 @@ function App() {
 
   const handleAdminTestCrash = () => {
     Sentry.captureException(new Error('Admin panel test error'));
-    showToast('Test error sent to Sentry \u2014 only visible in real builds, not Expo Go');
+    showToast('Test error sent to Sentry — only visible in real builds, not Expo Go');
   };
 
   const handleAdminTestAnalytics = () => {
@@ -5126,7 +5128,7 @@ function App() {
       target_detail: detail || null,
       reason
     });
-    showToast(error ? 'Failed to submit report' : 'Report submitted \u2014 thank you');
+    showToast(error ? 'Failed to submit report' : 'Report submitted — thank you');
   };
 
   const handleReportContent = (targetType, targetId, targetLabel, detail) => {
@@ -5164,7 +5166,7 @@ function App() {
       if (error) {
         console.warn('Failed to sync profile to Supabase:', error);
         if (error.message && error.message.toLowerCase().includes('handle')) {
-          showToast('That handle was just taken \u2014 please pick another');
+          showToast('That handle was just taken — please pick another');
         } else {
           showAppAlert('Profile Save Failed', error.message || 'Unknown error saving your profile to the database.');
         }
@@ -6703,7 +6705,7 @@ function App() {
       setIsSubmittingPortfolio(false);
       showAppAlert(
         'Taking Longer Than Expected',
-        "This is taking much longer than usual, likely a slow connection. It may still finish in the background \u2014 check back in a bit before trying again to avoid a duplicate post."
+        "This is taking much longer than usual, likely a slow connection. It may still finish in the background — check back in a bit before trying again to avoid a duplicate post."
       );
     }, 60000);
 
@@ -7337,7 +7339,7 @@ function App() {
             />
           </View>
           <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 4 }}>
-            3-20 characters. Letters, numbers, dots, underscores, and dashes only \u2014 no spaces or other symbols. This shows under your portfolios instead of your name, and can be changed once every 30 days.
+            3-20 characters. Letters, numbers, dots, underscores, and dashes only — no spaces or other symbols. This shows under your portfolios instead of your name, and can be changed once every 30 days.
           </Text>
           {handleStatus === 'checking' && <Text style={{ color: theme.textSecondary, fontSize: 12, marginBottom: 8 }}>Checking availability...</Text>}
           {handleStatus === 'available' && <Text style={{ color: '#4ADE80', fontSize: 12, marginBottom: 8 }}>✓ Available</Text>}
@@ -8106,7 +8108,7 @@ function App() {
               <Text style={styles.logoText}>ECENT</Text>
             </View>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.277.0</Text>
+              <Text style={styles.versionText}>v0.279.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -8718,7 +8720,7 @@ function App() {
                       ))}
                     </View>
                   ) : (
-                    <Text style={styles.emptySearchText}>No popular tags yet \u2014 be the first to publish!</Text>
+                    <Text style={styles.emptySearchText}>No popular tags yet — be the first to publish!</Text>
                   )}
 
                   <Text
@@ -10447,7 +10449,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.277.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.279.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11345,7 +11347,7 @@ function App() {
             <View style={{ padding: 18, flex: 1, justifyContent: 'space-between' }}>
               <View>
                 <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 18, marginBottom: 16 }}>
-                  Hi, I'm Iqbal \u2014 a UI/UX designer focused on Figma prototyping and clean handovers for HR and dev teams. I built DECENT to give designers a simple place to showcase real, interactive portfolios instead of static screenshots. If it's been useful to you, a donation helps keep it running and improving.
+                  Hi, I'm Iqbal — a UI/UX designer focused on Figma prototyping and clean handovers for HR and dev teams. I built DECENT to give designers a simple place to showcase real, interactive portfolios instead of static screenshots. If it's been useful to you, a donation helps keep it running and improving.
                 </Text>
 
                 <View style={{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: 12, padding: 4, marginBottom: 16 }}>
@@ -11386,7 +11388,7 @@ function App() {
                     <Text style={{ color: theme.accent, fontWeight: '700' }} onPress={() => setTermsModalVisible(true)}>
                       Terms of Service
                     </Text>
-                    {' '}\u2014 donations are voluntary and non-refundable.
+                    {' '}— donations are voluntary and non-refundable.
                   </Text>
                 </BouncyButton>
 
@@ -11638,7 +11640,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.277.0</Text>
+                    <Text style={styles.settingItemValue}>v0.279.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
@@ -13634,8 +13636,8 @@ function App() {
             <View style={{ width: '100%', gap: 8, marginBottom: 16 }}>
               {[
                 'Tap "+ Text", "+ Image", or "+ Row (2-up)" at the bottom to add a block.',
-                'Row (2-up) splits into two side-by-side halves \u2014 pick Text or Image for each side.',
-                'Use \u25B2 / \u25BC or type a number next to a block to reorder it.',
+                'Row (2-up) splits into two side-by-side halves — pick Text or Image for each side.',
+                'Use ▲ / ▼ or type a number next to a block to reorder it.',
                 'Tap "Remove" on a block to delete it.'
               ].map((tip, i) => (
                 <View key={i} style={{ flexDirection: 'row', gap: 8 }}>
