@@ -40,7 +40,7 @@ If you find this useful, a donation helps keep it running.
 </p>
 
 🇮🇩 **Indonesia:** scan the QRIS code above with any e-wallet or mobile banking app.
-🌍 **International:** PayPal or Wise — same options available in-app under Settings → Support & Donate.
+🌍 **International:** [Ko-fi](https://ko-fi.com/iputra07) — same option available in-app under Settings → Support & Donate.
 
 ## Verified Safe
 
@@ -53,6 +53,3 @@ Since this isn't distributed through the Play Store yet, Android's install promp
 Found a bug, want a feature, or just have thoughts? Reach out directly:
 
 - 📧 **Email:** [iputra07@gmail.com](mailto:iputra07@gmail.com)
-- 💬 **Discord:** `YOUR_DISCORD_USERNAME` (search and add on Discord)
-
-

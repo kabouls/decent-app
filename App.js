@@ -124,8 +124,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
 // below already open whichever URL is set here via openExternalLinkWithWarning.
-const PAYPAL_DONATE_URL = 'https://paypal.me/YOUR_USERNAME';
-const WISE_DONATE_URL = 'https://wise.com/pay/me/YOUR_USERNAME';
+const KO_FI_URL = 'https://ko-fi.com/iputra07';
 
 const SCREEN_WIDTH = Platform.OS === 'web' ? Math.min(RAW_WINDOW_WIDTH, 480) : RAW_WINDOW_WIDTH;
 // Required by expo-web-browser so the native OAuth browser session (Google
@@ -8107,7 +8106,7 @@ function App() {
               <Text style={styles.logoText}>ECENT</Text>
             </View>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.275.0</Text>
+              <Text style={styles.versionText}>v0.277.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10448,7 +10447,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.275.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.277.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11424,23 +11423,10 @@ function App() {
                           showAppAlert('Agreement Required', 'Please check the box agreeing to the Terms of Service before donating.');
                           return;
                         }
-                        openExternalLinkWithWarning(PAYPAL_DONATE_URL);
+                        openExternalLinkWithWarning(KO_FI_URL);
                       }}
                     >
-                      <Text style={styles.contrastDonateBtnText}>Donate via PayPal</Text>
-                    </BouncyButton>
-                    <BouncyButton
-                      style={[styles.contrastDonateBtnFull, { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                      activeOpacity={0.88}
-                      onPress={() => {
-                        if (!donateTermsAgreed) {
-                          showAppAlert('Agreement Required', 'Please check the box agreeing to the Terms of Service before donating.');
-                          return;
-                        }
-                        openExternalLinkWithWarning(WISE_DONATE_URL);
-                      }}
-                    >
-                      <Text style={[styles.contrastDonateBtnText, { color: theme.accent }]}>Donate via Wise</Text>
+                      <Text style={styles.contrastDonateBtnText}>Donate via Ko-fi</Text>
                     </BouncyButton>
                   </View>
                 )}
@@ -11652,7 +11638,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.275.0</Text>
+                    <Text style={styles.settingItemValue}>v0.277.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
