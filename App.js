@@ -2465,7 +2465,6 @@ function App() {
   // close button can reopen Options instead. Native only - web doesn't use
   // Options as a popup in the same way.
   const [returnToOptionsOnClose, setReturnToOptionsOnClose] = useState(false);
-  const ADMIN_PANEL_PASSWORD = 'lol12345';
   const [allReports, setAllReports] = useState([]);
   const [blockedUsersList, setBlockedUsersList] = useState([]);
 
@@ -4817,8 +4816,19 @@ function App() {
     setAdminPasswordModalVisible(true);
   };
 
-  const handleSubmitAdminPassword = () => {
-    if (adminPasswordInput === ADMIN_PANEL_PASSWORD) {
+  const handleSubmitAdminPassword = async () => {
+    // Verified server-side via verify_admin_pin - the pin itself never
+    // ships in the client bundle (unlike the old hardcoded string), and
+    // the function independently re-checks is_admin on the database side
+    // too, so this can't be spoofed by anyone who isn't already a real
+    // admin, regardless of what pin they guess.
+    const { data: isValid, error } = await supabase.rpc('verify_admin_pin', { input_pin: adminPasswordInput });
+    if (error) {
+      console.warn('Admin pin check failed:', error);
+      showToast('Could not verify admin pin - try again');
+      return;
+    }
+    if (isValid) {
       setAdminPasswordModalVisible(false);
       setAdminPasswordInput('');
       fetchFeedbackMessages();
@@ -8040,7 +8050,7 @@ function App() {
               <Text style={styles.logoText}>ECENT</Text>
             </View>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.272.0</Text>
+              <Text style={styles.versionText}>v0.273.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10381,7 +10391,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.272.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.273.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11580,7 +11590,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.272.0</Text>
+                    <Text style={styles.settingItemValue}>v0.273.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
