@@ -8108,7 +8108,7 @@ function App() {
               <Text style={styles.logoText}>ECENT</Text>
             </View>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.279.0</Text>
+              <Text style={styles.versionText}>v0.280.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10449,7 +10449,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.279.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.280.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11640,7 +11640,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.279.0</Text>
+                    <Text style={styles.settingItemValue}>v0.280.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
@@ -13206,6 +13206,16 @@ function App() {
                     </View>
                     <Text style={styles.warningText}>
                       Embedded prototype viewports currently support Figma share/embed links. All fields in this step are optional.
+                    </Text>
+                  </View>
+
+                  <View style={[styles.warningNoteBox, { borderColor: theme.accent, backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)', marginTop: 10 }]}>
+                    <View style={styles.iconTextInlineRow}>
+                      <HelpCircleIconSVG color={theme.accent} size={18} />
+                      <Text style={[styles.warningTitle, { color: theme.accent }]}>Not using Figma?</Text>
+                    </View>
+                    <Text style={[styles.warningText, { color: theme.text }]}>
+                      This whole step is safe to skip if you design in Sketch, Adobe XD, Framer, or anything else - just tap Next below. Your portfolio still works great with just the showcase images you'll add in the next step.
                     </Text>
                   </View>
 
