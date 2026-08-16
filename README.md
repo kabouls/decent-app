@@ -35,12 +35,23 @@ Actively in development — expect frequent updates.
 
 If you find this useful, a donation helps keep it running.
 
+### 🇮🇩 Indonesia
+
 <p align="center">
   <img src="./assets/qris-code.png" alt="QRIS donation code" width="220">
 </p>
 
-🇮🇩 **Indonesia:** scan the QRIS code above with any e-wallet or mobile banking app.
-🌍 **International:** [Ko-fi](https://ko-fi.com/iputra07) — same option available in-app under Settings → Support & Donate.
+Scan the QRIS code above with any e-wallet or mobile banking app.
+
+### 🌍 International
+
+<p align="center">
+  <a href="https://ko-fi.com/iputra07">
+    <img src="https://storage.ko-fi.com/cdn/kofi5.png?v=3" alt="Support me on Ko-fi" width="200">
+  </a>
+</p>
+
+Same option also available in-app under Settings → Support & Donate.
 
 ## Verified Safe
 
