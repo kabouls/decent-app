@@ -41,6 +41,7 @@ import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { WebView as NativeWebView } from 'react-native-webview';
 import { KeyboardAwareScrollView as NativeKeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import Svg, { Rect, Path, Circle } from 'react-native-svg';
+import qrcodeGenerator from 'qrcode-generator';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -131,12 +132,13 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 292;
+const BUILD_NUMBER = 298;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
 // below already open whichever URL is set here via openExternalLinkWithWarning.
 const KO_FI_URL = 'https://ko-fi.com/iputra07';
+const GITHUB_URL = 'https://github.com/kabouls/decent-app';
 
 const SCREEN_WIDTH = Platform.OS === 'web' ? Math.min(RAW_WINDOW_WIDTH, 480) : RAW_WINDOW_WIDTH;
 // Required by expo-web-browser so the native OAuth browser session (Google
@@ -483,6 +485,91 @@ const ChevronRightSVG = React.memo(({ color = "#8B5CF6", size = 18 }) => (
 // nonzero fill-rule creates the hole where they wind in opposite
 // directions - preserved exactly as given, no fillRule override). Because
 // it's a real hole, it shows whatever's directly behind it - so this needs
+// Renders a QR code with circular data dots instead of the default square
+// modules, using qrcode-generator (a pure-JS, zero-dependency encoder - no
+// native/canvas code, verified before adding) for the actual bit matrix,
+// then drawing it manually with react-native-svg (already a dependency).
+// The 3 corner finder patterns are deliberately kept as solid squares
+// rather than circles - scanners specifically rely on that exact square
+// 1:1:3:1:1 ratio to detect a QR code exists at all before even attempting
+// to read the data, so making those circular risks scan failures on
+// stricter scanners. Everything else (data modules, alignment pattern,
+// timing pattern) renders as circles for the dotted look.
+const CircularQRCode = React.memo(({ value, size = 160, color = '#8B5CF6', backgroundColor = '#FFFFFF' }) => {
+  const matrix = useMemo(() => {
+    if (!value) return null;
+    try {
+      const qr = qrcodeGenerator(0, 'H');
+      qr.addData(value);
+      qr.make();
+      const count = qr.getModuleCount();
+      const grid = [];
+      for (let row = 0; row < count; row++) {
+        const rowArr = [];
+        for (let col = 0; col < count; col++) rowArr.push(qr.isDark(row, col));
+        grid.push(rowArr);
+      }
+      return { grid, count };
+    } catch (e) {
+      console.warn('QR encoding failed:', e);
+      return null;
+    }
+  }, [value]);
+
+  if (!matrix) return null;
+  const { grid, count } = matrix;
+  const cellSize = size / count;
+
+  // Fixed, version-independent rule: the three finder patterns always sit
+  // in exactly these three 7x7 corners, regardless of how large the QR
+  // code grid is overall.
+  const isInFinderZone = (row, col) => {
+    if (row < 7 && col < 7) return true; // top-left
+    if (row < 7 && col >= count - 7) return true; // top-right
+    if (row >= count - 7 && col < 7) return true; // bottom-left
+    return false;
+  };
+
+  const squares = [];
+  const dots = [];
+
+  for (let row = 0; row < count; row++) {
+    for (let col = 0; col < count; col++) {
+      if (!grid[row][col]) continue;
+      if (isInFinderZone(row, col)) {
+        squares.push(
+          <Rect
+            key={`f-${row}-${col}`}
+            x={col * cellSize}
+            y={row * cellSize}
+            width={cellSize}
+            height={cellSize}
+            fill={color}
+          />
+        );
+      } else {
+        dots.push(
+          <Circle
+            key={`d-${row}-${col}`}
+            cx={col * cellSize + cellSize / 2}
+            cy={row * cellSize + cellSize / 2}
+            r={cellSize * 0.42}
+            fill={color}
+          />
+        );
+      }
+    }
+  }
+
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Rect x={0} y={0} width={size} height={size} fill={backgroundColor} />
+      {squares}
+      {dots}
+    </Svg>
+  );
+});
+
 // to sit over a themed background (theme.bg or theme.surface, whichever
 // the surrounding context actually uses) to read correctly in both light
 // and dark mode, not a hardcoded color guess.
@@ -870,9 +957,9 @@ const DownloadIconSVG = React.memo(({ color = '#FFFFFF', size = 16 }) => (
   </Svg>
 ));
 
-const CheckIconSVG = React.memo(() => (
+const CheckIconSVG = React.memo(({ color = '#10B981' }) => (
   <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <Path d="M20 6L9 17l-5-5" stroke="#10B981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+    <Path d="M20 6L9 17l-5-5" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
   </Svg>
 ));
 
@@ -2464,6 +2551,14 @@ function App() {
 
   const [externalLinkModalVisible, setExternalLinkModalVisible] = useState(false);
   const [targetExternalUrl, setTargetExternalUrl] = useState('');
+  // Distinguishes DECENT's own trusted links (currently just Ko-fi) from
+  // arbitrary user-generated ones (portfolio live links, designer socials)
+  // - only the latter get the full suspicious-link treatment (generic
+  // wording, report option). Derived automatically from the URL itself
+  // rather than a separate flag threaded through every call site, so any
+  // future call to openExternalLinkWithWarning(KO_FI_URL) picks this up
+  // for free without needing to remember to pass anything extra.
+  const isTrustedExternalLink = targetExternalUrl === KO_FI_URL || targetExternalUrl === GITHUB_URL;
 
   const [accountSettingsModalVisible, setAccountSettingsModalVisible] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -4465,9 +4560,15 @@ function App() {
   // QR image comes from a public generation API (same pattern already used
   // for avatar fallbacks via ui-avatars.com) rather than adding a new
   // native QR-rendering package that isn't already a verified dependency
-  // of this project.
+  // of this project. color/bgcolor are the API's own hex params (no #
+  // prefix) - 8B5CF6 matches the app's accent purple used everywhere else
+  // (DecentLogoSVG's default color, active tab states, etc).
+  // ecc=H (highest error-correction level, ~30% redundancy) specifically
+  // because of the centered logo overlay added at the display site below -
+  // without a high enough ECC level, covering even a small center portion
+  // with a logo can make the code unscannable.
   const getShareQrUrl = (url, size = 400) =>
-    `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(url)}`;
+    `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&color=8B5CF6&bgcolor=FFFFFF&ecc=H&data=${encodeURIComponent(url)}`;
 
   const handleDownloadQrCode = async () => {
     const qrUrl = getShareQrUrl(shareModalUrl);
@@ -7734,7 +7835,7 @@ function App() {
                   paddingVertical: 10, paddingHorizontal: sidebarCollapsed ? 0 : 12,
                   justifyContent: sidebarCollapsed ? 'center' : 'flex-start'
                 }}
-                onPress={() => Linking.openURL('https://github.com/kabouls/decent-app')}
+                onPress={() => openExternalLinkWithWarning(GITHUB_URL)}
               >
                 <GitHubIconSVG color={theme.textSecondary} size={18} />
                 {!sidebarCollapsed && (
@@ -8962,7 +9063,7 @@ function App() {
             <View>
               <View style={styles.profileCard}>
                 <BouncyButton
-                  style={styles.profileTopRightShareBtn}
+                  style={{ position: 'absolute', top: 16, right: 16, width: 36, height: 36, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}
                   onPress={() => handleShareDesigner({ id: session.user.id, name: userProfile.name, handle: userProfile.handle })}
                 >
                   <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
@@ -9395,7 +9496,11 @@ function App() {
             </View>
             <Text style={styles.confirmTitle}>Leaving DECENT</Text>
             <Text style={styles.confirmSubText}>
-              You are about to open an external website:
+              {isTrustedExternalLink
+                ? (targetExternalUrl === GITHUB_URL
+                    ? "You'll be directed to the DECENT source code on GitHub."
+                    : "You'll be directed to my Ko-fi page to leave a tip.")
+                : 'You are about to open an external website:'}
             </Text>
 
             <View style={styles.linkUrlBox}>
@@ -9421,9 +9526,11 @@ function App() {
               </BouncyButton>
             </View>
 
-            <BouncyButton style={{ marginTop: 14, alignItems: 'center' }} onPress={handleReportExternalLink}>
-              <Text style={{ color: '#F87171', fontSize: 12, fontWeight: '700' }}>Report this link as suspicious</Text>
-            </BouncyButton>
+            {!isTrustedExternalLink && (
+              <BouncyButton style={{ marginTop: 14, alignItems: 'center' }} onPress={handleReportExternalLink}>
+                <Text style={{ color: '#F87171', fontSize: 12, fontWeight: '700' }}>Report this link as suspicious</Text>
+              </BouncyButton>
+            )}
           </View>
         </View>
       </Modal>
@@ -11772,7 +11879,7 @@ function App() {
 
                   <BouncyButton
                     style={styles.settingItemRow}
-                    onPress={() => Linking.openURL('https://github.com/kabouls/decent-app')}
+                    onPress={() => openExternalLinkWithWarning(GITHUB_URL)}
                   >
                     <Text style={styles.settingItemTitle}>Visit GitHub</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -12155,6 +12262,81 @@ function App() {
                 />
               )}
               <Text style={styles.modalTopTitle}>Designer Profile</Text>
+              {session && selectedDesigner.id && selectedDesigner.id !== session.user.id && (
+                <View ref={designerDotsWrapRef} style={{ zIndex: 100 }}>
+                  <BouncyButton
+                    style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+                    onPress={() => {
+                      const next = !designerOptionsMenuVisible;
+                      if (next && designerDotsWrapRef.current) {
+                        designerDotsWrapRef.current.measureInWindow((x, y, width, height) => {
+                          const screenWidth = Platform.OS === 'web' ? window.innerWidth : Dimensions.get('window').width;
+                          setDesignerMenuPos({ top: y + height + 8, right: Math.max(8, screenWidth - (x + width)) });
+                        });
+                      }
+                      setDesignerOptionsMenuVisible(next);
+                    }}
+                  >
+                    <Text style={{ color: theme.accentLight, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
+                  </BouncyButton>
+
+                  <Modal
+                    transparent
+                    visible={designerOptionsMenuVisible}
+                    animationType="none"
+                    onRequestClose={() => setDesignerOptionsMenuVisible(false)}
+                  >
+                    <View
+                      pointerEvents="box-none"
+                      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                    >
+                      <TouchableOpacity
+                        style={{ flex: 1 }}
+                        activeOpacity={1}
+                        onPress={() => setDesignerOptionsMenuVisible(false)}
+                      />
+                      <View style={{
+                        position: 'absolute', top: designerMenuPos.top, right: designerMenuPos.right, width: 220,
+                        backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                        padding: 6,
+                        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                      }}>
+                        <BouncyButton
+                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                          onPress={() => {
+                            setDesignerOptionsMenuVisible(false);
+                            handleReportContent('user', selectedDesigner.id, selectedDesigner.name);
+                          }}
+                        >
+                          <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
+                        </BouncyButton>
+                        <BouncyButton
+                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                          onPress={() => {
+                            setDesignerOptionsMenuVisible(false);
+                            mutedIds.has(selectedDesigner.id)
+                              ? handleUnmuteDesigner(selectedDesigner.id, selectedDesigner.name)
+                              : handleMuteDesigner(selectedDesigner.id, selectedDesigner.name);
+                          }}
+                        >
+                          <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
+                            {mutedIds.has(selectedDesigner.id) ? 'Unmute Posts' : 'Mute Posts'}
+                          </Text>
+                        </BouncyButton>
+                        <BouncyButton
+                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                          onPress={() => {
+                            setDesignerOptionsMenuVisible(false);
+                            handleBlockUser(selectedDesigner.id, selectedDesigner.name);
+                          }}
+                        >
+                          <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
+                        </BouncyButton>
+                      </View>
+                    </View>
+                  </Modal>
+                </View>
+              )}
               <BouncyButton style={styles.closeBtn} onPress={handleBackFromDesignerProfile}>
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
@@ -12282,81 +12464,6 @@ function App() {
                     >
                       <ShareIconSVG color={theme.accentLight} />
                     </BouncyButton>
-                    {session && selectedDesigner.id && selectedDesigner.id !== session.user.id && (
-                      <View ref={designerDotsWrapRef} style={{ zIndex: 100 }}>
-                        <BouncyButton
-                          style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
-                          onPress={() => {
-                            const next = !designerOptionsMenuVisible;
-                            if (next && designerDotsWrapRef.current) {
-                              designerDotsWrapRef.current.measureInWindow((x, y, width, height) => {
-                                const screenWidth = Platform.OS === 'web' ? window.innerWidth : Dimensions.get('window').width;
-                                setDesignerMenuPos({ top: y + height + 8, right: Math.max(8, screenWidth - (x + width)) });
-                              });
-                            }
-                            setDesignerOptionsMenuVisible(next);
-                          }}
-                        >
-                          <Text style={{ color: theme.accentLight, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
-                        </BouncyButton>
-
-                        <Modal
-                          transparent
-                          visible={designerOptionsMenuVisible}
-                          animationType="none"
-                          onRequestClose={() => setDesignerOptionsMenuVisible(false)}
-                        >
-                          <View
-                            pointerEvents="box-none"
-                            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                          >
-                            <TouchableOpacity
-                              style={{ flex: 1 }}
-                              activeOpacity={1}
-                              onPress={() => setDesignerOptionsMenuVisible(false)}
-                            />
-                            <View style={{
-                              position: 'absolute', top: designerMenuPos.top, right: designerMenuPos.right, width: 220,
-                              backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
-                              padding: 6,
-                              shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
-                            }}>
-                              <BouncyButton
-                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
-                                onPress={() => {
-                                  setDesignerOptionsMenuVisible(false);
-                                  handleReportContent('user', selectedDesigner.id, selectedDesigner.name);
-                                }}
-                              >
-                                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
-                              </BouncyButton>
-                              <BouncyButton
-                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
-                                onPress={() => {
-                                  setDesignerOptionsMenuVisible(false);
-                                  mutedIds.has(selectedDesigner.id)
-                                    ? handleUnmuteDesigner(selectedDesigner.id, selectedDesigner.name)
-                                    : handleMuteDesigner(selectedDesigner.id, selectedDesigner.name);
-                                }}
-                              >
-                                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
-                                  {mutedIds.has(selectedDesigner.id) ? 'Unmute Posts' : 'Mute Posts'}
-                                </Text>
-                              </BouncyButton>
-                              <BouncyButton
-                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
-                                onPress={() => {
-                                  setDesignerOptionsMenuVisible(false);
-                                  handleBlockUser(selectedDesigner.id, selectedDesigner.name);
-                                }}
-                              >
-                                <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
-                              </BouncyButton>
-                            </View>
-                          </View>
-                        </Modal>
-                      </View>
-                    )}
                   </View>
                 )}
                 <BouncyButton activeOpacity={0.9} onPress={() => setLightboxImageUri(selectedDesigner.avatar)}>
@@ -14509,7 +14616,7 @@ function App() {
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#8B5CF6' }]}
                   onPress={() => {
                     handleDismissAndroidPromo();
-                    Linking.openURL('https://github.com/kabouls/decent-app');
+                    openExternalLinkWithWarning(GITHUB_URL);
                   }}
                 >
                   <Text style={styles.confirmDeleteText}>Get App</Text>
@@ -14687,10 +14794,28 @@ function App() {
             {shareType === 'profile' && shareIsOwnProfile && shareModalUrl ? (
               <View style={{ alignItems: 'center', marginBottom: 16 }}>
                 <View style={{ padding: 10, backgroundColor: '#FFFFFF', borderRadius: 12 }}>
-                  <Image
-                    source={{ uri: getShareQrUrl(shareModalUrl, 160) }}
-                    style={{ width: 160, height: 160 }}
-                  />
+                  <CircularQRCode value={shareModalUrl} size={160} color="#8B5CF6" backgroundColor="#FFFFFF" />
+                  {/* Centered logo overlay - a separate element layered on
+                      top, not baked into the QR's own pixel data. Kept small
+                      (~20% of the QR's size) and the QR itself is generated
+                      at ecc=H (high error-correction redundancy) internally
+                      specifically so covering this portion doesn't break
+                      scannability. */}
+                  <View
+                    pointerEvents="none"
+                    style={{
+                      position: 'absolute', top: 10, left: 10, width: 160, height: 160,
+                      alignItems: 'center', justifyContent: 'center'
+                    }}
+                  >
+                    <View style={{
+                      width: 34, height: 34, borderRadius: 9, backgroundColor: '#FFFFFF',
+                      alignItems: 'center', justifyContent: 'center',
+                      borderWidth: 2, borderColor: '#FFFFFF'
+                    }}>
+                      <DecentLogoSVG size={22} />
+                    </View>
+                  </View>
                 </View>
                 <BouncyButton
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingVertical: 6, paddingHorizontal: 12 }}
@@ -14718,7 +14843,7 @@ function App() {
                 width: 44, height: 44, alignItems: 'center', justifyContent: 'center',
                 backgroundColor: shareCopied ? '#10B981' : theme.primary, marginLeft: 8
               }}>
-                {shareCopied ? <CheckIconSVG /> : <CopyIconSVG />}
+                {shareCopied ? <CheckIconSVG color="#FFFFFF" /> : <CopyIconSVG />}
               </View>
             </BouncyButton>
 
@@ -15238,7 +15363,7 @@ const getStyles = (theme) => StyleSheet.create({
   smallFollowBtnActive: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#8B5CF6' },
   smallFollowText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
   smallFollowTextActive: { color: theme.accent },
-  smallShareBtnIconOnly: { width: 32, height: 32, backgroundColor: theme.bg, borderRadius: 8, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
+  smallShareBtnIconOnly: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
 
   statsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 14, backgroundColor: theme.bg, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 20, gap: 20, borderWidth: 1, borderColor: theme.border },
   statItem: { alignItems: 'center', paddingHorizontal: 12 },
