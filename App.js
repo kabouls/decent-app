@@ -121,6 +121,17 @@ const RAW_WINDOW_WIDTH = Dimensions.get('window').width;
 // If the Vercel team slug ever gets renamed, this needs updating to match
 // (the URL includes that slug: <project>-<team-slug>.vercel.app).
 const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
+// Two deliberately separate numbers, each answering a different question:
+// APP_VERSION mirrors app.json's real "version" field - only bump this
+// alongside an actual native rebuild (it's what the update-banner system
+// compares against app_config in Supabase, and it's tied to EAS Update's
+// runtimeVersion compatibility - bumping it without rebuilding would break
+// OTA eligibility for everyone already installed). BUILD_NUMBER bumps on
+// every single change regardless of size, JS-only or native - it's purely
+// "did the latest code actually reach this device", no functional meaning
+// beyond that, safe to increment freely on every edit.
+const APP_VERSION = '0.2.0';
+const BUILD_NUMBER = 288;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -7708,6 +7719,27 @@ function App() {
                   </Text>
                 )}
               </BouncyButton>
+
+              {/* Donate - desktop/tablet sidebar only, anchored to the very
+                  bottom via marginTop: 'auto' regardless of how many nav
+                  items sit above it. Shown in both expanded and collapsed
+                  states, same conditional-label pattern as the nav items
+                  above (icon always visible, text only when expanded). */}
+              <BouncyButton
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10,
+                  marginTop: 'auto', marginHorizontal: sidebarCollapsed ? 12 : 16, marginBottom: 8,
+                  paddingVertical: 10, paddingHorizontal: sidebarCollapsed ? 0 : 12,
+                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                  borderRadius: 10, backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.12)'
+                }}
+                onPress={() => { setDonateTermsAgreed(false); setDonateModalVisible(true); }}
+              >
+                <HeartIconSVG liked={true} />
+                {!sidebarCollapsed && (
+                  <Text style={{ color: theme.accent, fontSize: 12.5, fontWeight: '700' }}>Support & Donate</Text>
+                )}
+              </BouncyButton>
             </SafeAreaView>
           </Animated.View>
         )}
@@ -8208,7 +8240,7 @@ function App() {
               <Text style={styles.logoText}>ECENT</Text>
             </View>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.285.0</Text>
+              <Text style={styles.versionText}>b{BUILD_NUMBER}</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -8466,7 +8498,7 @@ function App() {
           contentContainerStyle={[
             styles.scrollContent,
             Platform.OS !== 'web' && !isWebWide && { paddingTop: headerBottomY + 20 },
-            Platform.OS !== 'web' && !isWebWide && bottomNav === 'forYou' && { paddingTop: headerBottomY + categoryBarHeight + 20 }
+            Platform.OS !== 'web' && !isWebWide && bottomNav === 'forYou' && { paddingTop: headerBottomY + categoryBarHeight }
           ]}
           onScroll={handleScroll}
           scrollEventThrottle={16}
@@ -10537,7 +10569,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.285.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v{APP_VERSION} (b{BUILD_NUMBER})</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11718,8 +11750,17 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.285.0</Text>
+                    <Text style={styles.settingItemValue}>v{APP_VERSION} (build {BUILD_NUMBER})</Text>
                   </BouncyButton>
+
+                  {session && (
+                    <BouncyButton
+                      style={[styles.settingItemRow, { justifyContent: 'center' }]}
+                      onPress={() => setLogoutConfirmModalVisible(true)}
+                    >
+                      <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Sign Out</Text>
+                    </BouncyButton>
+                  )}
 
                   {/* Contrast Donate Button at Very Bottom */}
                   <BouncyButton
@@ -14402,10 +14443,11 @@ function App() {
         </Animated.View>
       )}
 
-      {/* ANDROID: mockup "get the app" popup - shown once, dismiss persists
-          via AsyncStorage so it doesn't nag on every visit. Placeholder
-          store link/badge for now per request - swap in the real Play
-          Store URL and badge asset once the app is actually published. */}
+      {/* ANDROID: "get the app" popup - shown once, dismiss persists via
+          AsyncStorage so it doesn't nag on every visit. Points to the
+          GitHub repo's install instructions/APK since DECENT isn't on the
+          Play Store yet - swap this for the real Play Store link if/when
+          it ever gets published there. */}
       {Platform.OS === 'web' && showAndroidPromo && (
         <View pointerEvents="box-none" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000 }}>
           <View style={[styles.overlayModalBg, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
@@ -14421,7 +14463,7 @@ function App() {
               </View>
               <Text style={styles.confirmTitle}>Get the DECENT App</Text>
               <Text style={styles.confirmSubText}>
-                For a smoother experience, DECENT is available on the Play Store.
+                For a smoother experience, download the DECENT Android app from GitHub.
               </Text>
               <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
                 <BouncyButton
@@ -14432,9 +14474,12 @@ function App() {
                 </BouncyButton>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#8B5CF6' }]}
-                  onPress={handleDismissAndroidPromo}
+                  onPress={() => {
+                    handleDismissAndroidPromo();
+                    Linking.openURL('https://github.com/kabouls/decent-app');
+                  }}
                 >
-                  <Text style={styles.confirmDeleteText}>Get App (Mock)</Text>
+                  <Text style={styles.confirmDeleteText}>Get App</Text>
                 </BouncyButton>
               </View>
             </View>
