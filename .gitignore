@@ -34,7 +34,6 @@ yarn-error.*
 # Firebase / push notification secrets - never commit these
 *firebase-adminsdk*.json
 *service-account*.json
-google-services.json
 
 # Old backups / local-only folders
 backup/
