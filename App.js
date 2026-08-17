@@ -49,6 +49,7 @@ import { decode } from 'base64-arraybuffer';
 import { BlurView } from 'expo-blur';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
+import * as Application from 'expo-application';
 import NetInfo from '@react-native-community/netinfo';
 import * as Updates from 'expo-updates';
 import * as Clipboard from 'expo-clipboard';
@@ -2411,7 +2412,14 @@ function App() {
         .maybeSingle();
       if (error || !data) return;
 
-      const installedVersion = Constants.expoConfig?.version || '0.0.0';
+      // Application.nativeApplicationVersion reads the real installed
+      // version directly from Android's package info - Constants.expoConfig
+      // reflects the embedded JS manifest instead, which isn't reliably
+      // populated in production standalone builds. That gap was exactly
+      // the bug: expoConfig came back undefined, fell through to the
+      // '0.0.0' fallback, and looked "older" than the real version no
+      // matter what - showing the banner even on a genuinely current build.
+      const installedVersion = Application.nativeApplicationVersion || Constants.expoConfig?.version || '0.0.0';
       // Simple dotted-version compare (e.g. "0.2.0" vs "0.3.0") - this
       // app's version scheme doesn't need full semver handling (no
       // pre-release tags, no build metadata), just numeric segment
@@ -8200,7 +8208,7 @@ function App() {
               <Text style={styles.logoText}>ECENT</Text>
             </View>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.283.0</Text>
+              <Text style={styles.versionText}>v0.285.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10529,7 +10537,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.283.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.285.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11416,7 +11424,7 @@ function App() {
               </BouncyButton>
             </View>
 
-            <View style={{ padding: 18, flex: 1, justifyContent: 'space-between' }}>
+            <View style={{ padding: 18 }}>
               <View>
                 <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 18, marginBottom: 16 }}>
                   Hi, I'm Iqbal — a UI/UX designer focused on Figma prototyping and clean handovers for HR and dev teams. I built DECENT to give designers a simple place to showcase real, interactive portfolios instead of static screenshots. If it's been useful to you, a donation helps keep it running and improving.
@@ -11710,7 +11718,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.283.0</Text>
+                    <Text style={styles.settingItemValue}>v0.285.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
