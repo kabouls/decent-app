@@ -131,7 +131,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 291;
+const BUILD_NUMBER = 292;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -12275,7 +12275,7 @@ function App() {
               )}
               <View style={styles.profileCard}>
                 {Platform.OS !== 'web' && (
-                <View style={{ position: 'absolute', top: 12, right: 12, flexDirection: 'row', gap: 8, zIndex: 10 }}>
+                <View style={{ position: 'absolute', top: 12, right: 12, flexDirection: 'row', gap: 4, zIndex: 10 }}>
                     <BouncyButton
                       style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
                       onPress={() => handleShareDesigner(selectedDesigner)}
@@ -13874,9 +13874,9 @@ function App() {
                 {activeProject.title}
               </Text>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <BouncyButton
-                  style={styles.ownerIconBtn}
+                  style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
                   onPress={() => handleSharePortfolio(activeProject)}
                 >
                   <ShareIconSVG color={theme.accentLight} />
@@ -13884,7 +13884,7 @@ function App() {
 
                 <View ref={portfolioDotsWrapRef} style={{ zIndex: 100 }}>
                   <BouncyButton
-                    style={styles.ownerIconBtn}
+                    style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
                     onPress={() => {
                       const next = !portfolioOptionsMenuVisible;
                       if (next && portfolioDotsWrapRef.current) {
