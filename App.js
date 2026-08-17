@@ -7812,7 +7812,21 @@ function App() {
           <BouncyButton
             style={{ backgroundColor: '#F59E0B', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12 }}
             onPress={() => {
-              if (nativeUpdateInfo.url) openExternalLinkWithWarning(nativeUpdateInfo.url);
+              // Opens directly instead of routing through
+              // openExternalLinkWithWarning - that confirmation modal
+              // exists to protect people from arbitrary portfolio/profile
+              // links other users control, which doesn't apply here since
+              // this URL is the app's own official update link, always
+              // set by the app owner via app_config. Toast gives immediate
+              // feedback that the tap registered before the browser/
+              // download UI actually appears, which can take a beat.
+              if (nativeUpdateInfo.url) {
+                showToast('Opening download…');
+                Linking.openURL(nativeUpdateInfo.url).catch((err) => {
+                  console.warn('Failed to open update link:', err);
+                  showToast('Could not open the download link');
+                });
+              }
             }}
           >
             <Text style={{ color: '#1F1300', fontSize: 12, fontWeight: '700' }}>Download</Text>
@@ -8191,7 +8205,7 @@ function App() {
               <Text style={styles.logoText}>ECENT</Text>
             </View>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.281.0</Text>
+              <Text style={styles.versionText}>v0.282.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10532,7 +10546,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.281.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.282.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11723,7 +11737,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.281.0</Text>
+                    <Text style={styles.settingItemValue}>v0.282.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
