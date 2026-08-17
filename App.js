@@ -40,7 +40,7 @@ import {
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { WebView as NativeWebView } from 'react-native-webview';
 import { KeyboardAwareScrollView as NativeKeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import Svg, { Rect, Path, Circle } from 'react-native-svg';
+import Svg, { Rect, Path, Circle, G } from 'react-native-svg';
 import qrcodeGenerator from 'qrcode-generator';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 298;
+const BUILD_NUMBER = 302;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -459,6 +459,37 @@ const BellSVG = React.memo(({ active = false, inactiveColor = '#D8B4FE' }) => (
   </Svg>
 ));
 
+// Same bell shape as BellSVG above (notification icon), but with the
+// standard flexible color/size prop pattern used elsewhere (EyeViewIconSVG,
+// ChevronRightSVG, etc.) instead of that one's fixed size + boolean
+// active/inactiveColor scheme - kept separate rather than changing
+// BellSVG's props, since that one's already relied on exactly as-is by the
+// notification icon.
+const BellOutlineSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
+const CodeBracketsSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M8 4L2 12l6 8M16 4l6 8-6 8" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
+const PaintBrushSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M18.37 2.63L14 7l-1.37-1.37a1 1 0 0 0-1.41 0L9.85 7 15 12.15l1.37-1.37a1 1 0 0 0 0-1.41L15 8l4.37-4.37a1 1 0 0 0 0-1.41l-.59-.59a1 1 0 0 0-1.41 0z" fill={color} />
+    <Path d="M9.85 7L2.68 14.17a1.5 1.5 0 0 0-.39.65L1 20l5.18-1.29a1.5 1.5 0 0 0 .65-.39L14 11.15" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
+const CursorArrowSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M4 3l16 6-6.5 2.5L11 18 4 3z" stroke={color} strokeWidth="2" strokeLinejoin="round" fill={color === 'none' ? 'none' : color} fillOpacity="0.15" />
+  </Svg>
+));
+
 const HamburgerSVG = React.memo(({ active = false, inactiveColor = '#D8B4FE', size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M3 6h18M3 12h18M3 18h18" stroke={active ? '#FFFFFF' : inactiveColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -485,6 +516,57 @@ const ChevronRightSVG = React.memo(({ color = "#8B5CF6", size = 18 }) => (
 // nonzero fill-rule creates the hole where they wind in opposite
 // directions - preserved exactly as given, no fillRule override). Because
 // it's a real hole, it shows whatever's directly behind it - so this needs
+// to sit over a themed background (theme.bg or theme.surface, whichever
+// the surrounding context actually uses) to read correctly in both light
+// and dark mode, not a hardcoded color guess.
+const DECENT_LOGO_PATH_D = "M48.5 0C75.2858 0 97 21.7142 97 48.5C97 75.2858 75.2858 97 48.5 97H20C8.95431 97 0 88.0457 0 77V20C6.44299e-07 8.95431 8.95431 0 20 0H48.5ZM36.7041 28.6562C33.7232 26.8301 29.9149 29.0382 30.001 32.542L30.8018 65.6719C30.9022 69.8452 36.1712 71.5734 38.7051 68.2617L46.9043 57.5459C47.2561 57.0851 47.6955 56.6985 48.1963 56.4082C48.697 56.118 49.2499 55.93 49.8232 55.8545L63.1641 54.083C67.2876 53.5382 68.4326 48.0903 64.8828 45.916L36.7041 28.6562Z";
+const DecentLogoSVG = React.memo(({ size = 32, color = '#8B5CF6' }) => (
+  <Svg width={size} height={size} viewBox="0 0 97 97" fill="none">
+    <Path
+      d={DECENT_LOGO_PATH_D}
+      fill={color}
+    />
+  </Svg>
+));
+
+// Pure computation, no JSX - shared by CircularQRCode's on-screen render
+// below AND the exact-match download path (web canvas / native svg
+// export), so both draw from the exact same source of truth and can never
+// visually drift apart from each other. Kept outside the component (module
+// scope) since it has no reason to be recreated per-render or tied to any
+// component instance - the qrcode-generator call itself is memoized inside
+// CircularQRCode via useMemo already, this just factors out the reusable
+// part.
+const buildQrMatrix = (value) => {
+  if (!value) return null;
+  try {
+    const qr = qrcodeGenerator(0, 'H');
+    qr.addData(value);
+    qr.make();
+    const count = qr.getModuleCount();
+    const grid = [];
+    for (let row = 0; row < count; row++) {
+      const rowArr = [];
+      for (let col = 0; col < count; col++) rowArr.push(qr.isDark(row, col));
+      grid.push(rowArr);
+    }
+    return { grid, count };
+  } catch (e) {
+    console.warn('QR encoding failed:', e);
+    return null;
+  }
+};
+
+// Fixed, version-independent rule: the three finder patterns always sit in
+// exactly these three 7x7 corners, regardless of how large the QR code
+// grid is overall.
+const isQrFinderZone = (row, col, count) => {
+  if (row < 7 && col < 7) return true; // top-left
+  if (row < 7 && col >= count - 7) return true; // top-right
+  if (row >= count - 7 && col < 7) return true; // bottom-left
+  return false;
+};
+
 // Renders a QR code with circular data dots instead of the default square
 // modules, using qrcode-generator (a pure-JS, zero-dependency encoder - no
 // native/canvas code, verified before adding) for the actual bit matrix,
@@ -495,40 +577,14 @@ const ChevronRightSVG = React.memo(({ color = "#8B5CF6", size = 18 }) => (
 // to read the data, so making those circular risks scan failures on
 // stricter scanners. Everything else (data modules, alignment pattern,
 // timing pattern) renders as circles for the dotted look.
-const CircularQRCode = React.memo(({ value, size = 160, color = '#8B5CF6', backgroundColor = '#FFFFFF' }) => {
-  const matrix = useMemo(() => {
-    if (!value) return null;
-    try {
-      const qr = qrcodeGenerator(0, 'H');
-      qr.addData(value);
-      qr.make();
-      const count = qr.getModuleCount();
-      const grid = [];
-      for (let row = 0; row < count; row++) {
-        const rowArr = [];
-        for (let col = 0; col < count; col++) rowArr.push(qr.isDark(row, col));
-        grid.push(rowArr);
-      }
-      return { grid, count };
-    } catch (e) {
-      console.warn('QR encoding failed:', e);
-      return null;
-    }
-  }, [value]);
+// forwardRef so the download flow (native path specifically) can reach the
+// underlying <Svg> to call its own .toDataURL() export method.
+const CircularQRCode = React.memo(React.forwardRef(({ value, size = 160, color = '#8B5CF6', backgroundColor = '#FFFFFF', showLogo = false }, ref) => {
+  const matrix = useMemo(() => buildQrMatrix(value), [value]);
 
   if (!matrix) return null;
   const { grid, count } = matrix;
   const cellSize = size / count;
-
-  // Fixed, version-independent rule: the three finder patterns always sit
-  // in exactly these three 7x7 corners, regardless of how large the QR
-  // code grid is overall.
-  const isInFinderZone = (row, col) => {
-    if (row < 7 && col < 7) return true; // top-left
-    if (row < 7 && col >= count - 7) return true; // top-right
-    if (row >= count - 7 && col < 7) return true; // bottom-left
-    return false;
-  };
 
   const squares = [];
   const dots = [];
@@ -536,7 +592,7 @@ const CircularQRCode = React.memo(({ value, size = 160, color = '#8B5CF6', backg
   for (let row = 0; row < count; row++) {
     for (let col = 0; col < count; col++) {
       if (!grid[row][col]) continue;
-      if (isInFinderZone(row, col)) {
+      if (isQrFinderZone(row, col, count)) {
         squares.push(
           <Rect
             key={`f-${row}-${col}`}
@@ -561,26 +617,40 @@ const CircularQRCode = React.memo(({ value, size = 160, color = '#8B5CF6', backg
     }
   }
 
+  // Logo is drawn INSIDE this same <Svg> tree (not a separately overlaid
+  // element) specifically so native's svg.toDataURL() export - which can
+  // only capture this component's own SVG content, nothing layered on top
+  // of it from outside - naturally includes the logo too. This also means
+  // the on-screen preview and the downloaded file are guaranteed to be the
+  // literal same render, not two separately-maintained approximations of
+  // each other.
+  const logoBadgeSize = size * 0.21;
+  const logoIconSize = logoBadgeSize * 0.64;
+  const logoCenter = size / 2;
+
   return (
-    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <Svg ref={ref} width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <Rect x={0} y={0} width={size} height={size} fill={backgroundColor} />
       {squares}
       {dots}
+      {showLogo && (
+        <>
+          <Rect
+            x={logoCenter - logoBadgeSize / 2}
+            y={logoCenter - logoBadgeSize / 2}
+            width={logoBadgeSize}
+            height={logoBadgeSize}
+            rx={logoBadgeSize * 0.27}
+            fill={backgroundColor}
+          />
+          <G transform={`translate(${logoCenter - logoIconSize / 2}, ${logoCenter - logoIconSize / 2}) scale(${logoIconSize / 97})`}>
+            <Path d={DECENT_LOGO_PATH_D} fill={color} />
+          </G>
+        </>
+      )}
     </Svg>
   );
-});
-
-// to sit over a themed background (theme.bg or theme.surface, whichever
-// the surrounding context actually uses) to read correctly in both light
-// and dark mode, not a hardcoded color guess.
-const DecentLogoSVG = React.memo(({ size = 32, color = '#8B5CF6' }) => (
-  <Svg width={size} height={size} viewBox="0 0 97 97" fill="none">
-    <Path
-      d="M48.5 0C75.2858 0 97 21.7142 97 48.5C97 75.2858 75.2858 97 48.5 97H20C8.95431 97 0 88.0457 0 77V20C6.44299e-07 8.95431 8.95431 0 20 0H48.5ZM36.7041 28.6562C33.7232 26.8301 29.9149 29.0382 30.001 32.542L30.8018 65.6719C30.9022 69.8452 36.1712 71.5734 38.7051 68.2617L46.9043 57.5459C47.2561 57.0851 47.6955 56.6985 48.1963 56.4082C48.697 56.118 49.2499 55.93 49.8232 55.8545L63.1641 54.083C67.2876 53.5382 68.4326 48.0903 64.8828 45.916L36.7041 28.6562Z"
-      fill={color}
-    />
-  </Svg>
-));
+}));
 
 const DShapeSVG = React.memo(({ size = 44, color = '#8B5CF6' }) => (
   <Svg width={size} height={size} viewBox="0 0 97 97" fill="none">
@@ -4257,7 +4327,20 @@ function App() {
 
   const confirmProceedToExternalLink = () => {
     if (targetExternalUrl) {
-      Linking.openURL(targetExternalUrl).catch((err) => console.warn("Failed to open link", err));
+      if (Platform.OS === 'web') {
+        // window.open specifically (not Linking.openURL) for two reasons:
+        // this is the only reliable way to force a genuinely new tab on
+        // web (Linking.openURL's web implementation just navigates the
+        // current tab away, losing all app state), and it also sidesteps
+        // whatever was silently swallowing the click before - opening a
+        // new tab from directly inside this synchronous click handler,
+        // with no intervening await, keeps it unambiguously tied to the
+        // user's actual click so browsers won't treat it as an
+        // unrequested popup and block it.
+        window.open(targetExternalUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        Linking.openURL(targetExternalUrl).catch((err) => console.warn("Failed to open link", err));
+      }
     }
     setExternalLinkModalVisible(false);
   };
@@ -4513,6 +4596,11 @@ function App() {
   }, [session, userProfile.name]);
 
   const [shareModalVisible, setShareModalVisible] = useState(false);
+  // Ref to the actual on-screen styled QR's <Svg> - used by
+  // handleDownloadStyledQr on native to export exactly what's rendered,
+  // via react-native-svg's own toDataURL rather than re-deriving the image
+  // separately, so preview and downloaded file can't drift apart.
+  const styledQrExportRef = useRef(null);
   const [shareModalUrl, setShareModalUrl] = useState('');
   const [shareType, setShareType] = useState('profile'); // 'profile' | 'portfolio'
   const [shareIsOwnProfile, setShareIsOwnProfile] = useState(false);
@@ -4557,34 +4645,20 @@ function App() {
     setTimeout(() => setShareCopied(false), 1500);
   };
 
-  // QR image comes from a public generation API (same pattern already used
-  // for avatar fallbacks via ui-avatars.com) rather than adding a new
-  // native QR-rendering package that isn't already a verified dependency
-  // of this project. color/bgcolor are the API's own hex params (no #
-  // prefix) - 8B5CF6 matches the app's accent purple used everywhere else
-  // (DecentLogoSVG's default color, active tab states, etc).
-  // ecc=H (highest error-correction level, ~30% redundancy) specifically
-  // because of the centered logo overlay added at the display site below -
-  // without a high enough ECC level, covering even a small center portion
-  // with a logo can make the code unscannable.
-  const getShareQrUrl = (url, size = 400) =>
-    `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&color=8B5CF6&bgcolor=FFFFFF&ecc=H&data=${encodeURIComponent(url)}`;
-
-  const handleDownloadQrCode = async () => {
-    const qrUrl = getShareQrUrl(shareModalUrl);
+  const handleDownloadPlainQr = async () => {
+    // True plain black-on-white, no color/logo styling at all - a
+    // separate, deliberately unstyled URL rather than the accent-purple
+    // one used elsewhere, for anyone who wants a plain version (printing,
+    // accessibility, just personal preference).
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(shareModalUrl)}`;
     if (Platform.OS === 'web') {
-      // Genuine file download - fetch as a blob rather than just linking
-      // directly to the API url, since a plain <a href> to a cross-origin
-      // image opens/previews it in most browsers instead of downloading,
-      // and the filename would be whatever the API returns rather than
-      // something readable.
       try {
         const response = await fetch(qrUrl);
         const blob = await response.blob();
         const objectUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = objectUrl;
-        link.download = `decent-profile-qr-${userProfile.handle || 'code'}.png`;
+        link.download = `decent-profile-qr-plain-${userProfile.handle || 'code'}.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -4594,16 +4668,13 @@ function App() {
         showToast('Could not download QR code - try again.');
       }
     } else {
-      // True one-tap gallery save: download the QR image to a temp file
-      // first (MediaLibrary needs a local file URI, not a remote one),
-      // then save that into the device's Photos/gallery.
       try {
         const permission = await MediaLibrary.requestPermissionsAsync();
         if (!permission.granted) {
           showToast('Photo library permission needed to save the QR code.');
           return;
         }
-        const localUri = `${FileSystem.cacheDirectory}decent-profile-qr-${Date.now()}.png`;
+        const localUri = `${FileSystem.cacheDirectory}decent-profile-qr-plain-${Date.now()}.png`;
         const { uri: downloadedUri } = await FileSystem.downloadAsync(qrUrl, localUri);
         await MediaLibrary.saveToLibraryAsync(downloadedUri);
         showToast('QR code saved to your photos.');
@@ -4614,8 +4685,136 @@ function App() {
     }
   };
 
+  // Draws the exact same matrix + finder-zone logic used by CircularQRCode
+  // (shared via buildQrMatrix/isQrFinderZone, not re-derived) directly onto
+  // a real browser <canvas> - this is a completely different, far more
+  // reliable API than react-native-svg's own toDataURL bridge (which has
+  // open, unresolved bugs - see the native branch below), so web
+  // deliberately doesn't reuse that path at all.
+  const renderStyledQrToCanvas = (value, size) => {
+    const matrix = buildQrMatrix(value);
+    if (!matrix) return null;
+    const { grid, count } = matrix;
+    const cellSize = size / count;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, size, size);
+
+    ctx.fillStyle = '#8B5CF6';
+    for (let row = 0; row < count; row++) {
+      for (let col = 0; col < count; col++) {
+        if (!grid[row][col]) continue;
+        if (isQrFinderZone(row, col, count)) {
+          ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+        } else {
+          const cx = col * cellSize + cellSize / 2;
+          const cy = row * cellSize + cellSize / 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, cellSize * 0.42, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    // Logo badge - same proportions (0.21 badge, 0.64 icon-within-badge,
+    // 0.27 corner radius) as CircularQRCode's own showLogo rendering, kept
+    // in sync manually since these are two different drawing APIs (SVG
+    // primitives vs Canvas2D) that can't literally share JSX.
+    const logoBadgeSize = size * 0.21;
+    const logoIconSize = logoBadgeSize * 0.64;
+    const center = size / 2;
+    const badgeRadius = logoBadgeSize * 0.27;
+    const bx = center - logoBadgeSize / 2;
+    const by = center - logoBadgeSize / 2;
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.moveTo(bx + badgeRadius, by);
+    ctx.arcTo(bx + logoBadgeSize, by, bx + logoBadgeSize, by + logoBadgeSize, badgeRadius);
+    ctx.arcTo(bx + logoBadgeSize, by + logoBadgeSize, bx, by + logoBadgeSize, badgeRadius);
+    ctx.arcTo(bx, by + logoBadgeSize, bx, by, badgeRadius);
+    ctx.arcTo(bx, by, bx + logoBadgeSize, by, badgeRadius);
+    ctx.closePath();
+    ctx.fill();
+
+    // Path2D accepts the exact same SVG path string used by DecentLogoSVG
+    // directly - genuine pixel-shape match, not a redrawn approximation.
+    ctx.save();
+    ctx.translate(center - logoIconSize / 2, center - logoIconSize / 2);
+    ctx.scale(logoIconSize / 97, logoIconSize / 97);
+    ctx.fillStyle = '#8B5CF6';
+    ctx.fill(new Path2D(DECENT_LOGO_PATH_D));
+    ctx.restore();
+
+    return canvas;
+  };
+
+  const handleDownloadStyledQr = async () => {
+    if (Platform.OS === 'web') {
+      try {
+        const canvas = renderStyledQrToCanvas(shareModalUrl, 800);
+        if (!canvas) throw new Error('QR render failed');
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            showToast('Could not download QR code - try again.');
+            return;
+          }
+          const objectUrl = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = objectUrl;
+          link.download = `decent-profile-qr-${userProfile.handle || 'code'}.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(objectUrl);
+        }, 'image/png');
+      } catch (e) {
+        console.warn('Styled QR download failed:', e);
+        showToast('Could not download QR code - try again.');
+      }
+    } else {
+      // react-native-svg's toDataURL has a couple of known, documented
+      // quirks on some versions (notably an output-size scaling bug, and a
+      // callback-timing issue that's specifically iOS-only - not relevant
+      // here since this project only ever builds for Android). Exports
+      // exactly what's on screen (styledQrExportRef points at the same
+      // <Svg> already rendered in the modal, logo included since it's
+      // drawn inside that same SVG tree, not layered separately on top).
+      try {
+        if (!styledQrExportRef.current) {
+          showToast('QR code not ready yet - try again in a moment.');
+          return;
+        }
+        const permission = await MediaLibrary.requestPermissionsAsync();
+        if (!permission.granted) {
+          showToast('Photo library permission needed to save the QR code.');
+          return;
+        }
+        styledQrExportRef.current.toDataURL(async (base64) => {
+          try {
+            const localUri = `${FileSystem.cacheDirectory}decent-profile-qr-styled-${Date.now()}.png`;
+            await FileSystem.writeAsStringAsync(localUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+            await MediaLibrary.saveToLibraryAsync(localUri);
+            showToast('QR code saved to your photos.');
+          } catch (innerErr) {
+            console.warn('Styled QR save failed:', innerErr);
+            showToast('Could not save QR code - try again.');
+          }
+        });
+      } catch (e) {
+        console.warn('Styled QR export failed:', e);
+        showToast('Could not save QR code - try again.');
+      }
+    }
+  };
+
   const handleDownloadQrisCode = async () => {
-    // Same pattern as handleDownloadQrCode above, but the source is a
+    // Same pattern as handleDownloadPlainQr above, but the source is a
     // bundled local asset (require'd, not a remote API) - Image.
     // resolveAssetSource gives back a usable URL either way (a Metro dev
     // server URL locally, a packaged/CDN URL in production), so the same
@@ -7042,6 +7241,50 @@ function App() {
   const [wizardOriginRect, setWizardOriginRect] = useState(null);
   const wizardExpandAnim = useRef(new Animated.Value(0)).current;
 
+  const [portfolioTypeModalVisible, setPortfolioTypeModalVisible] = useState(false);
+  const [selectedPortfolioType, setSelectedPortfolioType] = useState('ui_ux');
+  const [myFeatureInterests, setMyFeatureInterests] = useState(new Set());
+  const [interestConfirmTarget, setInterestConfirmTarget] = useState(null); // feature_name string, or null if no confirm popup showing
+
+  // Fetched once per session (not re-fetched every time the type-select
+  // step opens) so returning to it repeatedly in one sitting doesn't
+  // re-query needlessly - session change (login/logout) is the only thing
+  // that should invalidate this.
+  useEffect(() => {
+    if (!session) {
+      setMyFeatureInterests(new Set());
+      return;
+    }
+    (async () => {
+      const { data, error } = await supabase
+        .from('feature_interest')
+        .select('feature_name')
+        .eq('user_id', session.user.id);
+      if (error || !data) return;
+      setMyFeatureInterests(new Set(data.map((r) => r.feature_name)));
+    })();
+  }, [session]);
+
+  const handleConfirmFeatureInterest = async () => {
+    const featureName = interestConfirmTarget;
+    setInterestConfirmTarget(null);
+    if (!featureName || !session) return;
+    // Insert is expected to occasionally hit the unique(user_id,
+    // feature_name) constraint if this somehow fires twice (e.g. a fast
+    // double-tap before state updates) - that's fine, treat it as success
+    // either way rather than surfacing a confusing error for something
+    // that's already true.
+    const { error } = await supabase
+      .from('feature_interest')
+      .insert({ user_id: session.user.id, feature_name: featureName });
+    if (error && error.code !== '23505') {
+      showToast('Could not register interest - try again.');
+      return;
+    }
+    setMyFeatureInterests((prev) => new Set(prev).add(featureName));
+    showToast("Thanks! We'll let you know when it's ready.");
+  };
+
   const handleOpenAddPortfolio = () => {
     if (!requireAuth()) return;
     playTabBounce('plus');
@@ -7052,7 +7295,18 @@ function App() {
     setCameFromDesignerId(null);
     setTopStackedPage(null);
     setDesignerBackStack([]);
+    setSelectedPortfolioType('ui_ux');
+    setPortfolioTypeModalVisible(true);
+  };
 
+  // Split out of handleOpenAddPortfolio above - this is the part that
+  // actually opens the wizard (native plus-button expand animation
+  // included), now triggered once a type is picked in the new type-select
+  // step rather than immediately on tapping the + button. Kept as its own
+  // function so the animation/native-measurement logic isn't duplicated or
+  // at risk of drifting if touched again later.
+  const proceedToPortfolioWizard = () => {
+    setPortfolioTypeModalVisible(false);
     if (Platform.OS === 'web' || !nativePlusBtnRef.current) {
       setAddModalVisible(true);
       return;
@@ -9461,7 +9715,7 @@ function App() {
         visible={externalLinkModalVisible}
         onRequestClose={() => setExternalLinkModalVisible(false)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }, Platform.OS === 'web' && { zIndex: 99999 }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setExternalLinkModalVisible(false)}
         >
@@ -10804,6 +11058,16 @@ function App() {
               </View>
 
               <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Feature Interest ("I'm Interested" buttons)</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 6, lineHeight: 19 }}>
+                  When you tap "I'm Interested" on an upcoming feature (like Frontend Development portfolios), we record that your account expressed interest in that specific feature. This is tied to your account, not anonymous.
+                </Text>
+                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
+                  We use this to gauge real demand before building something, and may reach out to people who registered interest for a short survey about it (e.g. which tools/platforms you'd want supported) before or while we build it. You can stop this at any time by requesting account deletion via Account Settings, same as any other data we hold.
+                </Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
                 <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>How We Use It</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
                   <View style={{ marginTop: 2 }}><LockIconSVG /></View>
@@ -11644,13 +11908,49 @@ function App() {
                         style={{ width: 180, height: 180 }}
                         resizeMode="contain"
                       />
+                      {/* Blurred + gated behind the same Terms checkbox
+                          above, until agreed - reusing donateTermsAgreed
+                          rather than a separate flag, so there's exactly
+                          one "have they agreed" source of truth for the
+                          whole donate modal, not two that could disagree
+                          with each other. BlurView is already a proven
+                          dependency in this file (modal backdrops
+                          elsewhere), not something new being introduced. */}
+                      {!donateTermsAgreed && (
+                        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                          <BlurView
+                            intensity={80}
+                            tint={themeMode === 'light' ? 'light' : 'dark'}
+                            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                          />
+                          <BouncyButton
+                            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 16 }}
+                            onPress={() => {
+                              showAppAlert('Agreement Required', 'Please check the box agreeing to the Terms of Service above to reveal the QR code.');
+                            }}
+                          >
+                            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(139,92,246,0.85)', alignItems: 'center', justifyContent: 'center' }}>
+                              <EyeViewIconSVG color="#FFFFFF" size={20} />
+                            </View>
+                            <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5, textAlign: 'center' }}>
+                              Tap to Reveal QR Code
+                            </Text>
+                          </BouncyButton>
+                        </View>
+                      )}
                     </View>
                     <Text style={{ color: theme.textSecondary, fontSize: 12, textAlign: 'center', marginBottom: 12 }}>
                       Scan with any e-wallet or mobile banking app that supports QRIS.
                     </Text>
                     <BouncyButton
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: theme.border }}
-                      onPress={handleDownloadQrisCode}
+                      onPress={() => {
+                        if (!donateTermsAgreed) {
+                          showAppAlert('Agreement Required', 'Please check the box agreeing to the Terms of Service before downloading the QR code.');
+                          return;
+                        }
+                        handleDownloadQrisCode();
+                      }}
                     >
                       <DownloadIconSVG color={theme.accent} size={16} />
                       <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 12.5 }}>Download QRIS</Text>
@@ -12659,6 +12959,149 @@ function App() {
           </Modal>
         );
       })()}
+
+      {/* PORTFOLIO TYPE SELECTOR - new first step before the wizard itself
+          opens. Only UI/UX is actually functional right now; the other
+          three show as visibly muted "coming soon" cards with their own
+          full-opacity interest button, so the disabled state doesn't
+          accidentally suppress the one thing that IS actionable on them. */}
+      <Modal
+        animationType={Platform.OS === 'web' ? 'none' : 'slide'}
+        transparent={true}
+        visible={portfolioTypeModalVisible}
+        onRequestClose={() => setPortfolioTypeModalVisible(false)}
+      >
+        <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-end' }]}>
+          <View style={[styles.customConfirmCard, { width: isWebWide ? 460 : '100%', maxHeight: '85%' }]}>
+            <View style={styles.modalTopBar}>
+              <Text style={styles.modalTopTitle}>What are you sharing?</Text>
+              <BouncyButton style={styles.closeBtn} onPress={() => setPortfolioTypeModalVisible(false)}>
+                <Text style={styles.closeBtnText}>✕</Text>
+              </BouncyButton>
+            </View>
+
+            <ScrollView contentContainerStyle={{ padding: 18, gap: 12 }}>
+              {/* UI/UX - the only functional type right now */}
+              <BouncyButton
+                style={{
+                  borderWidth: 1.5, borderColor: theme.accent, borderRadius: 14, padding: 16,
+                  backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)'
+                }}
+                onPress={() => {
+                  setSelectedPortfolioType('ui_ux');
+                  proceedToPortfolioWizard();
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <CursorArrowSVG size={18} color={theme.accent} />
+                  <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>UI/UX Design</Text>
+                  <FigmaLogoSVG />
+                </View>
+                <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 17 }}>
+                  App and web design work, with interactive Figma prototype embeds.
+                </Text>
+              </BouncyButton>
+
+              {/* Graphic Design, Illustration, Frontend - coming soon */}
+              {[
+                { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding, print, and visual design work.', icon: <FigmaLogoSVG /> },
+                { key: 'illustration', title: 'Illustration', desc: 'Digital art, character work, and illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} /> },
+                { key: 'frontend', title: 'Frontend Development', desc: 'Live code demos via CodeSandbox/StackBlitz embeds, plus your GitHub repo.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} /> }
+              ].map((type) => (
+                <View
+                  key={type.key}
+                  style={{
+                    borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 16,
+                    opacity: 0.5
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{type.title}</Text>
+                    {type.icon}
+                  </View>
+                  <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 17, marginBottom: 10 }}>
+                    {type.desc}
+                  </Text>
+                  <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Coming Soon
+                  </Text>
+
+                  {/* Deliberately NOT wrapped in the same opacity:0.5 as the
+                      rest of this card - stays fully visible/normal opacity
+                      so it doesn't read as disabled along with everything
+                      else around it. */}
+                  <View style={{ opacity: 1, marginTop: 10 }}>
+                    <BouncyButton
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                        paddingVertical: 8, borderRadius: 10,
+                        borderWidth: 1, borderColor: myFeatureInterests.has(type.key) ? '#10B981' : theme.accent,
+                        backgroundColor: myFeatureInterests.has(type.key) ? 'rgba(16,185,129,0.1)' : 'transparent'
+                      }}
+                      onPress={() => {
+                        if (myFeatureInterests.has(type.key)) return;
+                        if (!requireAuth()) return;
+                        setInterestConfirmTarget(type.key);
+                      }}
+                    >
+                      {myFeatureInterests.has(type.key) ? (
+                        <>
+                          <CheckIconSVG color="#10B981" />
+                          <Text style={{ color: '#10B981', fontWeight: '700', fontSize: 12.5 }}>Interested</Text>
+                        </>
+                      ) : (
+                        <>
+                          <BellOutlineSVG size={15} color={theme.accent} />
+                          <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 12.5 }}>I'm Interested</Text>
+                        </>
+                      )}
+                    </BouncyButton>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Confirmation before actually registering interest - a quick
+          "are you sure, not a misclick" step, matching how other
+          one-way/committing actions in this app confirm first. */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={!!interestConfirmTarget}
+        onRequestClose={() => setInterestConfirmTarget(null)}
+      >
+        <View style={styles.overlayModalBg}>
+          <View style={styles.customConfirmCard}>
+            <View style={styles.confirmIconCircle}>
+              <BellOutlineSVG size={22} color={theme.accent} />
+            </View>
+            <Text style={styles.confirmTitle}>Register Interest?</Text>
+            <Text style={styles.confirmSubText}>
+              This ties your account to this feature so we know real demand exists before building it - not anonymous. We may reach out with a short survey (e.g. which tools you'd want supported). See Privacy Policy for details.
+            </Text>
+            <View style={styles.confirmActionsRow}>
+              <BouncyButton
+                style={styles.confirmCancelBtn}
+                onPress={() => setInterestConfirmTarget(null)}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={styles.confirmDeleteBtn}
+                onPress={handleConfirmFeatureInterest}
+              >
+                <View style={styles.iconTextInlineRow}>
+                  <CheckIconSVG color="#FFFFFF" />
+                  <Text style={styles.confirmDeleteText}>Yes, I'm Interested</Text>
+                </View>
+              </BouncyButton>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* 4-STEP WIZARD MODAL FOR ADDING/EDITING PORTFOLIO PACKAGE */}
       <Modal
@@ -14794,36 +15237,31 @@ function App() {
             {shareType === 'profile' && shareIsOwnProfile && shareModalUrl ? (
               <View style={{ alignItems: 'center', marginBottom: 16 }}>
                 <View style={{ padding: 10, backgroundColor: '#FFFFFF', borderRadius: 12 }}>
-                  <CircularQRCode value={shareModalUrl} size={160} color="#8B5CF6" backgroundColor="#FFFFFF" />
-                  {/* Centered logo overlay - a separate element layered on
-                      top, not baked into the QR's own pixel data. Kept small
-                      (~20% of the QR's size) and the QR itself is generated
-                      at ecc=H (high error-correction redundancy) internally
-                      specifically so covering this portion doesn't break
-                      scannability. */}
-                  <View
-                    pointerEvents="none"
-                    style={{
-                      position: 'absolute', top: 10, left: 10, width: 160, height: 160,
-                      alignItems: 'center', justifyContent: 'center'
-                    }}
-                  >
-                    <View style={{
-                      width: 34, height: 34, borderRadius: 9, backgroundColor: '#FFFFFF',
-                      alignItems: 'center', justifyContent: 'center',
-                      borderWidth: 2, borderColor: '#FFFFFF'
-                    }}>
-                      <DecentLogoSVG size={22} />
-                    </View>
-                  </View>
+                  <CircularQRCode
+                    ref={styledQrExportRef}
+                    value={shareModalUrl}
+                    size={160}
+                    color="#8B5CF6"
+                    backgroundColor="#FFFFFF"
+                    showLogo
+                  />
                 </View>
-                <BouncyButton
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingVertical: 6, paddingHorizontal: 12 }}
-                  onPress={handleDownloadQrCode}
-                >
-                  <DownloadIconSVG color={theme.accent} size={15} />
-                  <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>Download QR Code</Text>
-                </BouncyButton>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                  <BouncyButton
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12 }}
+                    onPress={handleDownloadPlainQr}
+                  >
+                    <DownloadIconSVG color={theme.textSecondary} size={15} />
+                    <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700' }}>Plain QR</Text>
+                  </BouncyButton>
+                  <BouncyButton
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12 }}
+                    onPress={handleDownloadStyledQr}
+                  >
+                    <DownloadIconSVG color={theme.accent} size={15} />
+                    <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>DECENT Style</Text>
+                  </BouncyButton>
+                </View>
               </View>
             ) : null}
 
