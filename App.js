@@ -131,7 +131,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 288;
+const BUILD_NUMBER = 290;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -11753,9 +11753,9 @@ function App() {
                     <Text style={styles.settingItemValue}>v{APP_VERSION} (build {BUILD_NUMBER})</Text>
                   </BouncyButton>
 
-                  {session && (
+                  {session && Platform.OS === 'web' && (
                     <BouncyButton
-                      style={[styles.settingItemRow, { justifyContent: 'center' }]}
+                      style={styles.settingItemRow}
                       onPress={() => setLogoutConfirmModalVisible(true)}
                     >
                       <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Sign Out</Text>
