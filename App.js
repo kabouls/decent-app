@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 302;
+const BUILD_NUMBER = 303;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -481,6 +481,24 @@ const PaintBrushSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M18.37 2.63L14 7l-1.37-1.37a1 1 0 0 0-1.41 0L9.85 7 15 12.15l1.37-1.37a1 1 0 0 0 0-1.41L15 8l4.37-4.37a1 1 0 0 0 0-1.41l-.59-.59a1 1 0 0 0-1.41 0z" fill={color} />
     <Path d="M9.85 7L2.68 14.17a1.5 1.5 0 0 0-.39.65L1 20l5.18-1.29a1.5 1.5 0 0 0 .65-.39L14 11.15" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
+// Classic palette shape - used for Graphic Design specifically so it reads
+// as visually distinct from Illustration's brush icon, and deliberately
+// not Figma (that logo's now exclusively tied to UI/UX to avoid the two
+// design-adjacent types looking interchangeable).
+const PaletteSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M12 3C7.03 3 3 6.58 3 11c0 2.76 2.24 5 5 5h1a2 2 0 0 1 2 2v.5a1.5 1.5 0 0 0 1.5 1.5c4.42 0 8-3.58 8-8 0-5-4.03-9-9-9z"
+      stroke={color}
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+    />
+    <Circle cx="7.5" cy="10.5" r="1.3" fill={color} />
+    <Circle cx="11" cy="7" r="1.3" fill={color} />
+    <Circle cx="15.5" cy="8" r="1.3" fill={color} />
   </Svg>
 ));
 
@@ -12971,97 +12989,101 @@ function App() {
         visible={portfolioTypeModalVisible}
         onRequestClose={() => setPortfolioTypeModalVisible(false)}
       >
-        <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-end' }]}>
-          <View style={[styles.customConfirmCard, { width: isWebWide ? 460 : '100%', maxHeight: '85%' }]}>
-            <View style={styles.modalTopBar}>
-              <Text style={styles.modalTopTitle}>What are you sharing?</Text>
-              <BouncyButton style={styles.closeBtn} onPress={() => setPortfolioTypeModalVisible(false)}>
-                <Text style={styles.closeBtnText}>✕</Text>
-              </BouncyButton>
-            </View>
+        {/* Genuinely fullscreen - no centered card, no side padding, no
+            maxHeight cap. The 4 cards below share the remaining vertical
+            space evenly via flex:1 each (not fixed pixel heights), so this
+            adapts correctly to any screen size instead of only fitting
+            without scrolling on whatever one device this happened to be
+            tested on. */}
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+          <View style={styles.modalTopBar}>
+            <Text style={styles.modalTopTitle}>What are you sharing?</Text>
+            <BouncyButton style={styles.closeBtn} onPress={() => setPortfolioTypeModalVisible(false)}>
+              <Text style={styles.closeBtnText}>✕</Text>
+            </BouncyButton>
+          </View>
 
-            <ScrollView contentContainerStyle={{ padding: 18, gap: 12 }}>
-              {/* UI/UX - the only functional type right now */}
-              <BouncyButton
+          <View style={{ flex: 1, padding: 12, gap: 8 }}>
+            {/* UI/UX - the only functional type right now */}
+            <BouncyButton
+              style={{
+                flex: 1, borderWidth: 1.5, borderColor: theme.accent, borderRadius: 14, padding: 14,
+                backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)',
+                justifyContent: 'center'
+              }}
+              onPress={() => {
+                setSelectedPortfolioType('ui_ux');
+                proceedToPortfolioWizard();
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <CursorArrowSVG size={17} color={theme.accent} />
+                <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>UI/UX Design</Text>
+                <FigmaLogoSVG />
+              </View>
+              <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16 }}>
+                App and web design work, with interactive Figma prototype embeds.
+              </Text>
+            </BouncyButton>
+
+            {/* Graphic Design, Illustration, Frontend - coming soon */}
+            {[
+              { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding, print, and visual design work.', icon: <PaletteSVG size={16} color={theme.textSecondary} /> },
+              { key: 'illustration', title: 'Illustration', desc: 'Digital art, character work, and illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} /> },
+              { key: 'frontend', title: 'Frontend Development', desc: 'Live code demos via CodeSandbox/StackBlitz, plus your GitHub repo.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} /> }
+            ].map((type) => (
+              <View
+                key={type.key}
                 style={{
-                  borderWidth: 1.5, borderColor: theme.accent, borderRadius: 14, padding: 16,
-                  backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)'
-                }}
-                onPress={() => {
-                  setSelectedPortfolioType('ui_ux');
-                  proceedToPortfolioWizard();
+                  flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 14,
+                  justifyContent: 'center'
                 }}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <CursorArrowSVG size={18} color={theme.accent} />
-                  <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>UI/UX Design</Text>
-                  <FigmaLogoSVG />
-                </View>
-                <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 17 }}>
-                  App and web design work, with interactive Figma prototype embeds.
-                </Text>
-              </BouncyButton>
-
-              {/* Graphic Design, Illustration, Frontend - coming soon */}
-              {[
-                { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding, print, and visual design work.', icon: <FigmaLogoSVG /> },
-                { key: 'illustration', title: 'Illustration', desc: 'Digital art, character work, and illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} /> },
-                { key: 'frontend', title: 'Frontend Development', desc: 'Live code demos via CodeSandbox/StackBlitz embeds, plus your GitHub repo.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} /> }
-              ].map((type) => (
-                <View
-                  key={type.key}
-                  style={{
-                    borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 16,
-                    opacity: 0.5
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15 }}>{type.title}</Text>
+                <View style={{ opacity: 0.5 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>{type.title}</Text>
                     {type.icon}
                   </View>
-                  <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 17, marginBottom: 10 }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 6 }}>
                     {type.desc}
                   </Text>
-                  <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                     Coming Soon
                   </Text>
-
-                  {/* Deliberately NOT wrapped in the same opacity:0.5 as the
-                      rest of this card - stays fully visible/normal opacity
-                      so it doesn't read as disabled along with everything
-                      else around it. */}
-                  <View style={{ opacity: 1, marginTop: 10 }}>
-                    <BouncyButton
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                        paddingVertical: 8, borderRadius: 10,
-                        borderWidth: 1, borderColor: myFeatureInterests.has(type.key) ? '#10B981' : theme.accent,
-                        backgroundColor: myFeatureInterests.has(type.key) ? 'rgba(16,185,129,0.1)' : 'transparent'
-                      }}
-                      onPress={() => {
-                        if (myFeatureInterests.has(type.key)) return;
-                        if (!requireAuth()) return;
-                        setInterestConfirmTarget(type.key);
-                      }}
-                    >
-                      {myFeatureInterests.has(type.key) ? (
-                        <>
-                          <CheckIconSVG color="#10B981" />
-                          <Text style={{ color: '#10B981', fontWeight: '700', fontSize: 12.5 }}>Interested</Text>
-                        </>
-                      ) : (
-                        <>
-                          <BellOutlineSVG size={15} color={theme.accent} />
-                          <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 12.5 }}>I'm Interested</Text>
-                        </>
-                      )}
-                    </BouncyButton>
-                  </View>
                 </View>
-              ))}
-            </ScrollView>
+
+                {/* Deliberately outside the opacity:0.5 View above - stays
+                    fully visible/normal opacity so it doesn't read as
+                    disabled along with everything else on the card. */}
+                <BouncyButton
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    paddingVertical: 7, borderRadius: 10, marginTop: 8,
+                    borderWidth: 1, borderColor: myFeatureInterests.has(type.key) ? '#10B981' : theme.accent,
+                    backgroundColor: myFeatureInterests.has(type.key) ? 'rgba(16,185,129,0.1)' : 'transparent'
+                  }}
+                  onPress={() => {
+                    if (myFeatureInterests.has(type.key)) return;
+                    if (!requireAuth()) return;
+                    setInterestConfirmTarget(type.key);
+                  }}
+                >
+                  {myFeatureInterests.has(type.key) ? (
+                    <>
+                      <CheckIconSVG color="#10B981" />
+                      <Text style={{ color: '#10B981', fontWeight: '700', fontSize: 12 }}>Interested</Text>
+                    </>
+                  ) : (
+                    <>
+                      <BellOutlineSVG size={14} color={theme.accent} />
+                      <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 12 }}>I'm Interested</Text>
+                    </>
+                  )}
+                </BouncyButton>
+              </View>
+            ))}
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* Confirmation before actually registering interest - a quick
@@ -13082,15 +13104,15 @@ function App() {
             <Text style={styles.confirmSubText}>
               This ties your account to this feature so we know real demand exists before building it - not anonymous. We may reach out with a short survey (e.g. which tools you'd want supported). See Privacy Policy for details.
             </Text>
-            <View style={styles.confirmActionsRow}>
+            <View style={[styles.confirmActionsRow, { justifyContent: 'flex-end' }]}>
               <BouncyButton
-                style={styles.confirmCancelBtn}
+                style={[styles.confirmCancelBtn, { flex: 0, paddingHorizontal: 20 }]}
                 onPress={() => setInterestConfirmTarget(null)}
               >
                 <Text style={styles.confirmCancelText}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
-                style={styles.confirmDeleteBtn}
+                style={[styles.confirmDeleteBtn, { flex: 0, paddingHorizontal: 20 }]}
                 onPress={handleConfirmFeatureInterest}
               >
                 <View style={styles.iconTextInlineRow}>
