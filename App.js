@@ -349,7 +349,6 @@ const CategoryChipBg = React.memo(({ active }) => {
         intensity={30}
         tint={themeMode === 'light' ? 'light' : 'dark'}
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-        experimentalBlurMethod="dimezisBlurView"
       />
       {active && (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(139, 92, 246, 0.55)' }} />
@@ -394,7 +393,6 @@ const LikeButton = React.memo(({ liked, likesCount, onPress, showCount = false, 
             intensity={45}
             tint={themeMode === 'light' ? 'light' : 'dark'}
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-            experimentalBlurMethod="dimezisBlurView"
           />
         )
       )}
@@ -2047,7 +2045,6 @@ function AuthScreen({ onCancel } = {}) {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -2117,7 +2114,6 @@ function AuthScreen({ onCancel } = {}) {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -8182,7 +8178,6 @@ function App() {
               intensity={45}
               tint={themeMode === 'light' ? 'light' : 'dark'}
               style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-              experimentalBlurMethod="dimezisBlurView"
             />
           )
         )}
@@ -8205,7 +8200,7 @@ function App() {
               <Text style={styles.logoText}>ECENT</Text>
             </View>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.282.0</Text>
+              <Text style={styles.versionText}>v0.283.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -9087,7 +9082,6 @@ function App() {
                   intensity={45}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
                 <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(139, 92, 246, 0.55)' }} />
               </>
@@ -9132,7 +9126,6 @@ function App() {
             intensity={45}
             tint={themeMode === 'light' ? 'light' : 'dark'}
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-            experimentalBlurMethod="dimezisBlurView"
           />
         )}
         <TouchableOpacity style={styles.uniformTabItem} onPress={() => handleNavChange('forYou')}>
@@ -9322,7 +9315,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -9401,7 +9393,6 @@ function App() {
                     intensity={65}
                     tint={themeMode === 'light' ? 'light' : 'dark'}
                     style={{ flex: 1 }}
-                    experimentalBlurMethod="dimezisBlurView"
                   />
                 )}
               </Animated.View>
@@ -9630,7 +9621,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -9725,7 +9715,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -10064,7 +10053,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -10204,7 +10192,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -10293,7 +10280,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -10371,7 +10357,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -10439,7 +10424,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -10506,7 +10490,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -10546,7 +10529,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.282.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.283.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -10599,7 +10582,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -10711,7 +10693,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -10813,7 +10794,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -10890,7 +10870,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -10962,7 +10941,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -11163,7 +11141,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -11365,7 +11342,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -11420,7 +11396,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -11559,7 +11534,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -11609,7 +11583,6 @@ function App() {
                     intensity={65}
                     tint={themeMode === 'light' ? 'light' : 'dark'}
                     style={{ flex: 1 }}
-                    experimentalBlurMethod="dimezisBlurView"
                   />
                 )}
               </Animated.View>
@@ -11737,7 +11710,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.282.0</Text>
+                    <Text style={styles.settingItemValue}>v0.283.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
@@ -12032,7 +12005,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -12098,7 +12070,6 @@ function App() {
                   intensity={45}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )}
               <Text style={styles.modalTopTitle}>Designer Profile</Text>
@@ -12746,7 +12717,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -13808,7 +13778,6 @@ function App() {
                     intensity={45}
                     tint={themeMode === 'light' ? 'light' : 'dark'}
                     style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                    experimentalBlurMethod="dimezisBlurView"
                   />
                 )
               )}
@@ -14366,7 +14335,6 @@ function App() {
                           intensity={45}
                           tint={themeMode === 'light' ? 'light' : 'dark'}
                           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                          experimentalBlurMethod="dimezisBlurView"
                         />
                         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(139, 92, 246, 0.55)' }} />
                       </>
@@ -14528,7 +14496,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -14613,7 +14580,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
@@ -14720,7 +14686,6 @@ function App() {
                   intensity={55}
                   tint={themeMode === 'light' ? 'light' : 'dark'}
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                  experimentalBlurMethod="dimezisBlurView"
                 />
               )
             )}
