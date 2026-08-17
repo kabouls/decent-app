@@ -131,7 +131,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 290;
+const BUILD_NUMBER = 291;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -325,6 +325,12 @@ const HeartIconSVG = React.memo(({ liked, color = '#94A3B8', monochrome = false,
       strokeWidth="2"
       strokeLinejoin="round"
     />
+  </Svg>
+));
+
+const GitHubIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <Path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.36-3.37-1.36-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.05 1.53 1.05.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.95.68 1.92 0 1.39-.01 2.51-.01 2.85 0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z" />
   </Svg>
 ));
 
@@ -7720,6 +7726,22 @@ function App() {
                 )}
               </BouncyButton>
 
+              {/* GitHub - same placement/behavior pattern as Donate below it. */}
+              <BouncyButton
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10,
+                  marginTop: 'auto', marginHorizontal: sidebarCollapsed ? 12 : 16, marginBottom: 8,
+                  paddingVertical: 10, paddingHorizontal: sidebarCollapsed ? 0 : 12,
+                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start'
+                }}
+                onPress={() => Linking.openURL('https://github.com/kabouls/decent-app')}
+              >
+                <GitHubIconSVG color={theme.textSecondary} size={18} />
+                {!sidebarCollapsed && (
+                  <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Visit GitHub</Text>
+                )}
+              </BouncyButton>
+
               {/* Donate - desktop/tablet sidebar only, anchored to the very
                   bottom via marginTop: 'auto' regardless of how many nav
                   items sit above it. Shown in both expanded and collapsed
@@ -7728,7 +7750,7 @@ function App() {
               <BouncyButton
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
-                  marginTop: 'auto', marginHorizontal: sidebarCollapsed ? 12 : 16, marginBottom: 8,
+                  marginHorizontal: sidebarCollapsed ? 12 : 16, marginBottom: 8,
                   paddingVertical: 10, paddingHorizontal: sidebarCollapsed ? 0 : 12,
                   justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
                   borderRadius: 10, backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.12)'
@@ -11744,6 +11766,17 @@ function App() {
                     <Text style={styles.settingItemTitle}>Support & Legal</Text>
                     <View style={styles.iconTextInlineRow}>
                       <Text style={styles.settingItemValue}>View</Text>
+                      <ChevronRightSVG color={theme.accent} size={16} />
+                    </View>
+                  </BouncyButton>
+
+                  <BouncyButton
+                    style={styles.settingItemRow}
+                    onPress={() => Linking.openURL('https://github.com/kabouls/decent-app')}
+                  >
+                    <Text style={styles.settingItemTitle}>Visit GitHub</Text>
+                    <View style={styles.iconTextInlineRow}>
+                      <GitHubIconSVG color={theme.textSecondary} size={16} />
                       <ChevronRightSVG color={theme.accent} size={16} />
                     </View>
                   </BouncyButton>
