@@ -64,3 +64,5 @@ Since this isn't distributed through the Play Store yet, Android's install promp
 Found a bug, want a feature, or just have thoughts? Reach out directly:
 
 - 📧 **Email:** [iputra07@gmail.com](mailto:iputra07@gmail.com)
+- 💼 **LinkedIn:** [Iqbal Aprianda Putra](https://www.linkedin.com/in/iqbal-putra-2220a11a5)
+- 💬 **Discord:** `@kabouls`

@@ -2396,7 +2396,50 @@ function App() {
   const [isOffline, setIsOffline] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [updateDownloading, setUpdateDownloading] = useState(false);
+  // Separate from updateAvailable above - that one is for OTA (JS-only)
+  // updates, applied in-app via handleApplyUpdate. This one is for real
+  // native rebuilds (new native modules, app.json changes, etc.) - those
+  // can't be applied in-app at all, the person has to actually leave and
+  // download/install a new APK, so this needs its own banner with its own
+  // "go download it" action instead of an in-app apply button.
+  const [nativeUpdateInfo, setNativeUpdateInfo] = useState(null); // { message, url } | null
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return; // web is always current - every deploy ships live, no separate install step exists to nag about
+    (async () => {
+      const { data, error } = await supabase
+        .from('app_config')
+        .select('latest_native_version, update_message, update_url')
+        .eq('id', 1)
+        .maybeSingle();
+      if (error || !data) return;
+
+      const installedVersion = Constants.expoConfig?.version || '0.0.0';
+      // Simple dotted-version compare (e.g. "0.2.0" vs "0.3.0") - this
+      // app's version scheme doesn't need full semver handling (no
+      // pre-release tags, no build metadata), just numeric segment
+      // comparison left to right.
+      const isOlder = (a, b) => {
+        const partsA = a.split('.').map(Number);
+        const partsB = b.split('.').map(Number);
+        for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+          const x = partsA[i] || 0;
+          const y = partsB[i] || 0;
+          if (x < y) return true;
+          if (x > y) return false;
+        }
+        return false;
+      };
+
+      if (isOlder(installedVersion, data.latest_native_version)) {
+        setNativeUpdateInfo({
+          message: data.update_message || 'A new version of DECENT is available.',
+          url: data.update_url || null
+        });
+      }
+    })();
+  }, []);
 
   const [externalLinkModalVisible, setExternalLinkModalVisible] = useState(false);
   const [targetExternalUrl, setTargetExternalUrl] = useState('');
@@ -7743,6 +7786,46 @@ function App() {
         </View>
       )}
 
+      {nativeUpdateInfo && (
+        <View style={{
+          position: 'absolute',
+          top: (isOffline ? 68 : 12) + (updateAvailable ? 56 : 0),
+          left: 16,
+          right: 16,
+          zIndex: 998,
+          backgroundColor: theme.surface,
+          borderWidth: 1,
+          borderColor: '#F59E0B',
+          borderRadius: 12,
+          paddingVertical: 10,
+          paddingHorizontal: 14,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          shadowColor: '#F59E0B',
+          shadowOpacity: 0.3,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 20
+        }}>
+          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', flex: 1 }}>{nativeUpdateInfo.message}</Text>
+          <BouncyButton
+            style={{ backgroundColor: '#F59E0B', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12 }}
+            onPress={() => {
+              if (nativeUpdateInfo.url) openExternalLinkWithWarning(nativeUpdateInfo.url);
+            }}
+          >
+            <Text style={{ color: '#1F1300', fontSize: 12, fontWeight: '700' }}>Download</Text>
+          </BouncyButton>
+          <BouncyButton
+            style={{ paddingVertical: 6, paddingHorizontal: 8 }}
+            onPress={() => setNativeUpdateInfo(null)}
+          >
+            <Text style={{ color: theme.textSecondary, fontSize: 16, fontWeight: '700' }}>✕</Text>
+          </BouncyButton>
+        </View>
+      )}
+
       {toastMessage && (
         <View style={{
           position: 'absolute',
@@ -8108,7 +8191,7 @@ function App() {
               <Text style={styles.logoText}>ECENT</Text>
             </View>
             <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>v0.280.0</Text>
+              <Text style={styles.versionText}>v0.281.0</Text>
             </View>
             {isAdmin && (
               <BouncyButton
@@ -10449,7 +10532,7 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.280.0</Text>
+                <Text style={{ color: theme.text, fontWeight: '800' }}> v0.281.0</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
                 DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
@@ -11640,7 +11723,7 @@ function App() {
 
                   <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v0.280.0</Text>
+                    <Text style={styles.settingItemValue}>v0.281.0</Text>
                   </BouncyButton>
 
                   {/* Contrast Donate Button at Very Bottom */}
