@@ -40,7 +40,7 @@ import {
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { WebView as NativeWebView } from 'react-native-webview';
 import { KeyboardAwareScrollView as NativeKeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import Svg, { Rect, Path, Circle, G } from 'react-native-svg';
+import Svg, { Rect, Path, Circle, G, Defs, LinearGradient, Stop } from 'react-native-svg';
 import qrcodeGenerator from 'qrcode-generator';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 327;
+const BUILD_NUMBER = 330;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -652,6 +652,43 @@ const QrFinderEye = ({ gridX, gridY, cellSize, color, backgroundColor }) => {
 // so switching between differently-sized tabs will snap-resize instantly
 // while still sliding smoothly, which is barely noticeable in practice for
 // a two-tab switcher used occasionally.
+// Tunable in one place, as requested - adjust these two and every card
+// watermark updates consistently. WATERMARK_OPACITY is the icon's overall
+// visibility (0 = invisible, 1 = fully solid). WATERMARK_FADE_WIDTH is how
+// much of the card's width the left-side fade-to-transparent covers (0.5 =
+// fades out over the left half, 1.0 = fades across the entire card).
+const WATERMARK_OPACITY = 0.5;
+const WATERMARK_FADE_WIDTH = 0.65;
+
+// Big, translucent version of a card's own category image as a background
+// watermark, fading to fully transparent toward the left side (where the
+// title/description text sits, so it stays legible) via a gradient overlay
+// rather than true alpha-masking on the image itself - simpler and more
+// predictable across platforms. The overlay's end color is the card's own
+// background color, not literal transparent, so it blends seamlessly with
+// whatever backgroundColor that specific card is using (the active UI/UX
+// card and the muted coming-soon cards use different colors) instead of
+// assuming one fixed background everywhere.
+const PortfolioTypeCardWatermark = ({ imageSource, cardBackgroundColor }) => (
+  <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
+    <Image
+      source={imageSource}
+      resizeMode="cover"
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: WATERMARK_OPACITY }}
+    />
+    <Svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+      <Defs>
+        <LinearGradient id="cardFadeGrad" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0" stopColor={cardBackgroundColor} stopOpacity="1" />
+          <Stop offset={WATERMARK_FADE_WIDTH} stopColor={cardBackgroundColor} stopOpacity="1" />
+          <Stop offset="1" stopColor={cardBackgroundColor} stopOpacity="0" />
+        </LinearGradient>
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill="url(#cardFadeGrad)" />
+    </Svg>
+  </View>
+);
+
 const AnimatedPillTabs = React.memo(({ tabs, activeKey, onChange, theme, themeMode, containerStyle }) => {
   const [tabWidths, setTabWidths] = useState({});
   const activeIndex = tabs.findIndex((t) => t.key === activeKey);
@@ -3364,7 +3401,6 @@ function App() {
   // to having the same option web has, just switchable rather than fixed.
   // Independent from portfolioLayoutMode above since it's a different
   // screen and shouldn't couple its state to Profile's own toggle.
-  const [forYouLayoutMode, setForYouLayoutMode] = useState('full'); // 'compact' | 'full'
   // Defaults to all 4 selected ("All Portfolios") - only ui_ux has real,
   // creatable portfolios right now, but the other 3 stay selectable here
   // too so the filter is already correct and complete the moment any of
@@ -9173,126 +9209,100 @@ function App() {
           {bottomNav === 'forYou' && (
             <View>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <View>
-                  <BouncyButton
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 5,
-                      paddingVertical: 5, paddingHorizontal: 10, borderRadius: 99,
-                      borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
-                    }}
-                    onPress={() => setForYouTypeFilterOpen((v) => !v)}
-                  >
-                    <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
-                      {forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length
-                        ? 'All Portfolios'
-                        : forYouTypeFilter.size === 0
-                          ? 'None Selected'
-                          : PORTFOLIO_TYPE_OPTIONS.filter((t) => forYouTypeFilter.has(t.key)).map((t) => t.label).join(', ')}
-                    </Text>
-                    <ChevronDownSVG color={theme.textSecondary} size={13} />
-                  </BouncyButton>
+              <View style={{ marginBottom: 10 }}>
+                <BouncyButton
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+                    paddingVertical: 5, paddingHorizontal: 10, borderRadius: 99,
+                    borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
+                  }}
+                  onPress={() => setForYouTypeFilterOpen((v) => !v)}
+                >
+                  <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
+                    {forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length
+                      ? 'All Portfolios'
+                      : forYouTypeFilter.size === 0
+                        ? 'None Selected'
+                        : PORTFOLIO_TYPE_OPTIONS.filter((t) => forYouTypeFilter.has(t.key)).map((t) => t.label).join(', ')}
+                  </Text>
+                  <ChevronDownSVG color={theme.textSecondary} size={13} />
+                </BouncyButton>
 
-                  {/* Dropdown panel - plain absolutely-positioned View rather
-                      than a full Modal, since it only needs to sit below its
-                      own trigger button and close on an outside tap, not
-                      escape into its own top-level layer the way a real
-                      modal would. */}
-                  {forYouTypeFilterOpen && (
-                    <>
-                      <TouchableOpacity
-                        style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
-                        activeOpacity={1}
-                        onPress={() => setForYouTypeFilterOpen(false)}
-                      />
-                      <View style={{
-                        position: 'absolute', top: 34, left: 0, width: 200, zIndex: 100,
-                        backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
-                        padding: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
-                      }}>
+                {/* Dropdown panel - plain absolutely-positioned View rather
+                    than a full Modal, since it only needs to sit below its
+                    own trigger button and close on an outside tap, not
+                    escape into its own top-level layer the way a real
+                    modal would. */}
+                {forYouTypeFilterOpen && (
+                  <>
+                    <TouchableOpacity
+                      style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
+                      activeOpacity={1}
+                      onPress={() => setForYouTypeFilterOpen(false)}
+                    />
+                    <View style={{
+                      position: 'absolute', top: 34, left: 0, width: 200, zIndex: 100,
+                      backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                      padding: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                    }}>
+                      <BouncyButton
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
+                        onPress={() => {
+                          setForYouTypeFilter((prev) =>
+                            prev.size === PORTFOLIO_TYPE_OPTIONS.length
+                              ? new Set()
+                              : new Set(PORTFOLIO_TYPE_OPTIONS.map((t) => t.key))
+                          );
+                        }}
+                      >
+                        <View style={{
+                          width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
+                          borderWidth: 1.5, borderColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? theme.accent : theme.border,
+                          backgroundColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? theme.accent : 'transparent'
+                        }}>
+                          {forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length && <CheckIconSVG color="#FFFFFF" />}
+                        </View>
+                        <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>All Portfolios</Text>
+                      </BouncyButton>
+
+                      <View style={{ height: 1, backgroundColor: theme.border, marginVertical: 4 }} />
+
+                      {PORTFOLIO_TYPE_OPTIONS.map((type) => (
                         <BouncyButton
+                          key={type.key}
                           style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
                           onPress={() => {
-                            setForYouTypeFilter((prev) =>
-                              prev.size === PORTFOLIO_TYPE_OPTIONS.length
-                                ? new Set()
-                                : new Set(PORTFOLIO_TYPE_OPTIONS.map((t) => t.key))
-                            );
+                            setForYouTypeFilter((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(type.key)) next.delete(type.key);
+                              else next.add(type.key);
+                              return next;
+                            });
                           }}
                         >
                           <View style={{
                             width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                            borderWidth: 1.5, borderColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? theme.accent : theme.border,
-                            backgroundColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? theme.accent : 'transparent'
+                            borderWidth: 1.5, borderColor: forYouTypeFilter.has(type.key) ? theme.accent : theme.border,
+                            backgroundColor: forYouTypeFilter.has(type.key) ? theme.accent : 'transparent'
                           }}>
-                            {forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length && <CheckIconSVG color="#FFFFFF" />}
+                            {forYouTypeFilter.has(type.key) && <CheckIconSVG color="#FFFFFF" />}
                           </View>
-                          <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>All Portfolios</Text>
+                          <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>{type.label}</Text>
                         </BouncyButton>
-
-                        <View style={{ height: 1, backgroundColor: theme.border, marginVertical: 4 }} />
-
-                        {PORTFOLIO_TYPE_OPTIONS.map((type) => (
-                          <BouncyButton
-                            key={type.key}
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
-                            onPress={() => {
-                              setForYouTypeFilter((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(type.key)) next.delete(type.key);
-                                else next.add(type.key);
-                                return next;
-                              });
-                            }}
-                          >
-                            <View style={{
-                              width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                              borderWidth: 1.5, borderColor: forYouTypeFilter.has(type.key) ? theme.accent : theme.border,
-                              backgroundColor: forYouTypeFilter.has(type.key) ? theme.accent : 'transparent'
-                            }}>
-                              {forYouTypeFilter.has(type.key) && <CheckIconSVG color="#FFFFFF" />}
-                            </View>
-                            <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>{type.label}</Text>
-                          </BouncyButton>
-                        ))}
-                      </View>
-                    </>
-                  )}
-                </View>
-
-                {Platform.OS !== 'web' && (
-                  <BouncyButton
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-                    onPress={() => setForYouLayoutMode(forYouLayoutMode === 'compact' ? 'full' : 'compact')}
-                  >
-                    <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
-                      {forYouLayoutMode === 'compact' ? 'Compact View' : 'Full Width View'}
-                    </Text>
-                    <LayoutToggleSVG mode={forYouLayoutMode} size={15} />
-                  </BouncyButton>
+                      ))}
+                    </View>
+                  </>
                 )}
               </View>
 
-              {forYouLayoutMode === 'compact' ? (
-                <TwoRowHorizontalGrid
-                  items={forYouCategoryFilteredProjects}
-                  onPress={openProjectModal}
-                  onToggleLike={toggleLike}
-                  onOpenDesignerProfile={openDesignerProfileById}
-                  onToggleFollow={toggleFollowDesigner}
-                  followedDesigners={followedDesigners}
-                  currentUserId={session ? session.user.id : null}
-                  styles={styles}
-                />
-              ) : (
-                <ProjectGrid
-                  items={forYouCategoryFilteredProjects}
-                  onPress={openProjectModal}
-                  onToggleLike={toggleLike}
-                  onOpenDesignerProfile={openDesignerProfileById}
-                  onToggleFollow={toggleFollowDesigner}
-                  followedDesigners={followedDesigners}
-                  currentUserId={session ? session.user.id : null}
+              <ProjectGrid
+                items={forYouCategoryFilteredProjects}
+                onPress={openProjectModal}
+                onToggleLike={toggleLike}
+                onOpenDesignerProfile={openDesignerProfileById}
+                onToggleFollow={toggleFollowDesigner}
+                followedDesigners={followedDesigners}
+                currentUserId={session ? session.user.id : null}
                 // For You specifically: mobile web stays single-column,
                 // tablet/desktop web default to the shared 2-column grid.
                 // Scoped to this one instance rather than changing
@@ -9303,8 +9313,7 @@ function App() {
                 styles={Platform.OS === 'web' && !isWebWide
                   ? { ...styles, grid: { gap: 20 }, card: { ...styles.card, width: '100%' } }
                   : styles}
-                />
-              )}
+              />
 
               {loadingMore && (
                 <View style={{ marginTop: 16, marginBottom: 24, alignSelf: 'center' }}>
@@ -13448,9 +13457,14 @@ function App() {
               style={{
                 width: isWebWide ? '48%' : '100%',
                 borderWidth: 1.5, borderColor: theme.accent, borderRadius: 14, padding: 16,
-                backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)'
+                backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)',
+                overflow: 'hidden'
               }}
             >
+              <PortfolioTypeCardWatermark
+                imageSource={require('./assets/card-images/card-ui-ux.jpg')}
+                cardBackgroundColor={themeMode === 'light' ? '#EDE9FE' : '#1a1330'}
+              />
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <CursorArrowSVG size={17} color={theme.accent} />
                 <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>UI/UX Design</Text>
@@ -13479,17 +13493,22 @@ function App() {
 
             {/* Graphic Design, Illustration, Frontend - coming soon */}
             {[
-              { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding, print, and visual design work.', icon: <PaletteSVG size={16} color={theme.textSecondary} /> },
-              { key: 'illustration', title: 'Illustration', desc: 'Digital art, character work, and illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} /> },
-              { key: 'frontend', title: 'Frontend Development', desc: 'Live, interactive code demos alongside your project source.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} /> }
+              { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding, print, and visual design work.', icon: <PaletteSVG size={16} color={theme.textSecondary} />, image: require('./assets/card-images/card-graphic-design.jpg') },
+              { key: 'illustration', title: 'Illustration', desc: 'Digital art, character work, and illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} />, image: require('./assets/card-images/card-illustration.jpg') },
+              { key: 'frontend', title: 'Frontend Development', desc: 'Live, interactive code demos alongside your project source.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} />, image: require('./assets/card-images/card-frontend.jpg') }
             ].map((type) => (
               <View
                 key={type.key}
                 style={{
                   width: isWebWide ? '48%' : '100%',
-                  borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 16
+                  borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 16,
+                  overflow: 'hidden'
                 }}
               >
+                <PortfolioTypeCardWatermark
+                  imageSource={type.image}
+                  cardBackgroundColor={theme.bg}
+                />
                 <View style={{ opacity: 0.5 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     {type.icon}
