@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 319;
+const BUILD_NUMBER = 320;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -597,6 +597,36 @@ const isQrFinderZone = (row, col, count) => {
   return false;
 };
 
+// Draws one finder-pattern "eye" as 3 nested rounded squares (7x7 outer
+// ring, 5x5 gap, 3x3 center) instead of rendering it cell-by-cell from the
+// raw bit matrix - that's what actually allows the corners to be rounded
+// cleanly as one shape rather than a cluster of individually-rounded tiny
+// grid cells, which would look messy rather than like a smooth rounded
+// square. The 7:5:3 nested proportions (the standard finder pattern ratio)
+// are preserved exactly, only the corners are softened - scanners key off
+// that ratio along their scan lines, not corner sharpness, so this stays
+// safe unlike making the eyes fully circular would be.
+const QrFinderEye = ({ gridX, gridY, cellSize, color, backgroundColor }) => {
+  const outerSize = cellSize * 7;
+  const outerRadius = outerSize * 0.22;
+  const gapInset = cellSize * 1;
+  const gapSize = outerSize - gapInset * 2;
+  const gapRadius = gapSize * 0.22;
+  const centerInset = cellSize * 2;
+  const centerSize = outerSize - centerInset * 2;
+  const centerRadius = centerSize * 0.28;
+  const x0 = gridX * cellSize;
+  const y0 = gridY * cellSize;
+
+  return (
+    <>
+      <Rect x={x0} y={y0} width={outerSize} height={outerSize} rx={outerRadius} fill={color} />
+      <Rect x={x0 + gapInset} y={y0 + gapInset} width={gapSize} height={gapSize} rx={gapRadius} fill={backgroundColor} />
+      <Rect x={x0 + centerInset} y={y0 + centerInset} width={centerSize} height={centerSize} rx={centerRadius} fill={color} />
+    </>
+  );
+};
+
 // Renders a QR code with circular data dots instead of the default square
 // modules, using qrcode-generator (a pure-JS, zero-dependency encoder - no
 // native/canvas code, verified before adding) for the actual bit matrix,
@@ -707,36 +737,29 @@ const CircularQRCode = React.memo(React.forwardRef(({ value, size = 160, color =
   const { grid, count } = matrix;
   const cellSize = size / count;
 
-  const squares = [];
   const dots = [];
 
   for (let row = 0; row < count; row++) {
     for (let col = 0; col < count; col++) {
       if (!grid[row][col]) continue;
-      if (isQrFinderZone(row, col, count)) {
-        squares.push(
-          <Rect
-            key={`f-${row}-${col}`}
-            x={col * cellSize}
-            y={row * cellSize}
-            width={cellSize}
-            height={cellSize}
-            fill={color}
-          />
-        );
-      } else {
-        dots.push(
-          <Circle
-            key={`d-${row}-${col}`}
-            cx={col * cellSize + cellSize / 2}
-            cy={row * cellSize + cellSize / 2}
-            r={cellSize * 0.42}
-            fill={color}
-          />
-        );
-      }
+      if (isQrFinderZone(row, col, count)) continue; // drawn separately below as 3 clean eye shapes
+      dots.push(
+        <Circle
+          key={`d-${row}-${col}`}
+          cx={col * cellSize + cellSize / 2}
+          cy={row * cellSize + cellSize / 2}
+          r={cellSize * 0.42}
+          fill={color}
+        />
+      );
     }
   }
+
+  const eyePositions = [
+    { gridX: 0, gridY: 0 },
+    { gridX: count - 7, gridY: 0 },
+    { gridX: 0, gridY: count - 7 }
+  ];
 
   // Logo is drawn INSIDE this same <Svg> tree (not a separately overlaid
   // element) specifically so native's svg.toDataURL() export - which can
@@ -752,8 +775,10 @@ const CircularQRCode = React.memo(React.forwardRef(({ value, size = 160, color =
   return (
     <Svg ref={ref} width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <Rect x={0} y={0} width={size} height={size} fill={backgroundColor} />
-      {squares}
       {dots}
+      {eyePositions.map((pos, i) => (
+        <QrFinderEye key={`eye-${i}`} gridX={pos.gridX} gridY={pos.gridY} cellSize={cellSize} color={color} backgroundColor={backgroundColor} />
+      ))}
       {showLogo && (
         <>
           <Rect
@@ -4830,6 +4855,22 @@ function App() {
     canvas.height = size;
     const ctx = canvas.getContext('2d');
 
+    // Small local helper matching the moveTo/arcTo rounded-rect technique
+    // already used below for the logo badge - reused here for the finder
+    // eyes so both share one drawing approach instead of two different
+    // rounding techniques living side by side in the same function.
+    const fillRoundedRect = (x, y, w, h, r, fillColor) => {
+      ctx.fillStyle = fillColor;
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+      ctx.fill();
+    };
+
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, size, size);
 
@@ -4837,17 +4878,31 @@ function App() {
     for (let row = 0; row < count; row++) {
       for (let col = 0; col < count; col++) {
         if (!grid[row][col]) continue;
-        if (isQrFinderZone(row, col, count)) {
-          ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
-        } else {
-          const cx = col * cellSize + cellSize / 2;
-          const cy = row * cellSize + cellSize / 2;
-          ctx.beginPath();
-          ctx.arc(cx, cy, cellSize * 0.42, 0, Math.PI * 2);
-          ctx.fill();
-        }
+        if (isQrFinderZone(row, col, count)) continue; // drawn separately below as 3 clean rounded eye shapes
+        const cx = col * cellSize + cellSize / 2;
+        const cy = row * cellSize + cellSize / 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, cellSize * 0.42, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
+
+    // Same 7:5:3 nested-rounded-square proportions as QrFinderEye (the SVG
+    // version used for on-screen preview and native export) - kept in sync
+    // manually since Canvas2D and react-native-svg are two different
+    // drawing APIs that can't literally share the same component.
+    [[0, 0], [count - 7, 0], [0, count - 7]].forEach(([gridX, gridY]) => {
+      const x0 = gridX * cellSize;
+      const y0 = gridY * cellSize;
+      const outerSize = cellSize * 7;
+      fillRoundedRect(x0, y0, outerSize, outerSize, outerSize * 0.22, '#8B5CF6');
+      const gapInset = cellSize;
+      const gapSize = outerSize - gapInset * 2;
+      fillRoundedRect(x0 + gapInset, y0 + gapInset, gapSize, gapSize, gapSize * 0.22, '#FFFFFF');
+      const centerInset = cellSize * 2;
+      const centerSize = outerSize - centerInset * 2;
+      fillRoundedRect(x0 + centerInset, y0 + centerInset, centerSize, centerSize, centerSize * 0.28, '#8B5CF6');
+    });
 
     // Logo badge - same proportions (0.21 badge, 0.64 icon-within-badge,
     // 0.27 corner radius) as CircularQRCode's own showLogo rendering, kept
