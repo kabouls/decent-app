@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 315;
+const BUILD_NUMBER = 316;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -2915,8 +2915,14 @@ function App() {
   const prevThemeModeRef = useRef(themeMode);
 
   const [userListModalVisible, setUserListModalVisible] = useState(false);
-  const [userListTitle, setUserListTitle] = useState('');
   const [userListItems, setUserListItems] = useState([]);
+  // Which designer's followers/following this modal is currently showing -
+  // separate from userListTitle (a display string) so switching tabs can
+  // refetch the OTHER list for the SAME person without needing to parse
+  // that back out of a "Followers of X" / "X is Following" string.
+  const [userListTargetDesigner, setUserListTargetDesigner] = useState(null);
+  const [userListTab, setUserListTab] = useState('followers'); // 'followers' | 'following'
+  const [userListLoading, setUserListLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState('case');
   const [loadingWebView, setLoadingWebView] = useState(true);
@@ -5862,17 +5868,20 @@ function App() {
     setEditLinks(updated);
   };
 
-  const openFollowersModal = async (designer) => {
-    setUserListTitle(`Followers of ${designer.name}`);
+  const fetchUserListTab = async (designer, tab) => {
+    setUserListLoading(true);
     setUserListItems([]);
-    setUserListModalVisible(true);
-    if (!designer.id) return;
-    const { data, error } = await supabase
-      .from('follows')
-      .select('follower_id, profiles!follows_follower_id_fkey(id, name, role, avatar_url, handle)')
-      .eq('following_id', designer.id);
+    if (!designer.id) {
+      setUserListLoading(false);
+      return;
+    }
+    const query = tab === 'followers'
+      ? supabase.from('follows').select('follower_id, profiles!follows_follower_id_fkey(id, name, role, avatar_url, handle)').eq('following_id', designer.id)
+      : supabase.from('follows').select('following_id, profiles!follows_following_id_fkey(id, name, role, avatar_url, handle)').eq('follower_id', designer.id);
+    const { data, error } = await query;
+    setUserListLoading(false);
     if (error) {
-      console.warn('Failed to fetch followers:', error);
+      console.warn(`Failed to fetch ${tab}:`, error);
       return;
     }
     const mapped = (data || [])
@@ -5888,30 +5897,23 @@ function App() {
     setUserListItems(mapped);
   };
 
-  const openFollowingModal = async (designer) => {
-    setUserListTitle(`${designer.name} is Following`);
-    setUserListItems([]);
+  const handleSwitchUserListTab = (tab) => {
+    setUserListTab(tab);
+    fetchUserListTab(userListTargetDesigner, tab);
+  };
+
+  const openFollowersModal = async (designer) => {
+    setUserListTargetDesigner(designer);
+    setUserListTab('followers');
     setUserListModalVisible(true);
-    if (!designer.id) return;
-    const { data, error } = await supabase
-      .from('follows')
-      .select('following_id, profiles!follows_following_id_fkey(id, name, role, avatar_url, handle)')
-      .eq('follower_id', designer.id);
-    if (error) {
-      console.warn('Failed to fetch following:', error);
-      return;
-    }
-    const mapped = (data || [])
-      .filter((r) => r.profiles)
-      .map((r) => ({
-        id: r.profiles.id,
-        name: r.profiles.name,
-        role: r.profiles.role || '',
-        avatar: r.profiles.avatar_url || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
-        handle: r.profiles.handle || '',
-        followsMe: false
-      }));
-    setUserListItems(mapped);
+    fetchUserListTab(designer, 'followers');
+  };
+
+  const openFollowingModal = async (designer) => {
+    setUserListTargetDesigner(designer);
+    setUserListTab('following');
+    setUserListModalVisible(true);
+    fetchUserListTab(designer, 'following');
   };
 
   // Passed as `onPress` into every ProjectCard in every grid across the
@@ -15474,12 +15476,38 @@ function App() {
             onResponderRelease={() => {}}
           >
             <View style={styles.modalTopBar}>
-              <Text style={styles.modalTopTitle}>{userListTitle}</Text>
+              <Text style={styles.modalTopTitle}>{userListTargetDesigner ? userListTargetDesigner.name : ''}</Text>
               <BouncyButton style={styles.closeBtn} onPress={() => setUserListModalVisible(false)}>
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
             </View>
 
+            <View style={{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: 99, padding: 4, marginHorizontal: 16, marginTop: 12 }}>
+              <BouncyButton
+                style={{ flex: 1, paddingVertical: 9, borderRadius: 99, alignItems: 'center', backgroundColor: userListTab === 'followers' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
+                onPress={() => handleSwitchUserListTab('followers')}
+              >
+                <Text style={{ color: userListTab === 'followers' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 13 }}>Followers</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={{ flex: 1, paddingVertical: 9, borderRadius: 99, alignItems: 'center', backgroundColor: userListTab === 'following' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
+                onPress={() => handleSwitchUserListTab('following')}
+              >
+                <Text style={{ color: userListTab === 'following' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 13 }}>Following</Text>
+              </BouncyButton>
+            </View>
+
+            {userListLoading ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator color={theme.accent} />
+              </View>
+            ) : userListItems.length === 0 ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
+                  {userListTab === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}
+                </Text>
+              </View>
+            ) : (
             <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
               {userListItems.map((usr) => {
                 const isFollowing = followedDesigners.includes(usr.id);
@@ -15512,6 +15540,7 @@ function App() {
                 );
               })}
             </ScrollView>
+            )}
           </SafeAreaView>
         </View>
       </Modal>
