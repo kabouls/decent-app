@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 330;
+const BUILD_NUMBER = 331;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -652,35 +652,44 @@ const QrFinderEye = ({ gridX, gridY, cellSize, color, backgroundColor }) => {
 // so switching between differently-sized tabs will snap-resize instantly
 // while still sliding smoothly, which is barely noticeable in practice for
 // a two-tab switcher used occasionally.
-// Tunable in one place, as requested - adjust these two and every card
-// watermark updates consistently. WATERMARK_OPACITY is the icon's overall
-// visibility (0 = invisible, 1 = fully solid). WATERMARK_FADE_WIDTH is how
-// much of the card's width the left-side fade-to-transparent covers (0.5 =
-// fades out over the left half, 1.0 = fades across the entire card).
-const WATERMARK_OPACITY = 0.5;
-const WATERMARK_FADE_WIDTH = 0.65;
+// Tunable in one place, as requested - adjust these and every card
+// watermark updates consistently.
+// WATERMARK_OPACITY: the image's own overall visibility (0 = invisible, 1 = fully solid).
+// WATERMARK_LEFT_EDGE_OVERLAY: how strongly the overlay covers the image at
+//   the very left edge of the card (0 = image fully visible even at the
+//   left edge, 1 = completely hidden there). Lower this to keep more of the
+//   image visible on the left side rather than a hard cutoff.
+// WATERMARK_BLUR_RADIUS: slight blur on the image itself, via Image's own
+//   built-in blurRadius prop - no new dependency, works cross-platform.
+// The gradient itself is a single smooth 2-stop fade (left edge to right
+// edge) rather than the previous 3-stop "flat plateau then fast fade" -
+// that's what was making the left side completely disappear instead of
+// just gradually thinning out.
+const WATERMARK_OPACITY = 0.7;
+const WATERMARK_LEFT_EDGE_OVERLAY = 0.55;
+const WATERMARK_BLUR_RADIUS = 3;
 
 // Big, translucent version of a card's own category image as a background
-// watermark, fading to fully transparent toward the left side (where the
-// title/description text sits, so it stays legible) via a gradient overlay
-// rather than true alpha-masking on the image itself - simpler and more
-// predictable across platforms. The overlay's end color is the card's own
-// background color, not literal transparent, so it blends seamlessly with
-// whatever backgroundColor that specific card is using (the active UI/UX
-// card and the muted coming-soon cards use different colors) instead of
-// assuming one fixed background everywhere.
+// watermark, fading toward the left side (where the title/description text
+// sits, so it stays legible) via a gradient overlay rather than true
+// alpha-masking on the image itself - simpler and more predictable across
+// platforms. The overlay's color is the card's own background color, not
+// literal transparent, so it blends seamlessly with whatever
+// backgroundColor that specific card is using (the active UI/UX card and
+// the muted coming-soon cards use different colors) instead of assuming
+// one fixed background everywhere.
 const PortfolioTypeCardWatermark = ({ imageSource, cardBackgroundColor }) => (
   <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
     <Image
       source={imageSource}
       resizeMode="cover"
+      blurRadius={WATERMARK_BLUR_RADIUS}
       style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: WATERMARK_OPACITY }}
     />
     <Svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
       <Defs>
         <LinearGradient id="cardFadeGrad" x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0" stopColor={cardBackgroundColor} stopOpacity="1" />
-          <Stop offset={WATERMARK_FADE_WIDTH} stopColor={cardBackgroundColor} stopOpacity="1" />
+          <Stop offset="0" stopColor={cardBackgroundColor} stopOpacity={WATERMARK_LEFT_EDGE_OVERLAY} />
           <Stop offset="1" stopColor={cardBackgroundColor} stopOpacity="0" />
         </LinearGradient>
       </Defs>
