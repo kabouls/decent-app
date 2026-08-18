@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 311;
+const BUILD_NUMBER = 315;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -479,8 +479,20 @@ const CodeBracketsSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
 
 const PaintBrushSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M18.37 2.63L14 7l-1.37-1.37a1 1 0 0 0-1.41 0L9.85 7 15 12.15l1.37-1.37a1 1 0 0 0 0-1.41L15 8l4.37-4.37a1 1 0 0 0 0-1.41l-.59-.59a1 1 0 0 0-1.41 0z" fill={color} />
-    <Path d="M9.85 7L2.68 14.17a1.5 1.5 0 0 0-.39.65L1 20l5.18-1.29a1.5 1.5 0 0 0 .65-.39L14 11.15" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Path
+      d="M7 17c-1.1 0-2 .9-2 2s-1 3-3 3c2.5 0 5-1 5-4 0-.55.45-1 1-1s1 .45 1 1c0 2 1.5 3 3 3 2 0 3-1.5 3-3.5 0-.83-.34-1.58-.88-2.12L9.6 10.9"
+      stroke={color}
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M9.6 10.9L18 2.5c.83-.83 2.17-.83 3 0s.83 2.17 0 3L12.6 14"
+      stroke={color}
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </Svg>
 ));
 
@@ -7264,6 +7276,7 @@ function App() {
   const [selectedPortfolioType, setSelectedPortfolioType] = useState('ui_ux');
   const [myFeatureInterests, setMyFeatureInterests] = useState(new Set());
   const [interestConfirmTarget, setInterestConfirmTarget] = useState(null); // feature_name string, or null if no confirm popup showing
+  const [interestConfirmMode, setInterestConfirmMode] = useState('add'); // 'add' | 'remove' - which action interestConfirmTarget is for
 
   // Fetched once per session (not re-fetched every time the type-select
   // step opens) so returning to it repeatedly in one sitting doesn't
@@ -7286,8 +7299,29 @@ function App() {
 
   const handleConfirmFeatureInterest = async () => {
     const featureName = interestConfirmTarget;
+    const mode = interestConfirmMode;
     setInterestConfirmTarget(null);
     if (!featureName || !session) return;
+
+    if (mode === 'remove') {
+      const { error } = await supabase
+        .from('feature_interest')
+        .delete()
+        .eq('user_id', session.user.id)
+        .eq('feature_name', featureName);
+      if (error) {
+        showToast('Could not remove interest - try again.');
+        return;
+      }
+      setMyFeatureInterests((prev) => {
+        const next = new Set(prev);
+        next.delete(featureName);
+        return next;
+      });
+      showToast("You're off the list for this one.");
+      return;
+    }
+
     // Insert is expected to occasionally hit the unique(user_id,
     // feature_name) constraint if this somehow fires twice (e.g. a fast
     // double-tap before state updates) - that's fine, treat it as success
@@ -9422,7 +9456,7 @@ function App() {
                       position: 'absolute',
                       top: 4, bottom: 4, left: 4,
                       width: (profileTabBarWidth - 12) / 2,
-                      borderRadius: 8,
+                      borderRadius: 99,
                       backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
                       transform: [{
                         translateX: profileTabSlideAnim.interpolate({
@@ -11874,9 +11908,9 @@ function App() {
                   Hi, I'm Iqbal — a UI/UX designer focused on Figma prototyping and clean handovers for HR and dev teams. I built DECENT to give designers a simple place to showcase real, interactive portfolios instead of static screenshots. If it's been useful to you, a donation helps keep it running and improving.
                 </Text>
 
-                <View style={{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: 12, padding: 4, marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: 99, padding: 4, marginBottom: 16 }}>
                   <BouncyButton
-                    style={{ flex: 1, paddingVertical: 10, borderRadius: 9, alignItems: 'center', backgroundColor: donateRegion === 'id' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
+                    style={{ flex: 1, paddingVertical: 10, borderRadius: 99, alignItems: 'center', backgroundColor: donateRegion === 'id' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
                     onPress={() => setDonateRegion('id')}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
@@ -11885,7 +11919,7 @@ function App() {
                     </View>
                   </BouncyButton>
                   <BouncyButton
-                    style={{ flex: 1, paddingVertical: 10, borderRadius: 9, alignItems: 'center', backgroundColor: donateRegion === 'intl' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
+                    style={{ flex: 1, paddingVertical: 10, borderRadius: 99, alignItems: 'center', backgroundColor: donateRegion === 'intl' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
                     onPress={() => setDonateRegion('intl')}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
@@ -12871,7 +12905,7 @@ function App() {
                       position: 'absolute',
                       top: 4, bottom: 4, left: 4,
                       width: (designerProfileTabBarWidth - 12) / 2,
-                      borderRadius: 8,
+                      borderRadius: 99,
                       backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
                       transform: [{
                         translateX: designerProfileTabSlideAnim.interpolate({
@@ -13004,7 +13038,7 @@ function App() {
         >
           <View
             style={isWebWide
-              ? { width: '100%', maxWidth: wizardModalWidth, maxHeight: Math.min(880, Dimensions.get('window').height - 48), borderRadius: 20, overflow: 'hidden', backgroundColor: theme.bg }
+              ? { width: '100%', maxWidth: wizardModalWidth, height: Math.min(880, Dimensions.get('window').height - 48), borderRadius: 20, overflow: 'hidden', backgroundColor: theme.bg }
               : { flex: 1, width: '100%' }}
             onStartShouldSetResponder={() => Platform.OS === 'web'}
             onResponderRelease={() => {}}
@@ -13065,7 +13099,7 @@ function App() {
             {[
               { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding, print, and visual design work.', icon: <PaletteSVG size={16} color={theme.textSecondary} /> },
               { key: 'illustration', title: 'Illustration', desc: 'Digital art, character work, and illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} /> },
-              { key: 'frontend', title: 'Frontend Development', desc: 'Live code demos via CodeSandbox/StackBlitz, plus your GitHub repo.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} /> }
+              { key: 'frontend', title: 'Frontend Development', desc: 'Live, interactive code demos alongside your project source.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} /> }
             ].map((type) => (
               <View
                 key={type.key}
@@ -13102,8 +13136,8 @@ function App() {
                     backgroundColor: myFeatureInterests.has(type.key) ? 'rgba(16,185,129,0.1)' : 'transparent'
                   }}
                   onPress={() => {
-                    if (myFeatureInterests.has(type.key)) return;
                     if (!requireAuth()) return;
+                    setInterestConfirmMode(myFeatureInterests.has(type.key) ? 'remove' : 'add');
                     setInterestConfirmTarget(type.key);
                   }}
                 >
@@ -13141,9 +13175,11 @@ function App() {
             <View style={styles.confirmIconCircle}>
               <BellOutlineSVG size={22} color={theme.accent} />
             </View>
-            <Text style={styles.confirmTitle}>Register Interest?</Text>
+            <Text style={styles.confirmTitle}>{interestConfirmMode === 'remove' ? 'Remove Interest?' : 'Register Interest?'}</Text>
             <Text style={styles.confirmSubText}>
-              This ties your account to this feature so we know real demand exists before building it - not anonymous. We may reach out with a short survey (e.g. which tools you'd want supported). See Privacy Policy for details.
+              {interestConfirmMode === 'remove'
+                ? "You'll be taken off the list for this feature. You can always register interest again later if you change your mind."
+                : "This ties your account to this feature so we know real demand exists before building it - not anonymous. We may reach out with a short survey (e.g. which tools you'd want supported). See Privacy Policy for details."}
             </Text>
             <View style={[styles.confirmActionsRow, { justifyContent: 'flex-end' }]}>
               <BouncyButton
@@ -13158,7 +13194,7 @@ function App() {
               >
                 <View style={styles.iconTextInlineRow}>
                   <CheckIconSVG color="#FFFFFF" />
-                  <Text style={styles.confirmDeleteText}>Yes, I'm Interested</Text>
+                  <Text style={styles.confirmDeleteText}>{interestConfirmMode === 'remove' ? 'Yes, Remove Me' : "Yes, I'm Interested"}</Text>
                 </View>
               </BouncyButton>
             </View>
@@ -15307,15 +15343,15 @@ function App() {
                     downloads - both branches source from the exact same
                     URL/component used by the download handlers below, so
                     preview and downloaded file can never drift apart. */}
-                <View style={{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: 10, padding: 3, width: 180, marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: 99, padding: 3, width: 180, marginBottom: 10 }}>
                   <BouncyButton
-                    style={{ flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center', backgroundColor: qrPreviewMode === 'plain' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
+                    style={{ paddingVertical: 7, paddingHorizontal: 10, borderRadius: 99, alignItems: 'center', backgroundColor: qrPreviewMode === 'plain' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
                     onPress={() => setQrPreviewMode('plain')}
                   >
                     <Text style={{ color: qrPreviewMode === 'plain' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>Plain QR</Text>
                   </BouncyButton>
                   <BouncyButton
-                    style={{ flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center', backgroundColor: qrPreviewMode === 'decent' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
+                    style={{ flex: 1, paddingVertical: 7, borderRadius: 99, alignItems: 'center', backgroundColor: qrPreviewMode === 'decent' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
                     onPress={() => setQrPreviewMode('decent')}
                   >
                     <Text style={{ color: qrPreviewMode === 'decent' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>DECENT Style</Text>
@@ -15339,6 +15375,10 @@ function App() {
                     />
                   )}
                 </View>
+
+                <Text style={{ color: theme.textSecondary, fontSize: 11, textAlign: 'center', marginTop: 8, maxWidth: 220 }}>
+                  Tip: add this to your resume or business card so people can pull up your portfolio instantly.
+                </Text>
 
                 <BouncyButton
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 16, marginTop: 10, borderRadius: 10, borderWidth: 1, borderColor: theme.border }}
@@ -15840,10 +15880,10 @@ const getStyles = (theme) => StyleSheet.create({
   cardFollowBtnTextActive: { color: theme.accent },
 
   profileTabsBar: {
-    flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 12, padding: 4,
+    flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 99, padding: 4,
     marginVertical: 20, borderWidth: 1, borderColor: theme.border, gap: 4
   },
-  profileTabBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
+  profileTabBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 99 },
   profileTabBtnActive: { backgroundColor: '#8B5CF6' },
   profileTabBtnText: { fontSize: 12, color: theme.textSecondary, fontWeight: '700' },
   profileTabBtnTextActive: { color: '#FFFFFF' },
