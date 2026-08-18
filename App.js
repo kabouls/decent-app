@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 308;
+const BUILD_NUMBER = 310;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -13004,26 +13004,43 @@ function App() {
           </View>
 
           <View style={{ flex: 1, padding: 20, gap: 8 }}>
-            {/* UI/UX - the only functional type right now */}
-            <BouncyButton
+            {/* UI/UX - the only functional type right now. Whole-card tap
+                removed in favor of an explicit Continue button, matching
+                how the coming-soon cards below only have their own inner
+                button as the actionable element - consistent interaction
+                model across all 4 cards instead of "tap anywhere" on just
+                this one. */}
+            <View
               style={{
                 borderWidth: 1.5, borderColor: theme.accent, borderRadius: 14, padding: 16,
                 backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)'
-              }}
-              onPress={() => {
-                setSelectedPortfolioType('ui_ux');
-                proceedToPortfolioWizard();
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <CursorArrowSVG size={17} color={theme.accent} />
                 <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>UI/UX Design</Text>
-                <FigmaLogoSVG />
               </View>
-              <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16 }}>
+              <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 10 }}>
                 App and web design work, with interactive Figma prototype embeds.
               </Text>
-            </BouncyButton>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <FigmaLogoSVG />
+                <BouncyButton
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 4,
+                    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10,
+                    backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                  }}
+                  onPress={() => {
+                    setSelectedPortfolioType('ui_ux');
+                    proceedToPortfolioWizard();
+                  }}
+                >
+                  <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
+                  <ChevronRightSVG color="#FFFFFF" size={15} />
+                </BouncyButton>
+              </View>
+            </View>
 
             {/* Graphic Design, Illustration, Frontend - coming soon */}
             {[
@@ -13039,8 +13056,8 @@ function App() {
               >
                 <View style={{ opacity: 0.5 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>{type.title}</Text>
                     {type.icon}
+                    <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>{type.title}</Text>
                   </View>
                   <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 6 }}>
                     {type.desc}
@@ -13052,11 +13069,15 @@ function App() {
 
                 {/* Deliberately outside the opacity:0.5 View above - stays
                     fully visible/normal opacity so it doesn't read as
-                    disabled along with everything else on the card. */}
+                    disabled along with everything else on the card. Same
+                    hug-content, right-aligned placement as the UI/UX card's
+                    Continue button above, for a consistent "action sits
+                    bottom-right under the description" pattern across all
+                    4 cards. */}
                 <BouncyButton
                   style={{
-                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                    paddingVertical: 8, borderRadius: 10, marginTop: 8,
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-end',
+                    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, marginTop: 8,
                     borderWidth: 1, borderColor: myFeatureInterests.has(type.key) ? '#10B981' : theme.accent,
                     backgroundColor: myFeatureInterests.has(type.key) ? 'rgba(16,185,129,0.1)' : 'transparent'
                   }}
