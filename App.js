@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 326;
+const BUILD_NUMBER = 327;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -9235,7 +9235,7 @@ function App() {
                         {PORTFOLIO_TYPE_OPTIONS.map((type) => (
                           <BouncyButton
                             key={type.key}
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 10 }}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
                             onPress={() => {
                               setForYouTypeFilter((prev) => {
                                 const next = new Set(prev);
@@ -10786,7 +10786,7 @@ function App() {
               >
                 <BouncyButton
                   style={{
-                    width: 44, height: 44, borderRadius: 12,
+                    width: 44, height: 44, borderRadius: 99,
                     backgroundColor: '#FFFFFF',
                     borderWidth: 1.5, borderColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
                     alignItems: 'center', justifyContent: 'center',
@@ -13454,25 +13454,27 @@ function App() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <CursorArrowSVG size={17} color={theme.accent} />
                 <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>UI/UX Design</Text>
-                <FigmaLogoSVG />
               </View>
               <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 10 }}>
                 App and web design work, with interactive Figma prototype embeds.
               </Text>
-              <BouncyButton
-                style={{
-                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, alignSelf: 'flex-end',
-                  paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, marginTop: 8,
-                  backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
-                }}
-                onPress={() => {
-                  setSelectedPortfolioType('ui_ux');
-                  proceedToPortfolioWizard();
-                }}
-              >
-                <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
-                <ChevronRightSVG color="#FFFFFF" size={15} />
-              </BouncyButton>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <FigmaLogoSVG />
+                <BouncyButton
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+                    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99,
+                    backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                  }}
+                  onPress={() => {
+                    setSelectedPortfolioType('ui_ux');
+                    proceedToPortfolioWizard();
+                  }}
+                >
+                  <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
+                  <ChevronRightSVG color="#FFFFFF" size={15} />
+                </BouncyButton>
+              </View>
             </View>
 
             {/* Graphic Design, Illustration, Frontend - coming soon */}
@@ -13511,7 +13513,7 @@ function App() {
                 <BouncyButton
                   style={{
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-end',
-                    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, marginTop: 8,
+                    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
                     borderWidth: 1, borderColor: myFeatureInterests.has(type.key) ? '#10B981' : theme.accent,
                     backgroundColor: myFeatureInterests.has(type.key) ? 'rgba(16,185,129,0.1)' : 'transparent'
                   }}
@@ -14100,7 +14102,7 @@ function App() {
                                   {MARKDOWN_TOOLBAR_BUTTONS.map((btn) => (
                                     <BouncyButton
                                       key={btn.label}
-                                      style={{ backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12 }}
+                                      style={{ backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 }}
                                       onPress={() => applyMarkdownToBlock(block.id, btn)}
                                     >
                                       <Text style={{
@@ -14239,7 +14241,7 @@ function App() {
                                             {MARKDOWN_TOOLBAR_BUTTONS.map((btn) => (
                                               <BouncyButton
                                                 key={btn.label}
-                                                style={{ flex: 1, marginRight: 3, alignItems: 'center', backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 6, paddingVertical: 5 }}
+                                                style={{ flex: 1, marginRight: 3, alignItems: 'center', backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingVertical: 5 }}
                                                 onPress={() => applyMarkdownToRowColumn(block.id, colIdx, btn)}
                                               >
                                                 <Text style={{
