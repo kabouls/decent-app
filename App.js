@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 321;
+const BUILD_NUMBER = 322;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -12025,7 +12025,7 @@ function App() {
                 />
               )
             )}
-          <SafeAreaView style={[styles.overlayModalContainer, { maxHeight: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}
+          <SafeAreaView style={[styles.overlayModalContainer, { height: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, maxHeight: undefined, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
