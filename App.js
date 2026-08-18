@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 318;
+const BUILD_NUMBER = 319;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -602,6 +602,96 @@ const isQrFinderZone = (row, col, count) => {
 // native/canvas code, verified before adding) for the actual bit matrix,
 // then drawing it manually with react-native-svg (already a dependency).
 // The 3 corner finder patterns are deliberately kept as solid squares
+// Reusable animated pill tab-switcher - same spring-slide mechanism as the
+// original Portfolios/Liked Portfolios tab (profileTabSlideAnim), pulled
+// out into one component so all the app's other tab switches (previously
+// plain conditional-background, no motion) can share it instead of each
+// having its own hand-rolled copy. Each tab's width is measured
+// individually via its own onLayout rather than dividing the container
+// evenly, so this correctly supports both uniform-width tab sets and
+// intentionally asymmetric ones (e.g. a "hug content" tab next to a
+// "flex:1" one) without needing separate code paths for each case. Width
+// itself isn't animated (React Native's native driver can't animate layout
+// properties, only transform/opacity) - only horizontal position slides,
+// so switching between differently-sized tabs will snap-resize instantly
+// while still sliding smoothly, which is barely noticeable in practice for
+// a two-tab switcher used occasionally.
+const AnimatedPillTabs = React.memo(({ tabs, activeKey, onChange, theme, themeMode, containerStyle }) => {
+  const [tabWidths, setTabWidths] = useState({});
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const prevActiveKeyRef = useRef(activeKey);
+  const activeIndex = tabs.findIndex((t) => t.key === activeKey);
+
+  useEffect(() => {
+    if (prevActiveKeyRef.current === activeKey) return;
+    prevActiveKeyRef.current = activeKey;
+    Animated.spring(slideAnim, {
+      toValue: activeIndex,
+      useNativeDriver: true,
+      speed: 20,
+      bounciness: 6
+    }).start();
+  }, [activeKey]);
+
+  const allWidthsKnown = tabs.length > 0 && tabs.every((t) => tabWidths[t.key] > 0);
+  const offsets = [];
+  let cumulative = 4; // starting inset matches the container's own padding:4
+  for (let i = 0; i < tabs.length; i++) {
+    offsets.push(cumulative);
+    cumulative += (tabWidths[tabs[i].key] || 0);
+  }
+
+  return (
+    <View style={[{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: 99, padding: 4 }, containerStyle]}>
+      {allWidthsKnown && (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: 4, bottom: 4,
+            width: tabWidths[tabs[activeIndex].key],
+            borderRadius: 99,
+            backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+            transform: [{
+              translateX: tabs.length > 1
+                ? slideAnim.interpolate({ inputRange: tabs.map((_, i) => i), outputRange: offsets })
+                : offsets[0]
+            }]
+          }}
+        />
+      )}
+      {tabs.map((tab) => (
+        <BouncyButton
+          key={tab.key}
+          style={[tab.flex === false ? {} : { flex: 1 }, { paddingVertical: 9, paddingHorizontal: tab.flex === false ? 10 : 0, alignItems: 'center' }]}
+          onLayout={(e) => {
+            const w = e.nativeEvent.layout.width;
+            setTabWidths((prev) => (prev[tab.key] === w ? prev : { ...prev, [tab.key]: w }));
+          }}
+          onPress={() => onChange(tab.key)}
+        >
+          {tab.icon ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
+              {tab.icon(activeKey === tab.key ? '#FFFFFF' : theme.textSecondary)}
+              <Text style={{ color: activeKey === tab.key ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12.5 }}>
+                {tab.label}
+              </Text>
+            </View>
+          ) : (
+            <Text style={{ color: activeKey === tab.key ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12.5 }}>
+              {tab.label}
+            </Text>
+          )}
+        </BouncyButton>
+      ))}
+    </View>
+  );
+});
+
+// Renders a QR code with circular data dots instead of the default square
+// modules, using qrcode-generator (a pure-JS, zero-dependency encoder - no
+// native/canvas code, verified before adding) for the actual bit matrix,
+// then drawing it manually with react-native-svg (already a dependency).
+// The 3 corner finder patterns are deliberately kept as solid squares
 // rather than circles - scanners specifically rely on that exact square
 // 1:1:3:1:1 ratio to detect a QR code exists at all before even attempting
 // to read the data, so making those circular risks scan failures on
@@ -610,6 +700,7 @@ const isQrFinderZone = (row, col, count) => {
 // forwardRef so the download flow (native path specifically) can reach the
 // underlying <Svg> to call its own .toDataURL() export method.
 const CircularQRCode = React.memo(React.forwardRef(({ value, size = 160, color = '#8B5CF6', backgroundColor = '#FFFFFF', showLogo = false }, ref) => {
+
   const matrix = useMemo(() => buildQrMatrix(value), [value]);
 
   if (!matrix) return null;
@@ -882,10 +973,10 @@ const SearchChipSVG = React.memo(() => (
   </Svg>
 ));
 
-const LocationPinSVG = React.memo(() => (
+const LocationPinSVG = React.memo(({ color = '#94A3B8' }) => (
   <Svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-    <Path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <Circle cx="12" cy="9" r="2.5" stroke="#94A3B8" strokeWidth="2"/>
+    <Path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <Circle cx="12" cy="9" r="2.5" stroke={color} strokeWidth="2"/>
   </Svg>
 ));
 
@@ -1474,10 +1565,10 @@ const YouTubeLogoSVG = React.memo(() => (
   </Svg>
 ));
 
-const GlobeIconSVG = React.memo(() => (
+const GlobeIconSVG = React.memo(({ color = '#94A3B8' }) => (
   <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <Circle cx="12" cy="12" r="9" stroke="#94A3B8" strokeWidth="2" />
-    <Path d="M3.6 9h16.8M3.6 15h16.8M12 3a15.3 15.3 0 0 1 4 9 15.3 15.3 0 0 1-4 9 15.3 15.3 0 0 1-4-9 15.3 15.3 0 0 1 4-9z" stroke="#94A3B8" strokeWidth="2" />
+    <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth="2" />
+    <Path d="M3.6 9h16.8M3.6 15h16.8M12 3a15.3 15.3 0 0 1 4 9 15.3 15.3 0 0 1-4 9 15.3 15.3 0 0 1-4-9 15.3 15.3 0 0 1 4-9z" stroke={color} strokeWidth="2" />
   </Svg>
 ));
 
@@ -11677,24 +11768,16 @@ function App() {
                 <Text style={styles.knownContactSub}>Direct inquiries & platform feedback</Text>
               </View>
 
-              <View style={styles.profileTabsBar}>
-                <BouncyButton
-                  style={[styles.profileTabBtn, feedbackSupportTab === 'feedback' && styles.profileTabBtnActive]}
-                  onPress={() => setFeedbackSupportTab('feedback')}
-                >
-                  <Text style={[styles.profileTabBtnText, feedbackSupportTab === 'feedback' && styles.profileTabBtnTextActive]}>
-                    Feedback
-                  </Text>
-                </BouncyButton>
-                <BouncyButton
-                  style={[styles.profileTabBtn, feedbackSupportTab === 'featureRequest' && styles.profileTabBtnActive]}
-                  onPress={() => setFeedbackSupportTab('featureRequest')}
-                >
-                  <Text style={[styles.profileTabBtnText, feedbackSupportTab === 'featureRequest' && styles.profileTabBtnTextActive]}>
-                    Request Feature
-                  </Text>
-                </BouncyButton>
-              </View>
+              <AnimatedPillTabs
+                theme={theme}
+                themeMode={themeMode}
+                activeKey={feedbackSupportTab}
+                onChange={setFeedbackSupportTab}
+                tabs={[
+                  { key: 'feedback', label: 'Feedback' },
+                  { key: 'featureRequest', label: 'Request Feature' }
+                ]}
+              />
 
               {feedbackSupportTab === 'feedback' && (
                 <>
@@ -11910,26 +11993,17 @@ function App() {
                   Hi, I'm Iqbal — a UI/UX designer focused on Figma prototyping and clean handovers for HR and dev teams. I built DECENT to give designers a simple place to showcase real, interactive portfolios instead of static screenshots. If it's been useful to you, a donation helps keep it running and improving.
                 </Text>
 
-                <View style={{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: 99, padding: 4, marginBottom: 16 }}>
-                  <BouncyButton
-                    style={{ flex: 1, paddingVertical: 10, borderRadius: 99, alignItems: 'center', backgroundColor: donateRegion === 'id' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
-                    onPress={() => setDonateRegion('id')}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
-                      <LocationPinSVG />
-                      <Text style={{ color: donateRegion === 'id' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 13 }}>Indonesia</Text>
-                    </View>
-                  </BouncyButton>
-                  <BouncyButton
-                    style={{ flex: 1, paddingVertical: 10, borderRadius: 99, alignItems: 'center', backgroundColor: donateRegion === 'intl' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
-                    onPress={() => setDonateRegion('intl')}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
-                      <GlobeIconSVG />
-                      <Text style={{ color: donateRegion === 'intl' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 13 }}>International</Text>
-                    </View>
-                  </BouncyButton>
-                </View>
+                <AnimatedPillTabs
+                  theme={theme}
+                  themeMode={themeMode}
+                  activeKey={donateRegion}
+                  onChange={setDonateRegion}
+                  containerStyle={{ marginBottom: 16 }}
+                  tabs={[
+                    { key: 'id', label: 'Indonesia', icon: (color) => <LocationPinSVG color={color} /> },
+                    { key: 'intl', label: 'International', icon: (color) => <GlobeIconSVG color={color} /> }
+                  ]}
+                />
 
                 <BouncyButton
                   style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 16 }}
@@ -15343,20 +15417,17 @@ function App() {
                     downloads - both branches source from the exact same
                     URL/component used by the download handlers below, so
                     preview and downloaded file can never drift apart. */}
-                <View style={{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: 99, padding: 3, width: 180, marginBottom: 10 }}>
-                  <BouncyButton
-                    style={{ paddingVertical: 7, paddingHorizontal: 10, borderRadius: 99, alignItems: 'center', backgroundColor: qrPreviewMode === 'plain' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
-                    onPress={() => setQrPreviewMode('plain')}
-                  >
-                    <Text style={{ color: qrPreviewMode === 'plain' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>Plain QR</Text>
-                  </BouncyButton>
-                  <BouncyButton
-                    style={{ flex: 1, paddingVertical: 7, borderRadius: 99, alignItems: 'center', backgroundColor: qrPreviewMode === 'decent' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
-                    onPress={() => setQrPreviewMode('decent')}
-                  >
-                    <Text style={{ color: qrPreviewMode === 'decent' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>DECENT Style</Text>
-                  </BouncyButton>
-                </View>
+                <AnimatedPillTabs
+                  theme={theme}
+                  themeMode={themeMode}
+                  activeKey={qrPreviewMode}
+                  onChange={setQrPreviewMode}
+                  containerStyle={{ width: 180, marginBottom: 10, padding: 3 }}
+                  tabs={[
+                    { key: 'plain', label: 'Plain QR', flex: false },
+                    { key: 'decent', label: 'DECENT Style' }
+                  ]}
+                />
 
                 <View style={{ width: 180, height: 180, alignItems: 'center', justifyContent: 'center', padding: 10, backgroundColor: '#FFFFFF', borderRadius: 12 }}>
                   {qrPreviewMode === 'decent' ? (
@@ -15480,20 +15551,17 @@ function App() {
               </BouncyButton>
             </View>
 
-            <View style={{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: 99, padding: 4, marginHorizontal: 16, marginTop: 12 }}>
-              <BouncyButton
-                style={{ flex: 1, paddingVertical: 9, borderRadius: 99, alignItems: 'center', backgroundColor: userListTab === 'followers' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
-                onPress={() => handleSwitchUserListTab('followers')}
-              >
-                <Text style={{ color: userListTab === 'followers' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 13 }}>Followers</Text>
-              </BouncyButton>
-              <BouncyButton
-                style={{ flex: 1, paddingVertical: 9, borderRadius: 99, alignItems: 'center', backgroundColor: userListTab === 'following' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
-                onPress={() => handleSwitchUserListTab('following')}
-              >
-                <Text style={{ color: userListTab === 'following' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 13 }}>Following</Text>
-              </BouncyButton>
-            </View>
+            <AnimatedPillTabs
+              theme={theme}
+              themeMode={themeMode}
+              activeKey={userListTab}
+              onChange={handleSwitchUserListTab}
+              containerStyle={{ marginHorizontal: 16, marginTop: 12 }}
+              tabs={[
+                { key: 'followers', label: 'Followers' },
+                { key: 'following', label: 'Following' }
+              ]}
+            />
 
             {userListLoading ? (
               <View style={{ padding: 40, alignItems: 'center' }}>
