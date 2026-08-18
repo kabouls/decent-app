@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 322;
+const BUILD_NUMBER = 323;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -2812,6 +2812,10 @@ function App() {
   // Settings Secondary Modals
   const [aboutModalVisible, setAboutModalVisible] = useState(false);
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
+  const [changelogModalVisible, setChangelogModalVisible] = useState(false);
+  const [changelogEntries, setChangelogEntries] = useState([]);
+  const [changelogLoading, setChangelogLoading] = useState(false);
+  const changelogFetchedRef = useRef(false); // only fetch once per session, not every time the modal reopens
   const [termsModalVisible, setTermsModalVisible] = useState(false);
   const [reportsModalVisible, setReportsModalVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -3580,14 +3584,34 @@ function App() {
     // skip on web: OTA update checks are a native-build concept and
     // expo-updates has no meaningful web behavior to check for.
     if (__DEV__ || Platform.OS === 'web') return;
-    (async () => {
+
+    const checkForUpdate = async () => {
       try {
         const result = await Updates.checkForUpdateAsync();
         if (result.isAvailable) setUpdateAvailable(true);
       } catch (e) {
         console.warn('Update check failed:', e);
       }
-    })();
+    };
+
+    // Was only ever checking once on initial mount - meant a person already
+    // using the app when a new eas update went out would never see the
+    // banner until they fully force-closed and relaunched, since nothing
+    // ever re-checked mid-session. Now also re-checks periodically while
+    // the app stays open, and immediately whenever it returns to the
+    // foreground (covers the far more common case of switching away and
+    // back rather than a true process restart) - between the two, a real
+    // restart should no longer be necessary to find out an update exists.
+    checkForUpdate();
+    const intervalId = setInterval(checkForUpdate, 5 * 60 * 1000);
+    const foregroundSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') checkForUpdate();
+    });
+
+    return () => {
+      clearInterval(intervalId);
+      foregroundSub.remove();
+    };
   }, []);
 
   const handleApplyUpdate = async () => {
@@ -7486,6 +7510,24 @@ function App() {
     showToast("Thanks! We'll let you know when it's ready.");
   };
 
+  const handleOpenChangelog = async () => {
+    setChangelogModalVisible(true);
+    if (changelogFetchedRef.current) return;
+    changelogFetchedRef.current = true;
+    setChangelogLoading(true);
+    const { data, error } = await supabase
+      .from('changelog_entries')
+      .select('id, version, title, description, created_at')
+      .order('created_at', { ascending: false });
+    setChangelogLoading(false);
+    if (error) {
+      console.warn('Failed to fetch changelog:', error);
+      changelogFetchedRef.current = false; // allow retry on next open
+      return;
+    }
+    setChangelogEntries(data || []);
+  };
+
   const handleOpenAddPortfolio = () => {
     if (!requireAuth()) return;
     playTabBounce('plus');
@@ -11182,6 +11224,84 @@ function App() {
         </View>
       </Modal>
 
+      {/* CHANGELOG / WHAT'S NEW - entries come from Supabase (changelog_entries
+          table), not hardcoded, so new entries don't need an app update to
+          show up - just an insert. Lazy-fetched once per session via
+          changelogFetchedRef, same pattern as the followers/following and
+          feature-interest lists elsewhere. */}
+      <Modal
+        animationType="none"
+        transparent={true}
+        visible={changelogModalVisible}
+        onRequestClose={() => setChangelogModalVisible(false)}
+      >
+        <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
+          onStartShouldSetResponder={() => Platform.OS === 'web'}
+          onResponderRelease={() => setChangelogModalVisible(false)}
+        >
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView
+                  intensity={55}
+                  tint={themeMode === 'light' ? 'light' : 'dark'}
+                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                />
+              )
+            )}
+          <SafeAreaView style={[styles.overlayModalContainer, { height: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => {}}
+          >
+            <View style={styles.modalTopBar}>
+              <Text style={styles.modalTopTitle}>What's New</Text>
+              <BouncyButton style={styles.closeBtn} onPress={() => setChangelogModalVisible(false)}>
+                <Text style={styles.closeBtnText}>✕</Text>
+              </BouncyButton>
+            </View>
+
+            {changelogLoading ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator color={theme.accent} />
+              </View>
+            ) : changelogEntries.length === 0 ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <Text style={{ color: theme.textSecondary, fontSize: 13 }}>No updates logged yet.</Text>
+              </View>
+            ) : (
+              <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
+                {changelogEntries.map((entry) => (
+                  <View
+                    key={entry.id}
+                    style={{ borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 14 }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      {entry.version && (
+                        <View style={{ backgroundColor: theme.bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
+                          <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>{entry.version}</Text>
+                        </View>
+                      )}
+                      <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
+                        {new Date(entry.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </Text>
+                    </View>
+                    <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14, marginBottom: entry.description ? 4 : 0 }}>
+                      {entry.title}
+                    </Text>
+                    {entry.description && (
+                      <Text style={{ color: theme.textSecondary, fontSize: 13, lineHeight: 18 }}>
+                        {entry.description}
+                      </Text>
+                    )}
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </SafeAreaView>
+        </View>
+      </Modal>
+
       {/* PRIVACY POLICY - WHITE THEME FOR READABILITY */}
       <Modal
         animationType="none"
@@ -12603,6 +12723,17 @@ function App() {
                     <Text style={styles.settingItemTitle}>Privacy Policy</Text>
                     <View style={styles.iconTextInlineRow}>
                       <Text style={styles.settingItemValue}>View Policy</Text>
+                      <ChevronRightSVG color={theme.accent} size={16} />
+                    </View>
+                  </BouncyButton>
+
+                  <BouncyButton
+                    style={styles.settingItemRow}
+                    onPress={() => { handleOpenChangelog(); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                  >
+                    <Text style={styles.settingItemTitle}>What's New</Text>
+                    <View style={styles.iconTextInlineRow}>
+                      <Text style={styles.settingItemValue}>Changelog</Text>
                       <ChevronRightSVG color={theme.accent} size={16} />
                     </View>
                   </BouncyButton>
