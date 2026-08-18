@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 323;
+const BUILD_NUMBER = 325;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -648,9 +648,16 @@ const QrFinderEye = ({ gridX, gridY, cellSize, color, backgroundColor }) => {
 // a two-tab switcher used occasionally.
 const AnimatedPillTabs = React.memo(({ tabs, activeKey, onChange, theme, themeMode, containerStyle }) => {
   const [tabWidths, setTabWidths] = useState({});
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const prevActiveKeyRef = useRef(activeKey);
   const activeIndex = tabs.findIndex((t) => t.key === activeKey);
+  // Was hardcoded to 0, silently assuming the first tab is always the
+  // initial default - broke any switcher (like the QR modal's Plain/DECENT
+  // Style, which defaults to the second tab) where that's not true: the
+  // pill's SIZE correctly reflected the real active tab, but its POSITION
+  // stayed stuck at index 0 forever, since the correction animation below
+  // only fires on an actual activeKey CHANGE, which never happens if the
+  // initial tab was already correct from the start.
+  const slideAnim = useRef(new Animated.Value(activeIndex)).current;
+  const prevActiveKeyRef = useRef(activeKey);
 
   useEffect(() => {
     if (prevActiveKeyRef.current === activeKey) return;
@@ -9198,7 +9205,7 @@ function App() {
           {bottomNav === 'followed' && (
             <View>
               <View style={styles.pageHeaderBox}>
-                <Text style={styles.pageHeaderTitle}>Your Circle</Text>
+                <Text style={[styles.pageHeaderTitle, isWebWide && { fontSize: 24 }]}>Your Circle</Text>
                 <Text style={styles.pageHeaderSubtitle}>
                   {selectedFollowedDesigner
                     ? `Showing releases by ${(followedDesignersObjects.find((d) => d.id === selectedFollowedDesigner) || {}).name || 'this designer'}`
@@ -9572,7 +9579,7 @@ function App() {
                     style={styles.profileLargeAvatar}
                   />
                 </BouncyButton>
-                <Text style={styles.profileName}>{userProfile.name}</Text>
+                <Text style={[styles.profileName, isWebWide && { fontSize: 24 }]}>{userProfile.name}</Text>
                 {userProfile.handle ? (
                   <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '600', marginBottom: 2 }}>{formatHandleDisplay(userProfile.handle)}</Text>
                 ) : null}
@@ -9991,7 +9998,7 @@ function App() {
             <View style={styles.confirmIconCircle}>
               <WarningTriangleSVG />
             </View>
-            <Text style={styles.confirmTitle}>Leaving DECENT</Text>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Leaving DECENT</Text>
             <Text style={styles.confirmSubText}>
               {isTrustedExternalLink
                 ? (targetExternalUrl === GITHUB_URL
@@ -10093,7 +10100,7 @@ function App() {
             }}
           >
             <View style={[styles.modalTopBar, { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: theme.border }]}>
-              <Text style={styles.modalTopTitle}>Notifications</Text>
+              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Notifications</Text>
               <BouncyButton
                 style={{
                   paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
@@ -10303,7 +10310,7 @@ function App() {
             <View style={[styles.successIconCircle, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
               <TrashIconSVG />
             </View>
-            <Text style={styles.confirmTitle}>Delete Portfolio?</Text>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Delete Portfolio?</Text>
             <Text style={styles.confirmSubText}>
               {projectToDelete ? `"${projectToDelete.title}" will be permanently deleted. This can't be undone.` : "This can't be undone."}
             </Text>
@@ -10407,7 +10414,7 @@ function App() {
                   <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
                 </BouncyButton>
               )}
-              <Text style={[styles.modalTopTitle, { flex: 1 }]}>Account Settings</Text>
+              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>Account Settings</Text>
               <BouncyButton
                 style={styles.closeBtn}
                 onPress={() => {
@@ -10736,7 +10743,7 @@ function App() {
               <BouncyButton style={{ padding: 4 }} onPress={handleCloseChangePasswordPage}>
                 <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
               </BouncyButton>
-              <Text style={[styles.modalTopTitle, { flex: 1 }]}>{hasPasswordAuth ? 'Change Password' : 'Create Password'}</Text>
+              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>{hasPasswordAuth ? 'Change Password' : 'Create Password'}</Text>
               <BouncyButton
                 style={styles.closeBtn}
                 onPress={() => {
@@ -10874,7 +10881,7 @@ function App() {
             <View style={[styles.successIconCircle, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
               <WarningTriangleSVG />
             </View>
-            <Text style={styles.confirmTitle}>Log Out?</Text>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Log Out?</Text>
             <Text style={styles.confirmSubText}>
               You'll need to sign back in with your email and password to use DECENT again.
             </Text>
@@ -10962,7 +10969,7 @@ function App() {
             <View style={[styles.successIconCircle, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
               <TrashIconSVG />
             </View>
-            <Text style={styles.confirmTitle}>Delete Account</Text>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Delete Account</Text>
             <Text style={styles.confirmSubText}>
               This permanently deletes your portfolios, profile, likes, and follows. This cannot be undone.
             </Text>
@@ -11039,7 +11046,7 @@ function App() {
             <View style={[styles.successIconCircle, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
               <WarningTriangleSVG />
             </View>
-            <Text style={styles.confirmTitle}>Discard Changes?</Text>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Discard Changes?</Text>
             <Text style={styles.confirmSubText}>You have unsaved changes to your account. Are you sure you want to leave without saving?</Text>
             <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
               <BouncyButton
@@ -11106,7 +11113,7 @@ function App() {
             <View style={[styles.successIconCircle, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
               <WarningTriangleSVG />
             </View>
-            <Text style={styles.confirmTitle}>Discard Password Change?</Text>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Discard Password Change?</Text>
             <Text style={styles.confirmSubText}>You've typed a new password but haven't saved it. Are you sure you want to leave?</Text>
             <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
               <BouncyButton
@@ -11178,7 +11185,7 @@ function App() {
                   <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
                 </BouncyButton>
               )}
-              <Text style={[styles.modalTopTitle, { flex: 1 }]}>About DECENT</Text>
+              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>About DECENT</Text>
               <BouncyButton style={styles.closeBtn} onPress={() => {
                 setAboutModalVisible(false);
                 if (Platform.OS !== 'web' && returnToOptionsOnClose) {
@@ -11255,7 +11262,7 @@ function App() {
             onResponderRelease={() => {}}
           >
             <View style={styles.modalTopBar}>
-              <Text style={styles.modalTopTitle}>What's New</Text>
+              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>What's New</Text>
               <BouncyButton style={styles.closeBtn} onPress={() => setChangelogModalVisible(false)}>
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
@@ -11348,7 +11355,7 @@ function App() {
                   <ChevronLeftSVG color="#6D28D9" size={22} />
                 </BouncyButton>
               )}
-              <Text style={[styles.modalTopTitle, { color: '#0F172A', flex: 1 }]}>Privacy Policy</Text>
+              <Text style={[styles.modalTopTitle, { color: '#0F172A', flex: 1 }, isWebWide && { fontSize: 20 }]}>Privacy Policy</Text>
               <BouncyButton style={[styles.closeBtn, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]} onPress={() => {
                 setPrivacyModalVisible(false);
                 if (Platform.OS !== 'web' && returnToOptionsOnClose) {
@@ -11469,7 +11476,7 @@ function App() {
                   <ChevronLeftSVG color="#6D28D9" size={22} />
                 </BouncyButton>
               )}
-              <Text style={[styles.modalTopTitle, { color: '#0F172A', flex: 1 }]}>Terms of Service</Text>
+              <Text style={[styles.modalTopTitle, { color: '#0F172A', flex: 1 }, isWebWide && { fontSize: 20 }]}>Terms of Service</Text>
               <BouncyButton style={[styles.closeBtn, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]} onPress={() => {
                 setTermsModalVisible(false);
                 if (Platform.OS !== 'web' && returnToOptionsOnClose) {
@@ -11565,7 +11572,7 @@ function App() {
               <BouncyButton style={{ padding: 4 }} onPress={() => setReportsModalVisible(false)}>
                 <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
               </BouncyButton>
-              <Text style={[styles.modalTopTitle, { flex: 1 }]}>Reports</Text>
+              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>Reports</Text>
               <BouncyButton style={styles.closeBtn} onPress={() => {
                 setReportsModalVisible(false);
                 if (Platform.OS !== 'web') {
@@ -11640,7 +11647,7 @@ function App() {
             <View style={[styles.successIconCircle, { backgroundColor: 'rgba(251,191,36,0.15)' }]}>
               <LockIconSVG color="#FBBF24" size={22} />
             </View>
-            <Text style={styles.confirmTitle}>Admin Access</Text>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Admin Access</Text>
             <Text style={styles.confirmSubText}>Enter the admin password to continue.</Text>
             <FocusableTextInput
               style={[styles.formInput, { width: '100%', marginBottom: 14 }]}
@@ -11709,7 +11716,7 @@ function App() {
             onResponderRelease={() => {}}
           >
             <View style={styles.modalTopBar}>
-              <Text style={styles.modalTopTitle}>Admin Control Panel</Text>
+              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Admin Control Panel</Text>
               <BouncyButton style={styles.closeBtn} onPress={() => {
                 setAdminPanelVisible(false);
                 if (Platform.OS !== 'web' && returnToOptionsOnClose) {
@@ -11917,7 +11924,7 @@ function App() {
                   <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
                 </BouncyButton>
               )}
-              <Text style={[styles.modalTopTitle, { flex: 1 }]}>Feedback & Support</Text>
+              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>Feedback & Support</Text>
               <BouncyButton style={styles.closeBtn} onPress={() => {
                 setFeedbackModalVisible(false);
                 if (Platform.OS !== 'web' && returnToOptionsOnClose) {
@@ -12104,7 +12111,7 @@ function App() {
             <View style={styles.successIconCircle}>
               <CheckIconSVG />
             </View>
-            <Text style={styles.confirmTitle}>Feedback Submitted</Text>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Feedback Submitted</Text>
             <Text style={styles.confirmSubText}>
               Thank you for helping improve DECENT! Our support team (iputra07@gmail.com) has received your submission.
             </Text>
@@ -12156,7 +12163,7 @@ function App() {
             onResponderRelease={() => {}}
           >
             <View style={styles.modalTopBar}>
-              <Text style={styles.modalTopTitle}>Support DECENT</Text>
+              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Support DECENT</Text>
               <BouncyButton style={styles.closeBtn} onPress={handleCloseDonateModal}>
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
@@ -12322,7 +12329,7 @@ function App() {
             <View style={styles.successIconCircle}>
               <CheckIconSVG />
             </View>
-            <Text style={styles.confirmTitle}>Thank You!</Text>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Thank You!</Text>
             <Text style={styles.confirmSubText}>
               Your generosity keeps DECENT independent and growing. We greatly appreciate your support!
             </Text>
@@ -12393,7 +12400,7 @@ function App() {
                   <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
                 </BouncyButton>
               )}
-              <Text style={[styles.modalTopTitle, { flex: 1 }]}>
+              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>
                 {optionsView === 'privacy' ? 'Privacy' : optionsView === 'supportLegal' ? 'Support & Legal' : optionsView === 'blockedUsers' ? 'Blocked Users' : optionsView === 'notificationHistory' ? 'Notification History' : 'Options'}
               </Text>
               {optionsView === 'root' && (
@@ -12822,7 +12829,7 @@ function App() {
             onResponderRelease={() => {}}
           >
             <View style={styles.modalTopBar}>
-              <Text style={styles.modalTopTitle}>All Categories</Text>
+              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>All Categories</Text>
               <BouncyButton style={styles.closeBtn} onPress={() => setAllCategoriesModalVisible(false)}>
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
@@ -12875,7 +12882,7 @@ function App() {
                   style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
                 />
               )}
-              <Text style={styles.modalTopTitle}>Designer Profile</Text>
+              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Designer Profile</Text>
               {session && selectedDesigner.id && selectedDesigner.id !== session.user.id && (
                 <View ref={designerDotsWrapRef} style={{ zIndex: 100 }}>
                   <BouncyButton
@@ -13083,7 +13090,7 @@ function App() {
                 <BouncyButton activeOpacity={0.9} onPress={() => setLightboxImageUri(selectedDesigner.avatar)}>
                   <Image source={{ uri: selectedDesigner.avatar }} style={styles.profileLargeAvatar} />
                 </BouncyButton>
-                <Text style={styles.profileName}>{selectedDesigner.name}</Text>
+                <Text style={[styles.profileName, isWebWide && { fontSize: 24 }]}>{selectedDesigner.name}</Text>
                 {selectedDesigner.handle ? (
                   <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '600', marginBottom: 2 }}>{formatHandleDisplay(selectedDesigner.handle)}</Text>
                 ) : null}
@@ -13307,7 +13314,7 @@ function App() {
           >
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
           <View style={styles.modalTopBar}>
-            <Text style={styles.modalTopTitle}>What are you sharing?</Text>
+            <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>What are you sharing?</Text>
             <BouncyButton style={styles.closeBtn} onPress={() => setPortfolioTypeModalVisible(false)}>
               <Text style={styles.closeBtnText}>✕</Text>
             </BouncyButton>
@@ -13435,7 +13442,7 @@ function App() {
             <View style={styles.confirmIconCircle}>
               <BellOutlineSVG size={22} color={theme.accent} />
             </View>
-            <Text style={styles.confirmTitle}>{interestConfirmMode === 'remove' ? 'Remove Interest?' : 'Register Interest?'}</Text>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>{interestConfirmMode === 'remove' ? 'Remove Interest?' : 'Register Interest?'}</Text>
             <Text style={styles.confirmSubText}>
               {interestConfirmMode === 'remove'
                 ? "You'll be taken off the list for this feature. You can always register interest again later if you change your mind."
@@ -13722,7 +13729,7 @@ function App() {
                         onResponderRelease={() => {}}
                       >
                         <View style={styles.modalTopBar}>
-                          <Text style={styles.modalTopTitle}>Categories & Tags</Text>
+                          <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Categories & Tags</Text>
                           <BouncyButton style={styles.closeBtn} onPress={() => setCategoryPickerModalVisible(false)}>
                             <Text style={styles.closeBtnText}>✕</Text>
                           </BouncyButton>
@@ -13860,7 +13867,7 @@ function App() {
               <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 8000, elevation: 28 }}>
                 <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
                   <View style={[styles.modalTopBar, { justifyContent: 'space-between' }]}>
-                    <Text style={styles.modalTopTitle}>Detailed Description</Text>
+                    <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Detailed Description</Text>
                     <BouncyButton onPress={() => setFormattingGuideVisible(true)}>
                       <HelpCircleIconSVG />
                     </BouncyButton>
@@ -14647,7 +14654,7 @@ function App() {
                 <View style={[styles.successIconCircle, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
                   <WarningTriangleSVG />
                 </View>
-                <Text style={styles.confirmTitle}>Discard This Portfolio?</Text>
+                <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Discard This Portfolio?</Text>
                 <Text style={styles.confirmSubText}>
                   Are you sure? What you've entered so far won't be saved.
                 </Text>
@@ -14699,7 +14706,7 @@ function App() {
               <Text style={{ color: theme.textSecondary, fontSize: 16, fontWeight: '700', lineHeight: 16 }}>✕</Text>
             </BouncyButton>
 
-            <Text style={styles.confirmTitle}>Editor Help</Text>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Editor Help</Text>
 
             <View style={{ width: '100%', gap: 8, marginBottom: 16 }}>
               {[
@@ -14779,7 +14786,7 @@ function App() {
                 </BouncyButton>
               )}
 
-              <Text style={[styles.modalTopTitle, { flex: 1 }]} numberOfLines={1}>
+              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]} numberOfLines={1}>
                 {activeProject.title}
               </Text>
 
@@ -15403,7 +15410,7 @@ function App() {
               <View style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
                 <Text style={{ color: '#FFFFFF', fontSize: 26, fontWeight: '800' }}>D</Text>
               </View>
-              <Text style={styles.confirmTitle}>Get the DECENT App</Text>
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Get the DECENT App</Text>
               <Text style={styles.confirmSubText}>
                 For a smoother experience, download the DECENT Android app from GitHub.
               </Text>
@@ -15436,7 +15443,7 @@ function App() {
         <View pointerEvents="box-none" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000 }}>
           <View style={[styles.overlayModalBg, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
             <View style={styles.customConfirmCard}>
-              <Text style={styles.confirmTitle}>Want DECENT on iOS?</Text>
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Want DECENT on iOS?</Text>
               <Text style={styles.confirmSubText}>
                 We're deciding whether to build an iOS app. Your answer helps us gauge demand.
               </Text>
@@ -15504,7 +15511,7 @@ function App() {
             onStartShouldSetResponder={() => Platform.OS === 'web'}
             onResponderRelease={() => {}}
           >
-            <Text style={styles.confirmTitle}>{appAlertConfig?.title}</Text>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>{appAlertConfig?.title}</Text>
             {appAlertConfig?.message ? (
               <Text style={styles.confirmSubText}>{appAlertConfig.message}</Text>
             ) : null}
@@ -15588,7 +15595,7 @@ function App() {
             onStartShouldSetResponder={() => Platform.OS === 'web'}
             onResponderRelease={() => {}}
           >
-            <Text style={styles.confirmTitle}>{shareType === 'portfolio' ? 'Share Portfolio' : 'Share Profile'}</Text>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>{shareType === 'portfolio' ? 'Share Portfolio' : 'Share Profile'}</Text>
             <Text style={[styles.confirmSubText, { marginBottom: 16 }]}>
               {shareType === 'portfolio' ? 'Anyone with this link can view this portfolio.' : 'Anyone with this link can view this profile.'}
             </Text>
@@ -15731,7 +15738,7 @@ function App() {
             onResponderRelease={() => {}}
           >
             <View style={styles.modalTopBar}>
-              <Text style={styles.modalTopTitle}>{userListTargetDesigner ? userListTargetDesigner.name : ''}</Text>
+              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>{userListTargetDesigner ? userListTargetDesigner.name : ''}</Text>
               <BouncyButton style={styles.closeBtn} onPress={() => setUserListModalVisible(false)}>
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
