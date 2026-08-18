@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 325;
+const BUILD_NUMBER = 326;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -538,6 +538,12 @@ const CogWheelSVG = React.memo(({ active = false, inactiveColor = '#D8B4FE' }) =
 const ChevronRightSVG = React.memo(({ color = "#8B5CF6", size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M9 18l6-6-6-6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
+const ChevronDownSVG = React.memo(({ color = "#8B5CF6", size = 18 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M6 9l6 6 6-6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
@@ -2306,7 +2312,7 @@ function AuthScreen({ onCancel } = {}) {
         </BouncyButton>
       )}
       <BouncyButton
-        style={{ backgroundColor: '#8B5CF6', height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}
+        style={{ backgroundColor: '#8B5CF6', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}
         onPress={handleSubmit}
         disabled={loading}
       >
@@ -2387,7 +2393,7 @@ function AuthScreen({ onCancel } = {}) {
             onResponderRelease={() => {}}
           >
             <BouncyButton
-              style={{ position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 14, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}
+              style={{ position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}
               onPress={() => setAlertConfig(null)}
             >
               <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>✕</Text>
@@ -3359,6 +3365,18 @@ function App() {
   // Independent from portfolioLayoutMode above since it's a different
   // screen and shouldn't couple its state to Profile's own toggle.
   const [forYouLayoutMode, setForYouLayoutMode] = useState('full'); // 'compact' | 'full'
+  // Defaults to all 4 selected ("All Portfolios") - only ui_ux has real,
+  // creatable portfolios right now, but the other 3 stay selectable here
+  // too so the filter is already correct and complete the moment any of
+  // them go live, with no further changes needed to this piece.
+  const PORTFOLIO_TYPE_OPTIONS = [
+    { key: 'ui_ux', label: 'UI/UX' },
+    { key: 'graphic_design', label: 'Graphic Design' },
+    { key: 'illustration', label: 'Illustration' },
+    { key: 'frontend', label: 'Frontend' }
+  ];
+  const [forYouTypeFilter, setForYouTypeFilter] = useState(new Set(PORTFOLIO_TYPE_OPTIONS.map((t) => t.key)));
+  const [forYouTypeFilterOpen, setForYouTypeFilterOpen] = useState(false);
 
   const [formStep, setFormStep] = useState(1);
   const [fTitle, setFTitle] = useState('');
@@ -3662,6 +3680,7 @@ function App() {
         const mapped = onlinePortfolios.map((p) => ({
           id: p.id,
           ownerId: p.user_id || null,
+          portfolioType: p.portfolio_type || 'ui_ux',
           title: p.title,
           designer: p.user_name || 'Unknown Designer',
           designerHandle: p.user_handle || '',
@@ -3724,6 +3743,7 @@ function App() {
         const mapped = morePortfolios.map((p) => ({
           id: p.id,
           ownerId: p.user_id || null,
+          portfolioType: p.portfolio_type || 'ui_ux',
           title: p.title,
           designer: p.user_name || 'Unknown Designer',
             designerHandle: p.user_handle || '',
@@ -6182,6 +6202,7 @@ function App() {
     const mapped = (portfolioRows || []).map((p) => ({
       id: p.id,
       ownerId: p.user_id || null,
+          portfolioType: p.portfolio_type || 'ui_ux',
       title: p.title,
       designer: p.user_name || 'Unknown Designer',
       designerHandle: p.user_handle || '',
@@ -6331,6 +6352,7 @@ function App() {
     openProjectModal({
       id: p.id,
       ownerId: p.user_id || null,
+          portfolioType: p.portfolio_type || 'ui_ux',
       title: p.title,
       designer: p.user_name || 'Unknown Designer',
       designerHandle: p.user_handle || '',
@@ -7198,6 +7220,7 @@ function App() {
             long_description: flattenedDescription,
             content_blocks: finalContentBlocks,
             cover_url: finalCoverUrl,
+            portfolio_type: selectedPortfolioType,
             figma_proto: fFigmaProto,
             component_proto: fComponentProto,
             desktop_proto: fDesktopProto,
@@ -7613,6 +7636,7 @@ function App() {
     const filtered = projects.filter((p) => {
       if (p.ownerId && blockedIds.has(p.ownerId)) return false;
       if (p.ownerId && mutedIds.has(p.ownerId)) return false;
+      if (!forYouTypeFilter.has(p.portfolioType || 'ui_ux')) return false;
       if (!specialModes.includes(categoryFilter)) {
         if (Array.isArray(p.categories)) {
           return p.categories.includes(categoryFilter);
@@ -7657,7 +7681,7 @@ function App() {
     });
 
     return scored.sort((a, b) => b._highlightScore - a._highlightScore);
-  }, [projects, categoryFilter, blockedIds, mutedIds]);
+  }, [projects, categoryFilter, blockedIds, mutedIds, forYouTypeFilter]);
 
   const followedProjects = useMemo(() => {
     return projects.filter((p) => {
@@ -7777,6 +7801,7 @@ function App() {
       const mapPortfolioRow = (p) => ({
         id: p.id,
         ownerId: p.user_id || null,
+          portfolioType: p.portfolio_type || 'ui_ux',
         title: p.title,
         designer: p.user_name || 'Unknown Designer',
         designerHandle: p.user_handle || '',
@@ -8141,9 +8166,9 @@ function App() {
             <SafeAreaView style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', paddingHorizontal: 16, marginBottom: sidebarCollapsed ? 20 : 8 }}>
                 {!sidebarCollapsed && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                    <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                      <DecentLogoSVG size={22} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
+                    <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                      <DecentLogoSVG size={15} />
                     </View>
                     <Text style={styles.logoText}>ECENT</Text>
                   </View>
@@ -8398,7 +8423,7 @@ function App() {
         }}>
           <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', flex: 1 }}>You're offline</Text>
           <BouncyButton
-            style={{ backgroundColor: '#EF4444', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12 }}
+            style={{ backgroundColor: '#EF4444', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 }}
             onPress={() => {
               NetInfoCompat.fetch().then((state) => {
                 const stillOffline = state.isConnected === false || state.isInternetReachable === false;
@@ -8436,7 +8461,7 @@ function App() {
         }}>
           <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', flex: 1 }}>A new version is available</Text>
           <BouncyButton
-            style={{ backgroundColor: '#8B5CF6', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12, minWidth: 64, alignItems: 'center' }}
+            style={{ backgroundColor: '#8B5CF6', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12, minWidth: 64, alignItems: 'center' }}
             onPress={handleApplyUpdate}
             disabled={updateDownloading}
           >
@@ -8473,7 +8498,7 @@ function App() {
         }}>
           <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', flex: 1 }}>{nativeUpdateInfo.message}</Text>
           <BouncyButton
-            style={{ backgroundColor: '#F59E0B', borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12 }}
+            style={{ backgroundColor: '#F59E0B', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 }}
             onPress={() => {
               // Opens directly instead of routing through
               // openExternalLinkWithWarning - that confirmation modal
@@ -8779,7 +8804,7 @@ function App() {
 
           <View style={{ paddingHorizontal: 24, paddingBottom: 24 }}>
             <BouncyButton
-              style={{ backgroundColor: '#8B5CF6', height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}
+              style={{ backgroundColor: '#8B5CF6', height: 50, borderRadius: 99, alignItems: 'center', justifyContent: 'center' }}
               onPress={() => {
                 if (introPageIndex < INTRO_CAROUSEL_PAGES.length - 1) {
                   const nextIndex = introPageIndex + 1;
@@ -9148,17 +9173,105 @@ function App() {
           {bottomNav === 'forYou' && (
             <View>
 
-              {Platform.OS !== 'web' && (
-                <BouncyButton
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-end', marginBottom: 10 }}
-                  onPress={() => setForYouLayoutMode(forYouLayoutMode === 'compact' ? 'full' : 'compact')}
-                >
-                  <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
-                    {forYouLayoutMode === 'compact' ? 'Compact View' : 'Full Width View'}
-                  </Text>
-                  <LayoutToggleSVG mode={forYouLayoutMode} size={15} />
-                </BouncyButton>
-              )}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <View>
+                  <BouncyButton
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 5,
+                      paddingVertical: 5, paddingHorizontal: 10, borderRadius: 99,
+                      borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
+                    }}
+                    onPress={() => setForYouTypeFilterOpen((v) => !v)}
+                  >
+                    <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
+                      {forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length
+                        ? 'All Portfolios'
+                        : forYouTypeFilter.size === 0
+                          ? 'None Selected'
+                          : PORTFOLIO_TYPE_OPTIONS.filter((t) => forYouTypeFilter.has(t.key)).map((t) => t.label).join(', ')}
+                    </Text>
+                    <ChevronDownSVG color={theme.textSecondary} size={13} />
+                  </BouncyButton>
+
+                  {/* Dropdown panel - plain absolutely-positioned View rather
+                      than a full Modal, since it only needs to sit below its
+                      own trigger button and close on an outside tap, not
+                      escape into its own top-level layer the way a real
+                      modal would. */}
+                  {forYouTypeFilterOpen && (
+                    <>
+                      <TouchableOpacity
+                        style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
+                        activeOpacity={1}
+                        onPress={() => setForYouTypeFilterOpen(false)}
+                      />
+                      <View style={{
+                        position: 'absolute', top: 34, left: 0, width: 200, zIndex: 100,
+                        backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                        padding: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                      }}>
+                        <BouncyButton
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
+                          onPress={() => {
+                            setForYouTypeFilter((prev) =>
+                              prev.size === PORTFOLIO_TYPE_OPTIONS.length
+                                ? new Set()
+                                : new Set(PORTFOLIO_TYPE_OPTIONS.map((t) => t.key))
+                            );
+                          }}
+                        >
+                          <View style={{
+                            width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
+                            borderWidth: 1.5, borderColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? theme.accent : theme.border,
+                            backgroundColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? theme.accent : 'transparent'
+                          }}>
+                            {forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length && <CheckIconSVG color="#FFFFFF" />}
+                          </View>
+                          <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>All Portfolios</Text>
+                        </BouncyButton>
+
+                        <View style={{ height: 1, backgroundColor: theme.border, marginVertical: 4 }} />
+
+                        {PORTFOLIO_TYPE_OPTIONS.map((type) => (
+                          <BouncyButton
+                            key={type.key}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 10 }}
+                            onPress={() => {
+                              setForYouTypeFilter((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(type.key)) next.delete(type.key);
+                                else next.add(type.key);
+                                return next;
+                              });
+                            }}
+                          >
+                            <View style={{
+                              width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
+                              borderWidth: 1.5, borderColor: forYouTypeFilter.has(type.key) ? theme.accent : theme.border,
+                              backgroundColor: forYouTypeFilter.has(type.key) ? theme.accent : 'transparent'
+                            }}>
+                              {forYouTypeFilter.has(type.key) && <CheckIconSVG color="#FFFFFF" />}
+                            </View>
+                            <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>{type.label}</Text>
+                          </BouncyButton>
+                        ))}
+                      </View>
+                    </>
+                  )}
+                </View>
+
+                {Platform.OS !== 'web' && (
+                  <BouncyButton
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                    onPress={() => setForYouLayoutMode(forYouLayoutMode === 'compact' ? 'full' : 'compact')}
+                  >
+                    <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                      {forYouLayoutMode === 'compact' ? 'Compact View' : 'Full Width View'}
+                    </Text>
+                    <LayoutToggleSVG mode={forYouLayoutMode} size={15} />
+                  </BouncyButton>
+                )}
+              </View>
 
               {forYouLayoutMode === 'compact' ? (
                 <TwoRowHorizontalGrid
@@ -9532,7 +9645,7 @@ function App() {
 
                   {discoverDesignersLimit < searchedDesigners.length && (
                     <BouncyButton
-                      style={{ marginTop: 14, marginBottom: 10, alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 24, backgroundColor: theme.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.border }}
+                      style={{ marginTop: 14, marginBottom: 10, alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 24, backgroundColor: theme.surface, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
                       onPress={() => setDiscoverDesignersLimit((prev) => prev + DISCOVER_PAGE_SIZE)}
                     >
                       <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 13 }}>Show More</Text>
@@ -9557,7 +9670,7 @@ function App() {
                   Create an account to build your portfolio, follow designers, and track your activity.
                 </Text>
                 <BouncyButton
-                  style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6', paddingHorizontal: 28, paddingVertical: 12, borderRadius: 12 }}
+                  style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6', paddingHorizontal: 28, paddingVertical: 12, borderRadius: 99 }}
                   onPress={() => setGuestAuthPromptVisible(true)}
                 >
                   <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14 }}>Sign In / Register</Text>
@@ -10212,7 +10325,7 @@ function App() {
             />
           )}
           <BouncyButton
-            style={{ position: 'absolute', top: 50, right: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+            style={{ position: 'absolute', top: 50, right: 20, width: 40, height: 40, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
             onPress={() => setLightboxImageUri(null)}
           >
             <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>✕</Text>
@@ -10352,7 +10465,7 @@ function App() {
               Your account profile, location, and preferences have been updated successfully!
             </Text>
             <BouncyButton
-              style={{ backgroundColor: '#8B5CF6', borderRadius: 12, paddingVertical: 14, width: '100%', alignItems: 'center' }}
+              style={{ backgroundColor: '#8B5CF6', borderRadius: 99, paddingVertical: 14, width: '100%', alignItems: 'center' }}
               onPress={handleCloseAccountSaveSuccess}
             >
               <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>Continue</Text>
@@ -11220,7 +11333,7 @@ function App() {
               </View>
 
               <BouncyButton
-                style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 10 }}
+                style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6', borderRadius: 99, paddingVertical: 14, alignItems: 'center', marginTop: 10 }}
                 onPress={() => setAboutModalVisible(false)}
               >
                 <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Close</Text>
@@ -11419,7 +11532,7 @@ function App() {
               </View>
 
               <BouncyButton
-                style={{ backgroundColor: '#6D28D9', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 10 }}
+                style={{ backgroundColor: '#6D28D9', borderRadius: 99, paddingVertical: 14, alignItems: 'center', marginTop: 10 }}
                 onPress={() => setPrivacyModalVisible(false)}
               >
                 <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Close</Text>
@@ -11520,7 +11633,7 @@ function App() {
               </View>
 
               <BouncyButton
-                style={{ backgroundColor: '#6D28D9', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 10 }}
+                style={{ backgroundColor: '#6D28D9', borderRadius: 99, paddingVertical: 14, alignItems: 'center', marginTop: 10 }}
                 onPress={() => setTermsModalVisible(false)}
               >
                 <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Close</Text>
@@ -12923,7 +13036,7 @@ function App() {
                         shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                       }}>
                         <BouncyButton
-                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
                           onPress={() => {
                             setDesignerOptionsMenuVisible(false);
                             handleReportContent('user', selectedDesigner.id, selectedDesigner.name);
@@ -12932,7 +13045,7 @@ function App() {
                           <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
                         </BouncyButton>
                         <BouncyButton
-                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
                           onPress={() => {
                             setDesignerOptionsMenuVisible(false);
                             mutedIds.has(selectedDesigner.id)
@@ -12945,7 +13058,7 @@ function App() {
                           </Text>
                         </BouncyButton>
                         <BouncyButton
-                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
                           onPress={() => {
                             setDesignerOptionsMenuVisible(false);
                             handleBlockUser(selectedDesigner.id, selectedDesigner.name);
@@ -13038,7 +13151,7 @@ function App() {
                               shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                             }}>
                               <BouncyButton
-                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
                                 onPress={() => {
                                   setDesignerOptionsMenuVisible(false);
                                   handleReportContent('user', selectedDesigner.id, selectedDesigner.name);
@@ -13047,7 +13160,7 @@ function App() {
                                 <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
                               </BouncyButton>
                               <BouncyButton
-                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
                                 onPress={() => {
                                   setDesignerOptionsMenuVisible(false);
                                   mutedIds.has(selectedDesigner.id)
@@ -13060,7 +13173,7 @@ function App() {
                                 </Text>
                               </BouncyButton>
                               <BouncyButton
-                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
                                 onPress={() => {
                                   setDesignerOptionsMenuVisible(false);
                                   handleBlockUser(selectedDesigner.id, selectedDesigner.name);
@@ -13847,7 +13960,7 @@ function App() {
                     ) : (
                       <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 12 }}>
                         <BouncyButton
-                          style={{ backgroundColor: '#8B5CF6', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 10 }}
+                          style={{ backgroundColor: '#8B5CF6', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 99 }}
                           onPress={() => setFullscreenDescEditorVisible(true)}
                         >
                           <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Start Editing</Text>
@@ -14046,7 +14159,7 @@ function App() {
                                 )}
                                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
                                   <BouncyButton
-                                    style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#8B5CF6' }}
+                                    style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: '#8B5CF6' }}
                                     onPress={() => replaceImageBlock(block.id)}
                                   >
                                     <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>
@@ -14055,7 +14168,7 @@ function App() {
                                   </BouncyButton>
                                   {block.uri && (
                                     <BouncyButton
-                                      style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: theme.border }}
+                                      style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
                                       onPress={() => setImageBlockAspect(block.id, toggleAspectMode(block.aspectMode))}
                                     >
                                       <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '700' }}>
@@ -14088,14 +14201,14 @@ function App() {
                                       {!col ? (
                                         <View style={{ flexDirection: 'row', gap: 6, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 8, backgroundColor: theme.bg }}>
                                           <BouncyButton
-                                            style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 8 }}
+                                            style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99 }}
                                             onPress={() => addTextToRowColumn(block.id, colIdx)}
                                           >
                                             <TextBlockIconSVG size={26} />
                                             <Text style={{ color: theme.accent, fontSize: 10, fontWeight: '700', marginTop: 4 }}>Text</Text>
                                           </BouncyButton>
                                           <BouncyButton
-                                            style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 8 }}
+                                            style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99 }}
                                             onPress={() => addImageToRowColumn(block.id, colIdx)}
                                           >
                                             <ImageIconSVG size={26} />
@@ -14700,7 +14813,7 @@ function App() {
         >
           <TouchableOpacity activeOpacity={1} style={[styles.customConfirmCard, { position: 'relative' }]}>
             <BouncyButton
-              style={{ position: 'absolute', top: 12, right: 12, zIndex: 1, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: theme.bg }}
+              style={{ position: 'absolute', top: 12, right: 12, zIndex: 1, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 99, backgroundColor: theme.bg }}
               onPress={() => setFormattingGuideVisible(false)}
             >
               <Text style={{ color: theme.textSecondary, fontSize: 16, fontWeight: '700', lineHeight: 16 }}>✕</Text>
@@ -14846,7 +14959,7 @@ function App() {
                       {session && activeProject.ownerId === session.user.id ? (
                         <>
                           <BouncyButton
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, paddingHorizontal: 12, borderRadius: 10 }}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, paddingHorizontal: 12, borderRadius: 99 }}
                             onPress={() => {
                               setPortfolioOptionsMenuVisible(false);
                               openEditWizard(activeProject);
@@ -14856,7 +14969,7 @@ function App() {
                             <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Edit Portfolio</Text>
                           </BouncyButton>
                           <BouncyButton
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, paddingHorizontal: 12, borderRadius: 10 }}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, paddingHorizontal: 12, borderRadius: 99 }}
                             onPress={() => {
                               setPortfolioOptionsMenuVisible(false);
                               promptDeletePortfolio(activeProject);
@@ -14869,7 +14982,7 @@ function App() {
                       ) : (
                         <>
                           <BouncyButton
-                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
                             onPress={() => {
                               setPortfolioOptionsMenuVisible(false);
                               handleReportContent('portfolio', activeProject.id, 'this portfolio');
@@ -14878,7 +14991,7 @@ function App() {
                             <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Portfolio</Text>
                           </BouncyButton>
                           <BouncyButton
-                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
                             onPress={() => {
                               setPortfolioOptionsMenuVisible(false);
                               mutedIds.has(activeProject.ownerId)
@@ -14891,7 +15004,7 @@ function App() {
                             </Text>
                           </BouncyButton>
                           <BouncyButton
-                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10 }}
+                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
                             onPress={() => {
                               setPortfolioOptionsMenuVisible(false);
                               handleBlockUser(activeProject.ownerId, activeProject.designer);
@@ -15645,7 +15758,7 @@ function App() {
                 </Text>
 
                 <BouncyButton
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 16, marginTop: 10, borderRadius: 10, borderWidth: 1, borderColor: theme.border }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 16, marginTop: 10, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
                   onPress={qrPreviewMode === 'decent' ? handleDownloadStyledQr : handleDownloadPlainQr}
                 >
                   <DownloadIconSVG color={theme.accent} size={15} />
@@ -15830,7 +15943,7 @@ const getStyles = (theme) => StyleSheet.create({
     backgroundColor: '#F59E0B',
     height: 44,
     paddingHorizontal: 16,
-    borderRadius: 14,
+    borderRadius: 99,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10
@@ -15860,7 +15973,7 @@ const getStyles = (theme) => StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     backgroundColor: '#1E293B',
-    borderRadius: 12,
+    borderRadius: 14.4,
     borderWidth: 1,
     borderColor: theme.border,
     alignItems: 'center'
@@ -15893,7 +16006,7 @@ const getStyles = (theme) => StyleSheet.create({
     width: '100%',
     backgroundColor: '#F59E0B',
     height: 44,
-    borderRadius: 14,
+    borderRadius: 99,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8
@@ -15906,7 +16019,7 @@ const getStyles = (theme) => StyleSheet.create({
   knownContactBox: {
     padding: 14,
     backgroundColor: theme.mode === 'light' ? '#EAE7F5' : '#1E293B',
-    borderRadius: 12,
+    borderRadius: 14.4,
     borderWidth: 1,
     borderColor: theme.border,
     marginBottom: 10
@@ -15957,17 +16070,17 @@ const getStyles = (theme) => StyleSheet.create({
     backgroundColor: 'rgba(139, 92, 246, 0.2)',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
+    borderRadius: 7.2,
     borderWidth: 1,
     borderColor: 'rgba(139, 92, 246, 0.4)'
   },
   versionText: { color: theme.accent, fontSize: 11, fontWeight: '700' },
   headerRightActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  headerIconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
-  headerIconBtnWithBadge: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  headerIconBtn: { width: 36, height: 36, borderRadius: 99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
+  headerIconBtnWithBadge: { width: 36, height: 36, borderRadius: 99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   unreadRedBadgeDot: { position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444', borderWidth: 1.5, borderColor: theme.bg },
 
-  notificationCard: { backgroundColor: theme.bg, borderRadius: 14, borderWidth: 1, borderColor: theme.border, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  notificationCard: { backgroundColor: theme.bg, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   notifAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: theme.border },
   notifText: { color: theme.mode === 'light' ? '#4C1D95' : '#CBD5E1', fontSize: 13, lineHeight: 18 },
   notifUserBold: { color: theme.text, fontWeight: '800' },
@@ -15975,7 +16088,7 @@ const getStyles = (theme) => StyleSheet.create({
   notifTimeText: { color: theme.textSecondary, fontSize: 11, marginTop: 3 },
   notifTypeIconBox: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
 
-  notifFollowBackBtn: { backgroundColor: '#8B5CF6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  notifFollowBackBtn: { backgroundColor: '#8B5CF6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   notifFollowBackBtnActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#8B5CF6' },
   notifFollowBackText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
   notifFollowBackTextActive: { color: theme.accent },
@@ -16013,7 +16126,7 @@ const getStyles = (theme) => StyleSheet.create({
     borderWidth: 2, borderColor: theme.border, backgroundColor: theme.bg
   },
   storyRingActive: { borderColor: '#8B5CF6' },
-  storyAvatar: { width: '100%', height: '100%', borderRadius: 26 },
+  storyAvatar: { width: '100%', height: '100%', borderRadius: 31.2 },
   storyNameText: { color: theme.textSecondary, fontSize: 11, fontWeight: '600', marginTop: 4, textAlign: 'center' },
   storyNameTextActive: { color: theme.accent, fontWeight: '800' },
 
@@ -16027,12 +16140,12 @@ const getStyles = (theme) => StyleSheet.create({
   topCategoryText: { color: theme.textSecondary, fontSize: 12, fontWeight: '600' },
   topCategoryTextActive: { color: '#FFFFFF', fontWeight: '700' },
   grid2x2CategoryBtn: {
-    backgroundColor: '#8B5CF6', width: 34, height: 34, borderRadius: 10,
+    backgroundColor: '#8B5CF6', width: 34, height: 34, borderRadius: 99,
     alignItems: 'center', justifyContent: 'center', marginRight: 16
   },
 
   categorySearchInput: {
-    backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 10,
+    backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 10, color: theme.text, fontSize: 13, marginBottom: 10
   },
   selectedCategoriesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
@@ -16041,19 +16154,19 @@ const getStyles = (theme) => StyleSheet.create({
   },
   selectedCategoryText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
   categoryVerticalListContainer: {
-    backgroundColor: theme.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.border, padding: 8, marginBottom: 14
+    backgroundColor: theme.surface, borderRadius: 14.4, borderWidth: 1, borderColor: theme.border, padding: 8, marginBottom: 14
   },
   categoryVerticalItem: { paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: theme.border },
   categoryVerticalItemActive: { backgroundColor: 'rgba(139, 92, 246, 0.2)' },
   categoryVerticalText: { color: theme.text, fontSize: 13, fontWeight: '600' },
   categoryVerticalTextActive: { color: theme.accent, fontWeight: '800' },
-  addCustomCategoryItemBtn: { paddingVertical: 12, alignItems: 'center', backgroundColor: theme.bg, borderRadius: 8, marginTop: 4 },
+  addCustomCategoryItemBtn: { paddingVertical: 12, alignItems: 'center', backgroundColor: theme.bg, borderRadius: 99, marginTop: 4 },
   addCustomCategoryItemText: { color: '#8B5CF6', fontSize: 12, fontWeight: '700' },
   moreCategoriesChip: { backgroundColor: theme.bg, borderWidth: 1, borderColor: '#8B5CF6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 99 },
   moreCategoriesText: { color: theme.accent, fontSize: 11, fontWeight: '700' },
 
   leftAlignedEngagementStatsRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  statInlinePill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.bg, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: theme.border },
+  statInlinePill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.bg, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: theme.border },
   statInlineNumText: { color: theme.text, fontSize: 12, fontWeight: '700' },
 
   stickyModalTitleBar: {
@@ -16072,14 +16185,14 @@ const getStyles = (theme) => StyleSheet.create({
 
   stickyModalBackToTopBtn: {
     position: 'absolute', bottom: 90, right: 20,
-    width: 44, height: 44, borderRadius: 22,
+    width: 44, height: 44, borderRadius: 99,
     backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center',
     elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 6, zIndex: 99
   },
 
   floatingLikeCircleBtn: {
     position: 'absolute', bottom: 28, right: 20,
-    width: 52, height: 52, borderRadius: 26,
+    width: 52, height: 52, borderRadius: 99,
     backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
     elevation: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.45, shadowRadius: 10, zIndex: 99,
@@ -16087,46 +16200,46 @@ const getStyles = (theme) => StyleSheet.create({
   },
 
   customConfirmCard: {
-    backgroundColor: theme.surface, borderRadius: 20, borderWidth: 1, borderColor: theme.border,
+    backgroundColor: theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
     padding: 24, width: '100%', maxWidth: 340, alignItems: 'center'
   },
   confirmIconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(239, 68, 68, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   successIconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(16, 185, 129, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   confirmTitle: { fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 8, textAlign: 'center' },
   confirmSubText: { fontSize: 13, color: theme.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 14 },
-  linkUrlBox: { backgroundColor: theme.bg, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: theme.border, width: '100%', marginBottom: 20 },
+  linkUrlBox: { backgroundColor: theme.bg, borderRadius: 12, padding: 10, borderWidth: 1, borderColor: theme.border, width: '100%', marginBottom: 20 },
   linkUrlText: { color: '#8B5CF6', fontSize: 12, textAlign: 'center', fontWeight: '600' },
   confirmActionsRow: { flexDirection: 'row', gap: 10, width: '100%' },
-  confirmCancelBtn: { flex: 1, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  confirmCancelBtn: { flex: 1, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   confirmCancelText: { color: theme.textSecondary, fontSize: 13, fontWeight: '700' },
-  confirmDeleteBtn: { flex: 1, backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#8B5CF6', height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  confirmDeleteBtn: { flex: 1, backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#8B5CF6', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   confirmDeleteText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 
   overlayModalBg: { flex: 1, backgroundColor: Platform.OS === 'web' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(11, 15, 23, 0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   overlayModalContainer: {
-    backgroundColor: theme.surface, borderRadius: 20, borderWidth: 1, borderColor: theme.border,
+    backgroundColor: theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
     maxHeight: '85%', width: '100%', overflow: 'hidden',
     ...(Platform.OS === 'web' ? { maxWidth: 480, alignSelf: 'center' } : {})
   },
   accountSettingsScrollContent: { padding: 20, gap: 12 },
-  saveAccountSettingsBtn: { backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#8B5CF6', height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
+  saveAccountSettingsBtn: { backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#8B5CF6', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
 
   allCategoriesGrid: { padding: 20, flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between' },
-  overlayCategoryCard: { width: '48%', backgroundColor: theme.bg, paddingVertical: 14, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' },
+  overlayCategoryCard: { width: '48%', backgroundColor: theme.bg, paddingVertical: 14, paddingHorizontal: 10, borderRadius: 14.4, borderWidth: 1, borderColor: theme.border, alignItems: 'center' },
   overlayCategoryCardActive: { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
   overlayCategoryText: { color: theme.text, fontSize: 12, fontWeight: '700' },
   overlayCategoryTextActive: { color: '#FFFFFF' },
 
   stickyBackToTopBtn: {
     position: 'absolute', bottom: 100, right: 20, width: 42, height: 42,
-    borderRadius: 21, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center',
+    borderRadius: 99, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center',
     elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 99
   },
 
-  emptyFollowedBox: { backgroundColor: theme.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center', marginTop: 10 },
+  emptyFollowedBox: { backgroundColor: theme.surface, borderRadius: 19.2, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center', marginTop: 10 },
   emptyFollowedTitle: { fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 8, textAlign: 'center' },
   emptyFollowedSub: { fontSize: 13, color: theme.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
-  discoverDesignersBtn: { backgroundColor: '#8B5CF6', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 },
+  discoverDesignersBtn: { backgroundColor: '#8B5CF6', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 99 },
   discoverBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 
   grid: Platform.OS === 'web'
@@ -16134,7 +16247,7 @@ const getStyles = (theme) => StyleSheet.create({
     : { gap: 20 },
   card: {
     backgroundColor: theme.surface,
-    borderRadius: 16,
+    borderRadius: 19.2,
     borderWidth: 1,
     borderColor: theme.border,
     overflow: 'hidden',
@@ -16146,7 +16259,7 @@ const getStyles = (theme) => StyleSheet.create({
   protoBadgeIconOnly: {
     backgroundColor: 'rgba(15, 23, 42, 0.82)',
     padding: 8,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.25)',
     alignItems: 'center',
@@ -16162,7 +16275,7 @@ const getStyles = (theme) => StyleSheet.create({
   designerRowLeftCol: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 },
   designerAvatar: { width: 24, height: 24, borderRadius: 12, backgroundColor: theme.border },
   cardDesignerName: { color: theme.accent, fontSize: 12, fontWeight: '600', flex: 1, flexWrap: 'wrap' },
-  cardFollowBtnRight: { backgroundColor: '#8B5CF6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  cardFollowBtnRight: { backgroundColor: '#8B5CF6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
   cardFollowBtnRightActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#8B5CF6' },
   cardFollowBtnText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
   cardFollowBtnTextActive: { color: theme.accent },
@@ -16182,7 +16295,7 @@ const getStyles = (theme) => StyleSheet.create({
 
   floatingBottomBar: {
     position: 'absolute', bottom: 14, left: 20, right: 20, height: 64,
-    backgroundColor: theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
+    backgroundColor: theme.surface, borderRadius: 28.8, borderWidth: 1, borderColor: theme.border,
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6,
     shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.45, shadowRadius: 20, elevation: 12, zIndex: 100
   },
@@ -16190,18 +16303,18 @@ const getStyles = (theme) => StyleSheet.create({
   menuLabel: { fontSize: 10, fontWeight: '600', color: theme.textSecondary, marginTop: 2 },
   menuLabelActive: { color: '#8B5CF6', fontWeight: '700' },
   plusContainerBtn: {
-    width: 44, height: 44, borderRadius: 14, backgroundColor: '#8B5CF6',
+    width: 44, height: 44, borderRadius: 99, backgroundColor: '#8B5CF6',
     alignItems: 'center', justifyContent: 'center', marginHorizontal: 4,
     shadowColor: '#8B5CF6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 6
   },
 
   searchContainer: { marginBottom: 20 },
-  searchInput: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, color: theme.text, fontSize: 14 },
+  searchInput: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 14.4, paddingHorizontal: 16, paddingVertical: 12, color: theme.text, fontSize: 14 },
   keywordsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 10 },
   keywordChip: { backgroundColor: theme.surface, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, borderWidth: 1, borderColor: theme.border },
   keywordText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
   designersList: { gap: 12 },
-  designerItemCard: { backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border, padding: 14, flexDirection: 'row', alignItems: 'center' },
+  designerItemCard: { backgroundColor: theme.surface, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border, padding: 14, flexDirection: 'row', alignItems: 'center' },
   designerListAvatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
   designerInfoCol: { flex: 1 },
   designerListName: { fontSize: 15, fontWeight: '700', color: theme.text, marginBottom: 2 },
@@ -16210,24 +16323,24 @@ const getStyles = (theme) => StyleSheet.create({
   emptySearchText: { color: theme.textSecondary, fontSize: 13, marginTop: 20 },
 
   designerCardActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  smallFollowBtn: { flex: 1, backgroundColor: '#8B5CF6', paddingVertical: 6, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  smallFollowBtn: { flex: 1, backgroundColor: '#8B5CF6', paddingVertical: 6, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   smallFollowBtnActive: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#8B5CF6' },
   smallFollowText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
   smallFollowTextActive: { color: theme.accent },
   smallShareBtnIconOnly: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
 
-  statsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 14, backgroundColor: theme.bg, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 20, gap: 20, borderWidth: 1, borderColor: theme.border },
+  statsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 14, backgroundColor: theme.bg, borderRadius: 14.4, paddingVertical: 10, paddingHorizontal: 20, gap: 20, borderWidth: 1, borderColor: theme.border },
   statItem: { alignItems: 'center', paddingHorizontal: 12 },
   statNum: { fontSize: 16, fontWeight: '800', color: theme.text },
   statLabel: { fontSize: 11, color: theme.textSecondary, fontWeight: '600', marginTop: 2 },
   statDivider: { width: 1, height: 24, backgroundColor: theme.border },
 
   designerProfileActionsRow: { flexDirection: 'row', gap: 10, marginTop: 12, width: '100%', alignItems: 'center' },
-  modalFollowBtn: { flex: 1, backgroundColor: '#8B5CF6', paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  modalFollowBtn: { flex: 1, backgroundColor: '#8B5CF6', paddingVertical: 12, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   modalFollowBtnActive: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#8B5CF6' },
   modalFollowText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   modalFollowTextActive: { color: theme.accent },
-  modalShareBtnIconOnly: { width: 44, height: 44, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  modalShareBtnIconOnly: { width: 44, height: 44, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
 
   categoryPillsRow: { flexDirection: 'row', gap: 8, marginBottom: 14, flexWrap: 'wrap' },
   categoryPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border },
@@ -16235,8 +16348,8 @@ const getStyles = (theme) => StyleSheet.create({
   categoryPillText: { color: theme.textSecondary, fontSize: 12, fontWeight: '600' },
   categoryPillTextActive: { color: '#FFFFFF' },
 
-  profileCard: { backgroundColor: theme.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center', position: 'relative' },
-  profileTopRightShareBtn: { position: 'absolute', top: 16, right: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
+  profileCard: { backgroundColor: theme.surface, borderRadius: 19.2, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center', position: 'relative' },
+  profileTopRightShareBtn: { position: 'absolute', top: 16, right: 16, width: 36, height: 36, borderRadius: 99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   profileLargeAvatar: { width: 80, height: 80, borderRadius: 40, marginBottom: 12 },
   profileName: { fontSize: 20, fontWeight: '800', color: theme.text, marginBottom: 4, textAlign: 'center' },
   profileRole: { fontSize: 13, color: theme.accent, fontWeight: '600', marginBottom: 2 },
@@ -16244,10 +16357,10 @@ const getStyles = (theme) => StyleSheet.create({
   profileBio: { fontSize: 13, color: theme.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 8 },
 
   socialCircularLinksRow: { flexDirection: 'row', gap: 10, marginTop: 14, justifyContent: 'center' },
-  socialCircleBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
-  socialCirclePreviewBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
+  socialCircleBtn: { width: 38, height: 38, borderRadius: 99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
+  socialCirclePreviewBtn: { width: 42, height: 42, borderRadius: 99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
 
-  avatarEditPickerBtn: { alignSelf: 'center', width: 90, height: 90, borderRadius: 45, overflow: 'hidden', position: 'relative', marginBottom: 10 },
+  avatarEditPickerBtn: { alignSelf: 'center', width: 90, height: 90, borderRadius: 99, overflow: 'hidden', position: 'relative', marginBottom: 10 },
   avatarEditPreview: { width: '100%', height: '100%' },
   avatarEditOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(11, 15, 23, 0.75)', paddingVertical: 4, alignItems: 'center' },
   avatarEditText: { color: theme.accent, fontSize: 9, fontWeight: '700' },
@@ -16262,14 +16375,14 @@ const getStyles = (theme) => StyleSheet.create({
   squarePickerWrapper: { position: 'relative' },
   removeImageBadge: { position: 'absolute', top: -6, right: -6, width: 26, height: 26, borderRadius: 13, backgroundColor: theme.bg, borderWidth: 1, borderColor: '#EF4444', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   videoInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  removeVideoBtn: { width: 42, height: 42, backgroundColor: theme.bg, borderWidth: 1, borderColor: '#EF4444', borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  removeVideoBtn: { width: 42, height: 42, backgroundColor: theme.bg, borderWidth: 1, borderColor: '#EF4444', borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
 
   ownerActionsRow: { flexDirection: 'row', gap: 8, marginRight: 10 },
-  ownerIconBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
+  ownerIconBtn: { width: 32, height: 32, borderRadius: 99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
 
   warningNoteBox: {
     backgroundColor: 'rgba(234, 179, 8, 0.12)', borderWidth: 1, borderColor: 'rgba(234, 179, 8, 0.3)',
-    borderRadius: 10, padding: 12, marginBottom: 16
+    borderRadius: 12, padding: 12, marginBottom: 16
   },
   warningTitle: { color: '#FACC15', fontSize: 13, fontWeight: '700' },
   warningText: { color: theme.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 4 },
@@ -16278,7 +16391,7 @@ const getStyles = (theme) => StyleSheet.create({
   errorText: { color: '#EF4444', fontSize: 11, fontWeight: '600', marginTop: 4, marginBottom: 8 },
 
   bigRectanglePicker: {
-    width: '100%', aspectRatio: 16 / 9, backgroundColor: theme.surface, borderRadius: 14,
+    width: '100%', aspectRatio: 16 / 9, backgroundColor: theme.surface, borderRadius: 16.8,
     borderWidth: 1.5, borderColor: theme.border,
     overflow: 'hidden', alignItems: 'center', justifyContent: 'center'
   },
@@ -16289,7 +16402,7 @@ const getStyles = (theme) => StyleSheet.create({
 
   smallSquarePicker: {
     width: (SCREEN_WIDTH - 40 - 24) / 3, height: (SCREEN_WIDTH - 40 - 24) / 3,
-    backgroundColor: theme.surface, borderRadius: 12,
+    backgroundColor: theme.surface, borderRadius: 14.4,
     borderWidth: 1.5, borderColor: theme.border,
     overflow: 'hidden', alignItems: 'center', justifyContent: 'center'
   },
@@ -16298,7 +16411,7 @@ const getStyles = (theme) => StyleSheet.create({
 
   addMoreVideoBtn: {
     backgroundColor: 'rgba(139, 92, 246, 0.15)', borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.3)',
-    paddingVertical: 10, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 4
+    paddingVertical: 10, borderRadius: 99, alignItems: 'center', justifyContent: 'center', marginTop: 4
   },
   addMoreVideoText: { color: theme.accent, fontSize: 12, fontWeight: '700' },
 
@@ -16309,21 +16422,21 @@ const getStyles = (theme) => StyleSheet.create({
   },
   uniformWizardBtnBack: {
     height: 44, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border,
-    borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    borderRadius: 99, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     paddingHorizontal: 16
   },
   uniformWizardBtnPrimary: {
     height: 44, backgroundColor: '#8B5CF6', flex: 1,
-    borderRadius: 12, alignItems: 'center', justifyContent: 'center'
+    borderRadius: 99, alignItems: 'center', justifyContent: 'center'
   },
   backBtnText: { color: theme.textSecondary, fontSize: 13, fontWeight: '700' },
   submitBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
 
   confirmReviewCard: {
-    backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+    backgroundColor: theme.surface, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border,
     padding: 16, marginBottom: 16
   },
-  reviewCover: { width: '100%', aspectRatio: 16 / 9, borderRadius: 10, marginBottom: 12 },
+  reviewCover: { width: '100%', aspectRatio: 16 / 9, borderRadius: 12, marginBottom: 12 },
   reviewTitle: { fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 2 },
   reviewDesigner: { fontSize: 12, color: theme.accent, fontWeight: '600', marginBottom: 8 },
   reviewCategory: { fontSize: 12, color: theme.textSecondary, marginBottom: 8 },
@@ -16337,10 +16450,10 @@ const getStyles = (theme) => StyleSheet.create({
   },
   modalTopBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: theme.border, backgroundColor: theme.surface },
   modalTopTitle: { fontSize: 16, fontWeight: '700', color: theme.text, flex: 1 },
-  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
+  closeBtn: { width: 32, height: 32, borderRadius: 99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
   closeBtnText: { color: theme.mode === 'light' ? '#6D28D9' : '#FFF', fontSize: 16, fontWeight: '700' },
-  tabBar: { flexDirection: 'row', backgroundColor: theme.surface, padding: 6, marginHorizontal: 16, marginVertical: 10, borderRadius: 12, gap: 6 },
-  tabBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
+  tabBar: { flexDirection: 'row', backgroundColor: theme.surface, padding: 6, marginHorizontal: 16, marginVertical: 10, borderRadius: 14.4, gap: 6 },
+  tabBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 99 },
   tabBtnActive: { backgroundColor: '#8B5CF6' },
   tabBtnText: { color: theme.textSecondary, fontSize: 12, fontWeight: '700' },
   tabBtnTextActive: { color: '#FFF' },
@@ -16357,22 +16470,22 @@ const getStyles = (theme) => StyleSheet.create({
   designerAvatarModal: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.border },
   caseDesigner: { fontSize: 14, color: theme.accent, fontWeight: '700' },
   caseDesignerRole: { fontSize: 11, color: theme.textSecondary, fontWeight: '600' },
-  modalDesignerFollowBtnRight: { backgroundColor: '#8B5CF6', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  modalDesignerFollowBtnRight: { backgroundColor: '#8B5CF6', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99 },
   modalDesignerFollowBtnRightActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#8B5CF6' },
   modalDesignerFollowTextRight: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   modalDesignerFollowTextRightActive: { color: theme.accent },
 
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  linkChip: { backgroundColor: theme.surface, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: theme.border },
+  linkChip: { backgroundColor: theme.surface, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9.6, borderWidth: 1, borderColor: theme.border },
   linkChipText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
-  briefBox: { backgroundColor: theme.mode === 'light' ? 'rgba(109, 40, 217, 0.06)' : 'rgba(30, 41, 59, 0.5)', borderLeftWidth: 4, borderLeftColor: '#8B5CF6', padding: 14, borderRadius: 8, marginBottom: 20 },
+  briefBox: { backgroundColor: theme.mode === 'light' ? 'rgba(109, 40, 217, 0.06)' : 'rgba(30, 41, 59, 0.5)', borderLeftWidth: 4, borderLeftColor: '#8B5CF6', padding: 14, borderRadius: 9.6, marginBottom: 20 },
   briefText: { color: theme.text, fontSize: 14, lineHeight: 20 },
   sectionHeader: { fontSize: 12, fontWeight: '800', color: theme.textSecondary, letterSpacing: 1, marginBottom: 12, marginTop: 10 },
   galleryScroll: { marginBottom: 24 },
-  galleryImage: { width: 200, height: 320, borderRadius: 12, marginRight: 12 },
+  galleryImage: { width: 200, height: 320, borderRadius: 14.4, marginRight: 12 },
   caseBodyText: { color: theme.textSecondary, fontSize: 14, lineHeight: 22 },
   formGroupLabel: { fontSize: 13, fontWeight: '700', color: theme.text, marginBottom: 6, marginTop: 12 },
-  formInput: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, color: theme.text, fontSize: 13 }
+  formInput: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: theme.text, fontSize: 13 }
 });
 
 // SafeAreaProvider gives every SafeAreaView in the app access to real device
@@ -16423,7 +16536,7 @@ class CrashFallbackBoundary extends React.Component {
               We've automatically been notified and are looking into it. Try restarting - your data is safe.
             </Text>
             <BouncyButton
-              style={{ backgroundColor: '#8B5CF6', height: 48, paddingHorizontal: 32, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+              style={{ backgroundColor: '#8B5CF6', height: 48, paddingHorizontal: 32, borderRadius: 99, alignItems: 'center', justifyContent: 'center' }}
               onPress={this.handleRestart}
             >
               <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>Restart</Text>
