@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 310;
+const BUILD_NUMBER = 311;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -12989,12 +12989,26 @@ function App() {
         visible={portfolioTypeModalVisible}
         onRequestClose={() => setPortfolioTypeModalVisible(false)}
       >
-        {/* Genuinely fullscreen - no centered card, no side padding, no
-            maxHeight cap. The 4 cards below share the remaining vertical
-            space evenly via flex:1 each (not fixed pixel heights), so this
-            adapts correctly to any screen size instead of only fitting
-            without scrolling on whatever one device this happened to be
-            tested on. */}
+        {/* Matches the main wizard's own popup treatment exactly on
+            desktop/tablet (same backdrop, same wizardModalWidth/880 sizing)
+            rather than using its own separate one-off dimensions - this is
+            a step in that same wizard flow, so it should look like it
+            belongs to it. Mobile/narrow web stays genuinely fullscreen,
+            unchanged from before - only the isWebWide branch is new here. */}
+        <View
+          style={isWebWide
+            ? { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.5)', padding: 20 }
+            : { flex: 1 }}
+          onStartShouldSetResponder={() => isWebWide}
+          onResponderRelease={() => { if (isWebWide) setPortfolioTypeModalVisible(false); }}
+        >
+          <View
+            style={isWebWide
+              ? { width: '100%', maxWidth: wizardModalWidth, maxHeight: Math.min(880, Dimensions.get('window').height - 48), borderRadius: 20, overflow: 'hidden', backgroundColor: theme.bg }
+              : { flex: 1, width: '100%' }}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => {}}
+          >
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
           <View style={styles.modalTopBar}>
             <Text style={styles.modalTopTitle}>What are you sharing?</Text>
@@ -13003,7 +13017,11 @@ function App() {
             </BouncyButton>
           </View>
 
-          <View style={{ flex: 1, padding: 20, gap: 8 }}>
+          {/* 2-column grid on desktop/tablet (2 rows of 2, each card at
+              ~48% width so a gap can sit between them), single stacked
+              column on mobile - same as before. Each card still sizes to
+              its own content height either way, nothing forces height. */}
+          <View style={{ flex: 1, padding: 20, flexDirection: isWebWide ? 'row' : 'column', flexWrap: isWebWide ? 'wrap' : 'nowrap', gap: 12 }}>
             {/* UI/UX - the only functional type right now. Whole-card tap
                 removed in favor of an explicit Continue button, matching
                 how the coming-soon cards below only have their own inner
@@ -13012,6 +13030,7 @@ function App() {
                 this one. */}
             <View
               style={{
+                width: isWebWide ? '48%' : '100%',
                 borderWidth: 1.5, borderColor: theme.accent, borderRadius: 14, padding: 16,
                 backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)'
               }}
@@ -13051,6 +13070,7 @@ function App() {
               <View
                 key={type.key}
                 style={{
+                  width: isWebWide ? '48%' : '100%',
                   borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 16
                 }}
               >
@@ -13103,6 +13123,8 @@ function App() {
             ))}
           </View>
         </SafeAreaView>
+          </View>
+        </View>
       </Modal>
 
       {/* Confirmation before actually registering interest - a quick
