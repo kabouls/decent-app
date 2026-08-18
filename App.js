@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 331;
+const BUILD_NUMBER = 334;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -652,49 +652,18 @@ const QrFinderEye = ({ gridX, gridY, cellSize, color, backgroundColor }) => {
 // so switching between differently-sized tabs will snap-resize instantly
 // while still sliding smoothly, which is barely noticeable in practice for
 // a two-tab switcher used occasionally.
-// Tunable in one place, as requested - adjust these and every card
-// watermark updates consistently.
-// WATERMARK_OPACITY: the image's own overall visibility (0 = invisible, 1 = fully solid).
-// WATERMARK_LEFT_EDGE_OVERLAY: how strongly the overlay covers the image at
-//   the very left edge of the card (0 = image fully visible even at the
-//   left edge, 1 = completely hidden there). Lower this to keep more of the
-//   image visible on the left side rather than a hard cutoff.
-// WATERMARK_BLUR_RADIUS: slight blur on the image itself, via Image's own
-//   built-in blurRadius prop - no new dependency, works cross-platform.
-// The gradient itself is a single smooth 2-stop fade (left edge to right
-// edge) rather than the previous 3-stop "flat plateau then fast fade" -
-// that's what was making the left side completely disappear instead of
-// just gradually thinning out.
-const WATERMARK_OPACITY = 0.7;
-const WATERMARK_LEFT_EDGE_OVERLAY = 0.55;
-const WATERMARK_BLUR_RADIUS = 3;
-
-// Big, translucent version of a card's own category image as a background
-// watermark, fading toward the left side (where the title/description text
-// sits, so it stays legible) via a gradient overlay rather than true
-// alpha-masking on the image itself - simpler and more predictable across
-// platforms. The overlay's color is the card's own background color, not
-// literal transparent, so it blends seamlessly with whatever
-// backgroundColor that specific card is using (the active UI/UX card and
-// the muted coming-soon cards use different colors) instead of assuming
-// one fixed background everywhere.
-const PortfolioTypeCardWatermark = ({ imageSource, cardBackgroundColor }) => (
+// Plain background image, no blur/fade/opacity effects applied in code -
+// whatever the image file itself looks like is exactly what renders. Fade,
+// blur, and any other visual treatment are expected to already be baked
+// into the image files themselves before they're placed in
+// assets/card-images/.
+const PortfolioTypeCardWatermark = ({ imageSource }) => (
   <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
     <Image
       source={imageSource}
       resizeMode="cover"
-      blurRadius={WATERMARK_BLUR_RADIUS}
-      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: WATERMARK_OPACITY }}
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
     />
-    <Svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-      <Defs>
-        <LinearGradient id="cardFadeGrad" x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0" stopColor={cardBackgroundColor} stopOpacity={WATERMARK_LEFT_EDGE_OVERLAY} />
-          <Stop offset="1" stopColor={cardBackgroundColor} stopOpacity="0" />
-        </LinearGradient>
-      </Defs>
-      <Rect x="0" y="0" width="100%" height="100%" fill="url(#cardFadeGrad)" />
-    </Svg>
   </View>
 );
 
@@ -13471,8 +13440,7 @@ function App() {
               }}
             >
               <PortfolioTypeCardWatermark
-                imageSource={require('./assets/card-images/card-ui-ux.jpg')}
-                cardBackgroundColor={themeMode === 'light' ? '#EDE9FE' : '#1a1330'}
+                imageSource={require('./assets/card-images/card-ui-ux.png')}
               />
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <CursorArrowSVG size={17} color={theme.accent} />
@@ -13502,9 +13470,9 @@ function App() {
 
             {/* Graphic Design, Illustration, Frontend - coming soon */}
             {[
-              { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding, print, and visual design work.', icon: <PaletteSVG size={16} color={theme.textSecondary} />, image: require('./assets/card-images/card-graphic-design.jpg') },
-              { key: 'illustration', title: 'Illustration', desc: 'Digital art, character work, and illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} />, image: require('./assets/card-images/card-illustration.jpg') },
-              { key: 'frontend', title: 'Frontend Development', desc: 'Live, interactive code demos alongside your project source.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} />, image: require('./assets/card-images/card-frontend.jpg') }
+              { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding, print, and visual design work.', icon: <PaletteSVG size={16} color={theme.textSecondary} />, image: require('./assets/card-images/card-graphic-design.png') },
+              { key: 'illustration', title: 'Illustration', desc: 'Digital art, character work, and illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} />, image: require('./assets/card-images/card-illustration.png') },
+              { key: 'frontend', title: 'Frontend Development', desc: 'Live, interactive code demos alongside your project source.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} />, image: require('./assets/card-images/card-frontend.png') }
             ].map((type) => (
               <View
                 key={type.key}
@@ -13516,7 +13484,6 @@ function App() {
               >
                 <PortfolioTypeCardWatermark
                   imageSource={type.image}
-                  cardBackgroundColor={theme.bg}
                 />
                 <View style={{ opacity: 0.5 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
