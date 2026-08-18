@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 320;
+const BUILD_NUMBER = 321;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -15447,7 +15447,7 @@ function App() {
                 />
               )
             )}
-          <View style={styles.customConfirmCard}
+          <View style={[styles.customConfirmCard, isWebWide && { maxWidth: 420 }]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -15477,19 +15477,19 @@ function App() {
                   themeMode={themeMode}
                   activeKey={qrPreviewMode}
                   onChange={setQrPreviewMode}
-                  containerStyle={{ width: 180, marginBottom: 10, padding: 3 }}
+                  containerStyle={{ width: isWebWide ? 240 : 180, marginBottom: 10, padding: 3 }}
                   tabs={[
                     { key: 'plain', label: 'Plain QR', flex: false },
                     { key: 'decent', label: 'DECENT Style' }
                   ]}
                 />
 
-                <View style={{ width: 180, height: 180, alignItems: 'center', justifyContent: 'center', padding: 10, backgroundColor: '#FFFFFF', borderRadius: 12 }}>
+                <View style={{ width: isWebWide ? 240 : 180, height: isWebWide ? 240 : 180, alignItems: 'center', justifyContent: 'center', padding: 10, backgroundColor: '#FFFFFF', borderRadius: 12 }}>
                   {qrPreviewMode === 'decent' ? (
                     <CircularQRCode
                       ref={styledQrExportRef}
                       value={shareModalUrl}
-                      size={160}
+                      size={isWebWide ? 220 : 160}
                       color="#8B5CF6"
                       backgroundColor="#FFFFFF"
                       showLogo
@@ -15497,7 +15497,7 @@ function App() {
                   ) : (
                     <Image
                       source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(shareModalUrl)}` }}
-                      style={{ width: 160, height: 160 }}
+                      style={{ width: isWebWide ? 220 : 160, height: isWebWide ? 220 : 160 }}
                     />
                   )}
                 </View>
