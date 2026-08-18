@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 303;
+const BUILD_NUMBER = 308;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -4623,6 +4623,7 @@ function App() {
   const [shareType, setShareType] = useState('profile'); // 'profile' | 'portfolio'
   const [shareIsOwnProfile, setShareIsOwnProfile] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [qrPreviewMode, setQrPreviewMode] = useState('decent'); // 'decent' | 'plain' - which QR is shown/downloaded in the Share Profile modal
 
   const handleShareDesigner = (designer) => {
     // Was copying the designer's own linked-elsewhere URL (their Figma/
@@ -8661,7 +8662,7 @@ function App() {
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 8,
                   backgroundColor: theme.surface, borderWidth: 0.75, borderColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
-                  borderRadius: 999, height: 36, minHeight: 36, maxHeight: 36, paddingVertical: 0, paddingHorizontal: 8,
+                  borderRadius: 99, height: 36, minHeight: 36, maxHeight: 36, paddingVertical: 0, paddingHorizontal: 8,
                   width: TOAST_PILL_WIDTH, overflow: 'hidden'
                 }}
               >
@@ -11961,14 +11962,13 @@ function App() {
                       Scan with any e-wallet or mobile banking app that supports QRIS.
                     </Text>
                     <BouncyButton
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: theme.border }}
-                      onPress={() => {
-                        if (!donateTermsAgreed) {
-                          showAppAlert('Agreement Required', 'Please check the box agreeing to the Terms of Service before downloading the QR code.');
-                          return;
-                        }
-                        handleDownloadQrisCode();
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8,
+                        borderRadius: 10, borderWidth: 1, borderColor: theme.border,
+                        opacity: donateTermsAgreed ? 1 : 0.4
                       }}
+                      disabled={!donateTermsAgreed}
+                      onPress={handleDownloadQrisCode}
                     >
                       <DownloadIconSVG color={theme.accent} size={16} />
                       <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 12.5 }}>Download QRIS</Text>
@@ -13003,13 +13003,12 @@ function App() {
             </BouncyButton>
           </View>
 
-          <View style={{ flex: 1, padding: 12, gap: 8 }}>
+          <View style={{ flex: 1, padding: 20, gap: 8 }}>
             {/* UI/UX - the only functional type right now */}
             <BouncyButton
               style={{
-                flex: 1, borderWidth: 1.5, borderColor: theme.accent, borderRadius: 14, padding: 14,
-                backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)',
-                justifyContent: 'center'
+                borderWidth: 1.5, borderColor: theme.accent, borderRadius: 14, padding: 16,
+                backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)'
               }}
               onPress={() => {
                 setSelectedPortfolioType('ui_ux');
@@ -13035,8 +13034,7 @@ function App() {
               <View
                 key={type.key}
                 style={{
-                  flex: 1, borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 14,
-                  justifyContent: 'center'
+                  borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 16
                 }}
               >
                 <View style={{ opacity: 0.5 }}>
@@ -13058,7 +13056,7 @@ function App() {
                 <BouncyButton
                   style={{
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                    paddingVertical: 7, borderRadius: 10, marginTop: 8,
+                    paddingVertical: 8, borderRadius: 10, marginTop: 8,
                     borderWidth: 1, borderColor: myFeatureInterests.has(type.key) ? '#10B981' : theme.accent,
                     backgroundColor: myFeatureInterests.has(type.key) ? 'rgba(16,185,129,0.1)' : 'transparent'
                   }}
@@ -14750,7 +14748,7 @@ function App() {
                             key={idx}
                             style={{
                               flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                              backgroundColor: '#8B5CF6', borderRadius: 999, paddingVertical: 11, paddingHorizontal: 18
+                              backgroundColor: '#8B5CF6', borderRadius: 99, paddingVertical: 10, paddingHorizontal: 16
                             }}
                             onPress={() => openExternalLinkWithWarning(link.url)}
                           >
@@ -15258,32 +15256,54 @@ function App() {
 
             {shareType === 'profile' && shareIsOwnProfile && shareModalUrl ? (
               <View style={{ alignItems: 'center', marginBottom: 16 }}>
-                <View style={{ padding: 10, backgroundColor: '#FFFFFF', borderRadius: 12 }}>
-                  <CircularQRCode
-                    ref={styledQrExportRef}
-                    value={shareModalUrl}
-                    size={160}
-                    color="#8B5CF6"
-                    backgroundColor="#FFFFFF"
-                    showLogo
-                  />
-                </View>
-                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                {/* Tab switcher sized to match the QR box below it (160
+                    content + 10*2 padding = 180) rather than stretching
+                    full-width, so it visually reads as "controls for this
+                    specific box" rather than a page-wide toggle. Switching
+                    tabs swaps the actual live preview, not just which file
+                    downloads - both branches source from the exact same
+                    URL/component used by the download handlers below, so
+                    preview and downloaded file can never drift apart. */}
+                <View style={{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: 10, padding: 3, width: 180, marginBottom: 10 }}>
                   <BouncyButton
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12 }}
-                    onPress={handleDownloadPlainQr}
+                    style={{ flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center', backgroundColor: qrPreviewMode === 'plain' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
+                    onPress={() => setQrPreviewMode('plain')}
                   >
-                    <DownloadIconSVG color={theme.textSecondary} size={15} />
-                    <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700' }}>Plain QR</Text>
+                    <Text style={{ color: qrPreviewMode === 'plain' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>Plain QR</Text>
                   </BouncyButton>
                   <BouncyButton
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12 }}
-                    onPress={handleDownloadStyledQr}
+                    style={{ flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center', backgroundColor: qrPreviewMode === 'decent' ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent' }}
+                    onPress={() => setQrPreviewMode('decent')}
                   >
-                    <DownloadIconSVG color={theme.accent} size={15} />
-                    <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>DECENT Style</Text>
+                    <Text style={{ color: qrPreviewMode === 'decent' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>DECENT Style</Text>
                   </BouncyButton>
                 </View>
+
+                <View style={{ width: 180, height: 180, alignItems: 'center', justifyContent: 'center', padding: 10, backgroundColor: '#FFFFFF', borderRadius: 12 }}>
+                  {qrPreviewMode === 'decent' ? (
+                    <CircularQRCode
+                      ref={styledQrExportRef}
+                      value={shareModalUrl}
+                      size={160}
+                      color="#8B5CF6"
+                      backgroundColor="#FFFFFF"
+                      showLogo
+                    />
+                  ) : (
+                    <Image
+                      source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(shareModalUrl)}` }}
+                      style={{ width: 160, height: 160 }}
+                    />
+                  )}
+                </View>
+
+                <BouncyButton
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 16, marginTop: 10, borderRadius: 10, borderWidth: 1, borderColor: theme.border }}
+                  onPress={qrPreviewMode === 'decent' ? handleDownloadStyledQr : handleDownloadPlainQr}
+                >
+                  <DownloadIconSVG color={theme.accent} size={15} />
+                  <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>Download</Text>
+                </BouncyButton>
               </View>
             ) : null}
 
@@ -15754,7 +15774,7 @@ const getStyles = (theme) => StyleSheet.create({
   prototypeBadgesRow: { position: 'absolute', top: 12, left: 12, flexDirection: 'row', gap: 8, zIndex: 10 },
   protoBadgeIconOnly: {
     backgroundColor: 'rgba(15, 23, 42, 0.82)',
-    padding: 7,
+    padding: 8,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.25)',
@@ -15966,7 +15986,7 @@ const getStyles = (theme) => StyleSheet.create({
   designerAvatarModal: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.border },
   caseDesigner: { fontSize: 14, color: theme.accent, fontWeight: '700' },
   caseDesignerRole: { fontSize: 11, color: theme.textSecondary, fontWeight: '600' },
-  modalDesignerFollowBtnRight: { backgroundColor: '#8B5CF6', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10 },
+  modalDesignerFollowBtnRight: { backgroundColor: '#8B5CF6', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
   modalDesignerFollowBtnRightActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#8B5CF6' },
   modalDesignerFollowTextRight: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   modalDesignerFollowTextRightActive: { color: theme.accent },
