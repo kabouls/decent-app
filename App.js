@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 334;
+const BUILD_NUMBER = 341;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -662,7 +662,7 @@ const PortfolioTypeCardWatermark = ({ imageSource }) => (
     <Image
       source={imageSource}
       resizeMode="cover"
-      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
     />
   </View>
 );
@@ -1778,6 +1778,14 @@ const ProjectCard = React.memo(({
           </View>
         ) : null}
       </View>
+      {item.isAiGenerated === true && (
+        <View style={{
+          position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 8,
+          backgroundColor: '#10B981', alignItems: 'center', justifyContent: 'center', zIndex: 10
+        }}>
+          <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontWeight: '900' }}>AI</Text>
+        </View>
+      )}
       {showPinControl ? (
         <BouncyButton
           style={{
@@ -2845,9 +2853,6 @@ function App() {
   const [changelogLoading, setChangelogLoading] = useState(false);
   const changelogFetchedRef = useRef(false); // only fetch once per session, not every time the modal reopens
   const [termsModalVisible, setTermsModalVisible] = useState(false);
-  const [reportsModalVisible, setReportsModalVisible] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminAssistiveButtonEnabled, setAdminAssistiveButtonEnabled] = useState(false);
   // Safe search: on by default (hides NSFW everywhere including search).
   // Turning it off requires an explicit warning + countdown before it takes
   // effect - see handleDisableSafeSearch.
@@ -2856,20 +2861,6 @@ function App() {
   const [disableSafeSearchCountdown, setDisableSafeSearchCountdown] = useState(5);
   const [fancyModeConfirmVisible, setFancyModeConfirmVisible] = useState(false);
   const [fancyModeCountdown, setFancyModeCountdown] = useState(5);
-  const assistiveBtnPos = useRef(new Animated.ValueXY({ x: SCREEN_WIDTH - 70, y: 400 })).current;
-  const assistiveBtnPosRef = useRef({ x: SCREEN_WIDTH - 70, y: 400 });
-  const assistiveBtnLongPressTimerRef = useRef(null);
-  const assistiveBtnMovedRef = useRef(false);
-  const assistiveBtnScaleAnim = useRef(new Animated.Value(1)).current;
-  const [adminPasswordModalVisible, setAdminPasswordModalVisible] = useState(false);
-  const [adminPasswordInput, setAdminPasswordInput] = useState('');
-  const [adminPanelVisible, setAdminPanelVisible] = useState(false);
-  const [feedbackMessagesList, setFeedbackMessagesList] = useState([]);
-  const [analyticsSummary, setAnalyticsSummary] = useState(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [adminUnlocked, setAdminUnlocked] = useState(false);
-  const [pushRegistrationStatus, setPushRegistrationStatus] = useState('Not attempted yet');
-  const [versionTapCount, setVersionTapCount] = useState(0);
   const [optionsView, setOptionsView] = useState('root'); // 'root' | 'privacy' | 'supportLegal'
   // Options sub-items (About, Privacy, Terms, Feedback, Reports, Admin
   // Panel, Change Password, Account Settings, Donate) previously closed
@@ -2879,7 +2870,6 @@ function App() {
   // close button can reopen Options instead. Native only - web doesn't use
   // Options as a popup in the same way.
   const [returnToOptionsOnClose, setReturnToOptionsOnClose] = useState(false);
-  const [allReports, setAllReports] = useState([]);
   const [blockedUsersList, setBlockedUsersList] = useState([]);
 
   // Feedback & Support Modal
@@ -3033,6 +3023,14 @@ function App() {
     }
   }, [cameFromDesignerId]);
   const [designerOptionsMenuVisible, setDesignerOptionsMenuVisible] = useState(false);
+  // Discover Designers list has multiple rows at once, unlike the single
+  // designer-profile context above - tracks which specific row's menu is
+  // open by id (or null) instead of one shared boolean, and each row's own
+  // dots-button ref is stored in this plain object (not useRef-per-row,
+  // which would violate the rules of hooks inside a .map()).
+  const [discoverDotsMenuOpenId, setDiscoverDotsMenuOpenId] = useState(null);
+  const [discoverDotsMenuPos, setDiscoverDotsMenuPos] = useState({ top: 0, right: 0 });
+  const discoverDotsRefsMap = useRef({}).current;
   const [portfolioOptionsMenuVisible, setPortfolioOptionsMenuVisible] = useState(false);
   // These popups render through a real <Modal> (portals straight to
   // document.body on web) rather than a plain absolutely-positioned View,
@@ -3090,6 +3088,15 @@ function App() {
   // ScrollView's top padding can compensate exactly, same approach as
   // headerBottomY above.
   const [categoryBarHeight, setCategoryBarHeight] = useState(62);
+  const [forYouFilterBarHeight, setForYouFilterBarHeight] = useState(44);
+  // Sticky category+filter bar slides out of view on scroll-down, back in
+  // on scroll-up (even a small amount) - a familiar pattern from most
+  // native apps' collapsing headers. Native driver only animates
+  // transform/opacity, not layout, which is exactly what's needed here
+  // (a slide, not a resize), so this stays smooth.
+  const forYouStickyBarAnim = useRef(new Animated.Value(0)).current; // 0 = fully visible, 1 = fully hidden
+  const forYouStickyBarHiddenRef = useRef(false); // mirrors the animated value's logical state, so handleScroll doesn't need to read the Animated.Value directly (can't synchronously) to decide whether a direction change actually needs a new animation
+  const lastScrollYRef = useRef(0);
   // Left/right scroll arrows for the category bar, web only - mouse/trackpad
   // users don't have the natural horizontal swipe a touchscreen gives, so
   // arrows fill that gap. Hidden entirely when there's nothing to scroll to
@@ -3391,6 +3398,36 @@ function App() {
   ];
   const [forYouTypeFilter, setForYouTypeFilter] = useState(new Set(PORTFOLIO_TYPE_OPTIONS.map((t) => t.key)));
   const [forYouTypeFilterOpen, setForYouTypeFilterOpen] = useState(false);
+  const [forYouAiFilter, setForYouAiFilter] = useState(true); // true = "With AI", false = "No AI" - default per explicit instruction
+  const forYouFiltersLoadedRef = useRef(false); // guards against the save-effect below firing on the initial default values, before the real saved ones (if any) have been loaded in
+
+  // Load any previously-saved filter choices once on mount - once a person
+  // changes either filter, it should stay that way indefinitely across
+  // app opens, never silently reverting to the hardcoded defaults above.
+  useEffect(() => {
+    (async () => {
+      try {
+        const savedType = await AsyncStorage.getItem('forYouTypeFilter');
+        if (savedType) setForYouTypeFilter(new Set(JSON.parse(savedType)));
+        const savedAi = await AsyncStorage.getItem('forYouAiFilter');
+        if (savedAi !== null) setForYouAiFilter(JSON.parse(savedAi));
+      } catch (e) {
+        console.warn('Failed to load saved For You filters:', e);
+      } finally {
+        forYouFiltersLoadedRef.current = true;
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!forYouFiltersLoadedRef.current) return; // skip the initial mount, before saved values (if any) have loaded
+    AsyncStorage.setItem('forYouTypeFilter', JSON.stringify(Array.from(forYouTypeFilter))).catch(() => {});
+  }, [forYouTypeFilter]);
+
+  useEffect(() => {
+    if (!forYouFiltersLoadedRef.current) return;
+    AsyncStorage.setItem('forYouAiFilter', JSON.stringify(forYouAiFilter)).catch(() => {});
+  }, [forYouAiFilter]);
 
   const [formStep, setFormStep] = useState(1);
   const [fTitle, setFTitle] = useState('');
@@ -3398,6 +3435,7 @@ function App() {
   
   const [fCategories, setFCategories] = useState([]);
   const [fIsNsfw, setFIsNsfw] = useState(false);
+  const [fIsAiGenerated, setFIsAiGenerated] = useState(null); // null = not yet chosen (required), true = With AI, false = No AI
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [categoryPickerModalVisible, setCategoryPickerModalVisible] = useState(false);
   const [masterCategoriesList, setMasterCategoriesList] = useState(ALL_UIUX_CATEGORIES_MASTER);
@@ -3695,6 +3733,7 @@ function App() {
           id: p.id,
           ownerId: p.user_id || null,
           portfolioType: p.portfolio_type || 'ui_ux',
+          isAiGenerated: p.is_ai_generated,
           title: p.title,
           designer: p.user_name || 'Unknown Designer',
           designerHandle: p.user_handle || '',
@@ -3758,6 +3797,7 @@ function App() {
           id: p.id,
           ownerId: p.user_id || null,
           portfolioType: p.portfolio_type || 'ui_ux',
+          isAiGenerated: p.is_ai_generated,
           title: p.title,
           designer: p.user_name || 'Unknown Designer',
             designerHandle: p.user_handle || '',
@@ -4581,6 +4621,30 @@ function App() {
       if (showBackToTop) setShowBackToTop(false);
     }
 
+    // Only applies to For You, where the sticky category+filter bar
+    // exists. Scrolling down past a small threshold (avoids reacting to
+    // tiny accidental jitters right at the top) hides it; scrolling up by
+    // even a little brings it back - the "little" part specifically is
+    // why this compares against the last known Y on every scroll event
+    // rather than only checking overall direction since a scroll session
+    // started.
+    if (bottomNav === 'forYou' && Platform.OS !== 'web') {
+      const delta = offsetY - lastScrollYRef.current;
+      if (offsetY < 40) {
+        if (forYouStickyBarHiddenRef.current) {
+          forYouStickyBarHiddenRef.current = false;
+          Animated.timing(forYouStickyBarAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+        }
+      } else if (delta > 8 && !forYouStickyBarHiddenRef.current) {
+        forYouStickyBarHiddenRef.current = true;
+        Animated.timing(forYouStickyBarAnim, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+      } else if (delta < -8 && forYouStickyBarHiddenRef.current) {
+        forYouStickyBarHiddenRef.current = false;
+        Animated.timing(forYouStickyBarAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+      }
+      lastScrollYRef.current = offsetY;
+    }
+
     const { layoutMeasurement, contentSize } = event.nativeEvent;
     const distanceFromBottom = contentSize.height - (offsetY + layoutMeasurement.height);
     if (distanceFromBottom < 400 && bottomNav === 'forYou' && hasMoreProjects && !loadingMore) {
@@ -5332,17 +5396,6 @@ function App() {
     );
   };
 
-  useEffect(() => {
-    if (!session) {
-      setIsAdmin(false);
-      return;
-    }
-    (async () => {
-      const { data } = await supabase.from('profiles').select('is_admin').eq('id', session.user.id).maybeSingle();
-      setIsAdmin(!!(data && data.is_admin));
-    })();
-  }, [session]);
-
   const fetchBlockedUsers = async () => {
     if (!session) return;
     const { data } = await supabase
@@ -5372,285 +5425,6 @@ function App() {
     } else {
       showToast('Failed to unblock user');
     }
-  };
-
-  const fetchAllReports = async () => {
-    const { data, error } = await supabase
-      .from('reports')
-      .select('id, target_type, target_id, reason, created_at, reporter:profiles!reports_reporter_id_fkey(name)')
-      .order('created_at', { ascending: false })
-      .limit(100);
-    if (!error && data) {
-      setAllReports(data.map((r) => ({
-        id: r.id,
-        targetType: r.target_type,
-        targetId: r.target_id,
-        reason: r.reason,
-        time: formatRelativeTime(r.created_at),
-        reporterName: r.reporter ? r.reporter.name : 'Unknown'
-      })));
-    }
-  };
-
-  const fetchFeedbackMessages = async () => {
-    const { data, error } = await supabase
-      .from('feedback_messages')
-      .select('id, email, message, status, created_at')
-      .order('created_at', { ascending: false })
-      .limit(100);
-    if (!error && data) {
-      setFeedbackMessagesList(data.map((f) => ({
-        id: f.id,
-        email: f.email,
-        message: f.message,
-        status: f.status,
-        time: formatRelativeTime(f.created_at)
-      })));
-    } else if (error) {
-      console.warn('Failed to fetch feedback:', error);
-    }
-  };
-
-  const fetchAnalyticsSummary = async () => {
-    setAnalyticsLoading(true);
-    // Aggregated client-side rather than via a Postgres function/RPC - keeps
-    // this entirely within App.js with no separate DB migration needed.
-    // Capped at the most recent 2000 events; fine for a summary dashboard,
-    // would need a real RPC-based aggregate if this table gets much bigger.
-    const { data, error } = await supabase
-      .from('analytics_events')
-      .select('event_name, metadata, created_at')
-      .order('created_at', { ascending: false })
-      .limit(2000);
-
-    setAnalyticsLoading(false);
-    if (error) {
-      console.warn('Failed to fetch analytics:', error);
-      return;
-    }
-
-    const appOpenedEvents = data.filter((e) => e.event_name === 'app_opened');
-    const iosInterestEvents = data.filter((e) => e.event_name === 'ios_app_interest');
-
-    const themeCounts = { dark: 0, light: 0 };
-    const lightweightCounts = { on: 0, off: 0 };
-    const osCounts = { android: 0, ios: 0, desktop: 0, other: 0 };
-    appOpenedEvents.forEach((e) => {
-      const m = e.metadata || {};
-      if (m.theme_mode === 'light') themeCounts.light++;
-      else if (m.theme_mode === 'dark') themeCounts.dark++;
-      if (m.lightweight_mode === true) lightweightCounts.on++;
-      else if (m.lightweight_mode === false) lightweightCounts.off++;
-      const os = m.mobile_os;
-      if (os === 'android') osCounts.android++;
-      else if (os === 'ios') osCounts.ios++;
-      else if (os === 'desktop') osCounts.desktop++;
-      else osCounts.other++;
-    });
-
-    const iosYes = iosInterestEvents.filter((e) => e.metadata?.response === 'yes').length;
-    const iosNo = iosInterestEvents.filter((e) => e.metadata?.response === 'no').length;
-
-    setAnalyticsSummary({
-      totalOpens: appOpenedEvents.length,
-      themeCounts,
-      lightweightCounts,
-      osCounts,
-      iosYes,
-      iosNo,
-      iosTotal: iosInterestEvents.length,
-      windowNote: data.length >= 2000 ? 'last 2,000 events' : `all ${data.length} recorded events`
-    });
-  };
-
-  const handleVersionTap = () => {
-    const next = versionTapCount + 1;
-    setVersionTapCount(next);
-    if (next >= 6 && next <= 8) {
-      showToast('Close...');
-    } else if (next === 9) {
-      showToast('Confirmed');
-      setAdminUnlocked(true);
-    }
-  };
-
-  const handleOpenAdminPanel = () => {
-    setAdminPasswordInput('');
-    setAdminPasswordModalVisible(true);
-  };
-
-  const handleSubmitAdminPassword = async () => {
-    // Verified server-side via verify_admin_pin - the pin itself never
-    // ships in the client bundle (unlike the old hardcoded string), and
-    // the function independently re-checks is_admin on the database side
-    // too, so this can't be spoofed by anyone who isn't already a real
-    // admin, regardless of what pin they guess.
-    const { data: isValid, error } = await supabase.rpc('verify_admin_pin', { input_pin: adminPasswordInput });
-    if (error) {
-      console.warn('Admin pin check failed:', error);
-      showToast('Could not verify admin pin - try again');
-      return;
-    }
-    if (isValid) {
-      setAdminPasswordModalVisible(false);
-      setAdminPasswordInput('');
-      fetchFeedbackMessages();
-      fetchAllReports();
-      fetchAnalyticsSummary();
-      setAdminPanelVisible(true);
-    } else {
-      showToast('Incorrect admin password');
-    }
-  };
-
-  const handleAdminTestPush = async () => {
-    if (!session) return;
-    const result = await sendPushNotification(session.user.id, 'Admin Test Push', 'This is a test notification sent from the Admin Control Panel.');
-    await supabase.from('notifications').insert({
-      recipient_id: session.user.id,
-      actor_id: session.user.id,
-      type: 'test'
-    });
-    if (!result.ok) {
-      showAppAlert('Push Failed', result.reason);
-    }
-    // No success toast here on purpose - the notifications insert above
-    // already triggers the in-app flip-toast + bell wiggle, so a separate
-    // "check device notifications" ToastAndroid banner would be redundant.
-  };
-
-  const handleAdminTestFollow = async () => {
-    if (!session) return;
-    await supabase.from('notifications').insert({
-      recipient_id: session.user.id,
-      actor_id: session.user.id,
-      type: 'follow'
-    });
-  };
-
-  const handleAdminTestLike = async () => {
-    if (!session) return;
-    const testPortfolio = myUploadedProjects[0] || projects[0];
-    await supabase.from('notifications').insert({
-      recipient_id: session.user.id,
-      actor_id: session.user.id,
-      type: 'like',
-      portfolio_id: testPortfolio ? testPortfolio.id : null
-    });
-  };
-
-  useEffect(() => {
-    AsyncStorage.getItem('@admin_assistive_btn_enabled').then((val) => {
-      if (val !== null) setAdminAssistiveButtonEnabled(JSON.parse(val));
-    });
-  }, []);
-
-  useEffect(() => {
-    AsyncStorage.getItem('@safe_search_enabled').then((val) => {
-      if (val !== null) setSafeSearchEnabled(JSON.parse(val));
-    });
-  }, []);
-
-  // Turning safe search OFF requires seeing the warning and waiting out a
-  // 5s countdown first. Turning it back ON is always immediate - no
-  // friction needed to make the app safer again.
-  const handleSafeSearchToggle = (nextValue) => {
-    if (nextValue) {
-      setSafeSearchEnabled(true);
-      AsyncStorage.setItem('@safe_search_enabled', 'true').catch(() => {});
-    } else {
-      setDisableSafeSearchCountdown(5);
-      setDisableSafeSearchModalVisible(true);
-    }
-  };
-
-  useEffect(() => {
-    if (!disableSafeSearchModalVisible) return;
-    if (disableSafeSearchCountdown <= 0) return;
-    const t = setTimeout(() => setDisableSafeSearchCountdown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [disableSafeSearchModalVisible, disableSafeSearchCountdown]);
-
-  useEffect(() => {
-    if (!fancyModeConfirmVisible) return;
-    if (fancyModeCountdown <= 0) return;
-    const t = setTimeout(() => setFancyModeCountdown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [fancyModeConfirmVisible, fancyModeCountdown]);
-
-  const confirmEnableFancyMode = () => {
-    setFancyModeConfirmVisible(false);
-    setLightweightMode(false);
-  };
-
-  const confirmDisableSafeSearch = () => {
-    setSafeSearchEnabled(false);
-    AsyncStorage.setItem('@safe_search_enabled', 'false').catch(() => {});
-    setDisableSafeSearchModalVisible(false);
-  };
-
-  // Draggable floating shortcut: dragging repositions it, holding still for
-  // 1.5s fires the test notification. A small movement threshold tells the
-  // two gestures apart so a drag never accidentally triggers the push.
-  const assistiveBtnResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        assistiveBtnMovedRef.current = false;
-        assistiveBtnPos.setOffset(assistiveBtnPosRef.current);
-        assistiveBtnPos.setValue({ x: 0, y: 0 });
-        Animated.spring(assistiveBtnScaleAnim, { toValue: 1.15, useNativeDriver: true, speed: 30 }).start();
-        assistiveBtnLongPressTimerRef.current = setTimeout(() => {
-          if (!assistiveBtnMovedRef.current) {
-            Animated.sequence([
-              Animated.spring(assistiveBtnScaleAnim, { toValue: 1.4, useNativeDriver: true, speed: 30 }),
-              Animated.spring(assistiveBtnScaleAnim, { toValue: 1, useNativeDriver: true, speed: 20 })
-            ]).start();
-            handleAdminTestPush();
-          }
-        }, 1500);
-      },
-      onPanResponderMove: (_, gestureState) => {
-        if (Math.abs(gestureState.dx) > 6 || Math.abs(gestureState.dy) > 6) {
-          assistiveBtnMovedRef.current = true;
-          if (assistiveBtnLongPressTimerRef.current) {
-            clearTimeout(assistiveBtnLongPressTimerRef.current);
-            assistiveBtnLongPressTimerRef.current = null;
-          }
-        }
-        assistiveBtnPos.setValue({ x: gestureState.dx, y: gestureState.dy });
-      },
-      onPanResponderRelease: () => {
-        if (assistiveBtnLongPressTimerRef.current) {
-          clearTimeout(assistiveBtnLongPressTimerRef.current);
-          assistiveBtnLongPressTimerRef.current = null;
-        }
-        Animated.spring(assistiveBtnScaleAnim, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
-        assistiveBtnPos.flattenOffset();
-        const btnSize = 54;
-        const clampedX = Math.max(6, Math.min(SCREEN_WIDTH - btnSize - 6, assistiveBtnPosRef.current.x));
-        const clampedY = Math.max(60, Math.min(Dimensions.get('window').height - btnSize - 60, assistiveBtnPosRef.current.y));
-        assistiveBtnPosRef.current = { x: clampedX, y: clampedY };
-        Animated.spring(assistiveBtnPos, { toValue: { x: clampedX, y: clampedY }, useNativeDriver: true, speed: 14 }).start();
-      }
-    })
-  ).current;
-
-  useEffect(() => {
-    const id = assistiveBtnPos.addListener((val) => {
-      assistiveBtnPosRef.current = val;
-    });
-    return () => assistiveBtnPos.removeListener(id);
-  }, []);
-
-  const handleAdminTestCrash = () => {
-    Sentry.captureException(new Error('Admin panel test error'));
-    showToast('Test error sent to Sentry — only visible in real builds, not Expo Go');
-  };
-
-  const handleAdminTestAnalytics = () => {
-    trackEvent('admin_test_event', { source: 'admin_panel' });
-    showToast('Test analytics event logged');
   };
 
   const handleChangePassword = async () => {
@@ -5741,6 +5515,23 @@ function App() {
       reason
     });
     showToast(error ? 'Failed to submit report' : 'Report submitted — thank you');
+  };
+
+  const handleSubmitPortfolioReport = async () => {
+    if (!portfolioReportSelectedReason || !activeProject) return;
+    if (portfolioReportSelectedReason === 'other' && !portfolioReportOtherText.trim()) {
+      showToast('Please describe the issue before submitting.');
+      return;
+    }
+    await submitReport(
+      'portfolio',
+      activeProject.id,
+      portfolioReportSelectedReason,
+      portfolioReportSelectedReason === 'other' ? portfolioReportOtherText.trim() : 'this portfolio'
+    );
+    setPortfolioReportModalVisible(false);
+    setPortfolioReportSelectedReason(null);
+    setPortfolioReportOtherText('');
   };
 
   const handleReportContent = (targetType, targetId, targetLabel, detail) => {
@@ -6217,6 +6008,7 @@ function App() {
       id: p.id,
       ownerId: p.user_id || null,
           portfolioType: p.portfolio_type || 'ui_ux',
+          isAiGenerated: p.is_ai_generated,
       title: p.title,
       designer: p.user_name || 'Unknown Designer',
       designerHandle: p.user_handle || '',
@@ -6367,6 +6159,7 @@ function App() {
       id: p.id,
       ownerId: p.user_id || null,
           portfolioType: p.portfolio_type || 'ui_ux',
+          isAiGenerated: p.is_ai_generated,
       title: p.title,
       designer: p.user_name || 'Unknown Designer',
       designerHandle: p.user_handle || '',
@@ -6697,6 +6490,7 @@ function App() {
     setFDesigner(proj.designer || userProfile.name);
     setFCategories(Array.isArray(proj.categories) && proj.categories.length > 0 ? proj.categories : [proj.category || 'Mobile App']);
     setFIsNsfw(!!proj.isNsfw);
+    setFIsAiGenerated(proj.isAiGenerated === undefined ? null : proj.isAiGenerated);
     setFBrief(proj.brief || '');
     setFLongDescription(proj.longDescription || '');
     setFContentBlocks(
@@ -7045,6 +6839,7 @@ function App() {
     if (!fTitle.trim()) errs.fTitle = 'Please enter a portfolio title';
     if (!fBrief.trim()) errs.fBrief = 'Please enter a short brief or summary';
     if (fCategories.length < 3) errs.fCategories = 'Please select at least 3 categories/tags.';
+    if (fIsAiGenerated === null) errs.fAiGenerated = 'Please select whether AI was used.';
 
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -7125,6 +6920,7 @@ function App() {
           long_description: flattenedDescription,
           content_blocks: finalContentBlocks,
           cover_url: finalCoverUrl,
+          is_ai_generated: fIsAiGenerated,
           figma_proto: fFigmaProto,
           component_proto: fComponentProto,
           desktop_proto: fDesktopProto,
@@ -7235,6 +7031,7 @@ function App() {
             content_blocks: finalContentBlocks,
             cover_url: finalCoverUrl,
             portfolio_type: selectedPortfolioType,
+            is_ai_generated: fIsAiGenerated,
             figma_proto: fFigmaProto,
             component_proto: fComponentProto,
             desktop_proto: fDesktopProto,
@@ -7457,6 +7254,7 @@ function App() {
     setBlockSelections({});
     setFCategories([]);
     setFIsNsfw(false);
+    setFIsAiGenerated(null);
     setCategorySearchQuery('');
     setFFigmaProto('');
     setFDesktopProto('');
@@ -7493,6 +7291,9 @@ function App() {
   const [myFeatureInterests, setMyFeatureInterests] = useState(new Set());
   const [interestConfirmTarget, setInterestConfirmTarget] = useState(null); // feature_name string, or null if no confirm popup showing
   const [interestConfirmMode, setInterestConfirmMode] = useState('add'); // 'add' | 'remove' - which action interestConfirmTarget is for
+  const [portfolioReportModalVisible, setPortfolioReportModalVisible] = useState(false);
+  const [portfolioReportSelectedReason, setPortfolioReportSelectedReason] = useState(null); // 'ai_undisclosed' | 'nsfw_misuse' | 'other' | null
+  const [portfolioReportOtherText, setPortfolioReportOtherText] = useState('');
 
   // Fetched once per session (not re-fetched every time the type-select
   // step opens) so returning to it repeatedly in one sitting doesn't
@@ -7651,6 +7452,13 @@ function App() {
       if (p.ownerId && blockedIds.has(p.ownerId)) return false;
       if (p.ownerId && mutedIds.has(p.ownerId)) return false;
       if (!forYouTypeFilter.has(p.portfolioType || 'ui_ux')) return false;
+      // "With AI" (true) = inclusive, no AI-based filtering at all - shows
+      // everything (AI-tagged or not), same as if this filter didn't
+      // exist. "No AI" (false) = exclusive, hides anything tagged
+      // isAiGenerated===true. NOT a strict either/or split - that was the
+      // original (wrong) implementation, which would've hidden almost the
+      // entire feed by default since most content isn't AI-tagged.
+      if (!forYouAiFilter && p.isAiGenerated === true) return false;
       if (!specialModes.includes(categoryFilter)) {
         if (Array.isArray(p.categories)) {
           return p.categories.includes(categoryFilter);
@@ -7695,7 +7503,7 @@ function App() {
     });
 
     return scored.sort((a, b) => b._highlightScore - a._highlightScore);
-  }, [projects, categoryFilter, blockedIds, mutedIds, forYouTypeFilter]);
+  }, [projects, categoryFilter, blockedIds, mutedIds, forYouTypeFilter, forYouAiFilter]);
 
   const followedProjects = useMemo(() => {
     return projects.filter((p) => {
@@ -7816,6 +7624,7 @@ function App() {
         id: p.id,
         ownerId: p.user_id || null,
           portfolioType: p.portfolio_type || 'ui_ux',
+          isAiGenerated: p.is_ai_generated,
         title: p.title,
         designer: p.user_name || 'Unknown Designer',
         designerHandle: p.user_handle || '',
@@ -8196,19 +8005,6 @@ function App() {
                   </View>
                 </BouncyButton>
               </View>
-
-              {!sidebarCollapsed && isAdmin && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, marginBottom: 20 }}>
-                  <BouncyButton
-                    style={{ borderWidth: 1, borderColor: theme.textSecondary, borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 }}
-                    onPress={() => {
-                      if (adminUnlocked) handleOpenAdminPanel();
-                    }}
-                  >
-                    <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700' }}>Admin</Text>
-                  </BouncyButton>
-                </View>
-              )}
 
               <BouncyButton
                 style={{
@@ -8897,7 +8693,7 @@ function App() {
               <HamburgerSVG active={hamburgerMenuVisible} inactiveColor={theme.accentLight} size={headerIconSize} />
             </BouncyButton>
           )}
-        <View style={{ minWidth: isAdmin ? 190 : 140, height: 36, justifyContent: 'center' }}>
+        <View style={{ minWidth: 140, height: 36, justifyContent: 'center' }}>
           <View style={styles.logoRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
               <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -8908,16 +8704,6 @@ function App() {
             <View style={styles.versionBadge}>
               <Text style={styles.versionText}>b{BUILD_NUMBER}</Text>
             </View>
-            {isAdmin && (
-              <BouncyButton
-                style={{ borderWidth: 1, borderColor: theme.textSecondary, borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 }}
-                onPress={() => {
-                  if (adminUnlocked) handleOpenAdminPanel();
-                }}
-              >
-                <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700' }}>Admin</Text>
-              </BouncyButton>
-            )}
           </View>
 
           {headerToast && (
@@ -9035,11 +8821,18 @@ function App() {
           sits in normal flow right above the feed, same as before; no
           sticky behavior there. */}
       {bottomNav === 'forYou' && (
-        <View
+        <Animated.View
           onLayout={(e) => setCategoryBarHeight(e.nativeEvent.layout.height)}
-          style={Platform.OS !== 'web'
-            ? { position: 'absolute', top: headerBottomY, left: 0, right: 0, zIndex: 90 }
-            : (isWebWide ? { paddingTop: utilityDropdownTop } : undefined)}
+          style={[
+            Platform.OS !== 'web'
+              ? { position: 'absolute', top: headerBottomY, left: 0, right: 0, zIndex: 90 }
+              : (isWebWide ? { paddingTop: utilityDropdownTop } : undefined),
+            Platform.OS !== 'web' && {
+              transform: [{
+                translateY: forYouStickyBarAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -categoryBarHeight] })
+              }]
+            }
+          ]}
         >
               <View style={[styles.topCategoryBarWrapper, { position: 'relative' }]}>
                 <ScrollView
@@ -9154,7 +8947,7 @@ function App() {
                   </BouncyButton>
                 )}
               </View>
-        </View>
+        </Animated.View>
       )}
 
       <Animated.View style={[styles.mainViewContainer, { opacity: fadeAnim }]}>
@@ -9164,7 +8957,7 @@ function App() {
           contentContainerStyle={[
             styles.scrollContent,
             Platform.OS !== 'web' && !isWebWide && { paddingTop: headerBottomY + 20 },
-            Platform.OS !== 'web' && !isWebWide && bottomNav === 'forYou' && { paddingTop: headerBottomY + categoryBarHeight }
+            Platform.OS !== 'web' && !isWebWide && bottomNav === 'forYou' && { paddingTop: headerBottomY + categoryBarHeight + forYouFilterBarHeight + 10 }
           ]}
           onScroll={handleScroll}
           scrollEventThrottle={16}
@@ -9187,24 +8980,35 @@ function App() {
           {bottomNav === 'forYou' && (
             <View>
 
-              <View style={{ marginBottom: 10 }}>
-                <BouncyButton
-                  style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
-                    paddingVertical: 5, paddingHorizontal: 10, borderRadius: 99,
-                    borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
-                  }}
-                  onPress={() => setForYouTypeFilterOpen((v) => !v)}
-                >
-                  <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
-                    {forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length
-                      ? 'All Portfolios'
-                      : forYouTypeFilter.size === 0
-                        ? 'None Selected'
-                        : PORTFOLIO_TYPE_OPTIONS.filter((t) => forYouTypeFilter.has(t.key)).map((t) => t.label).join(', ')}
-                  </Text>
-                  <ChevronDownSVG color={theme.textSecondary} size={13} />
-                </BouncyButton>
+              <Animated.View
+                onLayout={(e) => setForYouFilterBarHeight(e.nativeEvent.layout.height)}
+                style={Platform.OS !== 'web' ? [
+                  { position: 'absolute', top: headerBottomY + categoryBarHeight, left: 0, right: 0, zIndex: 89, paddingHorizontal: 20 },
+                  {
+                    transform: [{
+                      translateY: forYouStickyBarAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -categoryBarHeight] })
+                    }]
+                  }
+                ] : { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}
+              >
+                <View>
+                  <BouncyButton
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+                      paddingVertical: 5, paddingHorizontal: 10, borderRadius: 99,
+                      borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
+                    }}
+                    onPress={() => setForYouTypeFilterOpen((v) => !v)}
+                  >
+                    <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
+                      {forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length
+                        ? 'All Portfolios'
+                        : forYouTypeFilter.size === 0
+                          ? 'None Selected'
+                          : PORTFOLIO_TYPE_OPTIONS.filter((t) => forYouTypeFilter.has(t.key)).map((t) => t.label).join(', ')}
+                    </Text>
+                    <ChevronDownSVG color={theme.textSecondary} size={13} />
+                  </BouncyButton>
 
                 {/* Dropdown panel - plain absolutely-positioned View rather
                     than a full Modal, since it only needs to sit below its
@@ -9272,6 +9076,29 @@ function App() {
                   </>
                 )}
               </View>
+
+              {/* Simple binary flip, not a dropdown like the type filter -
+                  tapping anywhere on it toggles between the two states
+                  directly, no intermediate menu. */}
+              <BouncyButton
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingVertical: 5, paddingHorizontal: 10, borderRadius: 99,
+                  borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
+                }}
+                onPress={() => setForYouAiFilter((v) => !v)}
+              >
+                <View style={{
+                  width: 16, height: 16, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: forYouAiFilter ? '#10B981' : '#EF4444'
+                }}>
+                  <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 7, fontWeight: '900' }}>AI</Text>
+                </View>
+                <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                  {forYouAiFilter ? 'With AI' : 'No AI'}
+                </Text>
+              </BouncyButton>
+              </Animated.View>
 
               <ProjectGrid
                 items={forYouCategoryFilteredProjects}
@@ -9622,9 +9449,79 @@ function App() {
                               >
                                 <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
                               </BouncyButton>
+
+                              <View ref={(el) => { discoverDotsRefsMap[des.id] = el; }} style={{ zIndex: 100 }}>
+                                <BouncyButton
+                                  style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                                  onPress={() => {
+                                    const next = discoverDotsMenuOpenId === des.id ? null : des.id;
+                                    if (next && discoverDotsRefsMap[des.id]) {
+                                      discoverDotsRefsMap[des.id].measureInWindow((x, y, width, height) => {
+                                        const screenWidth = Platform.OS === 'web' ? window.innerWidth : Dimensions.get('window').width;
+                                        setDiscoverDotsMenuPos({ top: y + height + 8, right: Math.max(8, screenWidth - (x + width)) });
+                                      });
+                                    }
+                                    setDiscoverDotsMenuOpenId(next);
+                                  }}
+                                >
+                                  <Text style={{ color: theme.accentLight, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
+                                </BouncyButton>
+
+                                <Modal
+                                  transparent
+                                  visible={discoverDotsMenuOpenId === des.id}
+                                  animationType="none"
+                                  onRequestClose={() => setDiscoverDotsMenuOpenId(null)}
+                                >
+                                  <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                                    <TouchableOpacity
+                                      style={{ flex: 1 }}
+                                      activeOpacity={1}
+                                      onPress={() => setDiscoverDotsMenuOpenId(null)}
+                                    />
+                                    <View style={{
+                                      position: 'absolute', top: discoverDotsMenuPos.top, right: discoverDotsMenuPos.right, width: 220,
+                                      backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                                      padding: 6,
+                                      shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                                    }}>
+                                      <BouncyButton
+                                        style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                                        onPress={() => {
+                                          setDiscoverDotsMenuOpenId(null);
+                                          handleReportContent('user', des.id, des.name);
+                                        }}
+                                      >
+                                        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
+                                      </BouncyButton>
+                                      <BouncyButton
+                                        style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                                        onPress={() => {
+                                          setDiscoverDotsMenuOpenId(null);
+                                          mutedIds.has(des.id)
+                                            ? handleUnmuteDesigner(des.id, des.name)
+                                            : handleMuteDesigner(des.id, des.name);
+                                        }}
+                                      >
+                                        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
+                                          {mutedIds.has(des.id) ? 'Unmute Posts' : 'Mute Posts'}
+                                        </Text>
+                                      </BouncyButton>
+                                      <BouncyButton
+                                        style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                                        onPress={() => {
+                                          setDiscoverDotsMenuOpenId(null);
+                                          handleBlockUser(des.id, des.name);
+                                        }}
+                                      >
+                                        <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
+                                      </BouncyButton>
+                                    </View>
+                                  </View>
+                                </Modal>
+                              </View>
                             </View>
                           </View>
-                          <ChevronRightSVG color="#8B5CF6" size={20} />
                         </BouncyButton>
                       );
                     })}
@@ -11631,352 +11528,6 @@ function App() {
         </View>
       </Modal>
 
-      {/* REPORTS (ADMIN) MODAL */}
-      <Modal
-        animationType={Platform.OS === 'web' ? 'none' : 'slide'}
-        transparent={true}
-        visible={reportsModalVisible}
-        onRequestClose={() => setReportsModalVisible(false)}
-      >
-        <View style={[styles.overlayModalBg, { justifyContent: 'flex-start', paddingTop: isWebWide ? 20 : headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
-          onStartShouldSetResponder={() => Platform.OS === 'web'}
-          onResponderRelease={() => setReportsModalVisible(false)}
-        >
-            {/* Backdrop blur - safe here since every one of these is its
-                own native Modal, rendered on a separate OS-level surface
-                from the main screen (header/bottom bar/category bar), so
-                there's no GPU double-compositing with those. Falls back to
-                a flat dim in Lightweight Mode, same as everywhere else. */}
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )
-            )}
-          <SafeAreaView style={[styles.overlayModalContainer, { maxHeight: isWebWide ? Dimensions.get('window').height - 60 : Dimensions.get('window').height - headerBottomY - 40 }]}
-            // Claims the touch responder so a tap that starts inside the card
-            // (e.g. focusing a text field) never bubbles up to the backdrop's
-            // dismiss handler. Needed because react-native-web's TextInput
-            // (a plain DOM <input>) doesn't itself claim the responder the way
-            // native TextInput does, so without this the touch would otherwise
-            // propagate up and close the modal.
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => {}}
-          >
-            <View style={[styles.modalTopBar, { justifyContent: 'flex-start', gap: 10 }]}>
-              <BouncyButton style={{ padding: 4 }} onPress={() => setReportsModalVisible(false)}>
-                <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
-              </BouncyButton>
-              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>Reports</Text>
-              <BouncyButton style={styles.closeBtn} onPress={() => {
-                setReportsModalVisible(false);
-                if (Platform.OS !== 'web') {
-                  setAdminPanelVisible(true);
-                } else {
-                  setSettingsModalVisible(false);
-                }
-              }}>
-                <Text style={styles.closeBtnText}>✕</Text>
-              </BouncyButton>
-            </View>
-
-            {allReports.length === 0 ? (
-              <View style={{ padding: 32, alignItems: 'center' }}>
-                <Text style={{ color: theme.textSecondary, fontSize: 13 }}>No reports yet.</Text>
-              </View>
-            ) : (
-              <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
-                {allReports.map((r) => (
-                  <View key={r.id} style={[styles.aboutInfoBox, { width: '100%' }]}>
-                    <Text style={styles.aboutInfoTitle}>{r.targetType === 'portfolio' ? 'Portfolio Report' : 'User Report'}</Text>
-                    <Text style={styles.aboutInfoItem}>Reason: {r.reason}</Text>
-                    <Text style={styles.aboutInfoItem}>Reported by: {r.reporterName}</Text>
-                    <Text style={styles.aboutInfoItem}>Target ID: {r.targetId}</Text>
-                    <Text style={styles.aboutInfoItem}>{r.time}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-          </SafeAreaView>
-        </View>
-      </Modal>
-
-
-      {/* ADMIN PASSWORD GATE - required every time before entering admin panel */}
-      <Modal
-        animationType={Platform.OS === 'web' ? 'none' : 'fade'}
-        transparent={true}
-        visible={adminPasswordModalVisible}
-        onRequestClose={() => setAdminPasswordModalVisible(false)}
-      >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
-          onStartShouldSetResponder={() => Platform.OS === 'web'}
-          onResponderRelease={() => setAdminPasswordModalVisible(false)}
-        >
-            {/* Backdrop blur - safe here since every one of these is its
-                own native Modal, rendered on a separate OS-level surface
-                from the main screen (header/bottom bar/category bar), so
-                there's no GPU double-compositing with those. Falls back to
-                a flat dim in Lightweight Mode, same as everywhere else. */}
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )
-            )}
-          <View style={styles.customConfirmCard}
-            // Claims the touch responder so a tap that starts inside the card
-            // (e.g. focusing a text field) never bubbles up to the backdrop's
-            // dismiss handler. Needed because react-native-web's TextInput
-            // (a plain DOM <input>) doesn't itself claim the responder the way
-            // native TextInput does, so without this the touch would otherwise
-            // propagate up and close the modal.
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => {}}
-          >
-            <View style={[styles.successIconCircle, { backgroundColor: 'rgba(251,191,36,0.15)' }]}>
-              <LockIconSVG color="#FBBF24" size={22} />
-            </View>
-            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Admin Access</Text>
-            <Text style={styles.confirmSubText}>Enter the admin password to continue.</Text>
-            <FocusableTextInput
-              style={[styles.formInput, { width: '100%', marginBottom: 14 }]}
-              value={adminPasswordInput}
-              onChangeText={setAdminPasswordInput}
-              placeholder="Admin password"
-              placeholderTextColor="#94A3B8"
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-            />
-            <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
-              <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                onPress={() => setAdminPasswordModalVisible(false)}
-              >
-                <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
-              </BouncyButton>
-              <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1 }]}
-                onPress={handleSubmitAdminPassword}
-              >
-                <Text style={styles.confirmDeleteText}>Unlock</Text>
-              </BouncyButton>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ADMIN CONTROL PANEL */}
-      <Modal
-        animationType={Platform.OS === 'web' ? 'none' : 'slide'}
-        transparent={true}
-        visible={adminPanelVisible}
-        onRequestClose={() => setAdminPanelVisible(false)}
-      >
-        <View style={[styles.overlayModalBg, { justifyContent: 'flex-start', paddingTop: isWebWide ? 20 : headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
-          onStartShouldSetResponder={() => Platform.OS === 'web'}
-          onResponderRelease={() => setAdminPanelVisible(false)}
-        >
-            {/* Backdrop blur - safe here since every one of these is its
-                own native Modal, rendered on a separate OS-level surface
-                from the main screen (header/bottom bar/category bar), so
-                there's no GPU double-compositing with those. Falls back to
-                a flat dim in Lightweight Mode, same as everywhere else. */}
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )
-            )}
-          <SafeAreaView style={[styles.overlayModalContainer, { maxHeight: isWebWide ? Dimensions.get('window').height - 60 : Dimensions.get('window').height - headerBottomY - 40 }]}
-            // Claims the touch responder so a tap that starts inside the card
-            // (e.g. focusing a text field) never bubbles up to the backdrop's
-            // dismiss handler. Needed because react-native-web's TextInput
-            // (a plain DOM <input>) doesn't itself claim the responder the way
-            // native TextInput does, so without this the touch would otherwise
-            // propagate up and close the modal.
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => {}}
-          >
-            <View style={styles.modalTopBar}>
-              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Admin Control Panel</Text>
-              <BouncyButton style={styles.closeBtn} onPress={() => {
-                setAdminPanelVisible(false);
-                if (Platform.OS !== 'web' && returnToOptionsOnClose) {
-                  setSettingsModalVisible(true);
-                  setReturnToOptionsOnClose(false);
-                } else {
-                  setSettingsModalVisible(false);
-                }
-              }}>
-                <Text style={styles.closeBtnText}>✕</Text>
-              </BouncyButton>
-            </View>
-
-            <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
-              <Text style={styles.sectionHeader}>TEST FUNCTIONS</Text>
-
-              <Text style={{ color: theme.textSecondary, fontSize: 12, marginBottom: 4 }}>
-                Push registration status: <Text style={{ color: theme.accent }}>{pushRegistrationStatus}</Text>
-              </Text>
-
-              <BouncyButton
-                style={[styles.confirmDeleteBtn, { width: '100%', backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                onPress={handleAdminTestPush}
-              >
-                <Text style={[styles.confirmDeleteText, { color: theme.accent }]}>Send Test Push Notification to Myself</Text>
-              </BouncyButton>
-
-              <BouncyButton
-                style={[styles.confirmDeleteBtn, { width: '100%', marginTop: 8, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                onPress={handleAdminTestFollow}
-              >
-                <Text style={[styles.confirmDeleteText, { color: theme.accent }]}>Send Test Follow Notification</Text>
-              </BouncyButton>
-
-              <BouncyButton
-                style={[styles.confirmDeleteBtn, { width: '100%', marginTop: 8, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                onPress={handleAdminTestLike}
-              >
-                <Text style={[styles.confirmDeleteText, { color: theme.accent }]}>Send Test Like Notification</Text>
-              </BouncyButton>
-
-              <View style={[styles.feedbackNotifyToggleRow, { marginTop: 10 }]}>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.settingItemTitle}>Floating Test-Notification Shortcut</Text>
-                  <Text style={styles.settingItemSub}>
-                    Shows a draggable floating button on every screen. Long-press it for 1.5s to fire a test notification.
-                  </Text>
-                </View>
-                <Switch
-                  value={adminAssistiveButtonEnabled}
-                  onValueChange={(val) => {
-                    setAdminAssistiveButtonEnabled(val);
-                    AsyncStorage.setItem('@admin_assistive_btn_enabled', JSON.stringify(val));
-                  }}
-                  trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
-
-              <BouncyButton
-                style={[styles.confirmDeleteBtn, { width: '100%', backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                onPress={handleAdminTestCrash}
-              >
-                <Text style={[styles.confirmDeleteText, { color: theme.accent }]}>Trigger Test Crash Report (Sentry)</Text>
-              </BouncyButton>
-
-              <BouncyButton
-                style={[styles.confirmDeleteBtn, { width: '100%', backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                onPress={handleAdminTestAnalytics}
-              >
-                <Text style={[styles.confirmDeleteText, { color: theme.accent }]}>Log Test Analytics Event</Text>
-              </BouncyButton>
-
-              <Text style={[styles.settingItemSub, { marginTop: -6 }]}>
-                Push and crash test buttons only produce visible results on a real build (EAS build or dev client) - Expo Go can't run the native pieces they depend on.
-              </Text>
-
-              <Text style={[styles.sectionHeader, { marginTop: 20 }]}>
-                FEEDBACK MESSAGES ({feedbackMessagesList.length})
-              </Text>
-
-              {feedbackMessagesList.length === 0 ? (
-                <Text style={styles.emptySearchText}>No feedback submitted yet.</Text>
-              ) : (
-                feedbackMessagesList.map((f) => (
-                  <View key={f.id} style={[styles.aboutInfoBox, { width: '100%' }]}>
-                    <Text style={styles.aboutInfoTitle}>{f.email || 'No email provided'}</Text>
-                    <Text style={styles.aboutInfoItem}>{f.message}</Text>
-                    <Text style={styles.aboutInfoItem}>{f.time}</Text>
-                  </View>
-                ))
-              )}
-
-              <Text style={styles.sectionHeader}>ANALYTICS</Text>
-
-              {analyticsLoading ? (
-                <ActivityIndicator color="#8B5CF6" style={{ marginVertical: 12 }} />
-              ) : analyticsSummary ? (
-                <View style={{ gap: 10 }}>
-                  <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
-                    Based on {analyticsSummary.windowNote}
-                  </Text>
-
-                  <View style={styles.aboutInfoBox}>
-                    <Text style={styles.aboutInfoTitle}>Total App Opens</Text>
-                    <Text style={styles.aboutInfoItem}>{analyticsSummary.totalOpens}</Text>
-                  </View>
-
-                  <View style={styles.aboutInfoBox}>
-                    <Text style={styles.aboutInfoTitle}>Theme Preference</Text>
-                    <Text style={styles.aboutInfoItem}>Dark: {analyticsSummary.themeCounts.dark}</Text>
-                    <Text style={styles.aboutInfoItem}>Light: {analyticsSummary.themeCounts.light}</Text>
-                  </View>
-
-                  <View style={styles.aboutInfoBox}>
-                    <Text style={styles.aboutInfoTitle}>Lightweight Mode</Text>
-                    <Text style={styles.aboutInfoItem}>Enabled: {analyticsSummary.lightweightCounts.on}</Text>
-                    <Text style={styles.aboutInfoItem}>Disabled: {analyticsSummary.lightweightCounts.off}</Text>
-                  </View>
-
-                  <View style={styles.aboutInfoBox}>
-                    <Text style={styles.aboutInfoTitle}>Device/OS on Web Opens</Text>
-                    <Text style={styles.aboutInfoItem}>Android: {analyticsSummary.osCounts.android}</Text>
-                    <Text style={styles.aboutInfoItem}>iOS: {analyticsSummary.osCounts.ios}</Text>
-                    <Text style={styles.aboutInfoItem}>Desktop: {analyticsSummary.osCounts.desktop}</Text>
-                    <Text style={styles.aboutInfoItem}>Other/Native App: {analyticsSummary.osCounts.other}</Text>
-                  </View>
-
-                  <View style={styles.aboutInfoBox}>
-                    <Text style={styles.aboutInfoTitle}>iOS App Interest (opt-in prompt)</Text>
-                    <Text style={styles.aboutInfoItem}>Yes: {analyticsSummary.iosYes}</Text>
-                    <Text style={styles.aboutInfoItem}>No: {analyticsSummary.iosNo}</Text>
-                    <Text style={styles.aboutInfoItem}>Total answered: {analyticsSummary.iosTotal}</Text>
-                  </View>
-
-                  <BouncyButton
-                    style={[styles.confirmDeleteBtn, { width: '100%', backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                    onPress={fetchAnalyticsSummary}
-                  >
-                    <Text style={[styles.confirmDeleteText, { color: theme.accent }]}>Refresh Analytics</Text>
-                  </BouncyButton>
-                </View>
-              ) : (
-                <Text style={styles.emptySearchText}>No analytics data yet.</Text>
-              )}
-
-              <BouncyButton
-                style={[styles.confirmDeleteBtn, { width: '100%', backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, marginTop: 20 }]}
-                onPress={() => {
-                  setAdminPanelVisible(false);
-                  fetchAllReports();
-                  setReportsModalVisible(true);
-                }}
-              >
-                <Text style={[styles.confirmDeleteText, { color: theme.accent }]}>View Reports ({allReports.length})</Text>
-              </BouncyButton>
-            </ScrollView>
-          </SafeAreaView>
-        </View>
-      </Modal>
 
       {/* FEEDBACK & SUPPORT CUSTOM DARK OVERLAY MODAL WITH FORM & NOTIFY SWITCH */}
       <Modal
@@ -12589,6 +12140,17 @@ function App() {
 
                   <BouncyButton
                     style={styles.settingItemRow}
+                    onPress={() => { handleOpenChangelog(); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                  >
+                    <Text style={styles.settingItemTitle}>What's New</Text>
+                    <View style={styles.iconTextInlineRow}>
+                      <Text style={styles.settingItemValue}>Changelog</Text>
+                      <ChevronRightSVG color={theme.accent} size={16} />
+                    </View>
+                  </BouncyButton>
+
+                  <BouncyButton
+                    style={styles.settingItemRow}
                     onPress={() => openExternalLinkWithWarning(GITHUB_URL)}
                   >
                     <Text style={styles.settingItemTitle}>Visit GitHub</Text>
@@ -12598,10 +12160,10 @@ function App() {
                     </View>
                   </BouncyButton>
 
-                  <BouncyButton style={styles.settingItemRow} onPress={handleVersionTap} activeOpacity={0.6}>
+                  <View style={styles.settingItemRow}>
                     <Text style={styles.settingItemTitle}>App Version</Text>
                     <Text style={styles.settingItemValue}>v{APP_VERSION} (build {BUILD_NUMBER})</Text>
-                  </BouncyButton>
+                  </View>
 
                   {session && Platform.OS === 'web' && (
                     <BouncyButton
@@ -12836,17 +12398,6 @@ function App() {
 
                   <BouncyButton
                     style={styles.settingItemRow}
-                    onPress={() => { handleOpenChangelog(); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
-                  >
-                    <Text style={styles.settingItemTitle}>What's New</Text>
-                    <View style={styles.iconTextInlineRow}>
-                      <Text style={styles.settingItemValue}>Changelog</Text>
-                      <ChevronRightSVG color={theme.accent} size={16} />
-                    </View>
-                  </BouncyButton>
-
-                  <BouncyButton
-                    style={styles.settingItemRow}
                     onPress={() => { setTermsModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
                   >
                     <Text style={styles.settingItemTitle}>Terms of Service</Text>
@@ -12866,22 +12417,6 @@ function App() {
                       <ChevronRightSVG color={theme.accent} size={16} />
                     </View>
                   </BouncyButton>
-
-                  {isAdmin && adminUnlocked && (
-                    <BouncyButton
-                      style={[styles.settingItemRow, { borderBottomWidth: 0 }]}
-                      onPress={() => {
-                        if (Platform.OS !== 'web') setReturnToOptionsOnClose(true);
-                        handleOpenAdminPanel();
-                      }}
-                    >
-                      <Text style={[styles.settingItemTitle, { color: '#FBBF24' }]}>Admin Control Panel</Text>
-                      <View style={styles.iconTextInlineRow}>
-                        <Text style={styles.settingItemValue}>Enter</Text>
-                        <ChevronRightSVG color={theme.accent} size={16} />
-                      </View>
-                    </BouncyButton>
-                  )}
                 </>
               )}
             </ScrollView>
@@ -13579,6 +13114,95 @@ function App() {
         </View>
       </Modal>
 
+      {/* PORTFOLIO REPORT MODAL - 2 one-tap preselected reasons plus a
+          freeform "something else" option with its own text input, instead
+          of the generic Spam/Inappropriate/Other alert used for reporting
+          users/tags elsewhere. Reuses the same reports table/submitReport
+          function - just a friendlier, more specific front-end for
+          portfolios specifically. */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={portfolioReportModalVisible}
+        onRequestClose={() => setPortfolioReportModalVisible(false)}
+      >
+        <View style={styles.overlayModalBg}>
+          <View style={[styles.customConfirmCard, isWebWide && { maxWidth: 420 }]}>
+            <Text style={styles.confirmTitle}>Report This Portfolio</Text>
+            <Text style={[styles.confirmSubText, { marginBottom: 16 }]}>
+              Help us keep DECENT accurate and safe. What's the issue?
+            </Text>
+
+            <View style={{ width: '100%', gap: 8 }}>
+              <BouncyButton
+                style={{
+                  padding: 12, borderRadius: 12, borderWidth: 1.5,
+                  borderColor: portfolioReportSelectedReason === 'ai_undisclosed' ? theme.accent : theme.border,
+                  backgroundColor: portfolioReportSelectedReason === 'ai_undisclosed' ? (themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)') : 'transparent'
+                }}
+                onPress={() => setPortfolioReportSelectedReason('ai_undisclosed')}
+              >
+                <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13.5, marginBottom: 2 }}>Undisclosed AI Use</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16 }}>
+                  This looks like it was made with AI, but wasn't marked that way.
+                </Text>
+              </BouncyButton>
+
+              <BouncyButton
+                style={{
+                  padding: 12, borderRadius: 12, borderWidth: 1.5,
+                  borderColor: portfolioReportSelectedReason === 'nsfw_misuse' ? theme.accent : theme.border,
+                  backgroundColor: portfolioReportSelectedReason === 'nsfw_misuse' ? (themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)') : 'transparent'
+                }}
+                onPress={() => setPortfolioReportSelectedReason('nsfw_misuse')}
+              >
+                <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13.5, marginBottom: 2 }}>NSFW Tag Misuse</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16 }}>
+                  This content's NSFW tag doesn't match what's actually shown.
+                </Text>
+              </BouncyButton>
+
+              <BouncyButton
+                style={{
+                  padding: 12, borderRadius: 12, borderWidth: 1.5,
+                  borderColor: portfolioReportSelectedReason === 'other' ? theme.accent : theme.border,
+                  backgroundColor: portfolioReportSelectedReason === 'other' ? (themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)') : 'transparent'
+                }}
+                onPress={() => setPortfolioReportSelectedReason('other')}
+              >
+                <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13.5 }}>Something Else</Text>
+                {portfolioReportSelectedReason === 'other' && (
+                  <FocusableTextInput
+                    style={[styles.formInput, { marginTop: 8 }]}
+                    placeholder="Tell us what's wrong..."
+                    placeholderTextColor={theme.textSecondary}
+                    value={portfolioReportOtherText}
+                    onChangeText={setPortfolioReportOtherText}
+                    multiline
+                  />
+                )}
+              </BouncyButton>
+            </View>
+
+            <View style={[styles.confirmActionsRow, { marginTop: 16, justifyContent: 'flex-end' }]}>
+              <BouncyButton
+                style={[styles.confirmCancelBtn, { flex: 0, paddingHorizontal: 20 }]}
+                onPress={() => { setPortfolioReportModalVisible(false); setPortfolioReportSelectedReason(null); setPortfolioReportOtherText(''); }}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={[styles.confirmDeleteBtn, { flex: 0, paddingHorizontal: 20, opacity: portfolioReportSelectedReason ? 1 : 0.4 }]}
+                disabled={!portfolioReportSelectedReason}
+                onPress={handleSubmitPortfolioReport}
+              >
+                <Text style={styles.confirmDeleteText}>Submit Report</Text>
+              </BouncyButton>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* 4-STEP WIZARD MODAL FOR ADDING/EDITING PORTFOLIO PACKAGE */}
       <Modal
         animationType="none"
@@ -13775,16 +13399,11 @@ function App() {
                   </View>
 
                   <View style={{
-                    marginTop: 16, backgroundColor: theme.surface, borderRadius: 12,
-                    borderWidth: 1, borderColor: fIsNsfw ? '#EF4444' : theme.border, padding: 14
+                    marginTop: 12, backgroundColor: theme.surface, borderRadius: 12,
+                    borderWidth: 1, borderColor: fIsNsfw ? '#EF4444' : theme.border, padding: 10
                   }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <View style={{ flex: 1, marginRight: 10 }}>
-                        <Text style={styles.settingItemTitle}>Mark as NSFW</Text>
-                        <Text style={styles.settingItemSub}>
-                          For explicit or sensitive content. NSFW portfolios never appear on For You, and only appear in search when the viewer has Safe Search turned off.
-                        </Text>
-                      </View>
+                      <Text style={[styles.settingItemTitle, { flex: 1, fontSize: 13 }]}>Mark as NSFW</Text>
                       <Switch
                         value={fIsNsfw}
                         onValueChange={setFIsNsfw}
@@ -13792,14 +13411,56 @@ function App() {
                         thumbColor="#FFFFFF"
                       />
                     </View>
-                    {fIsNsfw && (
-                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, alignItems: 'flex-start' }}>
-                        <WarningTriangleSVG />
-                        <Text style={{ color: '#EF4444', fontSize: 12, flex: 1, lineHeight: 17 }}>
-                          This portfolio won't be discoverable on For You, and its thumbnail will be blurred wherever it can be shown.
-                        </Text>
-                      </View>
-                    )}
+                    <Text style={{ color: theme.textSecondary, fontSize: 11, lineHeight: 15, marginTop: 4 }}>
+                      Explicit/sensitive content. Hidden from For You; only shown in search with Safe Search off.
+                    </Text>
+                  </View>
+
+                  {/* AI disclosure - deliberately starts with NEITHER option
+                      selected (fIsAiGenerated is null, not defaulted to
+                      false) so the uploader has to make an active choice
+                      rather than a toggle silently defaulting to "No AI"
+                      for them. Validated as required before Step 1 can
+                      advance, same as Categories above. */}
+                  <View style={{
+                    marginTop: 10, backgroundColor: theme.surface, borderRadius: 12,
+                    borderWidth: 1, borderColor: errors.fAiGenerated ? '#EF4444' : theme.border, padding: 10
+                  }}>
+                    <Text style={[styles.settingItemTitle, { fontSize: 13, marginBottom: 3 }]}>AI-Generated Content *</Text>
+                    <Text style={{ color: theme.textSecondary, fontSize: 11, lineHeight: 15, marginBottom: 8 }}>
+                      Used AI for any part of this work - a few steps, most of it, or all of it? Select "With AI". Misrepresenting this will be acted on.
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <BouncyButton
+                        style={{
+                          flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                          paddingVertical: 8, borderRadius: 99,
+                          borderWidth: 1.5, borderColor: fIsAiGenerated === false ? '#EF4444' : theme.border,
+                          backgroundColor: fIsAiGenerated === false ? 'rgba(239,68,68,0.1)' : 'transparent'
+                        }}
+                        onPress={() => setFIsAiGenerated(false)}
+                      >
+                        <View style={{ width: 16, height: 16, borderRadius: 5, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 7, fontWeight: '900' }}>AI</Text>
+                        </View>
+                        <Text style={{ color: fIsAiGenerated === false ? '#EF4444' : theme.textSecondary, fontWeight: '700', fontSize: 12.5 }}>No AI</Text>
+                      </BouncyButton>
+                      <BouncyButton
+                        style={{
+                          flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                          paddingVertical: 8, borderRadius: 99,
+                          borderWidth: 1.5, borderColor: fIsAiGenerated === true ? '#10B981' : theme.border,
+                          backgroundColor: fIsAiGenerated === true ? 'rgba(16,185,129,0.1)' : 'transparent'
+                        }}
+                        onPress={() => setFIsAiGenerated(true)}
+                      >
+                        <View style={{ width: 16, height: 16, borderRadius: 5, backgroundColor: '#10B981', alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 7, fontWeight: '900' }}>AI</Text>
+                        </View>
+                        <Text style={{ color: fIsAiGenerated === true ? '#10B981' : theme.textSecondary, fontWeight: '700', fontSize: 12.5 }}>With AI</Text>
+                      </BouncyButton>
+                    </View>
+                    {errors.fAiGenerated ? <Text style={[styles.errorText, { marginTop: 6 }]}>{errors.fAiGenerated}</Text> : null}
                   </View>
 
                   <Modal
@@ -14982,7 +14643,7 @@ function App() {
                             style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
                             onPress={() => {
                               setPortfolioOptionsMenuVisible(false);
-                              handleReportContent('portfolio', activeProject.id, 'this portfolio');
+                              setPortfolioReportModalVisible(true);
                             }}
                           >
                             <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Portfolio</Text>
@@ -15225,6 +14886,12 @@ function App() {
 
                   {activeProject.categories && activeProject.categories.length > 0 && (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+                      {activeProject.isAiGenerated === true && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#10B981', borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}>
+                          <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontWeight: '900' }}>AI</Text>
+                          <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>AI-Generated</Text>
+                        </View>
+                      )}
                       {activeProject.categories.map((cat, idx) => (
                         <BouncyButton
                           key={idx}
@@ -15485,22 +15152,6 @@ function App() {
           </Modal>
         );
       })()}
-
-      {isAdmin && adminAssistiveButtonEnabled && (
-        <Animated.View
-          {...assistiveBtnResponder.panHandlers}
-          style={{
-            position: 'absolute', top: 0, left: 0, width: 54, height: 54, borderRadius: 27,
-            backgroundColor: 'rgba(139, 92, 246, 0.92)', borderWidth: 2, borderColor: '#FFFFFF',
-            alignItems: 'center', justifyContent: 'center',
-            shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 16,
-            zIndex: 999,
-            transform: [...assistiveBtnPos.getTranslateTransform(), { scale: assistiveBtnScaleAnim }]
-          }}
-        >
-          <BellSVG active inactiveColor="#FFFFFF" />
-        </Animated.View>
-      )}
 
       {/* ANDROID: "get the app" popup - shown once, dismiss persists via
           AsyncStorage so it doesn't nag on every visit. Points to the
