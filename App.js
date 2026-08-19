@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 341;
+const BUILD_NUMBER = 342;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -3088,15 +3088,6 @@ function App() {
   // ScrollView's top padding can compensate exactly, same approach as
   // headerBottomY above.
   const [categoryBarHeight, setCategoryBarHeight] = useState(62);
-  const [forYouFilterBarHeight, setForYouFilterBarHeight] = useState(44);
-  // Sticky category+filter bar slides out of view on scroll-down, back in
-  // on scroll-up (even a small amount) - a familiar pattern from most
-  // native apps' collapsing headers. Native driver only animates
-  // transform/opacity, not layout, which is exactly what's needed here
-  // (a slide, not a resize), so this stays smooth.
-  const forYouStickyBarAnim = useRef(new Animated.Value(0)).current; // 0 = fully visible, 1 = fully hidden
-  const forYouStickyBarHiddenRef = useRef(false); // mirrors the animated value's logical state, so handleScroll doesn't need to read the Animated.Value directly (can't synchronously) to decide whether a direction change actually needs a new animation
-  const lastScrollYRef = useRef(0);
   // Left/right scroll arrows for the category bar, web only - mouse/trackpad
   // users don't have the natural horizontal swipe a touchscreen gives, so
   // arrows fill that gap. Hidden entirely when there's nothing to scroll to
@@ -4619,30 +4610,6 @@ function App() {
       if (!showBackToTop) setShowBackToTop(true);
     } else {
       if (showBackToTop) setShowBackToTop(false);
-    }
-
-    // Only applies to For You, where the sticky category+filter bar
-    // exists. Scrolling down past a small threshold (avoids reacting to
-    // tiny accidental jitters right at the top) hides it; scrolling up by
-    // even a little brings it back - the "little" part specifically is
-    // why this compares against the last known Y on every scroll event
-    // rather than only checking overall direction since a scroll session
-    // started.
-    if (bottomNav === 'forYou' && Platform.OS !== 'web') {
-      const delta = offsetY - lastScrollYRef.current;
-      if (offsetY < 40) {
-        if (forYouStickyBarHiddenRef.current) {
-          forYouStickyBarHiddenRef.current = false;
-          Animated.timing(forYouStickyBarAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start();
-        }
-      } else if (delta > 8 && !forYouStickyBarHiddenRef.current) {
-        forYouStickyBarHiddenRef.current = true;
-        Animated.timing(forYouStickyBarAnim, { toValue: 1, duration: 220, useNativeDriver: true }).start();
-      } else if (delta < -8 && forYouStickyBarHiddenRef.current) {
-        forYouStickyBarHiddenRef.current = false;
-        Animated.timing(forYouStickyBarAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start();
-      }
-      lastScrollYRef.current = offsetY;
     }
 
     const { layoutMeasurement, contentSize } = event.nativeEvent;
@@ -8821,18 +8788,11 @@ function App() {
           sits in normal flow right above the feed, same as before; no
           sticky behavior there. */}
       {bottomNav === 'forYou' && (
-        <Animated.View
+        <View
           onLayout={(e) => setCategoryBarHeight(e.nativeEvent.layout.height)}
-          style={[
-            Platform.OS !== 'web'
-              ? { position: 'absolute', top: headerBottomY, left: 0, right: 0, zIndex: 90 }
-              : (isWebWide ? { paddingTop: utilityDropdownTop } : undefined),
-            Platform.OS !== 'web' && {
-              transform: [{
-                translateY: forYouStickyBarAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -categoryBarHeight] })
-              }]
-            }
-          ]}
+          style={Platform.OS !== 'web'
+            ? { position: 'absolute', top: headerBottomY, left: 0, right: 0, zIndex: 90 }
+            : (isWebWide ? { paddingTop: utilityDropdownTop } : undefined)}
         >
               <View style={[styles.topCategoryBarWrapper, { position: 'relative' }]}>
                 <ScrollView
@@ -8947,7 +8907,7 @@ function App() {
                   </BouncyButton>
                 )}
               </View>
-        </Animated.View>
+        </View>
       )}
 
       <Animated.View style={[styles.mainViewContainer, { opacity: fadeAnim }]}>
@@ -8957,7 +8917,7 @@ function App() {
           contentContainerStyle={[
             styles.scrollContent,
             Platform.OS !== 'web' && !isWebWide && { paddingTop: headerBottomY + 20 },
-            Platform.OS !== 'web' && !isWebWide && bottomNav === 'forYou' && { paddingTop: headerBottomY + categoryBarHeight + forYouFilterBarHeight + 10 }
+            Platform.OS !== 'web' && !isWebWide && bottomNav === 'forYou' && { paddingTop: headerBottomY + categoryBarHeight }
           ]}
           onScroll={handleScroll}
           scrollEventThrottle={16}
@@ -8980,17 +8940,7 @@ function App() {
           {bottomNav === 'forYou' && (
             <View>
 
-              <Animated.View
-                onLayout={(e) => setForYouFilterBarHeight(e.nativeEvent.layout.height)}
-                style={Platform.OS !== 'web' ? [
-                  { position: 'absolute', top: headerBottomY + categoryBarHeight, left: 0, right: 0, zIndex: 89, paddingHorizontal: 20 },
-                  {
-                    transform: [{
-                      translateY: forYouStickyBarAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -categoryBarHeight] })
-                    }]
-                  }
-                ] : { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}
-              >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                 <View>
                   <BouncyButton
                     style={{
@@ -9098,7 +9048,7 @@ function App() {
                   {forYouAiFilter ? 'With AI' : 'No AI'}
                 </Text>
               </BouncyButton>
-              </Animated.View>
+              </View>
 
               <ProjectGrid
                 items={forYouCategoryFilteredProjects}
