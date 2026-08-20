@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 342;
+const BUILD_NUMBER = 343;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -12925,7 +12925,9 @@ function App() {
               }}
             >
               <PortfolioTypeCardWatermark
-                imageSource={require('./assets/card-images/card-ui-ux.png')}
+                imageSource={themeMode === 'light'
+                  ? require('./assets/card-images/card-ui-ux-light.png')
+                  : require('./assets/card-images/card-ui-ux-dark.png')}
               />
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <CursorArrowSVG size={17} color={theme.accent} />
@@ -12955,9 +12957,9 @@ function App() {
 
             {/* Graphic Design, Illustration, Frontend - coming soon */}
             {[
-              { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding, print, and visual design work.', icon: <PaletteSVG size={16} color={theme.textSecondary} />, image: require('./assets/card-images/card-graphic-design.png') },
-              { key: 'illustration', title: 'Illustration', desc: 'Digital art, character work, and illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} />, image: require('./assets/card-images/card-illustration.png') },
-              { key: 'frontend', title: 'Frontend Development', desc: 'Live, interactive code demos alongside your project source.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} />, image: require('./assets/card-images/card-frontend.png') }
+              { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding, print, and visual design work.', icon: <PaletteSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-graphic-design-light.png') : require('./assets/card-images/card-graphic-design-dark.png') },
+              { key: 'illustration', title: 'Illustration', desc: 'Digital art, character work, and illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-illustration-light.png') : require('./assets/card-images/card-illustration-dark.png') },
+              { key: 'frontend', title: 'Frontend Development', desc: 'Live, interactive code demos alongside your project source.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-frontend-light.png') : require('./assets/card-images/card-frontend-dark.png') }
             ].map((type) => (
               <View
                 key={type.key}
