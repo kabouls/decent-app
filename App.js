@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 343;
+const BUILD_NUMBER = 345;
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -12932,16 +12932,16 @@ function App() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <CursorArrowSVG size={17} color={theme.accent} />
                 <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>UI/UX Design</Text>
+                {isWebWide && <FigmaLogoSVG />}
               </View>
-              <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 10 }}>
-                App and web design work, with interactive Figma prototype embeds.
+              <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 10, maxWidth: '55%' }} numberOfLines={2}>
+                Interactive app and web design with Figma prototypes.
               </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <FigmaLogoSVG />
+              {isWebWide ? (
                 <BouncyButton
                   style={{
-                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-                    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99,
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, alignSelf: 'flex-end',
+                    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
                     backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
                   }}
                   onPress={() => {
@@ -12952,32 +12952,54 @@ function App() {
                   <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
                   <ChevronRightSVG color="#FFFFFF" size={15} />
                 </BouncyButton>
-              </View>
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <FigmaLogoSVG />
+                  <BouncyButton
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+                      paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99,
+                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                    }}
+                    onPress={() => {
+                      setSelectedPortfolioType('ui_ux');
+                      proceedToPortfolioWizard();
+                    }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
+                    <ChevronRightSVG color="#FFFFFF" size={15} />
+                  </BouncyButton>
+                </View>
+              )}
             </View>
 
             {/* Graphic Design, Illustration, Frontend - coming soon */}
             {[
-              { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding, print, and visual design work.', icon: <PaletteSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-graphic-design-light.png') : require('./assets/card-images/card-graphic-design-dark.png') },
-              { key: 'illustration', title: 'Illustration', desc: 'Digital art, character work, and illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-illustration-light.png') : require('./assets/card-images/card-illustration-dark.png') },
-              { key: 'frontend', title: 'Frontend Development', desc: 'Live, interactive code demos alongside your project source.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-frontend-light.png') : require('./assets/card-images/card-frontend-dark.png') }
+              { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding and visual design work.', icon: <PaletteSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-graphic-design-light.png') : require('./assets/card-images/card-graphic-design-dark.png') },
+              { key: 'illustration', title: 'Illustration', desc: 'Digital art and character illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-illustration-light.png') : require('./assets/card-images/card-illustration-dark.png') },
+              { key: 'frontend', title: 'Frontend Development', desc: 'Live code demos alongside your source.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-frontend-light.png') : require('./assets/card-images/card-frontend-dark.png') }
             ].map((type) => (
               <View
                 key={type.key}
                 style={{
                   width: isWebWide ? '48%' : '100%',
                   borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 16,
-                  overflow: 'hidden'
+                  overflow: 'hidden', opacity: 0.6
                 }}
               >
                 <PortfolioTypeCardWatermark
                   imageSource={type.image}
                 />
-                <View style={{ opacity: 0.5 }}>
+                {/* Constrained to ~50% width - the image itself dominates
+                    roughly the right half of the card, so text spanning
+                    the full width was overlapping/competing with it rather
+                    than sitting clearly on the readable left portion. */}
+                <View style={{ maxWidth: '55%' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     {type.icon}
                     <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>{type.title}</Text>
                   </View>
-                  <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 6 }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 6 }} numberOfLines={2}>
                     {type.desc}
                   </Text>
                   <Text style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -12996,8 +13018,7 @@ function App() {
                   style={{
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-end',
                     paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
-                    borderWidth: 1, borderColor: myFeatureInterests.has(type.key) ? '#10B981' : theme.accent,
-                    backgroundColor: myFeatureInterests.has(type.key) ? 'rgba(16,185,129,0.1)' : 'transparent'
+                    backgroundColor: myFeatureInterests.has(type.key) ? '#10B981' : theme.accent
                   }}
                   onPress={() => {
                     if (!requireAuth()) return;
@@ -13007,13 +13028,13 @@ function App() {
                 >
                   {myFeatureInterests.has(type.key) ? (
                     <>
-                      <CheckIconSVG color="#10B981" />
-                      <Text style={{ color: '#10B981', fontWeight: '700', fontSize: 12 }}>Interested</Text>
+                      <CheckIconSVG color="#FFFFFF" />
+                      <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12 }}>Interested</Text>
                     </>
                   ) : (
                     <>
-                      <BellOutlineSVG size={14} color={theme.accent} />
-                      <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 12 }}>I'm Interested</Text>
+                      <BellOutlineSVG size={14} color="#FFFFFF" />
+                      <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12 }}>I'm Interested</Text>
                     </>
                   )}
                 </BouncyButton>
