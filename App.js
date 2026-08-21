@@ -132,7 +132,18 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 345;
+const BUILD_NUMBER = 355;
+// Portfolio types gated behind this flag are fully built and functional -
+// wizard, wording, everything - but the type-selector card shows "Coming
+// Soon" + the existing Interest-tracking button instead of "Continue",
+// same as before. Flip a value to true here to launch that type with zero
+// further code changes needed, whenever real demand justifies it.
+const PORTFOLIO_TYPE_ENABLED = {
+  ui_ux: true,
+  graphic_design: false,
+  illustration: false,
+  frontend: false
+};
 // Fill these in with your real donation links before this goes live -
 // paypal.me/yourname (create at paypal.me) and your Wise payment link
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
@@ -547,6 +558,14 @@ const ChevronDownSVG = React.memo(({ color = "#8B5CF6", size = 18 }) => (
   </Svg>
 ));
 
+const InfoCircleSVG = React.memo(({ color = "#94A3B8", size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.8" />
+    <Path d="M12 11v5.5" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    <Circle cx="12" cy="7.7" r="1.1" fill={color} />
+  </Svg>
+));
+
 // DECENT app logo mark - the cursor/arrow shape in the center is a genuine
 // cutout, not a colored overlay (two subpaths in one <Path>, default
 // nonzero fill-rule creates the hole where they wind in opposite
@@ -874,12 +893,20 @@ const ForYouSVG = React.memo(({ active }) => (
 
 const FollowedTabSVG = React.memo(({ active }) => (
   <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <Circle cx="12" cy="12" r="9" stroke={active ? '#8B5CF6' : '#94A3B8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <Circle cx="12" cy="12" r="4" stroke={active ? '#8B5CF6' : '#94A3B8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <Circle cx="12" cy="3" r="1.5" fill={active ? '#8B5CF6' : '#94A3B8'} />
-    <Circle cx="12" cy="21" r="1.5" fill={active ? '#8B5CF6' : '#94A3B8'} />
-    <Circle cx="3" cy="12" r="1.5" fill={active ? '#8B5CF6' : '#94A3B8'} />
-    <Circle cx="21" cy="12" r="1.5" fill={active ? '#8B5CF6' : '#94A3B8'} />
+    <Circle
+      cx="12" cy="12" r="9"
+      stroke={active ? '#8B5CF6' : '#94A3B8'}
+      strokeWidth="2"
+      strokeDasharray={active ? '4 3' : undefined}
+    />
+    {/* DECENT_LOGO_PATH_D's native viewBox is 0 0 97 97 - scaled down and
+        centered to sit inside the circle as a ~13x13 mark within this
+        24x24 icon box. */}
+    <Path
+      d={DECENT_LOGO_PATH_D}
+      fill={active ? '#8B5CF6' : '#94A3B8'}
+      transform="translate(5.5, 5.5) scale(0.134)"
+    />
   </Svg>
 ));
 
@@ -3389,7 +3416,11 @@ function App() {
   ];
   const [forYouTypeFilter, setForYouTypeFilter] = useState(new Set(PORTFOLIO_TYPE_OPTIONS.map((t) => t.key)));
   const [forYouTypeFilterOpen, setForYouTypeFilterOpen] = useState(false);
-  const [forYouAiFilter, setForYouAiFilter] = useState(true); // true = "With AI", false = "No AI" - default per explicit instruction
+  // Default OFF (false) = show everything, including AI-tagged posts.
+  // ON (true) = exclude AI-tagged posts from For You specifically. Lives
+  // in Privacy settings now, not a For You page toggle - moved there since
+  // it reads more like a content preference than a quick feed filter.
+  const [excludeAiGeneratedContent, setExcludeAiGeneratedContent] = useState(false);
   const forYouFiltersLoadedRef = useRef(false); // guards against the save-effect below firing on the initial default values, before the real saved ones (if any) have been loaded in
 
   // Load any previously-saved filter choices once on mount - once a person
@@ -3400,8 +3431,8 @@ function App() {
       try {
         const savedType = await AsyncStorage.getItem('forYouTypeFilter');
         if (savedType) setForYouTypeFilter(new Set(JSON.parse(savedType)));
-        const savedAi = await AsyncStorage.getItem('forYouAiFilter');
-        if (savedAi !== null) setForYouAiFilter(JSON.parse(savedAi));
+        const savedAi = await AsyncStorage.getItem('excludeAiGeneratedContent');
+        if (savedAi !== null) setExcludeAiGeneratedContent(JSON.parse(savedAi));
       } catch (e) {
         console.warn('Failed to load saved For You filters:', e);
       } finally {
@@ -3417,8 +3448,8 @@ function App() {
 
   useEffect(() => {
     if (!forYouFiltersLoadedRef.current) return;
-    AsyncStorage.setItem('forYouAiFilter', JSON.stringify(forYouAiFilter)).catch(() => {});
-  }, [forYouAiFilter]);
+    AsyncStorage.setItem('excludeAiGeneratedContent', JSON.stringify(excludeAiGeneratedContent)).catch(() => {});
+  }, [excludeAiGeneratedContent]);
 
   const [formStep, setFormStep] = useState(1);
   const [fTitle, setFTitle] = useState('');
@@ -3427,6 +3458,8 @@ function App() {
   const [fCategories, setFCategories] = useState([]);
   const [fIsNsfw, setFIsNsfw] = useState(false);
   const [fIsAiGenerated, setFIsAiGenerated] = useState(null); // null = not yet chosen (required), true = With AI, false = No AI
+  const [aiDisclosureDropdownOpen, setAiDisclosureDropdownOpen] = useState(false);
+  const [aiDisclosureTooltipVisible, setAiDisclosureTooltipVisible] = useState(false);
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [categoryPickerModalVisible, setCategoryPickerModalVisible] = useState(false);
   const [masterCategoriesList, setMasterCategoriesList] = useState(ALL_UIUX_CATEGORIES_MASTER);
@@ -5239,6 +5272,49 @@ function App() {
     setDeleteAccountModalVisible(true);
   };
 
+  // Was accidentally deleted during the admin-panel removal (swept up as
+  // collateral damage in a large contiguous block that was mostly-but-not-
+  // entirely admin-only code) - restored here, along with confirmDisableSafeSearch,
+  // confirmEnableFancyMode, and the two countdown-ticking effects below
+  // (all four were part of the same missing piece: turning Safe Search
+  // OFF or Fancy Mode ON both require a 5-second confirmation wait first,
+  // matching the "Wait Ns..." countdown button already built in the JSX -
+  // that JSX was intact, but every function/timer feeding it was gone).
+  // No AsyncStorage or Supabase persistence found referencing
+  // safeSearchEnabled anywhere else in the file, so it resets to enabled
+  // each fresh app launch - kept that behavior rather than guessing at
+  // persistence that wasn't actually there before.
+  const handleSafeSearchToggle = (value) => {
+    if (value) {
+      setSafeSearchEnabled(true);
+    } else {
+      setDisableSafeSearchCountdown(5);
+      setDisableSafeSearchModalVisible(true);
+    }
+  };
+
+  const confirmDisableSafeSearch = () => {
+    setSafeSearchEnabled(false);
+    setDisableSafeSearchModalVisible(false);
+  };
+
+  const confirmEnableFancyMode = () => {
+    setLightweightMode(false);
+    setFancyModeConfirmVisible(false);
+  };
+
+  useEffect(() => {
+    if (!disableSafeSearchModalVisible || disableSafeSearchCountdown <= 0) return;
+    const t = setTimeout(() => setDisableSafeSearchCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [disableSafeSearchModalVisible, disableSafeSearchCountdown]);
+
+  useEffect(() => {
+    if (!fancyModeConfirmVisible || fancyModeCountdown <= 0) return;
+    const t = setTimeout(() => setFancyModeCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [fancyModeConfirmVisible, fancyModeCountdown]);
+
   const handleExportMyData = async () => {
     if (!session) return;
     showToast('Preparing your data...');
@@ -6813,7 +6889,10 @@ function App() {
       return;
     }
     setErrors({});
-    setFormStep(2);
+    // Step 2 ("Links") is entirely Figma-prototype-specific - doesn't apply
+    // to Graphic Design/Illustration/Frontend, so those types skip straight
+    // to Step 3. UI/UX keeps the normal 1->2 flow.
+    setFormStep(selectedPortfolioType === 'ui_ux' ? 2 : 3);
   };
 
   const handleNextFromStep2 = (skip = false) => {
@@ -7425,7 +7504,7 @@ function App() {
       // isAiGenerated===true. NOT a strict either/or split - that was the
       // original (wrong) implementation, which would've hidden almost the
       // entire feed by default since most content isn't AI-tagged.
-      if (!forYouAiFilter && p.isAiGenerated === true) return false;
+      if (excludeAiGeneratedContent && p.isAiGenerated === true) return false;
       if (!specialModes.includes(categoryFilter)) {
         if (Array.isArray(p.categories)) {
           return p.categories.includes(categoryFilter);
@@ -7470,7 +7549,7 @@ function App() {
     });
 
     return scored.sort((a, b) => b._highlightScore - a._highlightScore);
-  }, [projects, categoryFilter, blockedIds, mutedIds, forYouTypeFilter, forYouAiFilter]);
+  }, [projects, categoryFilter, blockedIds, mutedIds, forYouTypeFilter, excludeAiGeneratedContent]);
 
   const followedProjects = useMemo(() => {
     return projects.filter((p) => {
@@ -8940,7 +9019,7 @@ function App() {
           {bottomNav === 'forYou' && (
             <View>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <View style={{ marginBottom: 10 }}>
                 <View>
                   <BouncyButton
                     style={{
@@ -9026,28 +9105,6 @@ function App() {
                   </>
                 )}
               </View>
-
-              {/* Simple binary flip, not a dropdown like the type filter -
-                  tapping anywhere on it toggles between the two states
-                  directly, no intermediate menu. */}
-              <BouncyButton
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingVertical: 5, paddingHorizontal: 10, borderRadius: 99,
-                  borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
-                }}
-                onPress={() => setForYouAiFilter((v) => !v)}
-              >
-                <View style={{
-                  width: 16, height: 16, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: forYouAiFilter ? '#10B981' : '#EF4444'
-                }}>
-                  <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 7, fontWeight: '900' }}>AI</Text>
-                </View>
-                <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
-                  {forYouAiFilter ? 'With AI' : 'No AI'}
-                </Text>
-              </BouncyButton>
               </View>
 
               <ProjectGrid
@@ -12002,7 +12059,7 @@ function App() {
                 </BouncyButton>
               )}
               <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>
-                {optionsView === 'privacy' ? 'Privacy' : optionsView === 'supportLegal' ? 'Support & Legal' : optionsView === 'blockedUsers' ? 'Blocked Users' : optionsView === 'notificationHistory' ? 'Notification History' : 'Options'}
+                {optionsView === 'privacy' ? 'Privacy' : optionsView === 'supportLegal' ? 'Support & Legal' : optionsView === 'blockedUsers' ? 'Blocked Users' : optionsView === 'notificationHistory' ? 'Notification History' : optionsView === 'aboutApp' ? 'About App' : 'Options'}
               </Text>
               {optionsView === 'root' && (
                 <BouncyButton
@@ -12090,30 +12147,14 @@ function App() {
 
                   <BouncyButton
                     style={styles.settingItemRow}
-                    onPress={() => { handleOpenChangelog(); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                    onPress={() => setOptionsView('aboutApp')}
                   >
-                    <Text style={styles.settingItemTitle}>What's New</Text>
+                    <Text style={styles.settingItemTitle}>About App</Text>
                     <View style={styles.iconTextInlineRow}>
-                      <Text style={styles.settingItemValue}>Changelog</Text>
+                      <Text style={styles.settingItemValue}>View</Text>
                       <ChevronRightSVG color={theme.accent} size={16} />
                     </View>
                   </BouncyButton>
-
-                  <BouncyButton
-                    style={styles.settingItemRow}
-                    onPress={() => openExternalLinkWithWarning(GITHUB_URL)}
-                  >
-                    <Text style={styles.settingItemTitle}>Visit GitHub</Text>
-                    <View style={styles.iconTextInlineRow}>
-                      <GitHubIconSVG color={theme.textSecondary} size={16} />
-                      <ChevronRightSVG color={theme.accent} size={16} />
-                    </View>
-                  </BouncyButton>
-
-                  <View style={styles.settingItemRow}>
-                    <Text style={styles.settingItemTitle}>App Version</Text>
-                    <Text style={styles.settingItemValue}>v{APP_VERSION} (build {BUILD_NUMBER})</Text>
-                  </View>
 
                   {session && Platform.OS === 'web' && (
                     <BouncyButton
@@ -12191,6 +12232,21 @@ function App() {
                     <Switch
                       value={safeSearchEnabled}
                       onValueChange={handleSafeSearchToggle}
+                      trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+                      thumbColor="#FFFFFF"
+                    />
+                  </View>
+
+                  <View style={styles.settingToggleRow}>
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <Text style={styles.settingItemTitle}>Exclude AI-Generated Content</Text>
+                      <Text style={styles.settingItemSub}>
+                        When on, For You hides portfolios tagged as AI-generated. AI tags are self-disclosed by uploaders, so some content may not be labeled accurately. Only affects For You.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={excludeAiGeneratedContent}
+                      onValueChange={setExcludeAiGeneratedContent}
                       trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                       thumbColor="#FFFFFF"
                     />
@@ -12326,17 +12382,6 @@ function App() {
                 <>
                   <BouncyButton
                     style={styles.settingItemRow}
-                    onPress={() => { setAboutModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
-                  >
-                    <Text style={styles.settingItemTitle}>About DECENT</Text>
-                    <View style={styles.iconTextInlineRow}>
-                      <Text style={styles.settingItemValue}>Information</Text>
-                      <ChevronRightSVG color={theme.accent} size={16} />
-                    </View>
-                  </BouncyButton>
-
-                  <BouncyButton
-                    style={styles.settingItemRow}
                     onPress={() => { setPrivacyModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
                   >
                     <Text style={styles.settingItemTitle}>Privacy Policy</Text>
@@ -12364,6 +12409,48 @@ function App() {
                     <Text style={styles.settingItemTitle}>Feedback & Support</Text>
                     <View style={styles.iconTextInlineRow}>
                       <Text style={styles.settingItemValue}>Send Message</Text>
+                      <ChevronRightSVG color={theme.accent} size={16} />
+                    </View>
+                  </BouncyButton>
+                </>
+              )}
+
+              {optionsView === 'aboutApp' && (
+                <>
+                  <BouncyButton
+                    style={styles.settingItemRow}
+                    onPress={() => { setAboutModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                  >
+                    <Text style={styles.settingItemTitle}>About DECENT</Text>
+                    <View style={styles.iconTextInlineRow}>
+                      <Text style={styles.settingItemValue}>Information</Text>
+                      <ChevronRightSVG color={theme.accent} size={16} />
+                    </View>
+                  </BouncyButton>
+
+                  <View style={styles.settingItemRow}>
+                    <Text style={styles.settingItemTitle}>App Version</Text>
+                    <Text style={styles.settingItemValue}>v{APP_VERSION} (build {BUILD_NUMBER})</Text>
+                  </View>
+
+                  <BouncyButton
+                    style={styles.settingItemRow}
+                    onPress={() => { handleOpenChangelog(); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                  >
+                    <Text style={styles.settingItemTitle}>What's New</Text>
+                    <View style={styles.iconTextInlineRow}>
+                      <Text style={styles.settingItemValue}>Changelog</Text>
+                      <ChevronRightSVG color={theme.accent} size={16} />
+                    </View>
+                  </BouncyButton>
+
+                  <BouncyButton
+                    style={styles.settingItemRow}
+                    onPress={() => openExternalLinkWithWarning(GITHUB_URL)}
+                  >
+                    <Text style={styles.settingItemTitle}>Visit GitHub</Text>
+                    <View style={styles.iconTextInlineRow}>
+                      <GitHubIconSVG color={theme.textSecondary} size={16} />
                       <ChevronRightSVG color={theme.accent} size={16} />
                     </View>
                   </BouncyButton>
@@ -12924,17 +13011,19 @@ function App() {
                 overflow: 'hidden'
               }}
             >
-              <PortfolioTypeCardWatermark
+              {/* Card images temporarily disabled - re-enable by
+                  uncommenting this block once the approach is settled. */}
+              {/* <PortfolioTypeCardWatermark
                 imageSource={themeMode === 'light'
                   ? require('./assets/card-images/card-ui-ux-light.png')
                   : require('./assets/card-images/card-ui-ux-dark.png')}
-              />
+              /> */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <CursorArrowSVG size={17} color={theme.accent} />
                 <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>UI/UX Design</Text>
                 {isWebWide && <FigmaLogoSVG />}
               </View>
-              <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 10, maxWidth: '55%' }} numberOfLines={2}>
+              <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 10 }}>
                 Interactive app and web design with Figma prototypes.
               </Text>
               {isWebWide ? (
@@ -12973,41 +13062,91 @@ function App() {
               )}
             </View>
 
-            {/* Graphic Design, Illustration, Frontend - coming soon */}
+            {/* Graphic Design, Illustration, Frontend - gated behind
+                PORTFOLIO_TYPE_ENABLED. When a type's flag is true, this
+                renders the exact same "active card" treatment as UI/UX
+                above (full opacity, Continue button); when false, the
+                existing dimmed/Coming-Soon/Interest-button treatment. */}
             {[
-              { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding and visual design work.', icon: <PaletteSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-graphic-design-light.png') : require('./assets/card-images/card-graphic-design-dark.png') },
-              { key: 'illustration', title: 'Illustration', desc: 'Digital art and character illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-illustration-light.png') : require('./assets/card-images/card-illustration-dark.png') },
-              { key: 'frontend', title: 'Frontend Development', desc: 'Live code demos alongside your source.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-frontend-light.png') : require('./assets/card-images/card-frontend-dark.png') }
+              { key: 'graphic_design', title: 'Graphic Design', desc: 'Branding and visual design work.', icon: <PaletteSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-graphic-design-light.png') : require('./assets/card-images/card-graphic-design-dark.png'), activeIcon: <PaletteSVG size={17} color={theme.accent} /> },
+              { key: 'illustration', title: 'Illustration', desc: 'Digital art and character illustration.', icon: <PaintBrushSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-illustration-light.png') : require('./assets/card-images/card-illustration-dark.png'), activeIcon: <PaintBrushSVG size={17} color={theme.accent} /> },
+              { key: 'frontend', title: 'Frontend Development', desc: 'Live code demos alongside your source.', icon: <CodeBracketsSVG size={16} color={theme.textSecondary} />, image: themeMode === 'light' ? require('./assets/card-images/card-frontend-light.png') : require('./assets/card-images/card-frontend-dark.png'), activeIcon: <CodeBracketsSVG size={17} color={theme.accent} /> }
             ].map((type) => (
+              PORTFOLIO_TYPE_ENABLED[type.key] ? (
+                <View
+                  key={type.key}
+                  style={{
+                    width: isWebWide ? '48%' : '100%',
+                    borderWidth: 1.5, borderColor: theme.accent, borderRadius: 14, padding: 16,
+                    backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)',
+                    overflow: 'hidden'
+                  }}
+                >
+                  {/* Card images temporarily disabled - re-enable by
+                      uncommenting once the approach is settled. */}
+                  {/* <PortfolioTypeCardWatermark imageSource={type.image} /> */}
+                  <View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      {type.activeIcon}
+                      <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>{type.title}</Text>
+                    </View>
+                    <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 10 }}>
+                      {type.desc}
+                    </Text>
+                  </View>
+                  <BouncyButton
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, alignSelf: 'flex-end',
+                      paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
+                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                    }}
+                    onPress={() => {
+                      setSelectedPortfolioType(type.key);
+                      proceedToPortfolioWizard();
+                    }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
+                    <ChevronRightSVG color="#FFFFFF" size={15} />
+                  </BouncyButton>
+                </View>
+              ) : (
               <View
                 key={type.key}
                 style={{
                   width: isWebWide ? '48%' : '100%',
                   borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 16,
-                  overflow: 'hidden', opacity: 0.6
+                  overflow: 'hidden'
                 }}
               >
-                <PortfolioTypeCardWatermark
-                  imageSource={type.image}
-                />
-                {/* Constrained to ~50% width - the image itself dominates
-                    roughly the right half of the card, so text spanning
-                    the full width was overlapping/competing with it rather
-                    than sitting clearly on the readable left portion. */}
-                <View style={{ maxWidth: '55%' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    {type.icon}
-                    <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>{type.title}</Text>
+                {/* Image + text share this dimmed wrapper; the Interested
+                    button sits outside it below, at full opacity, so the
+                    action itself never reads as disabled even though the
+                    rest of the card does. */}
+                <View style={{ opacity: 0.6 }}>
+                  {/* Card images temporarily disabled - re-enable by
+                      uncommenting once the approach is settled. */}
+                  {/* <PortfolioTypeCardWatermark
+                    imageSource={type.image}
+                  /> */}
+                  {/* Constrained to ~50% width - the image itself dominates
+                      roughly the right half of the card, so text spanning
+                      the full width was overlapping/competing with it rather
+                      than sitting clearly on the readable left portion. */}
+                  <View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      {type.icon}
+                      <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>{type.title}</Text>
+                    </View>
+                    <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 6 }}>
+                      {type.desc}
+                    </Text>
+                    <Text style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      Coming Soon
+                    </Text>
                   </View>
-                  <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 6 }} numberOfLines={2}>
-                    {type.desc}
-                  </Text>
-                  <Text style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    Coming Soon
-                  </Text>
                 </View>
 
-                {/* Deliberately outside the opacity:0.5 View above - stays
+                {/* Deliberately outside the opacity wrapper above - stays
                     fully visible/normal opacity so it doesn't read as
                     disabled along with everything else on the card. Same
                     hug-content, right-aligned placement as the UI/UX card's
@@ -13039,6 +13178,7 @@ function App() {
                   )}
                 </BouncyButton>
               </View>
+              )
             ))}
           </View>
         </SafeAreaView>
@@ -13263,9 +13403,9 @@ function App() {
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {[1, 2, 3, 4].map((step) => (
+              {(selectedPortfolioType === 'ui_ux' ? [1, 2, 3, 4] : [1, 3, 4]).map((step, idx) => (
                 <React.Fragment key={step}>
-                  {step > 1 && (
+                  {idx > 0 && (
                     <View style={{ width: 12, height: 1.5, backgroundColor: theme.border }} />
                   )}
                   {formStep === step ? (
@@ -13325,7 +13465,11 @@ function App() {
                   <Text style={styles.formGroupLabel}>Project Title *</Text>
                   <FocusableTextInput
                     style={[styles.formInput, errors.fTitle && styles.inputErrorBorder]}
-                    placeholder="e.g. Smart FinTech App"
+                    placeholder={
+                      selectedPortfolioType === 'graphic_design' ? 'e.g. Nomad Coffee Brand Identity' :
+                      selectedPortfolioType === 'illustration' ? 'e.g. Fantasy Character Series' :
+                      'e.g. Smart FinTech App'
+                    }
                     placeholderTextColor="#94A3B8"
                     value={fTitle}
                     onChangeText={(t) => { setFTitle(t); setErrors({ ...errors, fTitle: null }); }}
@@ -13389,52 +13533,104 @@ function App() {
                     </Text>
                   </View>
 
-                  {/* AI disclosure - deliberately starts with NEITHER option
-                      selected (fIsAiGenerated is null, not defaulted to
-                      false) so the uploader has to make an active choice
-                      rather than a toggle silently defaulting to "No AI"
-                      for them. Validated as required before Step 1 can
-                      advance, same as Categories above. */}
-                  <View style={{
-                    marginTop: 10, backgroundColor: theme.surface, borderRadius: 12,
-                    borderWidth: 1, borderColor: errors.fAiGenerated ? '#EF4444' : theme.border, padding: 10
-                  }}>
-                    <Text style={[styles.settingItemTitle, { fontSize: 13, marginBottom: 3 }]}>AI-Generated Content *</Text>
-                    <Text style={{ color: theme.textSecondary, fontSize: 11, lineHeight: 15, marginBottom: 8 }}>
-                      Used AI for any part of this work - a few steps, most of it, or all of it? Select "With AI". Misrepresenting this will be acted on.
-                    </Text>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {/* AI disclosure - dropdown defaults to showing "No
+                      selection" as placeholder text, not an actual
+                      selectable value (fIsAiGenerated stays null until the
+                      uploader picks one of the two real options below),
+                      same "must actively choose" requirement as before -
+                      just now a compact dropdown instead of a card with
+                      always-visible explanatory text, to save vertical
+                      space on an already-crowded step. */}
+                  <View style={{ marginTop: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <Text style={styles.settingItemTitle}>AI Disclosure</Text>
+                      <BouncyButton style={{ padding: 2 }} onPress={() => setAiDisclosureTooltipVisible(true)}>
+                        <InfoCircleSVG size={15} color={theme.textSecondary} />
+                      </BouncyButton>
+                    </View>
+
+                    <View>
                       <BouncyButton
                         style={{
-                          flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                          paddingVertical: 8, borderRadius: 99,
-                          borderWidth: 1.5, borderColor: fIsAiGenerated === false ? '#EF4444' : theme.border,
-                          backgroundColor: fIsAiGenerated === false ? 'rgba(239,68,68,0.1)' : 'transparent'
+                          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                          borderWidth: 1, borderColor: errors.fAiGenerated ? '#EF4444' : theme.border,
+                          borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12,
+                          backgroundColor: theme.surface
                         }}
-                        onPress={() => setFIsAiGenerated(false)}
+                        onPress={() => setAiDisclosureDropdownOpen((v) => !v)}
                       >
-                        <View style={{ width: 16, height: 16, borderRadius: 5, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center' }}>
-                          <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 7, fontWeight: '900' }}>AI</Text>
-                        </View>
-                        <Text style={{ color: fIsAiGenerated === false ? '#EF4444' : theme.textSecondary, fontWeight: '700', fontSize: 12.5 }}>No AI</Text>
+                        <Text
+                          style={{
+                            color: fIsAiGenerated === null ? theme.textSecondary : (fIsAiGenerated ? '#10B981' : '#EF4444'),
+                            fontSize: 13, fontWeight: '600', flex: 1, marginRight: 8
+                          }}
+                          numberOfLines={1}
+                        >
+                          {fIsAiGenerated === null
+                            ? 'No selection'
+                            : fIsAiGenerated
+                              ? 'Yes, this content is AI assisted/generated'
+                              : 'No, this content is not AI assisted/generated'}
+                        </Text>
+                        <ChevronDownSVG color={theme.textSecondary} size={14} />
                       </BouncyButton>
-                      <BouncyButton
-                        style={{
-                          flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                          paddingVertical: 8, borderRadius: 99,
-                          borderWidth: 1.5, borderColor: fIsAiGenerated === true ? '#10B981' : theme.border,
-                          backgroundColor: fIsAiGenerated === true ? 'rgba(16,185,129,0.1)' : 'transparent'
-                        }}
-                        onPress={() => setFIsAiGenerated(true)}
-                      >
-                        <View style={{ width: 16, height: 16, borderRadius: 5, backgroundColor: '#10B981', alignItems: 'center', justifyContent: 'center' }}>
-                          <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 7, fontWeight: '900' }}>AI</Text>
-                        </View>
-                        <Text style={{ color: fIsAiGenerated === true ? '#10B981' : theme.textSecondary, fontWeight: '700', fontSize: 12.5 }}>With AI</Text>
-                      </BouncyButton>
+
+                      {aiDisclosureDropdownOpen && (
+                        <>
+                          <TouchableOpacity
+                            style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
+                            activeOpacity={1}
+                            onPress={() => setAiDisclosureDropdownOpen(false)}
+                          />
+                          <View style={{
+                            position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 100,
+                            backgroundColor: theme.surface, borderRadius: 10, borderWidth: 1, borderColor: theme.border,
+                            padding: 4, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                          }}>
+                            <BouncyButton
+                              style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
+                              onPress={() => { setFIsAiGenerated(true); setAiDisclosureDropdownOpen(false); }}
+                            >
+                              <Text style={{ color: '#10B981', fontSize: 13, fontWeight: '600' }}>Yes, this content is AI assisted/generated</Text>
+                            </BouncyButton>
+                            <BouncyButton
+                              style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
+                              onPress={() => { setFIsAiGenerated(false); setAiDisclosureDropdownOpen(false); }}
+                            >
+                              <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '600' }}>No, this content is not AI assisted/generated</Text>
+                            </BouncyButton>
+                          </View>
+                        </>
+                      )}
                     </View>
                     {errors.fAiGenerated ? <Text style={[styles.errorText, { marginTop: 6 }]}>{errors.fAiGenerated}</Text> : null}
                   </View>
+
+                  <Modal
+                    transparent
+                    visible={aiDisclosureTooltipVisible}
+                    animationType="fade"
+                    onRequestClose={() => setAiDisclosureTooltipVisible(false)}
+                  >
+                    <View
+                      style={styles.overlayModalBg}
+                      onStartShouldSetResponder={() => Platform.OS === 'web'}
+                      onResponderRelease={() => setAiDisclosureTooltipVisible(false)}
+                    >
+                      <View style={[styles.customConfirmCard, isWebWide && { maxWidth: 420 }]}>
+                        <Text style={styles.confirmTitle}>What is AI Disclosure?</Text>
+                        <Text style={styles.confirmSubText}>
+                          This tells viewers whether AI played a role in creating this work. If AI was used for any part of it - a few steps, most of it, or all of it - select "Yes." Accurate disclosure keeps DECENT trustworthy for everyone; misrepresenting AI involvement will be treated as a policy violation.
+                        </Text>
+                        <BouncyButton
+                          style={[styles.confirmCancelBtn, { marginTop: 16, width: '100%' }]}
+                          onPress={() => setAiDisclosureTooltipVisible(false)}
+                        >
+                          <Text style={styles.confirmCancelText}>Got it</Text>
+                        </BouncyButton>
+                      </View>
+                    </View>
+                  </Modal>
 
                   <Modal
                     animationType={Platform.OS === 'web' ? 'none' : 'slide'}
@@ -14299,22 +14495,26 @@ function App() {
                     <Text style={styles.reviewBrief}>{fBrief}</Text>
 
                     <View style={styles.reviewSummaryRow}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <View style={{ width: 13, alignItems: 'center' }}>
-                          <MobileFilledIconSVG size={10} />
-                        </View>
-                        <Text style={styles.reviewStat}>Mobile Proto: <Text style={{ fontWeight: '800', color: theme.text }}>{fFigmaProto ? 'Attached' : 'None'}</Text></Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <DesktopFilledIconSVG size={13} />
-                        <Text style={styles.reviewStat}>Desktop Proto: <Text style={{ fontWeight: '800', color: theme.text }}>{fDesktopProto ? 'Attached' : 'None'}</Text></Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <View style={{ width: 13, alignItems: 'center' }}>
-                          <FigmaLogoSVG />
-                        </View>
-                        <Text style={styles.reviewStat}>Component Proto: <Text style={{ fontWeight: '800', color: theme.text }}>{fComponentProto ? 'Attached' : 'None'}</Text></Text>
-                      </View>
+                      {selectedPortfolioType === 'ui_ux' && (
+                        <>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                            <View style={{ width: 13, alignItems: 'center' }}>
+                              <MobileFilledIconSVG size={10} />
+                            </View>
+                            <Text style={styles.reviewStat}>Mobile Proto: <Text style={{ fontWeight: '800', color: theme.text }}>{fFigmaProto ? 'Attached' : 'None'}</Text></Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                            <DesktopFilledIconSVG size={13} />
+                            <Text style={styles.reviewStat}>Desktop Proto: <Text style={{ fontWeight: '800', color: theme.text }}>{fDesktopProto ? 'Attached' : 'None'}</Text></Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                            <View style={{ width: 13, alignItems: 'center' }}>
+                              <FigmaLogoSVG />
+                            </View>
+                            <Text style={styles.reviewStat}>Component Proto: <Text style={{ fontWeight: '800', color: theme.text }}>{fComponentProto ? 'Attached' : 'None'}</Text></Text>
+                          </View>
+                        </>
+                      )}
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                         <ImageFilledIconSVG size={13} />
                         <Text style={styles.reviewStat}>Showcase Images: <Text style={{ fontWeight: '800', color: theme.text }}>{fShowcaseImages.filter(v => v.trim()).length}</Text> Picked</Text>
@@ -14332,7 +14532,19 @@ function App() {
 
             <View style={styles.stickyWizardBottomBar}>
               {formStep > 1 && (
-                <BouncyButton style={styles.uniformWizardBtnBack} onPress={() => setFormStep(formStep - 1)}>
+                <BouncyButton
+                  style={styles.uniformWizardBtnBack}
+                  onPress={() => {
+                    // Mirror the forward-skip: going back from Step 3 for a
+                    // non-UI/UX type lands on Step 1, not Step 2 (which that
+                    // type never saw in the first place).
+                    if (formStep === 3 && selectedPortfolioType !== 'ui_ux') {
+                      setFormStep(1);
+                    } else {
+                      setFormStep(formStep - 1);
+                    }
+                  }}
+                >
                   <View style={styles.iconTextInlineRow}>
                     <ChevronLeftSVG color="#94A3B8" size={16} />
                     <Text style={styles.backBtnText}>Back</Text>
@@ -14360,7 +14572,7 @@ function App() {
                 ) : (
                   <View style={styles.iconTextInlineRow}>
                     <Text style={styles.submitBtnText}>
-                      {formStep === 1 ? 'Next: Add Links' :
+                      {formStep === 1 ? (selectedPortfolioType === 'ui_ux' ? 'Next: Add Links' : 'Next: Media') :
                        formStep === 2 ? 'Next: Media' :
                        formStep === 3 ? 'Review & Confirm' :
                        editingProjectId ? 'Update Portfolio Package' : 'Post Portfolio Package'}
