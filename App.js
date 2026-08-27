@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 355;
+const BUILD_NUMBER = 359;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1771,10 +1771,25 @@ const ProjectCard = React.memo(({
   showPinControl = false,
   onTogglePin,
   styles
-}) => (
+}) => {
+  const { lightweightMode } = useLightweightMode();
+  const { themeMode } = useTheme();
+  // Translucent card background, Fancy Mode only - isolated entirely
+  // behind this one conditional so Fancy Mode off always falls back to
+  // the exact original opaque styles.card, untouched. Semi-transparent
+  // surface tint (not a real BlurView per-card - hundreds of cards each
+  // running their own blur would be a genuine GPU cost, unlike the one
+  // header/one bottom-bar blur elsewhere) approximates the same glass
+  // look cheaply at this scale.
+  const fancyCardStyle = !lightweightMode
+    ? { backgroundColor: themeMode === 'light' ? 'rgba(255,255,255,0.55)' : 'rgba(30,35,48,0.55)' }
+    : null;
+
+  return (
   <BouncyButton
     style={[
       styles.card,
+      fancyCardStyle,
       customWidth ? { width: customWidth } : null,
       isTwoRowCard && styles.cardCompactProfile
     ]}
@@ -1883,7 +1898,8 @@ const ProjectCard = React.memo(({
       </View>
     </View>
   </BouncyButton>
-));
+  );
+});
 
 const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles }) => (
   <View style={styles.grid}>
@@ -2432,7 +2448,7 @@ function AuthScreen({ onCancel } = {}) {
                 />
               )
             )}
-          <View style={[styles.customConfirmCard, { position: 'relative' }]}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, { position: 'relative' }]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -2501,7 +2517,7 @@ function AuthScreen({ onCancel } = {}) {
                 />
               )
             )}
-          <View style={[styles.customConfirmCard, { maxHeight: '75%' }]}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, { maxHeight: '75%' }]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -2548,6 +2564,13 @@ function App() {
   const { theme, themeMode, toggleTheme } = useTheme();
   const { lightweightMode, setLightweightMode } = useLightweightMode();
   const styles = useMemo(() => getStyles(theme), [theme]);
+  // Reused at every customConfirmCard usage (~18 call sites) - computed
+  // once here rather than repeating the same ternary at each one. null in
+  // default mode means the array-style override below is a no-op, leaving
+  // the original opaque styles.customConfirmCard completely untouched.
+  const fancyConfirmCardOverlay = !lightweightMode
+    ? { backgroundColor: themeMode === 'light' ? 'rgba(255,255,255,0.75)' : 'rgba(30,35,48,0.75)' }
+    : null;
 
   // --- Responsive breakpoints (web only) ---
   // Native ignores all of this entirely (viewportWidth stays at the device
@@ -8027,7 +8050,15 @@ function App() {
           <Animated.View
             style={{
               width: sidebarWidthAnim,
-              backgroundColor: theme.bg,
+              // Fancy Mode: semi-transparent tint instead of solid theme.bg.
+              // Not a real BlurView here - every BlurView usage elsewhere in
+              // this file is consistently gated behind Platform.OS !== 'web'
+              // (it doesn't render reliably on react-native-web), and the
+              // sidebar is web-only, so a plain rgba tint is the correct
+              // cross-platform-safe choice for this specific element.
+              backgroundColor: !lightweightMode
+                ? (themeMode === 'light' ? 'rgba(255,255,255,0.7)' : 'rgba(11,15,23,0.7)')
+                : theme.bg,
               borderRightWidth: 1, borderRightColor: theme.border,
               paddingTop: 16
             }}
@@ -9053,7 +9084,7 @@ function App() {
                     />
                     <View style={{
                       position: 'absolute', top: 34, left: 0, width: 200, zIndex: 100,
-                      backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                      backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
                       padding: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                     }}>
                       <BouncyButton
@@ -9488,7 +9519,7 @@ function App() {
                                     />
                                     <View style={{
                                       position: 'absolute', top: discoverDotsMenuPos.top, right: discoverDotsMenuPos.right, width: 220,
-                                      backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                                      backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
                                       padding: 6,
                                       shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                                     }}>
@@ -9989,7 +10020,7 @@ function App() {
                 />
               )
             )}
-          <View style={styles.customConfirmCard}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -10238,7 +10269,7 @@ function App() {
         >
           {linkPreview && (
             <View style={{
-              backgroundColor: theme.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.border,
+              backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.border,
               padding: 20, width: '100%', maxWidth: 320, alignItems: 'center'
             }}>
               <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
@@ -10301,7 +10332,7 @@ function App() {
                 />
               )
             )}
-          <View style={styles.customConfirmCard}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -10347,7 +10378,7 @@ function App() {
         onRequestClose={handleCloseAccountSaveSuccess}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(11,15,23,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: theme.surface, borderRadius: 20, borderWidth: 1, borderColor: theme.border, padding: 24, width: '100%', maxWidth: 400, alignItems: 'center' }}>
+          <View style={{ backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 20, borderWidth: 1, borderColor: theme.border, padding: 24, width: '100%', maxWidth: 400, alignItems: 'center' }}>
             <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
               <CheckIconSVG />
             </View>
@@ -10872,7 +10903,7 @@ function App() {
                 />
               )
             )}
-          <View style={styles.customConfirmCard}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -10960,7 +10991,7 @@ function App() {
                 />
               )
             )}
-          <View style={styles.customConfirmCard}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -11037,7 +11068,7 @@ function App() {
                 />
               )
             )}
-          <View style={styles.customConfirmCard}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -11104,7 +11135,7 @@ function App() {
                 />
               )
             )}
-          <View style={styles.customConfirmCard}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -11756,7 +11787,7 @@ function App() {
                 />
               )
             )}
-          <View style={styles.customConfirmCard}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -11974,7 +12005,7 @@ function App() {
                 />
               )
             )}
-          <View style={styles.customConfirmCard}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -12590,7 +12621,7 @@ function App() {
                       />
                       <View style={{
                         position: 'absolute', top: designerMenuPos.top, right: designerMenuPos.right, width: 220,
-                        backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                        backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
                         padding: 6,
                         shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                       }}>
@@ -12705,7 +12736,7 @@ function App() {
                             />
                             <View style={{
                               position: 'absolute', top: designerMenuPos.top, right: designerMenuPos.right, width: 220,
-                              backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                              backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
                               padding: 6,
                               shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                             }}>
@@ -13196,7 +13227,7 @@ function App() {
         onRequestClose={() => setInterestConfirmTarget(null)}
       >
         <View style={styles.overlayModalBg}>
-          <View style={styles.customConfirmCard}>
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}>
             <View style={styles.confirmIconCircle}>
               <BellOutlineSVG size={22} color={theme.accent} />
             </View>
@@ -13240,7 +13271,7 @@ function App() {
         onRequestClose={() => setPortfolioReportModalVisible(false)}
       >
         <View style={styles.overlayModalBg}>
-          <View style={[styles.customConfirmCard, isWebWide && { maxWidth: 420 }]}>
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
             <Text style={styles.confirmTitle}>Report This Portfolio</Text>
             <Text style={[styles.confirmSubText, { marginBottom: 16 }]}>
               Help us keep DECENT accurate and safe. What's the issue?
@@ -13584,7 +13615,7 @@ function App() {
                           />
                           <View style={{
                             position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 100,
-                            backgroundColor: theme.surface, borderRadius: 10, borderWidth: 1, borderColor: theme.border,
+                            backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 10, borderWidth: 1, borderColor: theme.border,
                             padding: 4, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                           }}>
                             <BouncyButton
@@ -13617,7 +13648,7 @@ function App() {
                       onStartShouldSetResponder={() => Platform.OS === 'web'}
                       onResponderRelease={() => setAiDisclosureTooltipVisible(false)}
                     >
-                      <View style={[styles.customConfirmCard, isWebWide && { maxWidth: 420 }]}>
+                      <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
                         <Text style={styles.confirmTitle}>What is AI Disclosure?</Text>
                         <Text style={styles.confirmSubText}>
                           This tells viewers whether AI played a role in creating this work. If AI was used for any part of it - a few steps, most of it, or all of it - select "Yes." Accurate disclosure keeps DECENT trustworthy for everyone; misrepresenting AI involvement will be treated as a policy violation.
@@ -14297,7 +14328,7 @@ function App() {
                   {fHasLiveLink && (
                     <View style={{ marginTop: 10 }}>
                       {fLiveLinks.map((link, idx) => (
-                        <View key={idx} style={{ backgroundColor: theme.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.border, padding: 12, marginBottom: 10 }}>
+                        <View key={idx} style={{ backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.border, padding: 12, marginBottom: 10 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                             <Text style={[styles.formGroupLabel, { marginTop: 0 }]}>Link {idx + 1}</Text>
                             {fLiveLinks.length > 1 && (
@@ -14603,7 +14634,7 @@ function App() {
               onStartShouldSetResponder={() => Platform.OS === 'web'}
               onResponderRelease={() => setDiscardConfirmModalVisible(false)}
             >
-              <View style={styles.customConfirmCard}
+              <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
                 onStartShouldSetResponder={() => Platform.OS === 'web'}
                 onResponderRelease={() => {}}
               >
@@ -14654,7 +14685,7 @@ function App() {
           activeOpacity={1}
           onPress={() => setFormattingGuideVisible(false)}
         >
-          <TouchableOpacity activeOpacity={1} style={[styles.customConfirmCard, { position: 'relative' }]}>
+          <TouchableOpacity activeOpacity={1} style={[styles.customConfirmCard, fancyConfirmCardOverlay, { position: 'relative' }]}>
             <BouncyButton
               style={{ position: 'absolute', top: 12, right: 12, zIndex: 1, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 99, backgroundColor: theme.bg }}
               onPress={() => setFormattingGuideVisible(false)}
@@ -14795,7 +14826,7 @@ function App() {
                     />
                     <View style={{
                       position: 'absolute', top: portfolioMenuPos.top, right: portfolioMenuPos.right, width: 220,
-                      backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                      backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
                       padding: 6,
                       shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                     }}>
@@ -15349,7 +15380,7 @@ function App() {
             onStartShouldSetResponder={() => Platform.OS === 'web'}
             onResponderRelease={handleDismissAndroidPromo}
           >
-            <View style={styles.customConfirmCard}
+            <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
               onStartShouldSetResponder={() => Platform.OS === 'web'}
               onResponderRelease={() => {}}
             >
@@ -15388,7 +15419,7 @@ function App() {
       {Platform.OS === 'web' && showIosPrompt && (
         <View pointerEvents="box-none" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000 }}>
           <View style={[styles.overlayModalBg, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-            <View style={styles.customConfirmCard}>
+            <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}>
               <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Want DECENT on iOS?</Text>
               <Text style={styles.confirmSubText}>
                 We're deciding whether to build an iOS app. Your answer helps us gauge demand.
@@ -15447,7 +15478,7 @@ function App() {
                 />
               )
             )}
-          <View style={styles.customConfirmCard}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -15531,7 +15562,7 @@ function App() {
                 />
               )
             )}
-          <View style={[styles.customConfirmCard, isWebWide && { maxWidth: 420 }]}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -16033,7 +16064,7 @@ const getStyles = (theme) => StyleSheet.create({
   },
 
   customConfirmCard: {
-    backgroundColor: theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
+    backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
     padding: 24, width: '100%', maxWidth: 340, alignItems: 'center'
   },
   confirmIconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(239, 68, 68, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
@@ -16050,7 +16081,7 @@ const getStyles = (theme) => StyleSheet.create({
 
   overlayModalBg: { flex: 1, backgroundColor: Platform.OS === 'web' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(11, 15, 23, 0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   overlayModalContainer: {
-    backgroundColor: theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
+    backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
     maxHeight: '85%', width: '100%', overflow: 'hidden',
     ...(Platform.OS === 'web' ? { maxWidth: 480, alignSelf: 'center' } : {})
   },
