@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 362;
+const BUILD_NUMBER = 363;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -2141,6 +2141,16 @@ function AuthScreen({ onCancel } = {}) {
   const { theme, themeMode } = useTheme();
   const { lightweightMode } = useLightweightMode();
   const styles = useMemo(() => getStyles(theme), [theme]);
+  // AuthScreen is a separate component from App() and has no access to
+  // App()'s own fancyConfirmCardOverlay - that variable being referenced
+  // here directly (from an earlier broad sweep across all customConfirmCard
+  // usages) was undefined in this scope, crashing immediately whenever
+  // this component tried to render. Computed locally here instead, same
+  // logic, so these dialogs still correctly get Fancy Mode's translucent
+  // treatment rather than just losing the feature to fix the crash.
+  const fancyConfirmCardOverlay = !lightweightMode
+    ? { backgroundColor: themeMode === 'light' ? 'rgba(255,255,255,0.75)' : 'rgba(30,35,48,0.75)' }
+    : null;
   const [mode, setMode] = useState('login'); // 'login' or 'signup'
   const [emailOrHandle, setEmailOrHandle] = useState('');
   const [password, setPassword] = useState('');
