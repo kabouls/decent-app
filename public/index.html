@@ -4,25 +4,22 @@
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-    <title>DECENT - UI/UX Portfolio Sharing</title>
+    <title>%WEB_TITLE%</title>
 
-    <!-- SEO -->
-    <meta name="description" content="DECENT is a portfolio-sharing app for UI/UX designers. Share your Figma prototypes, case studies, and design work all in one place - one link for your entire body of work." />
-    <link rel="canonical" href="https://decent-portfolio-decent6.vercel.app/" />
+    <!-- Real, crawlable description - this is what search engines and
+         automated reviewers (including Google's OAuth verification
+         crawler) see even if they don't execute JavaScript. -->
+    <meta name="description" content="DECENT is a portfolio-sharing app for UI/UX designers. Share your work with one clean link, complete with real interactive Figma prototype embeds instead of static screenshots." />
 
-    <!-- Open Graph (fallback for the homepage - individual profile/portfolio
-         pages get their own dynamic tags from middleware.js) -->
-    <meta property="og:site_name" content="DECENT" />
-    <meta property="og:title" content="DECENT - UI/UX Portfolio Sharing" />
-    <meta property="og:description" content="Share your Figma prototypes, case studies, and design work all in one place." />
+    <!-- Open Graph tags for link previews on social/messaging apps -->
+    <meta property="og:title" content="DECENT - Portfolio Sharing for Designers" />
+    <meta property="og:description" content="Share your design work with one clean link, complete with real interactive Figma prototype embeds instead of static screenshots." />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://decent-portfolio-decent6.vercel.app/" />
+    <meta property="og:url" content="https://decent-portfolio-decent6.vercel.app" />
 
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="DECENT - UI/UX Portfolio Sharing" />
-    <meta name="twitter:description" content="Share your Figma prototypes, case studies, and design work all in one place." />
-
-    <link rel="icon" href="/favicon.ico" />
+    <meta name="twitter:title" content="DECENT - Portfolio Sharing for Designers" />
+    <meta name="twitter:description" content="Share your design work with one clean link, complete with real interactive Figma prototype embeds instead of static screenshots." />
 
     <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
     <style id="expo-reset">
@@ -41,6 +38,57 @@
         height: 100%;
         flex: 1;
       }
+
+      /* Static fallback content, shown only until the app mounts (or
+         permanently, for crawlers/browsers that don't run JS at all).
+         #root fills the same space and visually covers this once React
+         mounts - real users essentially never see it. This exists so
+         anything reading the raw HTML (search engines, the Google OAuth
+         verification crawler, link-preview bots) sees genuine content
+         explaining what DECENT is, instead of an empty page. */
+      #static-fallback {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 24px;
+        background: #0B0F17;
+        color: #F1F5F9;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        z-index: 0;
+      }
+      #root {
+        position: relative;
+        z-index: 1;
+      }
+      .fallback-logo {
+        width: 48px;
+        height: 48px;
+        border-radius: 14px;
+        background: #8B5CF6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 800;
+        font-size: 24px;
+        margin-bottom: 16px;
+      }
+      .fallback-title {
+        font-size: 24px;
+        font-weight: 800;
+        margin: 0 0 8px;
+      }
+      .fallback-desc {
+        font-size: 15px;
+        color: #94A3B8;
+        max-width: 420px;
+        line-height: 1.6;
+        margin: 0;
+      }
     </style>
   </head>
 
@@ -49,6 +97,16 @@
     <noscript>
       You need to enable JavaScript to run this app.
     </noscript>
+
+    <div id="static-fallback">
+      <div class="fallback-logo">D</div>
+      <h1 class="fallback-title">DECENT</h1>
+      <p class="fallback-desc">
+        A portfolio-sharing app for UI/UX designers. Share your work with one clean link,
+        complete with real interactive Figma prototype embeds instead of static screenshots.
+      </p>
+    </div>
+
     <!-- The root element for your Expo app. -->
     <div id="root"></div>
   </body>
