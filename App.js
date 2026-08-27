@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 361;
+const BUILD_NUMBER = 362;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -563,6 +563,52 @@ const InfoCircleSVG = React.memo(({ color = "#94A3B8", size = 16 }) => (
     <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.8" />
     <Path d="M12 11v5.5" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
     <Circle cx="12" cy="7.7" r="1.1" fill={color} />
+  </Svg>
+));
+
+// Flat, generic tutorial illustrations - one per wizard step, used in place
+// of recorded GIFs. Same "colored circle badge with a simple 2-tone icon"
+// language as confirmIconCircle/successIconCircle elsewhere, just scaled up
+// for a tutorial's larger, more prominent display context. accentColor lets
+// each call site theme the badge to match its own step (kept as a prop
+// rather than hardcoding one color, since callers may want variety).
+const TutorialDetailsIllustration = React.memo(({ size = 120, accentColor = '#8B5CF6' }) => (
+  <Svg width={size} height={size} viewBox="0 0 120 120" fill="none">
+    <Circle cx="60" cy="60" r="56" fill={accentColor} fillOpacity="0.12" />
+    <Rect x="34" y="28" width="52" height="64" rx="6" fill={accentColor} fillOpacity="0.18" stroke={accentColor} strokeWidth="2.5" />
+    <Path d="M44 46h32M44 58h32M44 70h20" stroke={accentColor} strokeWidth="3" strokeLinecap="round" />
+    <Circle cx="80" cy="80" r="12" fill={accentColor} />
+    <Path d="M75 80l3.5 3.5L86 76" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
+const TutorialLinksIllustration = React.memo(({ size = 120, accentColor = '#8B5CF6' }) => (
+  <Svg width={size} height={size} viewBox="0 0 120 120" fill="none">
+    <Circle cx="60" cy="60" r="56" fill={accentColor} fillOpacity="0.12" />
+    <Rect x="26" y="44" width="34" height="34" rx="10" fill="none" stroke={accentColor} strokeWidth="3" transform="rotate(-18 43 61)" />
+    <Rect x="58" y="42" width="34" height="34" rx="10" fill={accentColor} fillOpacity="0.18" stroke={accentColor} strokeWidth="3" transform="rotate(18 75 59)" />
+    <Path d="M52 60h16" stroke={accentColor} strokeWidth="3.5" strokeLinecap="round" />
+  </Svg>
+));
+
+const TutorialMediaIllustration = React.memo(({ size = 120, accentColor = '#8B5CF6' }) => (
+  <Svg width={size} height={size} viewBox="0 0 120 120" fill="none">
+    <Circle cx="60" cy="60" r="56" fill={accentColor} fillOpacity="0.12" />
+    <Rect x="30" y="38" width="50" height="38" rx="6" fill={accentColor} fillOpacity="0.15" stroke={accentColor} strokeWidth="2.5" transform="rotate(-6 55 57)" />
+    <Rect x="38" y="46" width="52" height="40" rx="6" fill={accentColor} fillOpacity="0.22" stroke={accentColor} strokeWidth="2.5" />
+    <Circle cx="52" cy="60" r="5" fill={accentColor} />
+    <Path d="M44 78l12-12 8 8 10-14 12 18H44z" fill={accentColor} fillOpacity="0.6" />
+  </Svg>
+));
+
+const TutorialReviewIllustration = React.memo(({ size = 120, accentColor = '#8B5CF6' }) => (
+  <Svg width={size} height={size} viewBox="0 0 120 120" fill="none">
+    <Circle cx="60" cy="60" r="56" fill={accentColor} fillOpacity="0.12" />
+    <Rect x="36" y="26" width="48" height="62" rx="6" fill={accentColor} fillOpacity="0.15" stroke={accentColor} strokeWidth="2.5" />
+    <Rect x="48" y="22" width="24" height="10" rx="3" fill={accentColor} />
+    <Path d="M46 52h28M46 62h28M46 72h18" stroke={accentColor} strokeWidth="3" strokeLinecap="round" />
+    <Circle cx="82" cy="82" r="14" fill={accentColor} />
+    <Path d="M76 82l4 4 8-9" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
@@ -3473,6 +3519,87 @@ function App() {
     if (!forYouFiltersLoadedRef.current) return;
     AsyncStorage.setItem('excludeAiGeneratedContent', JSON.stringify(excludeAiGeneratedContent)).catch(() => {});
   }, [excludeAiGeneratedContent]);
+
+  // In-app tutorials - local-only (AsyncStorage), no backend table. Each
+  // tutorial auto-triggers the first time its screen/step is visited, and
+  // can also be manually replayed later from the Tutorial Library in
+  // Settings regardless of seen/skip-all status. Priority is the upload
+  // wizard's steps first; other screens can be added to this array later
+  // without touching the trigger/dismiss machinery below.
+  const TUTORIAL_CONFIG = [
+    { id: 'wizard_step1', title: 'Add the Basics', description: 'Give your portfolio a title, a short brief, and pick a few categories that describe it.', Illustration: TutorialDetailsIllustration },
+    { id: 'wizard_step2', title: 'Add Prototype Links', description: 'Paste in Figma prototype links so people can interact with your design right inside the app.', Illustration: TutorialLinksIllustration },
+    { id: 'wizard_step3', title: 'Add Your Media', description: 'Upload showcase images and video demos to bring your project to life.', Illustration: TutorialMediaIllustration },
+    { id: 'wizard_step4', title: 'Review & Publish', description: 'Double check everything looks right, then publish your portfolio for the world to see.', Illustration: TutorialReviewIllustration }
+  ];
+  const [seenTutorialIds, setSeenTutorialIds] = useState(new Set());
+  const [tutorialsSkippedAll, setTutorialsSkippedAll] = useState(false);
+  const [activeTutorialId, setActiveTutorialId] = useState(null);
+  const tutorialsLoadedRef = useRef(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const savedSeen = await AsyncStorage.getItem('seenTutorialIds');
+        if (savedSeen) setSeenTutorialIds(new Set(JSON.parse(savedSeen)));
+        const savedSkip = await AsyncStorage.getItem('tutorialsSkippedAll');
+        if (savedSkip !== null) setTutorialsSkippedAll(JSON.parse(savedSkip));
+      } catch (e) {
+        console.warn('Failed to load tutorial progress:', e);
+      } finally {
+        tutorialsLoadedRef.current = true;
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!tutorialsLoadedRef.current) return;
+    AsyncStorage.setItem('seenTutorialIds', JSON.stringify(Array.from(seenTutorialIds))).catch(() => {});
+  }, [seenTutorialIds]);
+
+  useEffect(() => {
+    if (!tutorialsLoadedRef.current) return;
+    AsyncStorage.setItem('tutorialsSkippedAll', JSON.stringify(tutorialsSkippedAll)).catch(() => {});
+  }, [tutorialsSkippedAll]);
+
+  // Called when a tutorial-eligible screen/step is visited. No-ops until
+  // storage has actually loaded (avoids briefly re-showing an already-seen
+  // tutorial during the loading window on every app open), and no-ops if
+  // skip-all was chosen or this specific one was already seen.
+  const maybeShowTutorial = (id) => {
+    if (!tutorialsLoadedRef.current || tutorialsSkippedAll || seenTutorialIds.has(id)) return;
+    setActiveTutorialId(id);
+  };
+
+  const dismissTutorial = () => {
+    if (activeTutorialId) {
+      setSeenTutorialIds((prev) => new Set(prev).add(activeTutorialId));
+    }
+    setActiveTutorialId(null);
+  };
+
+  const skipAllTutorials = () => {
+    setTutorialsSkippedAll(true);
+    setActiveTutorialId(null);
+  };
+
+  // Manual replay from the Tutorial Library - bypasses seen/skip-all
+  // checks entirely, since the person is deliberately asking to see it
+  // again rather than this being an automatic first-visit trigger.
+  const replayTutorial = (id) => {
+    setActiveTutorialId(id);
+  };
+
+  // Auto-trigger: fires when the wizard is open and formStep changes,
+  // showing that step's tutorial the first time it's reached (no-ops
+  // automatically via maybeShowTutorial if skipped-all or already seen).
+  // Step 2 only applies to UI/UX (the wizard itself skips straight from
+  // Step 1 to Step 3 for other types), so its tutorial is never reachable
+  // for those types either - nothing extra needed here to account for that.
+  useEffect(() => {
+    if (!addModalVisible) return;
+    maybeShowTutorial(`wizard_step${formStep}`);
+  }, [addModalVisible, formStep]);
 
   const [formStep, setFormStep] = useState(1);
   const [fTitle, setFTitle] = useState('');
@@ -12090,7 +12217,7 @@ function App() {
                 </BouncyButton>
               )}
               <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>
-                {optionsView === 'privacy' ? 'Privacy' : optionsView === 'supportLegal' ? 'Support & Legal' : optionsView === 'blockedUsers' ? 'Blocked Users' : optionsView === 'notificationHistory' ? 'Notification History' : optionsView === 'aboutApp' ? 'About App' : 'Options'}
+                {optionsView === 'privacy' ? 'Privacy' : optionsView === 'supportLegal' ? 'Support & Legal' : optionsView === 'blockedUsers' ? 'Blocked Users' : optionsView === 'notificationHistory' ? 'Notification History' : optionsView === 'aboutApp' ? 'About App' : optionsView === 'tutorialLibrary' ? 'Tutorials' : 'Options'}
               </Text>
               {optionsView === 'root' && (
                 <BouncyButton
@@ -12181,6 +12308,17 @@ function App() {
                     onPress={() => setOptionsView('aboutApp')}
                   >
                     <Text style={styles.settingItemTitle}>About App</Text>
+                    <View style={styles.iconTextInlineRow}>
+                      <Text style={styles.settingItemValue}>View</Text>
+                      <ChevronRightSVG color={theme.accent} size={16} />
+                    </View>
+                  </BouncyButton>
+
+                  <BouncyButton
+                    style={styles.settingItemRow}
+                    onPress={() => setOptionsView('tutorialLibrary')}
+                  >
+                    <Text style={styles.settingItemTitle}>Tutorials</Text>
                     <View style={styles.iconTextInlineRow}>
                       <Text style={styles.settingItemValue}>View</Text>
                       <ChevronRightSVG color={theme.accent} size={16} />
@@ -12485,6 +12623,39 @@ function App() {
                       <ChevronRightSVG color={theme.accent} size={16} />
                     </View>
                   </BouncyButton>
+                </>
+              )}
+
+              {optionsView === 'tutorialLibrary' && (
+                <>
+                  <View style={[styles.settingItemRow, { flexDirection: 'row', alignItems: 'center' }]}>
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <Text style={styles.settingItemTitle}>Show Tutorials Automatically</Text>
+                      <Text style={styles.settingItemSub}>
+                        When on, tutorials pop up the first time you reach a new step. Turn back on here anytime after skipping.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={!tutorialsSkippedAll}
+                      onValueChange={(v) => setTutorialsSkippedAll(!v)}
+                      trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+                      thumbColor="#FFFFFF"
+                    />
+                  </View>
+
+                  {TUTORIAL_CONFIG.map((tutorial) => (
+                    <BouncyButton
+                      key={tutorial.id}
+                      style={styles.settingItemRow}
+                      onPress={() => { setSettingsModalVisible(false); setOptionsView('root'); replayTutorial(tutorial.id); }}
+                    >
+                      <Text style={styles.settingItemTitle}>{tutorial.title}</Text>
+                      <View style={styles.iconTextInlineRow}>
+                        <Text style={styles.settingItemValue}>Replay</Text>
+                        <ChevronRightSVG color={theme.accent} size={16} />
+                      </View>
+                    </BouncyButton>
+                  ))}
                 </>
               )}
             </ScrollView>
@@ -14692,6 +14863,49 @@ function App() {
         </Animated.View>
         </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* TUTORIAL OVERLAY - sits alongside the wizard modal (not nested
+          inside a specific step), so it can trigger for any step
+          regardless of which one is currently showing. */}
+      <Modal
+        transparent
+        visible={!!activeTutorialId}
+        animationType="fade"
+        onRequestClose={dismissTutorial}
+      >
+        <View
+          style={styles.overlayModalBg}
+          onStartShouldSetResponder={() => Platform.OS === 'web'}
+          onResponderRelease={dismissTutorial}
+        >
+          {activeTutorialId && (() => {
+            const tutorial = TUTORIAL_CONFIG.find((t) => t.id === activeTutorialId);
+            if (!tutorial) return null;
+            const { Illustration } = tutorial;
+            return (
+              <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
+                <Illustration size={120} accentColor={theme.accent} />
+                <Text style={[styles.confirmTitle, { marginTop: 12 }]}>{tutorial.title}</Text>
+                <Text style={styles.confirmSubText}>{tutorial.description}</Text>
+                <View style={[styles.confirmActionsRow, { marginTop: 4 }]}>
+                  <BouncyButton
+                    style={[styles.confirmCancelBtn]}
+                    onPress={skipAllTutorials}
+                  >
+                    <Text style={styles.confirmCancelText}>Skip All</Text>
+                  </BouncyButton>
+                  <BouncyButton
+                    style={[styles.confirmDeleteBtn]}
+                    onPress={dismissTutorial}
+                  >
+                    <Text style={styles.confirmDeleteText}>Got it</Text>
+                  </BouncyButton>
+                </View>
+              </View>
+            );
+          })()}
         </View>
       </Modal>
 
