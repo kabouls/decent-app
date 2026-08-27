@@ -121,7 +121,7 @@ const RAW_WINDOW_WIDTH = Dimensions.get('window').width;
 // Real live domain - was a placeholder until the app was actually deployed.
 // If the Vercel team slug ever gets renamed, this needs updating to match
 // (the URL includes that slug: <project>-<team-slug>.vercel.app).
-const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
+const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // Two deliberately separate numbers, each answering a different question:
 // APP_VERSION mirrors app.json's real "version" field - only bump this
 // alongside an actual native rebuild (it's what the update-banner system
@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 364;
+const BUILD_NUMBER = 365;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
