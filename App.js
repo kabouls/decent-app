@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 363;
+const BUILD_NUMBER = 364;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -3600,18 +3600,25 @@ function App() {
     setActiveTutorialId(id);
   };
 
+  const [formStep, setFormStep] = useState(1);
+
   // Auto-trigger: fires when the wizard is open and formStep changes,
   // showing that step's tutorial the first time it's reached (no-ops
   // automatically via maybeShowTutorial if skipped-all or already seen).
   // Step 2 only applies to UI/UX (the wizard itself skips straight from
   // Step 1 to Step 3 for other types), so its tutorial is never reachable
   // for those types either - nothing extra needed here to account for that.
+  // Placed here specifically (after formStep's own declaration, not before
+  // it) - this exact ordering caused a real production crash: the
+  // dependency array [addModalVisible, formStep] is evaluated synchronously
+  // during render, unlike the effect callback itself which is deferred, so
+  // referencing formStep here before its own const line executes throws
+  // immediately on every render.
   useEffect(() => {
     if (!addModalVisible) return;
     maybeShowTutorial(`wizard_step${formStep}`);
   }, [addModalVisible, formStep]);
 
-  const [formStep, setFormStep] = useState(1);
   const [fTitle, setFTitle] = useState('');
   const [fDesigner, setFDesigner] = useState('');
   
