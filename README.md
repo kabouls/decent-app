@@ -17,11 +17,11 @@ It's a personal passion project. Expect rough edges, and feel free to poke aroun
 
 ## Download
 
-📱 **[Download the latest APK](https://expo.dev/artifacts/eas/hsSpPUbmSHZWYppzs8oeVkrB1pieMU04G9LT7N0CmmA.apk)**
+📱 **[Download the latest APK](https://expo.dev/artifacts/eas/X-wQn-6u4iBp6Ix_6xHqOOW5XtK7peKZaJUs9tbFIcE.apk)**
 
 This is a direct install (not on the Play Store yet), so Android will show an "unknown sources" prompt on first install — that's expected for any app installed outside the Play Store, not a warning specific to this app.
 
-🌐 **[Try it on the web](https://decent-portfolio-decent6.vercel.app)** — no install needed.
+🌐 **[Try it on the web](https://www.decent.ink)** — no install needed.
 
 ## Tech Stack
 
