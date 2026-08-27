@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 360;
+const BUILD_NUMBER = 361;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -13615,9 +13615,30 @@ function App() {
                           />
                           <View style={{
                             position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 100,
-                            backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 10, borderWidth: 1, borderColor: theme.border,
-                            padding: 4, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                            borderRadius: 10, borderWidth: 1, borderColor: theme.border, overflow: 'hidden',
+                            shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                           }}>
+                            {/* Real blur on native when Fancy Mode is on -
+                                BlurView doesn't render reliably on
+                                react-native-web (confirmed throughout this
+                                file), so web still falls back to the flat
+                                tint. This background layer sits absolutely
+                                behind the buttons below rather than being a
+                                backgroundColor on the same View, so the blur
+                                can actually sample what's behind the panel. */}
+                            {!lightweightMode && Platform.OS !== 'web' ? (
+                              <BlurView
+                                intensity={40}
+                                tint={themeMode === 'light' ? 'light' : 'dark'}
+                                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                              />
+                            ) : (
+                              <View style={{
+                                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                                backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface
+                              }} />
+                            )}
+                            <View style={{ padding: 4 }}>
                             <BouncyButton
                               style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
                               onPress={() => { setFIsAiGenerated(true); setAiDisclosureDropdownOpen(false); }}
@@ -13630,6 +13651,7 @@ function App() {
                             >
                               <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '600' }}>No, this content is not AI assisted/generated</Text>
                             </BouncyButton>
+                            </View>
                           </View>
                         </>
                       )}
