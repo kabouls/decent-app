@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://decent-portfolio-decent6.vercel.app';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 359;
+const BUILD_NUMBER = 360;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -16064,7 +16064,7 @@ const getStyles = (theme) => StyleSheet.create({
   },
 
   customConfirmCard: {
-    backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
+    backgroundColor: theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
     padding: 24, width: '100%', maxWidth: 340, alignItems: 'center'
   },
   confirmIconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(239, 68, 68, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
@@ -16081,7 +16081,7 @@ const getStyles = (theme) => StyleSheet.create({
 
   overlayModalBg: { flex: 1, backgroundColor: Platform.OS === 'web' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(11, 15, 23, 0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   overlayModalContainer: {
-    backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
+    backgroundColor: theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
     maxHeight: '85%', width: '100%', overflow: 'hidden',
     ...(Platform.OS === 'web' ? { maxWidth: 480, alignSelf: 'center' } : {})
   },
