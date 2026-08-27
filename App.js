@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 365;
+const BUILD_NUMBER = 371;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -937,24 +937,43 @@ const ForYouSVG = React.memo(({ active }) => (
   </Svg>
 ));
 
-const FollowedTabSVG = React.memo(({ active }) => (
-  <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <Circle
-      cx="12" cy="12" r="9"
-      stroke={active ? '#8B5CF6' : '#94A3B8'}
-      strokeWidth="2"
-      strokeDasharray={active ? '4 3' : undefined}
-    />
-    {/* DECENT_LOGO_PATH_D's native viewBox is 0 0 97 97 - scaled down and
-        centered to sit inside the circle as a ~13x13 mark within this
-        24x24 icon box. */}
-    <Path
-      d={DECENT_LOGO_PATH_D}
-      fill={active ? '#8B5CF6' : '#94A3B8'}
-      transform="translate(5.5, 5.5) scale(0.134)"
-    />
-  </Svg>
-));
+// Generic profile silhouette inside a circle, matching the icon language
+// used elsewhere (simple head + shoulders glyph). The stroke circle and the
+// profile icon are two entirely separate SVGs stacked via absolute
+// positioning, specifically so only the circle can be wrapped in its own
+// rotation - previously the whole icon (circle + mark) rotated together as
+// one unit, but the profile icon inside must now stay upright while only
+// the dashed circle spins around it.
+const FollowedTabSVG = React.memo(({ active, spinAnim }) => {
+  const iconColor = active ? '#8B5CF6' : '#94A3B8';
+  return (
+    <View style={{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View
+        style={{
+          position: 'absolute',
+          transform: spinAnim ? [{
+            rotate: spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] })
+          }] : []
+        }}
+      >
+        <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <Circle
+            cx="12" cy="12" r="9"
+            stroke={iconColor}
+            strokeWidth="2"
+            strokeDasharray={active ? '4 3' : undefined}
+          />
+        </Svg>
+      </Animated.View>
+      <View style={{ position: 'absolute' }}>
+        <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <Circle cx="12" cy="9.2" r="3" stroke={iconColor} strokeWidth="2" />
+          <Path d="M6.2 18.5c0-3.2 2.6-5.3 5.8-5.3s5.8 2.1 5.8 5.3" stroke={iconColor} strokeWidth="2" strokeLinecap="round" />
+        </Svg>
+      </View>
+    </View>
+  );
+});
 
 const PlusSVG = React.memo(({ strokeWidth = 2.5, offsetX = 0 }) => (
   <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ transform: [{ translateX: offsetX }] }}>
@@ -5501,14 +5520,44 @@ function App() {
       liked_portfolio_ids: (likesRes.data || []).map((r) => r.portfolio_id),
       following_ids: (followsRes.data || []).map((r) => r.following_id)
     };
+    const jsonString = JSON.stringify(exportData, null, 2);
 
-    try {
-      await Share.share({
-        title: 'My DECENT Data',
-        message: JSON.stringify(exportData, null, 2)
-      });
-    } catch (e) {
-      console.warn('Data export share failed:', e);
+    // Presentable filename instead of whatever random name the OS/browser
+    // would otherwise generate for a plain Share.share({message}) call
+    // (which has no real filename control at all - that was the actual
+    // bug). Sanitized to strip anything that could break as a filename
+    // (slashes, quotes, etc.), falling back to "My" if the profile name
+    // is missing for some reason.
+    const safeName = (userProfile?.name || 'My').replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'My';
+    const fileName = `${safeName} data from decent.ink.json`;
+
+    if (Platform.OS === 'web') {
+      try {
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(objectUrl);
+      } catch (e) {
+        console.warn('Data export download failed:', e);
+        showToast('Could not export data - try again.');
+      }
+    } else {
+      try {
+        const localUri = `${FileSystem.cacheDirectory}${fileName}`;
+        await FileSystem.writeAsStringAsync(localUri, jsonString, { encoding: FileSystem.EncodingType.UTF8 });
+        await Share.share({
+          title: fileName,
+          url: localUri
+        });
+      } catch (e) {
+        console.warn('Data export share failed:', e);
+        showToast('Could not export data - try again.');
+      }
     }
   };
 
@@ -8321,12 +8370,9 @@ function App() {
                 }}>
                   <View style={{ transform: [{ scale: isWebDesktop ? 0.72 : 0.8 }] }}>
                     <Animated.View style={{
-                      transform: [
-                        { scale: tabScaleAnims.followed },
-                        { rotate: followedContinuousSpinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }
-                      ]
+                      transform: [{ scale: tabScaleAnims.followed }]
                     }}>
-                      <FollowedTabSVG active={bottomNav === 'followed'} />
+                      <FollowedTabSVG active={bottomNav === 'followed'} spinAnim={followedContinuousSpinAnim} />
                     </Animated.View>
                   </View>
                 </View>
@@ -8602,21 +8648,23 @@ function App() {
           >
             <View
               style={{
-                backgroundColor: '#FFFFFF',
+                backgroundColor: theme.surface,
                 borderRadius: 20,
                 padding: 24,
                 width: '100%',
                 maxWidth: 340,
-                alignItems: 'center'
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: theme.border
               }}
             >
-              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(239, 68, 68, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
                 <WarningTriangleSVG />
               </View>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 8, textAlign: 'center' }}>
                 Turn Off Safe Search?
               </Text>
-              <Text style={{ fontSize: 13, color: '#475569', textAlign: 'center', lineHeight: 20, marginBottom: 18 }}>
+              <Text style={{ fontSize: 13, color: theme.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 18 }}>
                 You will start seeing NSFW designers and portfolios in search results. This does not affect For You, which never shows NSFW content regardless of this setting.
               </Text>
               <TouchableOpacity
@@ -8626,15 +8674,15 @@ function App() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   width: '100%',
-                  backgroundColor: disableSafeSearchCountdown > 0 ? '#F1F5F9' : '#EF4444',
+                  backgroundColor: disableSafeSearchCountdown > 0 ? theme.bg : '#EF4444',
                   borderWidth: disableSafeSearchCountdown > 0 ? 1.5 : 0,
-                  borderColor: '#CBD5E1'
+                  borderColor: theme.border
                 }}
                 activeOpacity={0.8}
                 disabled={disableSafeSearchCountdown > 0}
                 onPress={confirmDisableSafeSearch}
               >
-                <Text style={{ fontSize: 15, fontWeight: '800', color: disableSafeSearchCountdown > 0 ? '#64748B' : '#FFFFFF' }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: disableSafeSearchCountdown > 0 ? theme.textSecondary : '#FFFFFF' }}>
                   {disableSafeSearchCountdown > 0 ? `Wait ${disableSafeSearchCountdown}s...` : 'Turn Off Safe Search'}
                 </Text>
               </TouchableOpacity>
@@ -8643,7 +8691,7 @@ function App() {
                 activeOpacity={0.6}
                 onPress={() => setDisableSafeSearchModalVisible(false)}
               >
-                <Text style={{ color: '#64748B', fontSize: 13, fontWeight: '700' }}>Cancel</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700' }}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -8665,21 +8713,23 @@ function App() {
           >
             <View
               style={{
-                backgroundColor: '#FFFFFF',
+                backgroundColor: theme.surface,
                 borderRadius: 20,
                 padding: 24,
                 width: '100%',
                 maxWidth: 340,
-                alignItems: 'center'
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: theme.border
               }}
             >
-              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(245, 158, 11, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
                 <WarningTriangleSVG />
               </View>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 8, textAlign: 'center' }}>
                 Enable Fancy Mode?
               </Text>
-              <Text style={{ fontSize: 13, color: '#475569', textAlign: 'center', lineHeight: 20, marginBottom: 18 }}>
+              <Text style={{ fontSize: 13, color: theme.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 18 }}>
                 This turns on blur backdrops, translucent effects, and extra animations throughout the app. It's still experimental - performance may lag or behave unexpectedly, especially on lower-end devices. You can turn it back off anytime.
               </Text>
               <TouchableOpacity
@@ -8689,15 +8739,15 @@ function App() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   width: '100%',
-                  backgroundColor: fancyModeCountdown > 0 ? '#F1F5F9' : '#8B5CF6',
+                  backgroundColor: fancyModeCountdown > 0 ? theme.bg : '#8B5CF6',
                   borderWidth: fancyModeCountdown > 0 ? 1.5 : 0,
-                  borderColor: '#CBD5E1'
+                  borderColor: theme.border
                 }}
                 activeOpacity={0.8}
                 disabled={fancyModeCountdown > 0}
                 onPress={confirmEnableFancyMode}
               >
-                <Text style={{ fontSize: 15, fontWeight: '800', color: fancyModeCountdown > 0 ? '#64748B' : '#FFFFFF' }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: fancyModeCountdown > 0 ? theme.textSecondary : '#FFFFFF' }}>
                   {fancyModeCountdown > 0 ? `Wait ${fancyModeCountdown}s...` : 'Enable Fancy Mode'}
                 </Text>
               </TouchableOpacity>
@@ -8706,7 +8756,7 @@ function App() {
                 activeOpacity={0.6}
                 onPress={() => setFancyModeConfirmVisible(false)}
               >
-                <Text style={{ color: '#64748B', fontSize: 13, fontWeight: '700' }}>Cancel</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700' }}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -10009,14 +10059,9 @@ function App() {
 
         <TouchableOpacity style={styles.uniformTabItem} onPress={() => handleNavChange('followed')}>
           <Animated.View style={{
-            transform: [
-              { scale: tabScaleAnims.followed },
-              {
-                rotate: followedContinuousSpinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] })
-              }
-            ]
+            transform: [{ scale: tabScaleAnims.followed }]
           }}>
-            <FollowedTabSVG active={bottomNav === 'followed'} />
+            <FollowedTabSVG active={bottomNav === 'followed'} spinAnim={followedContinuousSpinAnim} />
           </Animated.View>
           <Text style={[styles.menuLabel, bottomNav === 'followed' && styles.menuLabelActive]}>Circle</Text>
         </TouchableOpacity>
@@ -10058,16 +10103,34 @@ function App() {
           block taps elsewhere while closed. */}
       {Platform.OS === 'web' && !isWebWide && (
         <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, elevation: 30 }}>
-          <Animated.View
-            pointerEvents={hamburgerMenuVisible ? 'auto' : 'none'}
+          {/* TouchableOpacity instead of the raw onStartShouldSetResponder/
+              onResponderRelease pair used elsewhere in this file - that
+              lower-level responder API is unreliable specifically on
+              react-native-web for a full-screen tap-to-dismiss backdrop,
+              which is why taps here were passing through to whatever sat
+              behind the drawer instead of just closing it. Matches the
+              same TouchableOpacity-backdrop pattern already used for every
+              dropdown/menu elsewhere in this file, which doesn't have this
+              problem. */}
+          <TouchableOpacity
             style={{
               position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-              backgroundColor: 'rgba(11, 15, 23, 0.6)',
-              opacity: hamburgerBackdropOpacity
+              opacity: 1
             }}
-            onStartShouldSetResponder={() => hamburgerMenuVisible}
-            onResponderRelease={() => setHamburgerMenuVisible(false)}
-          />
+            activeOpacity={1}
+            disabled={!hamburgerMenuVisible}
+            pointerEvents={hamburgerMenuVisible ? 'auto' : 'none'}
+            onPress={() => setHamburgerMenuVisible(false)}
+          >
+            <Animated.View
+              style={{
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: 'rgba(11, 15, 23, 0.6)',
+                opacity: hamburgerBackdropOpacity
+              }}
+              pointerEvents="none"
+            />
+          </TouchableOpacity>
           <Animated.View
             style={{
               position: 'absolute', top: 0, bottom: 0, left: 0,
@@ -10132,6 +10195,22 @@ function App() {
                   </BouncyButton>
                 );
               })}
+
+              {/* Collapse arrow, pinned to the bottom of the drawer via
+                  marginTop: 'auto' pushing it down within the flex:1
+                  SafeAreaView above - same ChevronLeftSVG already used for
+                  the desktop sidebar's own collapse button, for visual
+                  consistency between the two. */}
+              <BouncyButton
+                style={{
+                  marginTop: 'auto', marginHorizontal: 16, marginBottom: 12,
+                  height: 44, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                  alignItems: 'center', justifyContent: 'center'
+                }}
+                onPress={() => setHamburgerMenuVisible(false)}
+              >
+                <ChevronLeftSVG color={theme.accentLight} />
+              </BouncyButton>
             </SafeAreaView>
           </Animated.View>
         </View>
@@ -12365,21 +12444,6 @@ function App() {
 
               {optionsView === 'privacy' && (
                 <>
-                  <View style={styles.settingToggleRow}>
-                    <View style={{ flex: 1, marginRight: 10 }}>
-                      <Text style={styles.settingItemTitle}>Hide Liked Portfolios from Public</Text>
-                      <Text style={styles.settingItemSub}>
-                        When enabled, visitors can only see your uploaded portfolios on your profile page.
-                      </Text>
-                    </View>
-                    <Switch
-                      value={hideLikedPortfolios}
-                      onValueChange={setHideLikedPortfolios}
-                      trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                      thumbColor="#FFFFFF"
-                    />
-                  </View>
-
                   <BouncyButton
                     style={styles.settingItemRow}
                     onPress={() => {
@@ -12408,61 +12472,81 @@ function App() {
                     </View>
                   </BouncyButton>
 
-                  <View style={styles.settingToggleRow}>
-                    <View style={{ flex: 1, marginRight: 10 }}>
-                      <Text style={styles.settingItemTitle}>Safe Search</Text>
-                      <Text style={styles.settingItemSub}>
-                        When on, NSFW designers and portfolios never appear in search. NSFW content never appears on For You regardless of this setting.
-                      </Text>
-                    </View>
-                    <Switch
-                      value={safeSearchEnabled}
-                      onValueChange={handleSafeSearchToggle}
-                      trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                      thumbColor="#FFFFFF"
-                    />
-                  </View>
-
-                  <View style={styles.settingToggleRow}>
-                    <View style={{ flex: 1, marginRight: 10 }}>
-                      <Text style={styles.settingItemTitle}>Exclude AI-Generated Content</Text>
-                      <Text style={styles.settingItemSub}>
-                        When on, For You hides portfolios tagged as AI-generated. AI tags are self-disclosed by uploaders, so some content may not be labeled accurately. Only affects For You.
-                      </Text>
-                    </View>
-                    <Switch
-                      value={excludeAiGeneratedContent}
-                      onValueChange={setExcludeAiGeneratedContent}
-                      trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                      thumbColor="#FFFFFF"
-                    />
-                  </View>
-
-                  <View style={styles.settingToggleRow}>
-                    <View style={{ flex: 1, marginRight: 10 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={styles.settingItemTitle}>Fancy Mode</Text>
-                        <View style={{ backgroundColor: 'rgba(245,158,11,0.15)', borderWidth: 1, borderColor: '#F59E0B', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 }}>
-                          <Text style={{ color: '#F59E0B', fontSize: 9, fontWeight: '800' }}>EXPERIMENTAL</Text>
-                        </View>
+                  {/* All 4 toggles grouped in one stroke-only, rounded
+                      container, separate from the plain navigation rows
+                      above and below it. */}
+                  <View style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 14, paddingHorizontal: 14, marginTop: 16, marginBottom: 16 }}>
+                    <View style={styles.settingToggleRow}>
+                      <View style={{ flex: 1, marginRight: 10 }}>
+                        <Text style={styles.settingItemTitle}>Hide Liked Portfolios from Public</Text>
+                        <Text style={styles.settingItemSub}>
+                          When enabled, visitors can only see your uploaded portfolios on your profile page.
+                        </Text>
                       </View>
-                      <Text style={styles.settingItemSub}>
-                        Adds blur backdrops, translucent effects, and extra animation flourish throughout the app. Off by default - performance with this on is still experimental and may lag or behave unexpectedly on some devices.
-                      </Text>
+                      <Switch
+                        value={hideLikedPortfolios}
+                        onValueChange={setHideLikedPortfolios}
+                        trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+                        thumbColor="#FFFFFF"
+                      />
                     </View>
-                    <Switch
-                      value={!lightweightMode}
-                      onValueChange={(v) => {
-                        if (v) {
-                          setFancyModeCountdown(5);
-                          setFancyModeConfirmVisible(true);
-                        } else {
-                          setLightweightMode(true);
-                        }
-                      }}
-                      trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                      thumbColor="#FFFFFF"
-                    />
+
+                    <View style={styles.settingToggleRow}>
+                      <View style={{ flex: 1, marginRight: 10 }}>
+                        <Text style={styles.settingItemTitle}>Safe Search</Text>
+                        <Text style={styles.settingItemSub}>
+                          When on, NSFW designers and portfolios never appear in search. NSFW content never appears on For You regardless of this setting.
+                        </Text>
+                      </View>
+                      <Switch
+                        value={safeSearchEnabled}
+                        onValueChange={handleSafeSearchToggle}
+                        trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+                        thumbColor="#FFFFFF"
+                      />
+                    </View>
+
+                    <View style={styles.settingToggleRow}>
+                      <View style={{ flex: 1, marginRight: 10 }}>
+                        <Text style={styles.settingItemTitle}>Exclude AI-Generated Content</Text>
+                        <Text style={styles.settingItemSub}>
+                          When on, For You hides portfolios tagged as AI-generated. AI tags are self-disclosed by uploaders, so some content may not be labeled accurately. Only affects For You.
+                        </Text>
+                      </View>
+                      <Switch
+                        value={excludeAiGeneratedContent}
+                        onValueChange={setExcludeAiGeneratedContent}
+                        trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+                        thumbColor="#FFFFFF"
+                      />
+                    </View>
+
+                    <View style={[styles.settingToggleRow, { borderBottomWidth: 0 }]}>
+                      <View style={{ flex: 1, marginRight: 10 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.settingItemTitle}>Fancy Mode</Text>
+                          <View style={{ backgroundColor: 'rgba(245,158,11,0.15)', borderWidth: 1, borderColor: '#F59E0B', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 }}>
+                            <Text style={{ color: '#F59E0B', fontSize: 9, fontWeight: '800' }}>EXPERIMENTAL</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.settingItemSub}>
+                          Adds blur backdrops, translucent effects, and extra animation flourish throughout the app. Off by default - performance with this on is still experimental and may lag or behave unexpectedly on some devices.
+                        </Text>
+                      </View>
+                      <Switch
+                        value={!lightweightMode}
+                        onValueChange={(v) => {
+                          if (v) {
+                            setFancyModeCountdown(5);
+                            setFancyModeConfirmVisible(true);
+                          } else {
+                            setLightweightMode(true);
+                          }
+                        }}
+                        trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+                        thumbColor="#FFFFFF"
+                      />
+                    </View>
                   </View>
 
                   <BouncyButton
@@ -13780,16 +13864,16 @@ function App() {
                       >
                         <Text
                           style={{
-                            color: fIsAiGenerated === null ? theme.textSecondary : (fIsAiGenerated ? '#10B981' : '#EF4444'),
-                            fontSize: 13, fontWeight: '600', flex: 1, marginRight: 8
+                            color: theme.text,
+                            fontSize: 13, fontWeight: fIsAiGenerated === null ? '500' : '700', flex: 1, marginRight: 8
                           }}
                           numberOfLines={1}
                         >
                           {fIsAiGenerated === null
                             ? 'No selection'
                             : fIsAiGenerated
-                              ? 'Yes, this content is AI assisted/generated'
-                              : 'No, this content is not AI assisted/generated'}
+                              ? 'This content is AI assisted/generated'
+                              : 'This content is NOT AI assisted/generated'}
                         </Text>
                         <ChevronDownSVG color={theme.textSecondary} size={14} />
                       </BouncyButton>
@@ -13831,13 +13915,13 @@ function App() {
                               style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
                               onPress={() => { setFIsAiGenerated(true); setAiDisclosureDropdownOpen(false); }}
                             >
-                              <Text style={{ color: '#10B981', fontSize: 13, fontWeight: '600' }}>Yes, this content is AI assisted/generated</Text>
+                              <Text style={{ color: theme.text, fontSize: 13, fontWeight: fIsAiGenerated === true ? '700' : '500' }}>This content is AI assisted/generated</Text>
                             </BouncyButton>
                             <BouncyButton
                               style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
                               onPress={() => { setFIsAiGenerated(false); setAiDisclosureDropdownOpen(false); }}
                             >
-                              <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '600' }}>No, this content is not AI assisted/generated</Text>
+                              <Text style={{ color: theme.text, fontSize: 13, fontWeight: fIsAiGenerated === false ? '700' : '500' }}>This content is NOT AI assisted/generated</Text>
                             </BouncyButton>
                             </View>
                           </View>
