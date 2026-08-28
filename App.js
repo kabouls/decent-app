@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 390;
+const BUILD_NUMBER = 391;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15680,6 +15680,17 @@ function App() {
                       </View>
                     )}
                     <AppWebView
+                      // Forces a fresh mount instead of an in-place resize.
+                      // Android's native WebView is an embedded native
+                      // component (not a plain RN View), and can retain
+                      // stale internal touch-hit bounds across a parent
+                      // layout resize rather than re-measuring - worth
+                      // ruling out specifically because the tab bar fix
+                      // just above this changed from way-oversized (b388's
+                      // bug) back down to its correct 52px height, which
+                      // would have resized this WebView's box out from
+                      // under it exactly like that.
+                      key={`${activeTab}-${protoUri}`}
                       source={{ uri: protoUri }}
                       style={styles.webView}
                       onLoadEnd={() => setLoadingWebView(false)}
