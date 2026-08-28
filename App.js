@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 379;
+const BUILD_NUMBER = 380;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -7755,10 +7755,16 @@ function App() {
 
   const getFigmaEmbedUrl = (url) => {
     if (!url) return '';
+    // scaling=scale-down asks Figma's embed to shrink the prototype to fit
+    // whatever width/height the iframe actually has, without ever scaling
+    // it up past 100%. Without this, Figma renders the frame at its native
+    // size and just clips whatever doesn't fit - most visible with desktop
+    // prototypes in the split-layout right pane, which is only half the
+    // screen width.
     if (!url.includes('figma.com/embed')) {
-      return `https://www.figma.com/embed?embed_host=share&url=${encodeURIComponent(url)}`;
+      return `https://www.figma.com/embed?embed_host=share&scaling=scale-down&url=${encodeURIComponent(url)}`;
     }
-    return url;
+    return url.includes('scaling=') ? url : `${url}&scaling=scale-down`;
   };
 
   const handleWebViewNavigation = (request) => {
@@ -15351,7 +15357,6 @@ function App() {
                 this exact original position/styling unchanged for now,
                 pending a separate wider redesign later. */}
             {(
-              (Platform.OS === 'web' && isWebWide && !(activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto)) ||
               (!(Platform.OS === 'web' && isWebWide) && (activeTab === 'mobile' || activeTab === 'desktop' || activeTab === 'component'))
             ) && (
             <View style={styles.tabBar}>
@@ -15411,7 +15416,7 @@ function App() {
             <View style={styles.modalBody}>
               {(() => {
                 const hasPrototype = !!(activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto);
-                const showSplitLayout = Platform.OS === 'web' && isWebWide && hasPrototype;
+                const showSplitLayout = Platform.OS === 'web' && isWebWide;
                 const protoUri = getFigmaEmbedUrl(
                   activeTab === 'component'
                     ? activeProject.componentProto
@@ -15437,6 +15442,34 @@ function App() {
                       domStorageEnabled={true}
                     />
                   </View>
+                );
+
+                // Wide-web, no prototype uploaded: the right pane has
+                // nothing else to show, so instead of leaving it empty it
+                // shows every uploaded media item stacked in a vertical
+                // scroll (as opposed to the horizontal carousel used
+                // everywhere else) - handles portfolios with a lot of
+                // showcase images better than a fixed-height horizontal
+                // strip would.
+                const mediaPane = (
+                  <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ padding: 16, gap: 16 }}
+                  >
+                    {(activeProject.images || []).map((imgUrl, index) => (
+                      <BouncyButton key={index} activeOpacity={0.9} onPress={() => setLightboxImageUri(imgUrl)}>
+                        <Image
+                          source={{ uri: imgUrl }}
+                          style={{
+                            width: '100%',
+                            aspectRatio: activeProject.showcaseAspectRatio === '9:16' ? 9 / 16 : 16 / 9,
+                            borderRadius: 12
+                          }}
+                          resizeMode="cover"
+                        />
+                      </BouncyButton>
+                    ))}
+                  </ScrollView>
                 );
 
                 const caseStudyPane = (
@@ -15637,6 +15670,14 @@ function App() {
                     )
                   )}
 
+                  {/* Skipped here specifically when wide-web has no
+                      prototype - in that one case the media moves to the
+                      right-hand pane as a vertical scroll instead (see
+                      mediaPane below). Every other case (native, narrow
+                      web, or wide web WITH a prototype) keeps this exact
+                      horizontal carousel, unchanged. */}
+                  {!(Platform.OS === 'web' && isWebWide && !hasPrototype) && (
+                  <>
                   <Text style={styles.sectionHeader}>UI SCREENSHOTS & HIGHLIGHTS</Text>
                   <View style={{ position: 'relative' }}>
                     <ScrollView
@@ -15703,6 +15744,8 @@ function App() {
                       </BouncyButton>
                     )}
                   </View>
+                  </>
+                  )}
 
                   <Text style={styles.sectionHeader}>CASE STUDY OVERVIEW</Text>
                   {activeProject.contentBlocks && activeProject.contentBlocks.length > 0 ? (
@@ -15713,13 +15756,13 @@ function App() {
                 </ScrollView>
                 );
 
-                // Split layout (web wide, has at least one prototype link):
-                // case study always visible on the left, prototype viewer on
-                // the right, half/half. If both mobile and desktop links
-                // exist, a small switcher picks which one shows on the
-                // right - unlike native/narrow-web, which keeps the
-                // original tab-switching single-pane behavior entirely
-                // unchanged below.
+                // Split layout, wide web always: case study on the left,
+                // right pane is either the prototype viewer (with a
+                // Mobile/Desktop switcher if both links exist) or, when
+                // there's no prototype at all, the vertical media scroll
+                // instead of leaving that space empty. Native/narrow-web
+                // keeps the original tab-switching single-pane behavior
+                // entirely unchanged below.
                 if (showSplitLayout) {
                   return (
                     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.bg }}>
@@ -15727,23 +15770,27 @@ function App() {
                         {caseStudyPane}
                       </View>
                       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-                        {activeProject.figmaProto && activeProject.desktopProto && (
-                          <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: theme.border }}>
-                            <BouncyButton
-                              style={{ flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: activeTab === 'desktop' ? 'transparent' : theme.surface }}
-                              onPress={() => { setActiveTab('mobile'); setLoadingWebView(true); }}
-                            >
-                              <Text style={{ color: activeTab === 'desktop' ? theme.textSecondary : theme.accent, fontWeight: '700', fontSize: 12 }}>Mobile</Text>
-                            </BouncyButton>
-                            <BouncyButton
-                              style={{ flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: activeTab === 'desktop' ? theme.surface : 'transparent' }}
-                              onPress={() => { setActiveTab('desktop'); setLoadingWebView(true); }}
-                            >
-                              <Text style={{ color: activeTab === 'desktop' ? theme.accent : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>Desktop</Text>
-                            </BouncyButton>
-                          </View>
-                        )}
-                        {prototypePane}
+                        {hasPrototype ? (
+                          <>
+                            {activeProject.figmaProto && activeProject.desktopProto && (
+                              <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: theme.border }}>
+                                <BouncyButton
+                                  style={{ flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: activeTab === 'desktop' ? 'transparent' : theme.surface }}
+                                  onPress={() => { setActiveTab('mobile'); setLoadingWebView(true); }}
+                                >
+                                  <Text style={{ color: activeTab === 'desktop' ? theme.textSecondary : theme.accent, fontWeight: '700', fontSize: 12 }}>Mobile</Text>
+                                </BouncyButton>
+                                <BouncyButton
+                                  style={{ flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: activeTab === 'desktop' ? theme.surface : 'transparent' }}
+                                  onPress={() => { setActiveTab('desktop'); setLoadingWebView(true); }}
+                                >
+                                  <Text style={{ color: activeTab === 'desktop' ? theme.accent : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>Desktop</Text>
+                                </BouncyButton>
+                              </View>
+                            )}
+                            {prototypePane}
+                          </>
+                        ) : mediaPane}
                       </View>
                     </View>
                   );
