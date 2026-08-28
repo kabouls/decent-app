@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 386;
+const BUILD_NUMBER = 388;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -3494,6 +3494,24 @@ function App() {
 
   const [profileTab, setProfileTab] = useState('myWork');
   const [profileTabBarWidth, setProfileTabBarWidth] = useState(0);
+  // Same sliding-pill treatment, applied to the Mobile/Desktop prototype
+  // switcher in the portfolio detail split layout - separate state/anim
+  // from profileTabSlideAnim above since that one's dedicated to the
+  // Portfolios/Liked Portfolios toggle and switching it would cross wires
+  // between two unrelated tab bars.
+  const [protoTabBarWidth, setProtoTabBarWidth] = useState(0);
+  const protoTabSlideAnim = useRef(new Animated.Value(0)).current; // 0 = mobile, 1 = desktop
+  const switchProtoTab = (tab) => {
+    if (tab === activeTab) return;
+    Animated.spring(protoTabSlideAnim, {
+      toValue: tab === 'mobile' ? 0 : 1,
+      useNativeDriver: true,
+      speed: 20,
+      bounciness: 6
+    }).start();
+    setActiveTab(tab);
+    setLoadingWebView(true);
+  };
   // Same sliding-pill treatment as self-profile's tab bar, for the
   // Portfolios/Liked Portfolios toggle when viewing someone else's
   // profile - previously used plain per-button active styling with no
@@ -15364,24 +15382,23 @@ function App() {
               </View>
             </View>
 
-            {/* Tab bar hidden in split-layout mode (web wide, has a
-                prototype) - case study and prototype are both visible at
-                once there, side by side, so switching tabs doesn't apply.
-                The right pane gets its own small Mobile/Desktop switcher
-                instead, only when both links exist.
-
-                This whole block is now isWebWide-only - app/narrow-web gets
-                a relocated version further down (under the category tags,
-                inside the scrollable case study content) with different
-                styling when there's only one tab. Desktop/tablet web keeps
-                this exact original position/styling unchanged for now,
-                pending a separate wider redesign later. */}
+            {/* Always pinned above modalBody (never inside its ScrollView),
+                so it stays visible regardless of scroll position, for
+                every tab including Case Study itself - not just once
+                already switched to a proto tab. Desktop/tablet web keeps
+                its own separate switcher inside the split-layout right
+                pane instead (built for that specific two-pane context).
+                Horizontal ScrollView + fixed per-tab padding (rather than
+                flex:1 equal-division) so tabs don't get squished when
+                Case Study + Mobile + Desktop + Component all exist at
+                once - they scroll instead of cramming. */}
             {(
-              (!(Platform.OS === 'web' && isWebWide) && (activeTab === 'mobile' || activeTab === 'desktop' || activeTab === 'component'))
+              !(Platform.OS === 'web' && isWebWide) &&
+              (activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto)
             ) && (
-            <View style={styles.tabBar}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={{ gap: 6 }}>
               <BouncyButton
-                style={[styles.tabBtn, activeTab === 'case' && styles.tabBtnActive]}
+                style={[styles.tabBtn, { flex: 0, paddingHorizontal: 18 }, activeTab === 'case' && styles.tabBtnActive]}
                 onPress={() => setActiveTab('case')}
               >
                 <Text style={[styles.tabBtnText, activeTab === 'case' && styles.tabBtnTextActive]}>
@@ -15391,13 +15408,13 @@ function App() {
 
               {activeProject.figmaProto ? (
                 <BouncyButton
-                  style={[styles.tabBtn, activeTab === 'mobile' && styles.tabBtnActive]}
+                  style={[styles.tabBtn, { flex: 0, paddingHorizontal: 18 }, activeTab === 'mobile' && styles.tabBtnActive]}
                   onPress={() => { setActiveTab('mobile'); setLoadingWebView(true); }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                     <FigmaLogoSVG />
                     <Text style={[styles.tabBtnText, activeTab === 'mobile' && styles.tabBtnTextActive]}>
-                      Mobile Proto
+                      Mobile
                     </Text>
                   </View>
                 </BouncyButton>
@@ -15405,13 +15422,13 @@ function App() {
 
               {activeProject.desktopProto ? (
                 <BouncyButton
-                  style={[styles.tabBtn, activeTab === 'desktop' && styles.tabBtnActive]}
+                  style={[styles.tabBtn, { flex: 0, paddingHorizontal: 18 }, activeTab === 'desktop' && styles.tabBtnActive]}
                   onPress={() => { setActiveTab('desktop'); setLoadingWebView(true); }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                     <FigmaLogoSVG />
                     <Text style={[styles.tabBtnText, activeTab === 'desktop' && styles.tabBtnTextActive]}>
-                      Desktop Proto
+                      Desktop
                     </Text>
                   </View>
                 </BouncyButton>
@@ -15419,18 +15436,18 @@ function App() {
 
               {activeProject.componentProto ? (
                 <BouncyButton
-                  style={[styles.tabBtn, activeTab === 'component' && styles.tabBtnActive]}
+                  style={[styles.tabBtn, { flex: 0, paddingHorizontal: 18 }, activeTab === 'component' && styles.tabBtnActive]}
                   onPress={() => { setActiveTab('component'); setLoadingWebView(true); }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                     <FigmaLogoSVG />
                     <Text style={[styles.tabBtnText, activeTab === 'component' && styles.tabBtnTextActive]}>
-                      Component Proto
+                      Component
                     </Text>
                   </View>
                 </BouncyButton>
               ) : null}
-            </View>
+            </ScrollView>
             )}
 
             <View style={styles.modalBody}>
@@ -15623,72 +15640,15 @@ function App() {
                     </View>
                   )}
 
-                  {/* Relocated tab bar for app/narrow-web only - desktop/
-                      tablet web keeps the original tab bar in its old
-                      position above, unchanged for now pending a wider
-                      redesign later. When there's only one tab (no
-                      prototype links uploaded), it's plain text - no
-                      purple-fill button chrome, since a single tab isn't
-                      really a "choice" and looked like an unnecessary
-                      button. Once a prototype exists, this keeps the same
-                      button-styled tabs as before, just relocated. */}
-                  {!(Platform.OS === 'web' && isWebWide) && (
-                    !(activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto) ? (
-                      <Text style={[styles.sectionHeader, { marginBottom: 16 }]}>Case Study</Text>
-                    ) : (
-                      <View style={[styles.tabBar, { marginBottom: 16 }]}>
-                        <BouncyButton
-                          style={[styles.tabBtn, activeTab === 'case' && styles.tabBtnActive]}
-                          onPress={() => setActiveTab('case')}
-                        >
-                          <Text style={[styles.tabBtnText, activeTab === 'case' && styles.tabBtnTextActive]}>
-                            Case Study
-                          </Text>
-                        </BouncyButton>
-
-                        {activeProject.figmaProto ? (
-                          <BouncyButton
-                            style={[styles.tabBtn, activeTab === 'mobile' && styles.tabBtnActive]}
-                            onPress={() => { setActiveTab('mobile'); setLoadingWebView(true); }}
-                          >
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                              <FigmaLogoSVG />
-                              <Text style={[styles.tabBtnText, activeTab === 'mobile' && styles.tabBtnTextActive]}>
-                                Mobile Proto
-                              </Text>
-                            </View>
-                          </BouncyButton>
-                        ) : null}
-
-                        {activeProject.desktopProto ? (
-                          <BouncyButton
-                            style={[styles.tabBtn, activeTab === 'desktop' && styles.tabBtnActive]}
-                            onPress={() => { setActiveTab('desktop'); setLoadingWebView(true); }}
-                          >
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                              <FigmaLogoSVG />
-                              <Text style={[styles.tabBtnText, activeTab === 'desktop' && styles.tabBtnTextActive]}>
-                                Desktop Proto
-                              </Text>
-                            </View>
-                          </BouncyButton>
-                        ) : null}
-
-                        {activeProject.componentProto ? (
-                          <BouncyButton
-                            style={[styles.tabBtn, activeTab === 'component' && styles.tabBtnActive]}
-                            onPress={() => { setActiveTab('component'); setLoadingWebView(true); }}
-                          >
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                              <FigmaLogoSVG />
-                              <Text style={[styles.tabBtnText, activeTab === 'component' && styles.tabBtnTextActive]}>
-                                Component Proto
-                              </Text>
-                            </View>
-                          </BouncyButton>
-                        ) : null}
-                      </View>
-                    )
+                  {/* When there's a prototype, the always-pinned tab bar
+                      above (outside this ScrollView) handles switching -
+                      this used to duplicate that same tab bar down here,
+                      which meant two tab bars existed depending on which
+                      tab was active. Only the "no prototype at all" plain
+                      text header remains here, since that state has
+                      nothing to switch between and isn't shown up top. */}
+                  {!(Platform.OS === 'web' && isWebWide) && !(activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto) && (
+                    <Text style={[styles.sectionHeader, { marginBottom: 16 }]}>Case Study</Text>
                   )}
 
                   {/* Skipped here specifically when wide-web has no
@@ -15806,19 +15766,47 @@ function App() {
                         {hasPrototype ? (
                           <>
                             {activeProject.figmaProto && activeProject.desktopProto && (
-                              <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: theme.border }}>
-                                <BouncyButton
-                                  style={{ flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: activeTab === 'desktop' ? 'transparent' : theme.surface }}
-                                  onPress={() => { setActiveTab('mobile'); setLoadingWebView(true); }}
+                              <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+                                <Text style={styles.sectionHeader}>PROTOTYPE</Text>
+                                <View
+                                  style={{
+                                    flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 99, padding: 4,
+                                    marginBottom: 4, borderWidth: 1, borderColor: theme.border, gap: 4, position: 'relative'
+                                  }}
+                                  onLayout={(e) => setProtoTabBarWidth(e.nativeEvent.layout.width)}
                                 >
-                                  <Text style={{ color: activeTab === 'desktop' ? theme.textSecondary : theme.accent, fontWeight: '700', fontSize: 12 }}>Mobile</Text>
-                                </BouncyButton>
-                                <BouncyButton
-                                  style={{ flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: activeTab === 'desktop' ? theme.surface : 'transparent' }}
-                                  onPress={() => { setActiveTab('desktop'); setLoadingWebView(true); }}
-                                >
-                                  <Text style={{ color: activeTab === 'desktop' ? theme.accent : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>Desktop</Text>
-                                </BouncyButton>
+                                  {protoTabBarWidth > 0 && (
+                                    <Animated.View
+                                      style={{
+                                        position: 'absolute',
+                                        top: 4, bottom: 4, left: 4,
+                                        width: (protoTabBarWidth - 12) / 2,
+                                        borderRadius: 99,
+                                        backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+                                        transform: [{
+                                          translateX: protoTabSlideAnim.interpolate({
+                                            inputRange: [0, 1],
+                                            outputRange: [0, (protoTabBarWidth - 12) / 2 + 4]
+                                          })
+                                        }]
+                                      }}
+                                    />
+                                  )}
+                                  <BouncyButton
+                                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 99 }}
+                                    onPress={() => switchProtoTab('mobile')}
+                                  >
+                                    <FigmaLogoSVG />
+                                    <Text style={{ color: activeTab === 'desktop' ? theme.textSecondary : '#FFFFFF', fontWeight: '700', fontSize: 12 }}>Mobile</Text>
+                                  </BouncyButton>
+                                  <BouncyButton
+                                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 99 }}
+                                    onPress={() => switchProtoTab('desktop')}
+                                  >
+                                    <FigmaLogoSVG />
+                                    <Text style={{ color: activeTab === 'desktop' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>Desktop</Text>
+                                  </BouncyButton>
+                                </View>
                               </View>
                             )}
                             <View style={{ width: paneWidth, flex: 1 }}>
@@ -15836,7 +15824,8 @@ function App() {
                 }
 
                 // Original behavior, unchanged: single pane, switched via
-                // the tab bar above (Case Study / Mobile Proto / Desktop Proto).
+                // the always-pinned tab bar above (Case Study / Mobile /
+                // Desktop / Component).
                 return (activeTab === 'mobile' || activeTab === 'desktop' || activeTab === 'component') ? prototypePane : caseStudyPane;
               })()}
 
