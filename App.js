@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 378;
+const BUILD_NUMBER = 379;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1468,7 +1468,7 @@ const MARKDOWN_TOOLBAR_BUTTONS = [
 ];
 
 const isLocalMediaUri = (uri) =>
-  !!uri && (uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('ph://'));
+  !!uri && (uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('ph://') || uri.startsWith('blob:') || uri.startsWith('data:'));
 
 const wrapMarkdownAsBlocks = (markdown) =>
   markdown && markdown.trim() ? [{ id: makeBlockId(), type: 'text', markdown }] : [];
@@ -7236,13 +7236,13 @@ function App() {
     if (editingProjectId) {
       // 1. Upload any newly-picked local images
       let finalCoverUrl = fCover;
-      if (fCover && (fCover.startsWith('file://') || fCover.startsWith('content://') || fCover.startsWith('ph://'))) {
+      if (fCover && (fCover.startsWith('file://') || fCover.startsWith('content://') || fCover.startsWith('ph://') || fCover.startsWith('blob:') || fCover.startsWith('data:'))) {
         finalCoverUrl = await uploadImageChecked(fCover, 'covers');
       }
 
       const uploadedShowcase = await Promise.all(
         validShowcaseImgs.map((img) =>
-          (img.startsWith('file://') || img.startsWith('content://') || img.startsWith('ph://'))
+          (img.startsWith('file://') || img.startsWith('content://') || img.startsWith('ph://') || img.startsWith('blob:') || img.startsWith('data:'))
             ? uploadImageChecked(img, 'showcase')
             : Promise.resolve(img)
         )
@@ -7340,14 +7340,14 @@ function App() {
     } else {
       // 1. Upload Cover Image to Supabase Storage
       let finalCoverUrl = fCover;
-      if (fCover && (fCover.startsWith('file://') || fCover.startsWith('content://') || fCover.startsWith('ph://'))) {
+      if (fCover && (fCover.startsWith('file://') || fCover.startsWith('content://') || fCover.startsWith('ph://') || fCover.startsWith('blob:') || fCover.startsWith('data:'))) {
         finalCoverUrl = await uploadImageChecked(fCover, 'covers');
       }
 
       // 2. Upload Showcase Images to Supabase Storage
       const uploadedShowcase = await Promise.all(
         validShowcaseImgs.map((img) =>
-          (img.startsWith('file://') || img.startsWith('content://') || img.startsWith('ph://'))
+          (img.startsWith('file://') || img.startsWith('content://') || img.startsWith('ph://') || img.startsWith('blob:') || img.startsWith('data:'))
             ? uploadImageChecked(img, 'showcase')
             : Promise.resolve(img)
         )
