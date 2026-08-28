@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 384;
+const BUILD_NUMBER = 385;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15220,7 +15220,11 @@ function App() {
               both, only here, only when wide - every other modal sharing
               modalContainer is untouched. */}
           <SafeAreaView style={[styles.modalContainer, Platform.OS === 'web' && !isWebWide && { maxWidth: mainContentMaxWidth }, Platform.OS === 'web' && isWebWide && { maxWidth: undefined, alignSelf: 'stretch' }]}>
-            <View style={[styles.modalTopBar, { backgroundColor: 'transparent' }]}>
+            {/* Explicit width matching the split layout below it, same
+                reasoning as that fix - modalTopBar is a shared style used
+                by 15+ other modals, so this override is scoped to just
+                this instance, only on wide web. */}
+            <View style={[styles.modalTopBar, { backgroundColor: 'transparent' }, Platform.OS === 'web' && isWebWide && { width: viewportWidth - sidebarWidth }]}>
               {Platform.OS !== 'web' && (
                 lightweightMode ? (
                   <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.surface }} />
@@ -15234,16 +15238,16 @@ function App() {
               )}
 
               {Platform.OS === 'web' && (
-                <BouncyButton style={{ padding: 4, marginRight: 8 }} onPress={handleBackFromPortfolioDetail}>
+                <BouncyButton style={[{ padding: 4, marginRight: 8 }, isWebWide && { width: 68, alignItems: 'flex-start' }]} onPress={handleBackFromPortfolioDetail}>
                   <ChevronLeftSVG color={theme.accentLight} size={20} />
                 </BouncyButton>
               )}
 
-              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]} numberOfLines={1}>
+              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20, textAlign: 'center' }]} numberOfLines={1}>
                 {activeProject.title}
               </Text>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, ...(isWebWide ? { width: 68, justifyContent: 'flex-end' } : {}) }}>
                 <BouncyButton
                   style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
                   onPress={() => handleSharePortfolio(activeProject)}
