@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 373;
+const BUILD_NUMBER = 374;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -4069,11 +4069,35 @@ function App() {
       }).then(({ error }) => {
         if (error) console.warn('Analytics tracking failed:', error);
       });
+      // Admin dashboard "active users" / device breakdown groundwork (Phase 0).
+      // Only fires for a logged-in session - anonymous/guest opens have no
+      // profile row to attach this to.
+      if (session) {
+        supabase.from('profiles').update({
+          last_active_at: new Date().toISOString(),
+          last_platform: Platform.OS,
+          last_app_version: APP_VERSION
+        }).eq('id', session.user.id).then(({ error }) => {
+          if (error) console.warn('last_active_at update failed:', error);
+        });
+      }
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       if (event === 'SIGNED_IN') {
+        // Fresh login is also an activity signal - covers the case where
+        // this fires without a full page reload (so the getSession().then()
+        // block above never re-runs).
+        if (session) {
+          supabase.from('profiles').update({
+            last_active_at: new Date().toISOString(),
+            last_platform: Platform.OS,
+            last_app_version: APP_VERSION
+          }).eq('id', session.user.id).then(({ error }) => {
+            if (error) console.warn('last_active_at update failed:', error);
+          });
+        }
         // Strips the #access_token=...&refresh_token=...&... fragment the
         // OAuth redirect leaves in the address bar. Supabase has already
         // read it by this point (that's how session got populated) - purely
