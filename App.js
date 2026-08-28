@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 393;
+const BUILD_NUMBER = 394;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15990,10 +15990,10 @@ function App() {
                   const paneWidth = (viewportWidth - sidebarWidth) / 2;
                   return (
                     <View style={{ flex: 1, flexDirection: 'row', width: viewportWidth - sidebarWidth, backgroundColor: theme.bg }}>
-                      <View style={{ width: paneWidth, backgroundColor: theme.bg, borderRightWidth: 1, borderRightColor: theme.border }}>
+                      <View style={{ width: paneWidth, flex: 1, backgroundColor: theme.bg, borderRightWidth: 1, borderRightColor: theme.border }}>
                         {caseStudyPane}
                       </View>
-                      <View style={{ width: paneWidth, backgroundColor: theme.bg }}>
+                      <View style={{ width: paneWidth, flex: 1, backgroundColor: theme.bg }}>
                         {hasPrototype ? (
                           <>
                             {activeProject.figmaProto && activeProject.desktopProto && (
