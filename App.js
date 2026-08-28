@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 381;
+const BUILD_NUMBER = 382;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -8558,8 +8558,16 @@ function App() {
             </SafeAreaView>
           </Animated.View>
         )}
-        <View style={{ flex: 1, alignItems: isWebWide ? 'center' : 'stretch' }}>
-      <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', maxWidth: mainContentMaxWidth, backgroundColor: webCanvasColor } : { flex: 1 }}>
+        {/* alignItems:'center' + maxWidth below cap every screen at a
+            readable column width - right for the feed, search, profile,
+            etc. Bypassed specifically while the portfolio detail split
+            view is open on wide web, since that screen is meant to use
+            the full window width edge to edge, not the shared column
+            width. Every other screen rendered through this same wrapper
+            is completely unaffected - the condition only flips when this
+            one modal is showing. */}
+        <View style={{ flex: 1, alignItems: (isWebWide && !(modalVisible && activeProject)) ? 'center' : 'stretch' }}>
+      <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', ...((isWebWide && modalVisible && activeProject) ? {} : { maxWidth: mainContentMaxWidth }), backgroundColor: webCanvasColor } : { flex: 1 }}>
       <StatusBar barStyle={themeMode === 'light' ? 'dark-content' : 'light-content'} backgroundColor={theme.bg} translucent={false} />
 
       {isOffline && (
@@ -15205,7 +15213,13 @@ function App() {
       {activeProject && (() => {
         const portfolioDetailContent = (
           <View style={{ flex: 1, width: '100%', backgroundColor: theme.bg }}>
-          <SafeAreaView style={[styles.modalContainer, Platform.OS === 'web' && { maxWidth: mainContentMaxWidth }]}>
+          {/* modalContainer's own base style hardcodes maxWidth:480 and
+              alignSelf:'center' for every modal that uses it - correct
+              default for most modals, but this screen's split layout is
+              meant to use the full window width on wide web. Cancelling
+              both, only here, only when wide - every other modal sharing
+              modalContainer is untouched. */}
+          <SafeAreaView style={[styles.modalContainer, Platform.OS === 'web' && !isWebWide && { maxWidth: mainContentMaxWidth }, Platform.OS === 'web' && isWebWide && { maxWidth: undefined, alignSelf: 'stretch' }]}>
             <View style={[styles.modalTopBar, { backgroundColor: 'transparent' }]}>
               {Platform.OS !== 'web' && (
                 lightweightMode ? (
