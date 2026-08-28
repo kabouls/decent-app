@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 374;
+const BUILD_NUMBER = 375;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -13920,7 +13920,15 @@ function App() {
                       just now a compact dropdown instead of a card with
                       always-visible explanatory text, to save vertical
                       space on an already-crowded step. */}
-                  <View style={{ marginTop: 10 }}>
+                  {/* The dropdown panel below has its own zIndex:100, but on
+                      web that only wins against siblings inside this same
+                      wrapper - it does NOT lift this whole block above the
+                      *next* form field (Short Brief/Summary), because that
+                      comparison happens one level up, between this View and
+                      its own siblings. Elevating this wrapper itself (only
+                      while open, so it's a no-op the rest of the time) is
+                      what actually fixes the overlap. */}
+                  <View style={{ marginTop: 10, zIndex: aiDisclosureDropdownOpen ? 100 : 'auto' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                       <Text style={styles.settingItemTitle}>AI Disclosure</Text>
                       <BouncyButton style={{ padding: 2 }} onPress={() => setAiDisclosureTooltipVisible(true)}>
