@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 394;
+const BUILD_NUMBER = 396;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -16110,6 +16110,16 @@ function App() {
                 translucentBg
               />
 
+              {/* TEMP DIAGNOSTIC - remove once the LikeButton mystery is
+                  solved. Dead simple, no conditional math, impossible to
+                  miss if it renders at all - tells us whether this is a
+                  mounting/rendering problem or a positioning-math one. */}
+              {Platform.OS === 'web' && isWebWide && (
+                <View style={{ position: 'absolute', top: 100, left: 100, width: 80, height: 80, backgroundColor: 'red', zIndex: 999999 }}>
+                  <Text style={{ color: '#fff', fontWeight: '900' }}>TEST</Text>
+                </View>
+              )}
+
             </View>
           </SafeAreaView>
           </View>
@@ -17107,7 +17117,16 @@ const getStyles = (theme) => StyleSheet.create({
   tabBtnActive: { backgroundColor: '#8B5CF6' },
   tabBtnText: { color: theme.textSecondary, fontSize: 12, fontWeight: '700' },
   tabBtnTextActive: { color: '#FFF' },
-  modalBody: { flex: 1 },
+  // position:'relative' + zIndex establishes this as its own stacking
+  // context. Without it, the floating like/back-to-top buttons' own
+  // zIndex:99 (set on themselves) only wins within whatever local
+  // stacking context they're already in - it doesn't guarantee they beat
+  // OTHER unrelated elements elsewhere in the tree that might have their
+  // own implicit stacking priority. Same root cause and same fix as the
+  // AI Disclosure dropdown fix earlier - elevating the ANCESTOR, not just
+  // the floating element itself, is what actually resolves this class of
+  // bug on web.
+  modalBody: { flex: 1, position: 'relative', zIndex: 1 },
   webViewWrapper: { flex: 1, position: 'relative' },
   webView: { flex: 1, backgroundColor: '#000' },
   loaderOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
