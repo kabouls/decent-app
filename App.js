@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 375;
+const BUILD_NUMBER = 376;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -2120,7 +2120,12 @@ const FocusableTextInput = React.memo(({ style, onFocus, onBlur, ...props }) => 
 });
 
 const uploadImageToSupabase = async (uri, path) => {
-  if (!uri || !uri.startsWith('file://') && !uri.startsWith('content://')) {
+  // blob:/data: are what the web image picker actually returns (not
+  // file://) - without recognizing them here, this early-return treats a
+  // browser-local blob URL as "already a remote URL" and saves it as-is.
+  // A blob: URL only exists inside the tab that created it, so it dies on
+  // refresh and was never valid on any other device to begin with.
+  if (!uri || !uri.startsWith('file://') && !uri.startsWith('content://') && !uri.startsWith('blob:') && !uri.startsWith('data:')) {
     return uri; // Already a remote web URL
   }
   try {
@@ -5899,7 +5904,7 @@ function App() {
   const handleSaveAccountSettings = async () => {
     // If avatar is a local file (freshly picked), upload it to Supabase Storage first
     let avatarUrl = editAvatar;
-    if (avatarUrl && (avatarUrl.startsWith('file://') || avatarUrl.startsWith('content://'))) {
+    if (avatarUrl && (avatarUrl.startsWith('file://') || avatarUrl.startsWith('content://') || avatarUrl.startsWith('blob:') || avatarUrl.startsWith('data:'))) {
       avatarUrl = await uploadImageChecked(avatarUrl, 'avatars');
     }
 
@@ -5991,7 +5996,7 @@ function App() {
         return;
       }
       let avatarUrl = editAvatar;
-      if (avatarUrl && (avatarUrl.startsWith('file://') || avatarUrl.startsWith('content://'))) {
+      if (avatarUrl && (avatarUrl.startsWith('file://') || avatarUrl.startsWith('content://') || avatarUrl.startsWith('blob:') || avatarUrl.startsWith('data:'))) {
         avatarUrl = await uploadImageChecked(avatarUrl, 'avatars');
       }
       const validLinks = editLinks.filter((l) => l.trim() !== '');
