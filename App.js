@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 371;
+const BUILD_NUMBER = 373;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -4485,12 +4485,45 @@ function App() {
     user: n.actor ? n.actor.name : 'Someone',
     actorId: n.actor ? n.actor.id : null,
     portfolioId: n.portfolio_id || null,
-    action: n.type === 'like' ? 'liked your portfolio package' : n.type === 'follow' ? 'started following your profile' : 'sent a test notification from the Admin Panel',
+    action: n.type === 'like' ? 'liked your portfolio package' : n.type === 'follow' ? 'started following your profile' : 'sent you a notification',
     target: n.portfolio ? n.portfolio.title : '',
     time: formatRelativeTime(n.created_at),
     avatar: (n.actor && n.actor.avatar_url) || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
     read: !!n.is_read
   });
+
+  // Rolling 30-day retention - fired (fire-and-forget, doesn't block the
+  // page from loading) whenever Notification History is opened, rather
+  // than needing a server-side scheduled job (pg_cron/Edge Function),
+  // which is more infrastructure than this needs right now. Not a hard
+  // "reset on the 1st of the month" (which would arbitrarily wipe
+  // yesterday's notifications right at the boundary) - always exactly the
+  // trailing 30 days from whenever this runs.
+  const cleanupOldNotifications = async () => {
+    if (!session) return;
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('recipient_id', session.user.id)
+      .lt('created_at', cutoff);
+    if (error) console.warn('Notification cleanup failed:', error);
+  };
+
+  const clearAllNotificationHistory = async () => {
+    if (!session) return;
+    const previousList = notificationHistoryList;
+    setNotificationHistoryList([]);
+    const { error } = await supabase.from('notifications').delete().eq('recipient_id', session.user.id);
+    if (error) {
+      console.warn('Failed to clear notification history:', error);
+      setNotificationHistoryList(previousList);
+      showToast('Could not clear notification history');
+    } else {
+      setNotificationHistoryHasMore(false);
+      showToast('Notification history cleared');
+    }
+  };
 
   // Full notification history (Privacy > Notification History) - unlike the
   // bell dropdown's capped list of 50, this paginates through everything.
@@ -10440,6 +10473,7 @@ function App() {
               onPress={() => {
                 setNotificationModalVisible(false);
                 fetchNotificationHistory(true);
+                cleanupOldNotifications();
                 setOptionsView('notificationHistory');
                 setSettingsModalVisible(true);
               }}
@@ -12462,6 +12496,7 @@ function App() {
                     style={styles.settingItemRow}
                     onPress={() => {
                       fetchNotificationHistory(true);
+                      cleanupOldNotifications();
                       setOptionsView('notificationHistory');
                     }}
                   >
@@ -12587,6 +12622,23 @@ function App() {
 
               {optionsView === 'notificationHistory' && (
                 <>
+                  {notificationHistoryList.length > 0 && (
+                    <BouncyButton
+                      style={[styles.settingItemRow, { justifyContent: 'center' }]}
+                      onPress={() => {
+                        showAppAlert(
+                          'Clear Notification History?',
+                          'This permanently removes every notification in your history. This cannot be undone.',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Clear All', style: 'destructive', onPress: clearAllNotificationHistory }
+                          ]
+                        );
+                      }}
+                    >
+                      <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700' }}>Clear All</Text>
+                    </BouncyButton>
+                  )}
                   {notificationHistoryLoading ? (
                     <View style={{ padding: 32, alignItems: 'center' }}>
                       <ActivityIndicator size="small" color={theme.accent} />
@@ -13948,7 +14000,7 @@ function App() {
                           This tells viewers whether AI played a role in creating this work. If AI was used for any part of it - a few steps, most of it, or all of it - select "Yes." Accurate disclosure keeps DECENT trustworthy for everyone; misrepresenting AI involvement will be treated as a policy violation.
                         </Text>
                         <BouncyButton
-                          style={[styles.confirmCancelBtn, { marginTop: 16, width: '100%' }]}
+                          style={[styles.confirmCancelBtn, { flex: 0, marginTop: 16, width: '100%' }]}
                           onPress={() => setAiDisclosureTooltipVisible(false)}
                         >
                           <Text style={styles.confirmCancelText}>Got it</Text>
