@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 392;
+const BUILD_NUMBER = 393;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15603,7 +15603,19 @@ function App() {
               horizontal
               showsHorizontalScrollIndicator={false}
               style={[styles.tabBar, { height: 52, flexGrow: 0, flexShrink: 0 }]}
-              contentContainerStyle={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}
+              contentContainerStyle={[
+                { flexDirection: 'row', gap: 6, alignItems: 'center' },
+                // minWidth:'100%' + space-between: when there are only 2-3
+                // tabs (content narrower than the viewport), this spreads
+                // them out to fill the row edge-to-edge instead of leaving
+                // empty space after the last one. When there are enough
+                // tabs to overflow (content wider than the viewport),
+                // minWidth has nothing left to stretch and this has no
+                // effect - horizontal scroll still works exactly as
+                // before. Web only, per the request - native's fixed-
+                // width buttons stay as they are.
+                Platform.OS === 'web' && { minWidth: '100%', justifyContent: 'space-between' }
+              ]}
             >
               <BouncyButton
                 style={[styles.tabBtn, { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', paddingHorizontal: 18 }, activeTab === 'case' && styles.tabBtnActive]}
