@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 399;
+const BUILD_NUMBER = 400;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -16066,15 +16066,16 @@ function App() {
                   style={[
                     styles.stickyModalBackToTopBtn,
                     Platform.OS !== 'web' && { backgroundColor: 'transparent', overflow: 'hidden' },
-                    // Anchored to the right edge of the case study pane
-                    // specifically, not the whole split area - modalBody
-                    // (the nearest positioned ancestor for this absolute
-                    // button) spans both panes combined, so plain right:20
-                    // would sit at the far right of the prototype pane
-                    // instead of the case study column it's meant to float
-                    // over. Same explicit-pixel-width approach as the
-                    // split layout and header above.
-                    Platform.OS === 'web' && isWebWide && { right: (viewportWidth - sidebarWidth) / 2 + 20 }
+                    // Anchored via LEFT, not right - confirmed via live
+                    // testing that "right" positioning silently fails to
+                    // resolve inside this container on web (likely needs a
+                    // more definite containing-block width than this flex
+                    // chain provides), while left/top/bottom all resolve
+                    // correctly. right:undefined clears the base style's
+                    // own right:20 so it can't conflict with this left
+                    // value. 44 = this button's own width (stickyModal
+                    // BackToTopBtn), 20 = the margin from the pane edge.
+                    Platform.OS === 'web' && isWebWide && { right: undefined, left: (viewportWidth - sidebarWidth) / 2 - 44 - 20 }
                   ]}
                   activeOpacity={0.85}
                   onPress={scrollModalToTop}
@@ -16105,26 +16106,11 @@ function App() {
                 style={[
                   styles.floatingLikeCircleBtn,
                   Platform.OS !== 'web' && { backgroundColor: 'transparent' },
-                  Platform.OS === 'web' && isWebWide && { right: (viewportWidth - sidebarWidth) / 2 + 20 }
+                  // 52 = floatingLikeCircleBtn's own width.
+                  Platform.OS === 'web' && isWebWide && { right: undefined, left: (viewportWidth - sidebarWidth) / 2 - 52 - 20 }
                 ]}
                 translucentBg
               />
-
-              {/* TEMP DIAGNOSTIC - remove once the LikeButton mystery is
-                  solved. TEST4 (bottom+left) worked, TEST3 (top+right via
-                  formula) didn't - this isolates whether it's the FORMULA
-                  producing a bad value, or "right" itself failing in this
-                  container regardless of value. */}
-              {Platform.OS === 'web' && isWebWide && (
-                <>
-                  <View style={{ position: 'absolute', top: 100, right: 900, width: 80, height: 80, backgroundColor: 'red', zIndex: 999999 }}>
-                    <Text style={{ color: '#fff', fontWeight: '900' }}>TEST5</Text>
-                  </View>
-                  <View style={{ position: 'absolute', top: 200, left: 100, width: 200, height: 40, backgroundColor: 'yellow', zIndex: 999999 }}>
-                    <Text style={{ color: '#000', fontWeight: '900' }}>{`vw:${viewportWidth} sb:${sidebarWidth}`}</Text>
-                  </View>
-                </>
-              )}
 
             </View>
           </SafeAreaView>
