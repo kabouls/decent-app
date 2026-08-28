@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 388;
+const BUILD_NUMBER = 390;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -2023,6 +2023,184 @@ const SwipeToDismiss = ({ onDismiss, children }) => {
   );
 };
 
+// Web-only image crop tool. expo-image-picker's allowsEditing/aspect crop
+// step is a no-op on web (confirmed via its own web implementation - it
+// silently returns the raw file, no OS crop screen exists to fall back
+// to there like iOS/Android have). Without this, a web-uploaded image
+// keeps its original aspect ratio and gets force-cropped unpredictably by
+// resizeMode:"cover" at display time instead of at upload time, which is
+// what native does. This closes that gap: drag to reposition, +/- to
+// zoom, confirm renders the exact visible crop to a canvas and exports it
+// as a blob: URL - which flows straight into the existing upload pipeline
+// (uploadImageToSupabase already handles blob: URIs correctly).
+const WebImageCropModal = ({ visible, imageUri, aspect, onConfirm, onCancel, theme, viewportWidth }) => {
+  const [naturalSize, setNaturalSize] = useState(null);
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const offsetRef = useRef({ x: 0, y: 0 });
+
+  const frameW = Math.min(360, (viewportWidth || 400) - 64);
+  const frameH = frameW * (aspect ? aspect[1] / aspect[0] : 1);
+  const baseScale = naturalSize ? Math.max(frameW / naturalSize.width, frameH / naturalSize.height) : 1;
+  const displayScale = baseScale * zoom;
+
+  const clampOffset = (o, scale) => {
+    if (!naturalSize) return o;
+    const dispW = naturalSize.width * scale;
+    const dispH = naturalSize.height * scale;
+    const minX = frameW - dispW;
+    const minY = frameH - dispH;
+    return { x: Math.min(0, Math.max(minX, o.x)), y: Math.min(0, Math.max(minY, o.y)) };
+  };
+
+  useEffect(() => {
+    if (!visible || !imageUri) return;
+    setNaturalSize(null);
+    setZoom(1);
+    Image.getSize(
+      imageUri,
+      (width, height) => {
+        setNaturalSize({ width, height });
+      },
+      () => {
+        // Falls back to treating it as square if dimensions can't be read -
+        // rare, but better than leaving the cropper stuck with no image.
+        setNaturalSize({ width: 800, height: 800 });
+      }
+    );
+  }, [visible, imageUri]);
+
+  useEffect(() => {
+    if (!naturalSize) return;
+    const centered = {
+      x: (frameW - naturalSize.width * baseScale) / 2,
+      y: (frameH - naturalSize.height * baseScale) / 2
+    };
+    offsetRef.current = centered;
+    setOffset(centered);
+  }, [naturalSize]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        dragStartRef.current = { ...offsetRef.current };
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const next = clampOffset(
+          { x: dragStartRef.current.x + gestureState.dx, y: dragStartRef.current.y + gestureState.dy },
+          displayScale
+        );
+        offsetRef.current = next;
+        setOffset(next);
+      }
+    })
+  ).current;
+
+  const adjustZoom = (delta) => {
+    if (!naturalSize) return;
+    const newZoom = Math.min(3, Math.max(1, zoom + delta));
+    const newScale = baseScale * newZoom;
+    // Keeps the frame's center point anchored to the same spot on the
+    // image while zooming, instead of the image jumping around.
+    const centerImgX = (frameW / 2 - offsetRef.current.x) / displayScale;
+    const centerImgY = (frameH / 2 - offsetRef.current.y) / displayScale;
+    const next = clampOffset(
+      { x: frameW / 2 - centerImgX * newScale, y: frameH / 2 - centerImgY * newScale },
+      newScale
+    );
+    offsetRef.current = next;
+    setOffset(next);
+    setZoom(newZoom);
+  };
+
+  const handleConfirm = () => {
+    if (!naturalSize || typeof document === 'undefined') return;
+    const cropX = -offset.x / displayScale;
+    const cropY = -offset.y / displayScale;
+    const cropW = frameW / displayScale;
+    const cropH = frameH / displayScale;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(cropW);
+    canvas.height = Math.round(cropH);
+    const ctx = canvas.getContext('2d');
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        if (!blob) { onCancel(); return; }
+        onConfirm(URL.createObjectURL(blob));
+      }, 'image/jpeg', 0.9);
+    };
+    img.onerror = () => onCancel();
+    img.src = imageUri;
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <View style={{ backgroundColor: theme.surface, borderRadius: 20, padding: 20, width: frameW + 40, alignItems: 'center' }}>
+          <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15, marginBottom: 14 }}>Crop Image</Text>
+
+          <View
+            style={{ width: frameW, height: frameH, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' }}
+            {...panResponder.panHandlers}
+          >
+            {naturalSize && (
+              <Image
+                source={{ uri: imageUri }}
+                style={{
+                  position: 'absolute',
+                  left: offset.x, top: offset.y,
+                  width: naturalSize.width * displayScale,
+                  height: naturalSize.height * displayScale
+                }}
+                resizeMode="stretch"
+              />
+            )}
+          </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 14 }}>
+            <BouncyButton
+              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}
+              onPress={() => adjustZoom(-0.2)}
+            >
+              <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>−</Text>
+            </BouncyButton>
+            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Drag to reposition</Text>
+            <BouncyButton
+              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}
+              onPress={() => adjustZoom(0.2)}
+            >
+              <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>+</Text>
+            </BouncyButton>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 20, width: '100%' }}>
+            <BouncyButton
+              style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border }}
+              onPress={onCancel}
+            >
+              <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>Cancel</Text>
+            </BouncyButton>
+            <BouncyButton
+              style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: '#8B5CF6' }}
+              onPress={handleConfirm}
+            >
+              <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 13 }}>Use Photo</Text>
+            </BouncyButton>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles }) => {
   if (items.length === 0) {
     return (
@@ -3218,6 +3396,16 @@ function App() {
 
   const [activeTab, setActiveTab] = useState('case');
   const [loadingWebView, setLoadingWebView] = useState(true);
+
+  // Drives WebImageCropModal - holds the raw picked image + target aspect
+  // while the user crops it, plus the resolve callback so pickCoverImage/
+  // pickBlockImageUri can await the result as a plain Promise instead of
+  // needing their own bespoke modal-open/callback plumbing.
+  const [webCropState, setWebCropState] = useState(null);
+  const openWebCrop = (uri, aspect) =>
+    new Promise((resolve) => {
+      setWebCropState({ imageUri: uri, aspect, resolve });
+    });
 
   const mainScrollViewRef = useRef(null);
   // Per-tab remembered scroll position. Previously this was a single shared
@@ -6925,7 +7113,16 @@ function App() {
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      setFCover(result.assets[0].uri);
+      let finalUri = result.assets[0].uri;
+      if (Platform.OS === 'web') {
+        // allowsEditing above is a no-op on web (expo-image-picker has no
+        // crop screen there) - this is what actually does the cropping,
+        // matching what the native OS crop screen already did above.
+        const cropped = await openWebCrop(finalUri, [16, 9]);
+        if (!cropped) return;
+        finalUri = cropped;
+      }
+      setFCover(finalUri);
       setErrors({ ...errors, fCover: null });
     }
   };
@@ -6944,7 +7141,13 @@ function App() {
       quality: 0.8
     });
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      return result.assets[0].uri;
+      let finalUri = result.assets[0].uri;
+      if (Platform.OS === 'web') {
+        const cropped = await openWebCrop(finalUri, aspect);
+        if (!cropped) return null;
+        finalUri = cropped;
+      }
+      return finalUri;
     }
     return null;
   };
@@ -15396,7 +15599,12 @@ function App() {
               !(Platform.OS === 'web' && isWebWide) &&
               (activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto)
             ) && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={{ gap: 6 }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={[styles.tabBar, { height: 52, flexGrow: 0, flexShrink: 0 }]}
+              contentContainerStyle={{ gap: 6, alignItems: 'center' }}
+            >
               <BouncyButton
                 style={[styles.tabBtn, { flex: 0, paddingHorizontal: 18 }, activeTab === 'case' && styles.tabBtnActive]}
                 onPress={() => setActiveTab('case')}
@@ -16315,6 +16523,26 @@ function App() {
           </SafeAreaView>
         </View>
       </Modal>
+      )}
+
+      {Platform.OS === 'web' && (
+        <WebImageCropModal
+          visible={!!webCropState}
+          imageUri={webCropState?.imageUri}
+          aspect={webCropState?.aspect}
+          theme={theme}
+          viewportWidth={viewportWidth}
+          onConfirm={(croppedUri) => {
+            const resolve = webCropState?.resolve;
+            setWebCropState(null);
+            resolve?.(croppedUri);
+          }}
+          onCancel={() => {
+            const resolve = webCropState?.resolve;
+            setWebCropState(null);
+            resolve?.(null);
+          }}
+        />
       )}
 
       </View>
