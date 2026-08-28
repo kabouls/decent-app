@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 385;
+const BUILD_NUMBER = 386;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15843,7 +15843,19 @@ function App() {
               {/* Showcase Jump To Top Floating Button (On Top of Sticky Like Button, Shows on Scroll) */}
               {showModalBackToTop && (
                 <BouncyButton
-                  style={[styles.stickyModalBackToTopBtn, Platform.OS !== 'web' && { backgroundColor: 'transparent', overflow: 'hidden' }]}
+                  style={[
+                    styles.stickyModalBackToTopBtn,
+                    Platform.OS !== 'web' && { backgroundColor: 'transparent', overflow: 'hidden' },
+                    // Anchored to the right edge of the case study pane
+                    // specifically, not the whole split area - modalBody
+                    // (the nearest positioned ancestor for this absolute
+                    // button) spans both panes combined, so plain right:20
+                    // would sit at the far right of the prototype pane
+                    // instead of the case study column it's meant to float
+                    // over. Same explicit-pixel-width approach as the
+                    // split layout and header above.
+                    Platform.OS === 'web' && isWebWide && { right: (viewportWidth - sidebarWidth) / 2 + 20 }
+                  ]}
                   activeOpacity={0.85}
                   onPress={scrollModalToTop}
                 >
@@ -15870,7 +15882,11 @@ function App() {
                 liked={activeProject.liked}
                 likesCount={activeProject.likesCount}
                 onPress={() => toggleLike(activeProject.id)}
-                style={[styles.floatingLikeCircleBtn, Platform.OS !== 'web' && { backgroundColor: 'transparent' }]}
+                style={[
+                  styles.floatingLikeCircleBtn,
+                  Platform.OS !== 'web' && { backgroundColor: 'transparent' },
+                  Platform.OS === 'web' && isWebWide && { right: (viewportWidth - sidebarWidth) / 2 + 20 }
+                ]}
                 translucentBg
               />
 
