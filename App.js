@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 377;
+const BUILD_NUMBER = 378;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -8863,7 +8863,9 @@ function App() {
           >
             <View
               style={{
-                backgroundColor: '#FFFFFF',
+                backgroundColor: theme.surface,
+                borderWidth: 1,
+                borderColor: theme.border,
                 borderRadius: 20,
                 padding: 24,
                 width: '100%',
@@ -8871,13 +8873,13 @@ function App() {
                 alignItems: 'center'
               }}
             >
-              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#DCFCE7', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: theme.mode === 'light' ? '#DCFCE7' : 'rgba(74, 222, 128, 0.18)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
                 <CheckIconSVG />
               </View>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 8, textAlign: 'center' }}>
                 {autoSuccessConfig?.title}
               </Text>
-              <Text style={{ fontSize: 13, color: '#475569', textAlign: 'center', lineHeight: 20, marginBottom: 18 }}>
+              <Text style={{ fontSize: 13, color: theme.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 18 }}>
                 {autoSuccessConfig?.message}
               </Text>
               <TouchableOpacity
