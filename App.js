@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 380;
+const BUILD_NUMBER = 381;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -7753,18 +7753,20 @@ function App() {
     });
   };
 
-  const getFigmaEmbedUrl = (url) => {
+  const getFigmaEmbedUrl = (url, scalingMode = 'scale-down') => {
     if (!url) return '';
-    // scaling=scale-down asks Figma's embed to shrink the prototype to fit
-    // whatever width/height the iframe actually has, without ever scaling
-    // it up past 100%. Without this, Figma renders the frame at its native
-    // size and just clips whatever doesn't fit - most visible with desktop
-    // prototypes in the split-layout right pane, which is only half the
-    // screen width.
+    // scale-down fits both width AND height into the iframe - right for
+    // mobile/component protos, which are meant to be seen as one complete
+    // phone-shaped frame. scale-down-width fits width only and lets height
+    // scroll naturally, which is what makes a desktop prototype feel like
+    // browsing an actual website instead of a shrunk-down screenshot.
+    // Without either, Figma renders at native size and just clips whatever
+    // doesn't fit - the original problem in the split-layout right pane,
+    // which is only half the screen width.
     if (!url.includes('figma.com/embed')) {
-      return `https://www.figma.com/embed?embed_host=share&scaling=scale-down&url=${encodeURIComponent(url)}`;
+      return `https://www.figma.com/embed?embed_host=share&scaling=${scalingMode}&url=${encodeURIComponent(url)}`;
     }
-    return url.includes('scaling=') ? url : `${url}&scaling=scale-down`;
+    return url.includes('scaling=') ? url : `${url}&scaling=${scalingMode}`;
   };
 
   const handleWebViewNavigation = (request) => {
@@ -15422,7 +15424,8 @@ function App() {
                     ? activeProject.componentProto
                     : activeTab === 'desktop'
                     ? (activeProject.desktopProto || activeProject.figmaProto || activeProject.componentProto)
-                    : (activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto)
+                    : (activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto),
+                  activeTab === 'desktop' ? 'scale-down-width' : 'scale-down'
                 );
 
                 const prototypePane = (
@@ -16818,7 +16821,11 @@ const getStyles = (theme) => StyleSheet.create({
   loaderOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   loaderText: { color: theme.textSecondary, fontSize: 13, marginTop: 12, fontWeight: '600' },
   caseScrollView: { flex: 1 },
-  caseContent: { padding: 20 },
+  // width: '100%' matters specifically in the wide-web split layout - as
+  // a ScrollView contentContainerStyle, this shrink-wraps to its content's
+  // natural width on web without it, leaving the whole case study column
+  // narrower than the actual pane and unused space down the right side.
+  caseContent: { padding: 20, width: '100%' },
   caseTitle: { fontSize: 22, fontWeight: '800', color: theme.text, marginBottom: 4 },
   designerRowModal: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 14 },
   designerRowModalLeftCol: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, marginRight: 8 },
