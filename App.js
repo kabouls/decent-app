@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 391;
+const BUILD_NUMBER = 392;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15603,10 +15603,10 @@ function App() {
               horizontal
               showsHorizontalScrollIndicator={false}
               style={[styles.tabBar, { height: 52, flexGrow: 0, flexShrink: 0 }]}
-              contentContainerStyle={{ gap: 6, alignItems: 'center' }}
+              contentContainerStyle={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}
             >
               <BouncyButton
-                style={[styles.tabBtn, { flex: 0, paddingHorizontal: 18 }, activeTab === 'case' && styles.tabBtnActive]}
+                style={[styles.tabBtn, { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', paddingHorizontal: 18 }, activeTab === 'case' && styles.tabBtnActive]}
                 onPress={() => setActiveTab('case')}
               >
                 <Text style={[styles.tabBtnText, activeTab === 'case' && styles.tabBtnTextActive]}>
@@ -15616,7 +15616,7 @@ function App() {
 
               {activeProject.figmaProto ? (
                 <BouncyButton
-                  style={[styles.tabBtn, { flex: 0, paddingHorizontal: 18 }, activeTab === 'mobile' && styles.tabBtnActive]}
+                  style={[styles.tabBtn, { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', paddingHorizontal: 18 }, activeTab === 'mobile' && styles.tabBtnActive]}
                   onPress={() => { setActiveTab('mobile'); setLoadingWebView(true); }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -15630,7 +15630,7 @@ function App() {
 
               {activeProject.desktopProto ? (
                 <BouncyButton
-                  style={[styles.tabBtn, { flex: 0, paddingHorizontal: 18 }, activeTab === 'desktop' && styles.tabBtnActive]}
+                  style={[styles.tabBtn, { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', paddingHorizontal: 18 }, activeTab === 'desktop' && styles.tabBtnActive]}
                   onPress={() => { setActiveTab('desktop'); setLoadingWebView(true); }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -15644,7 +15644,7 @@ function App() {
 
               {activeProject.componentProto ? (
                 <BouncyButton
-                  style={[styles.tabBtn, { flex: 0, paddingHorizontal: 18 }, activeTab === 'component' && styles.tabBtnActive]}
+                  style={[styles.tabBtn, { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', paddingHorizontal: 18 }, activeTab === 'component' && styles.tabBtnActive]}
                   onPress={() => { setActiveTab('component'); setLoadingWebView(true); }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
