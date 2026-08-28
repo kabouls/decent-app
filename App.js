@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 383;
+const BUILD_NUMBER = 384;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15781,12 +15781,24 @@ function App() {
                 // keeps the original tab-switching single-pane behavior
                 // entirely unchanged below.
                 if (showSplitLayout) {
+                  // Explicit computed pixel widths instead of flex:1/
+                  // width:100% cascading through nested Views and a
+                  // ScrollView - three consecutive attempts at chasing this
+                  // through percentage-based sizing each fixed one layer
+                  // and revealed another underneath (a maxWidth cap two
+                  // levels up, then modalContainer's own base style, then
+                  // RNWeb's ScrollView-renders-as-two-divs quirk). A
+                  // concrete number computed here from the actual window
+                  // width removes that ambiguity entirely - every element
+                  // in this split gets the same real pixel value, nothing
+                  // left for the browser to guess at.
+                  const paneWidth = (viewportWidth - sidebarWidth) / 2;
                   return (
-                    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.bg }}>
-                      <View style={{ flex: 1, backgroundColor: theme.bg, borderRightWidth: 1, borderRightColor: theme.border }}>
+                    <View style={{ flex: 1, flexDirection: 'row', width: viewportWidth - sidebarWidth, backgroundColor: theme.bg }}>
+                      <View style={{ width: paneWidth, backgroundColor: theme.bg, borderRightWidth: 1, borderRightColor: theme.border }}>
                         {caseStudyPane}
                       </View>
-                      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+                      <View style={{ width: paneWidth, backgroundColor: theme.bg }}>
                         {hasPrototype ? (
                           <>
                             {activeProject.figmaProto && activeProject.desktopProto && (
@@ -15805,9 +15817,15 @@ function App() {
                                 </BouncyButton>
                               </View>
                             )}
-                            {prototypePane}
+                            <View style={{ width: paneWidth, flex: 1 }}>
+                              {prototypePane}
+                            </View>
                           </>
-                        ) : mediaPane}
+                        ) : (
+                          <View style={{ width: paneWidth, flex: 1 }}>
+                            {mediaPane}
+                          </View>
+                        )}
                       </View>
                     </View>
                   );
