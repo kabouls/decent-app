@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 382;
+const BUILD_NUMBER = 383;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15470,8 +15470,8 @@ function App() {
                 // strip would.
                 const mediaPane = (
                   <ScrollView
-                    style={{ flex: 1 }}
-                    contentContainerStyle={{ padding: 16, gap: 16 }}
+                    style={{ flex: 1, width: '100%' }}
+                    contentContainerStyle={{ padding: 16, gap: 16, width: '100%' }}
                   >
                     {(activeProject.images || []).map((imgUrl, index) => (
                       <BouncyButton key={index} activeOpacity={0.9} onPress={() => setLightboxImageUri(imgUrl)}>
@@ -16834,7 +16834,14 @@ const getStyles = (theme) => StyleSheet.create({
   webView: { flex: 1, backgroundColor: '#000' },
   loaderOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   loaderText: { color: theme.textSecondary, fontSize: 13, marginTop: 12, fontWeight: '600' },
-  caseScrollView: { flex: 1 },
+  // width: '100%' added alongside flex:1 - RNWeb renders ScrollView as two
+  // nested divs (this outer scrollable one, plus an inner content div
+  // driven by contentContainerStyle). flex:1 alone left the outer div's
+  // computed width ambiguous in the split-layout's column context, which
+  // meant the inner content div's own width:100% (on caseContent) had
+  // nothing definite to resolve against and fell back to shrink-wrapping
+  // its content instead of filling the pane.
+  caseScrollView: { flex: 1, width: '100%' },
   // width: '100%' matters specifically in the wide-web split layout - as
   // a ScrollView contentContainerStyle, this shrink-wraps to its content's
   // natural width on web without it, leaving the whole case study column
