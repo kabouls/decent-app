@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 376;
+const BUILD_NUMBER = 377;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -2130,17 +2130,33 @@ const uploadImageToSupabase = async (uri, path) => {
   }
   try {
     const compressedUri = await compressImageForUpload(uri);
-    const base64 = await FileSystem.readAsStringAsync(compressedUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
     const fileExt = 'jpg';
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
     const filePath = `${path}/${fileName}`;
 
+    // expo-file-system's readAsStringAsync is native-only - confirmed via
+    // console: "The method or property expo-file-system.readAsStringAsync
+    // is not available on web". This was silently swallowed by the catch
+    // block below, always falling back to the original (broken) blob: URL
+    // - meaning uploads on web never actually worked, for any image type
+    // that goes through this shared function. Web already has direct
+    // access to the bytes via fetch() on the blob:/data: URI, so skip
+    // FileSystem/base64 there entirely and upload the Blob directly -
+    // Supabase's storage client accepts a Blob natively.
+    let uploadBody;
+    if (Platform.OS === 'web') {
+      const response = await fetch(compressedUri);
+      uploadBody = await response.blob();
+    } else {
+      const base64 = await FileSystem.readAsStringAsync(compressedUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      uploadBody = decode(base64);
+    }
+
     const { data, error } = await supabase.storage
       .from('portfolio-media')
-      .upload(filePath, decode(base64), {
+      .upload(filePath, uploadBody, {
         contentType: `image/${fileExt}`,
         upsert: true
       });
@@ -5684,7 +5700,7 @@ function App() {
 
   const uploadImageChecked = async (uri, path) => {
     const result = await uploadImageToSupabase(uri, path);
-    if (result && (result.startsWith('file://') || result.startsWith('content://'))) {
+    if (result && (result.startsWith('file://') || result.startsWith('content://') || result.startsWith('blob:') || result.startsWith('data:'))) {
       showToast('Image upload failed — using local copy for now');
     }
     return result;
