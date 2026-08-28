@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 397;
+const BUILD_NUMBER = 398;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -16111,13 +16111,19 @@ function App() {
               />
 
               {/* TEMP DIAGNOSTIC - remove once the LikeButton mystery is
-                  solved. This one specifically mirrors LikeButton's own
-                  positioning axes (bottom/right) instead of top/left, to
-                  isolate whether bottom/right specifically is the problem. */}
+                  solved. Two separate boxes to isolate each axis: TEST3
+                  tests right (computed formula) with a fixed top, TEST4
+                  tests bottom with a fixed left. Whichever one is missing
+                  tells us exactly which axis is broken. */}
               {Platform.OS === 'web' && isWebWide && (
-                <View style={{ position: 'absolute', bottom: 28, right: (viewportWidth - sidebarWidth) / 2 + 20, width: 80, height: 80, backgroundColor: 'red', zIndex: 999999 }}>
-                  <Text style={{ color: '#fff', fontWeight: '900' }}>TEST2</Text>
-                </View>
+                <>
+                  <View style={{ position: 'absolute', top: 100, right: (viewportWidth - sidebarWidth) / 2 + 20, width: 80, height: 80, backgroundColor: 'red', zIndex: 999999 }}>
+                    <Text style={{ color: '#fff', fontWeight: '900' }}>TEST3</Text>
+                  </View>
+                  <View style={{ position: 'absolute', bottom: 28, left: 100, width: 80, height: 80, backgroundColor: 'blue', zIndex: 999999 }}>
+                    <Text style={{ color: '#fff', fontWeight: '900' }}>TEST4</Text>
+                  </View>
+                </>
               )}
 
             </View>
