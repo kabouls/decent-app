@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 400;
+const BUILD_NUMBER = 401;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -3396,6 +3396,37 @@ function App() {
 
   const [activeTab, setActiveTab] = useState('case');
   const [loadingWebView, setLoadingWebView] = useState(true);
+
+  // One-time-per-session-unless-dismissed tip explaining that the embedded
+  // view is a live, interactive Figma prototype. Unlike seenTutorialIds
+  // above (a multi-step onboarding tour, marked seen permanently after one
+  // viewing), this is meant to keep reappearing every time a prototype is
+  // opened until the user explicitly opts out via "Never Show Again" -
+  // simple persisted boolean flag, same convention as
+  // decent_android_promo_dismissed elsewhere in this file.
+  const [showProtoTutorial, setShowProtoTutorial] = useState(false);
+  const [protoTutorialDismissed, setProtoTutorialDismissed] = useState(false);
+  useEffect(() => {
+    AsyncStorage.getItem('protoTutorialDismissed').then((saved) => {
+      if (saved === 'true') setProtoTutorialDismissed(true);
+    }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!modalVisible || !activeProject || protoTutorialDismissed) return;
+    const hasProto = !!(activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto);
+    if (!hasProto) return;
+    const isProtoTab = activeTab === 'mobile' || activeTab === 'desktop' || activeTab === 'component';
+    const wideWebSplitAlwaysShowsProto = Platform.OS === 'web' && isWebWide;
+    if (isProtoTab || wideWebSplitAlwaysShowsProto) {
+      setShowProtoTutorial(true);
+    }
+  }, [activeTab, modalVisible, activeProject, isWebWide, protoTutorialDismissed]);
+  const dismissProtoTutorial = () => setShowProtoTutorial(false);
+  const neverShowProtoTutorialAgain = () => {
+    setShowProtoTutorial(false);
+    setProtoTutorialDismissed(true);
+    AsyncStorage.setItem('protoTutorialDismissed', 'true').catch(() => {});
+  };
 
   // Drives WebImageCropModal - holds the raw picked image + target aspect
   // while the user crops it, plus the resolve callback so pickCoverImage/
@@ -15351,6 +15382,46 @@ function App() {
               </View>
             );
           })()}
+        </View>
+      </Modal>
+
+      {/* PROTOTYPE VIEWER TIP - explains the embedded view is a real,
+          interactive Figma prototype. Unlike the tutorial overlay above,
+          this isn't a one-time onboarding step - it reappears every time a
+          prototype is opened until "Never Show Again" is tapped, so it
+          only needs a plain boolean flag rather than the tutorials array. */}
+      <Modal
+        transparent
+        visible={showProtoTutorial}
+        animationType="fade"
+        onRequestClose={dismissProtoTutorial}
+      >
+        <View
+          style={styles.overlayModalBg}
+          onStartShouldSetResponder={() => Platform.OS === 'web'}
+          onResponderRelease={dismissProtoTutorial}
+        >
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
+            <FigmaLogoSVG />
+            <Text style={[styles.confirmTitle, { marginTop: 12 }]}>This is a live Figma prototype</Text>
+            <Text style={styles.confirmSubText}>
+              You can interact with it like a normal website - tap buttons, scroll, and navigate between screens.
+            </Text>
+            <View style={[styles.confirmActionsRow, { marginTop: 4 }]}>
+              <BouncyButton
+                style={[styles.confirmCancelBtn]}
+                onPress={neverShowProtoTutorialAgain}
+              >
+                <Text style={styles.confirmCancelText}>Never Show Again</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={[styles.confirmDeleteBtn]}
+                onPress={dismissProtoTutorial}
+              >
+                <Text style={styles.confirmDeleteText}>Got it</Text>
+              </BouncyButton>
+            </View>
+          </View>
         </View>
       </Modal>
 
