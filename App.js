@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 418;
+const BUILD_NUMBER = 420;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -170,17 +170,6 @@ const HAMBURGER_DRAWER_WIDTH = Math.min(300, SCREEN_WIDTH * 0.8);
 const STORAGE_KEY = '@portfolio_projects_v1';
 const FOLLOWED_KEY = '@followed_designers_v1';
 const HIDE_LIKED_KEY = '@hide_liked_portfolios_v1';
-const formatCount = (n) => {
-  const num = n || 0;
-  if (num < 1000) return String(num);
-  if (num < 1000000) {
-    const k = num / 1000;
-    return (Number.isInteger(k) ? k : k.toFixed(1)) + 'k';
-  }
-  const m = num / 1000000;
-  return (Number.isInteger(m) ? m : m.toFixed(1)) + 'm';
-};
-
 const formatHandleDisplay = (h) => (h ? `@${h.replace(/^@/, '')}` : '');
 
 const getPasswordRequirements = (pw) => [
@@ -279,12 +268,6 @@ const ALL_UIUX_CATEGORIES_MASTER = [
   'Wireframing & User Flow',
   '3D Assets & Animation'
 ].sort();
-
-const DEFAULT_POPULAR_CATEGORY_CHIPS = [
-  'Mobile App', 'Web Design', 'Design System', 'FinTech',
-  'Healthcare', 'E-Commerce', 'SaaS', 'AI & Machine Learning',
-  'Dashboard & Analytics', 'Figma Prototype'
-];
 
 // SVG Icons
 const MobileFilledIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
@@ -1512,6 +1495,47 @@ const getShowcaseImagesFromRow = (row) => {
   return [row && row.cover_url ? row.cover_url : ''];
 };
 
+// Single source of truth for turning a raw `portfolios` row (plus its
+// portfolio_images join) into the shape used throughout the app. This
+// used to be duplicated by hand across 5 separate fetch functions, each
+// copying the same ~25 fields - which is exactly how one of them (the
+// Liked Portfolios tab) ended up silently missing figmaProto/desktopProto/
+// componentProto for a while before it surfaced as a bug. `liked` and
+// `visitsFallback` are parameterized since the 5 call sites differ only
+// in how they know whether the current viewer liked this item, and one
+// historically used a different fallback for visitsCount than the rest.
+const mapPortfolioRow = (p, { liked = false, visitsFallback = 120 } = {}) => ({
+  id: p.id,
+  ownerId: p.user_id || null,
+  portfolioType: p.portfolio_type || 'ui_ux',
+  isAiGenerated: p.is_ai_generated,
+  title: p.title,
+  designer: p.user_name || 'Unknown Designer',
+  designerHandle: p.user_handle || '',
+  designerAvatar: p.user_avatar || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
+  category: p.categories && p.categories[0] ? p.categories[0] : 'Mobile App',
+  categories: p.categories || ['Mobile App'],
+  liked,
+  likesCount: p.likes_count ?? 0,
+  visitsCount: p.visits_count || visitsFallback,
+  figmaProfile: p.figma_profile || '',
+  liveLinks: p.live_links || [],
+  isNsfw: !!p.is_nsfw,
+  showcaseAspectRatio: p.showcase_aspect_ratio || '16:9',
+  figmaProto: p.figma_proto || '',
+  componentProto: p.component_proto || '',
+  desktopProto: p.desktop_proto || '',
+  figmaFile: p.figma_file || '',
+  brief: p.brief || '',
+  longDescription: p.long_description || '',
+  contentBlocks: getContentBlocksFromRow(p),
+  pinned: !!p.is_pinned,
+  cover: p.cover_url || '',
+  images: getShowcaseImagesFromRow(p),
+  videoLinks: [],
+  caseStudy: p.brief || ''
+});
+
 const renderFormattedDescription = (raw, align = 'left', textColor = '#E2E8F0') => {
   if (!raw || !raw.trim()) return null;
   const lines = raw.split('\n');
@@ -1798,20 +1822,6 @@ const INTRO_CAROUSEL_PAGES = [
     title: 'Share It Anywhere',
     body: "Your unique handle is your identity on DECENT. Share it with anyone — recruiters, clients, fellow designers — and they can pull up your full profile and every portfolio you've published, all in one place."
   }
-];
-
-const POPULAR_KEYWORDS = [
-  'Healthcare', 'E-Commerce', 'Design System',
-  'FinTech', 'Dark Mode', 'Mobile Booking',
-  'SaaS', 'AI Analytics', '3D Components'
-];
-
-// Initial Notifications
-const INITIAL_NOTIFICATIONS = [
-  { id: 'n1', type: 'like', user: 'Maya Lin', action: 'liked your portfolio package', target: 'The Vein Clinic & Ace Vantage', time: '2m ago', avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80' },
-  { id: 'n2', type: 'follow', user: 'Alex Rivera', action: 'started following your profile', target: '', time: '1h ago', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80' },
-  { id: 'n3', type: 'like', user: 'Elena Rostova', action: 'liked your portfolio package', target: 'Design System Tokens & Guidelines', time: '3h ago', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80' },
-  { id: 'n4', type: 'follow', user: 'Marcus Chen', action: 'started following your profile', target: '', time: '1d ago', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80' }
 ];
 
 // 15 Mockup Designers Profiles
@@ -4239,39 +4249,7 @@ function App() {
       if (!error && onlinePortfolios && onlinePortfolios.length > 0) {
         setHasMoreProjects(onlinePortfolios.length === PAGE_SIZE);
         const likedIds = await fetchLikedPortfolioIds();
-        const mapped = onlinePortfolios.map((p) => ({
-          id: p.id,
-          ownerId: p.user_id || null,
-          portfolioType: p.portfolio_type || 'ui_ux',
-          isAiGenerated: p.is_ai_generated,
-          title: p.title,
-          designer: p.user_name || 'Unknown Designer',
-          designerHandle: p.user_handle || '',
-          designerAvatar: p.user_avatar || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
-          category: p.categories && p.categories[0] ? p.categories[0] : 'Mobile App',
-          categories: p.categories || ['Mobile App'],
-          liked: likedIds.has(p.id),
-          likesCount: p.likes_count ?? 0,
-          visitsCount: p.visits_count || 120,
-          figmaProfile: p.figma_profile || '',
-        liveLinks: p.live_links || [],
-        isNsfw: !!p.is_nsfw,
-          liveLinks: p.live_links || [],
-          isNsfw: !!p.is_nsfw,
-          showcaseAspectRatio: p.showcase_aspect_ratio || '16:9',
-          figmaProto: p.figma_proto || '',
-          componentProto: p.component_proto || '',
-          desktopProto: p.desktop_proto || '',
-          figmaFile: p.figma_file || '',
-          brief: p.brief || '',
-          longDescription: p.long_description || '',
-          contentBlocks: getContentBlocksFromRow(p),
-          pinned: !!p.is_pinned,
-          cover: p.cover_url || '',
-          images: getShowcaseImagesFromRow(p),
-          videoLinks: [],
-          caseStudy: p.brief || ''
-        }));
+        const mapped = onlinePortfolios.map((p) => mapPortfolioRow(p, { liked: likedIds.has(p.id) }));
         setProjects(mapped);
       } else {
         const savedProjects = await AsyncStorage.getItem(STORAGE_KEY);
@@ -4303,37 +4281,7 @@ function App() {
       if (!error && morePortfolios) {
         setHasMoreProjects(morePortfolios.length === PAGE_SIZE);
         const likedIds = await fetchLikedPortfolioIds();
-        const mapped = morePortfolios.map((p) => ({
-          id: p.id,
-          ownerId: p.user_id || null,
-          portfolioType: p.portfolio_type || 'ui_ux',
-          isAiGenerated: p.is_ai_generated,
-          title: p.title,
-          designer: p.user_name || 'Unknown Designer',
-            designerHandle: p.user_handle || '',
-          designerAvatar: p.user_avatar || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
-          category: p.categories && p.categories[0] ? p.categories[0] : 'Mobile App',
-          categories: p.categories || ['Mobile App'],
-          liked: likedIds.has(p.id),
-          likesCount: p.likes_count ?? 0,
-          visitsCount: p.visits_count || 120,
-          figmaProfile: p.figma_profile || '',
-          liveLinks: p.live_links || [],
-          isNsfw: !!p.is_nsfw,
-          showcaseAspectRatio: p.showcase_aspect_ratio || '16:9',
-          componentProto: p.component_proto || '',
-          figmaProto: p.figma_proto || '',
-          desktopProto: p.desktop_proto || '',
-          figmaFile: p.figma_file || '',
-          brief: p.brief || '',
-          cover: p.cover_url || '',
-          longDescription: p.long_description || '',
-          contentBlocks: getContentBlocksFromRow(p),
-          pinned: !!p.is_pinned,
-          images: getShowcaseImagesFromRow(p),
-          videoLinks: [],
-          caseStudy: p.brief || ''
-        }));
+        const mapped = morePortfolios.map((p) => mapPortfolioRow(p, { liked: likedIds.has(p.id) }));
         setProjects((prev) => [...prev, ...mapped]);
       }
     } catch (e) {
@@ -6671,37 +6619,7 @@ function App() {
       return;
     }
     const { data: portfolioRows } = await supabase.from('portfolios').select('*, portfolio_images(image_url)').in('id', likedIds);
-    const mapped = (portfolioRows || []).map((p) => ({
-      id: p.id,
-      ownerId: p.user_id || null,
-          portfolioType: p.portfolio_type || 'ui_ux',
-          isAiGenerated: p.is_ai_generated,
-      title: p.title,
-      designer: p.user_name || 'Unknown Designer',
-      designerHandle: p.user_handle || '',
-      designerAvatar: p.user_avatar || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
-      category: p.categories && p.categories[0] ? p.categories[0] : 'Mobile App',
-      categories: p.categories || ['Mobile App'],
-      liked: true,
-      likesCount: p.likes_count ?? 0,
-      visitsCount: p.visits_count || 120,
-      isNsfw: !!p.is_nsfw,
-      showcaseAspectRatio: p.showcase_aspect_ratio || '16:9',
-      figmaProfile: p.figma_profile || '',
-      liveLinks: p.live_links || [],
-      figmaProto: p.figma_proto || '',
-      componentProto: p.component_proto || '',
-      desktopProto: p.desktop_proto || '',
-      figmaFile: p.figma_file || '',
-      brief: p.brief || '',
-      longDescription: p.long_description || '',
-      contentBlocks: getContentBlocksFromRow(p),
-      pinned: !!p.is_pinned,
-      cover: p.cover_url || '',
-      images: getShowcaseImagesFromRow(p),
-      videoLinks: [],
-      caseStudy: p.brief || ''
-    }));
+    const mapped = (portfolioRows || []).map((p) => mapPortfolioRow(p, { liked: true }));
     setDesignerLikedProjects(mapped);
     setLoadingDesignerLikes(false);
   };
@@ -6817,9 +6735,7 @@ function App() {
     }
     // Not in the currently-loaded feed (e.g. opened from a notification for
     // a portfolio outside whatever's paginated in right now) - fetch it
-    // directly instead. Same field shape as mapPortfolioRow used elsewhere,
-    // kept local here rather than extracting a shared helper to avoid
-    // touching that already-working call site.
+    // directly instead.
     const [{ data: p, error }, { data: likeRow }] = await Promise.all([
       supabase.from('portfolios').select('*').eq('id', portfolioId).single(),
       session
@@ -6831,37 +6747,7 @@ function App() {
       return;
     }
     setDesignerModalVisible(false);
-    openProjectModal({
-      id: p.id,
-      ownerId: p.user_id || null,
-          portfolioType: p.portfolio_type || 'ui_ux',
-          isAiGenerated: p.is_ai_generated,
-      title: p.title,
-      designer: p.user_name || 'Unknown Designer',
-      designerHandle: p.user_handle || '',
-      designerAvatar: p.user_avatar || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
-      category: p.categories && p.categories[0] ? p.categories[0] : 'Mobile App',
-      categories: p.categories || ['Mobile App'],
-      liked: !!likeRow,
-      likesCount: p.likes_count ?? 0,
-      visitsCount: p.visits_count || 0,
-      figmaProfile: p.figma_profile || '',
-      liveLinks: p.live_links || [],
-      isNsfw: !!p.is_nsfw,
-          componentProto: p.component_proto || '',
-      showcaseAspectRatio: p.showcase_aspect_ratio || '16:9',
-      figmaProto: p.figma_proto || '',
-      desktopProto: p.desktop_proto || '',
-      figmaFile: p.figma_file || '',
-      brief: p.brief || '',
-      longDescription: p.long_description || '',
-      contentBlocks: getContentBlocksFromRow(p),
-      pinned: !!p.is_pinned,
-      cover: p.cover_url || '',
-      images: getShowcaseImagesFromRow(p),
-      videoLinks: [],
-      caseStudy: p.brief || ''
-    });
+    openProjectModal(mapPortfolioRow(p, { liked: !!likeRow, visitsFallback: 0 }));
   }, [session, openProjectModal]);
 
   const handleIncomingRoute = useCallback(async (path) => {
@@ -8322,38 +8208,6 @@ function App() {
       trackEvent('search_performed', { query: q });
 
       const likedIds = await fetchLikedPortfolioIds();
-      const mapPortfolioRow = (p) => ({
-        id: p.id,
-        ownerId: p.user_id || null,
-          portfolioType: p.portfolio_type || 'ui_ux',
-          isAiGenerated: p.is_ai_generated,
-        title: p.title,
-        designer: p.user_name || 'Unknown Designer',
-        designerHandle: p.user_handle || '',
-        designerAvatar: p.user_avatar || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
-        category: p.categories && p.categories[0] ? p.categories[0] : 'Mobile App',
-        categories: p.categories || ['Mobile App'],
-        liked: likedIds.has(p.id),
-        likesCount: p.likes_count ?? 0,
-        visitsCount: p.visits_count || 120,
-        figmaProfile: p.figma_profile || '',
-        liveLinks: p.live_links || [],
-          componentProto: p.component_proto || '',
-        isNsfw: !!p.is_nsfw,
-        showcaseAspectRatio: p.showcase_aspect_ratio || '16:9',
-        figmaProto: p.figma_proto || '',
-        desktopProto: p.desktop_proto || '',
-        figmaFile: p.figma_file || '',
-        brief: p.brief || '',
-        longDescription: p.long_description || '',
-        contentBlocks: getContentBlocksFromRow(p),
-        pinned: !!p.is_pinned,
-        cover: p.cover_url || '',
-        images: getShowcaseImagesFromRow(p),
-        videoLinks: [],
-        caseStudy: p.brief || ''
-      });
-
       let allProjectRows = [];
       if (projectsRes.data) allProjectRows = allProjectRows.concat(projectsRes.data);
       if (tagMatchRes.data) {
@@ -8369,7 +8223,7 @@ function App() {
       }
 
       if (allProjectRows.length > 0) {
-        const mapped = allProjectRows.map(mapPortfolioRow);
+        const mapped = allProjectRows.map((p) => mapPortfolioRow(p, { liked: likedIds.has(p.id) }));
         setSearchedProjects(mapped.filter((p) => !p.ownerId || !blockedIds.has(p.ownerId)));
       } else {
         setSearchedProjects([]);
