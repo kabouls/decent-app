@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 408;
+const BUILD_NUMBER = 409;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1896,7 +1896,7 @@ const ProjectCard = React.memo(({
       {showPinControl ? (
         <BouncyButton
           style={{
-            position: 'absolute', top: 8, left: 8, width: 28, height: 28, borderRadius: 14,
+            position: 'absolute', bottom: 8, right: 8, width: 28, height: 28, borderRadius: 14,
             backgroundColor: 'rgba(11, 15, 23, 0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10
           }}
           onPress={(e) => { e.stopPropagation && e.stopPropagation(); onTogglePin && onTogglePin(item.id); }}
@@ -1911,7 +1911,7 @@ const ProjectCard = React.memo(({
         item.pinned && (
           <View
             style={{
-              position: 'absolute', top: 8, left: 8, width: 28, height: 28, borderRadius: 14,
+              position: 'absolute', bottom: 8, right: 8, width: 28, height: 28, borderRadius: 14,
               backgroundColor: 'rgba(11, 15, 23, 0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10
             }}
           >
@@ -3519,6 +3519,24 @@ function App() {
 
   const modalScrollViewRef = useRef(null);
   const [showModalBackToTop, setShowModalBackToTop] = useState(false);
+
+  // Small tap-to-explain bubble under the AI-generated badge on the
+  // portfolio detail page - a toast/tooltip, not a modal, so it doesn't
+  // interrupt anything. Auto-dismisses on its own; tapping again while
+  // already showing just resets the timer.
+  const [showAiTooltip, setShowAiTooltip] = useState(false);
+  const aiTooltipAnim = useRef(new Animated.Value(0)).current;
+  const aiTooltipTimeoutRef = useRef(null);
+  const handleAiIconPress = () => {
+    if (aiTooltipTimeoutRef.current) clearTimeout(aiTooltipTimeoutRef.current);
+    setShowAiTooltip(true);
+    Animated.timing(aiTooltipAnim, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+    aiTooltipTimeoutRef.current = setTimeout(() => {
+      Animated.timing(aiTooltipAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+        setShowAiTooltip(false);
+      });
+    }, 2500);
+  };
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const bellRotateAnim = useRef(new Animated.Value(0)).current;
@@ -15967,8 +15985,33 @@ function App() {
                   {activeProject.categories && activeProject.categories.length > 0 && (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
                       {activeProject.isAiGenerated === true && (
-                        <View style={{ width: 26, height: 26, borderRadius: 7, backgroundColor: 'rgba(100, 116, 139, 0.85)', alignItems: 'center', justifyContent: 'center' }}>
-                          <SparkleIconSVG size={14} color="#E2E8F0" />
+                        <View style={{ position: 'relative' }}>
+                          <BouncyButton
+                            style={{ width: 26, height: 26, borderRadius: 7, backgroundColor: 'rgba(100, 116, 139, 0.85)', alignItems: 'center', justifyContent: 'center' }}
+                            onPress={handleAiIconPress}
+                          >
+                            <SparkleIconSVG size={14} color="#E2E8F0" />
+                          </BouncyButton>
+                          {showAiTooltip && (
+                            <Animated.View
+                              pointerEvents="none"
+                              style={{
+                                position: 'absolute', top: 32, left: -6, zIndex: 50,
+                                backgroundColor: theme.mode === 'light' ? '#1E293B' : '#0F172A',
+                                borderWidth: 1, borderColor: theme.border,
+                                borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+                                maxWidth: 220,
+                                opacity: aiTooltipAnim,
+                                transform: [{
+                                  translateY: aiTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] })
+                                }]
+                              }}
+                            >
+                              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', lineHeight: 17 }}>
+                                This content is AI generated/assisted
+                              </Text>
+                            </Animated.View>
+                          )}
                         </View>
                       )}
                       {activeProject.categories.map((cat, idx) => (
