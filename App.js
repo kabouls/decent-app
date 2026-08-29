@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 406;
+const BUILD_NUMBER = 408;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -6619,6 +6619,15 @@ function App() {
       category: p.categories && p.categories[0] ? p.categories[0] : 'Mobile App',
       categories: p.categories || ['Mobile App'],
       liked: true,
+      likesCount: p.likes_count ?? 0,
+      visitsCount: p.visits_count || 120,
+      isNsfw: !!p.is_nsfw,
+      showcaseAspectRatio: p.showcase_aspect_ratio || '16:9',
+      figmaProfile: p.figma_profile || '',
+      liveLinks: p.live_links || [],
+      figmaProto: p.figma_proto || '',
+      componentProto: p.component_proto || '',
+      desktopProto: p.desktop_proto || '',
       figmaFile: p.figma_file || '',
       brief: p.brief || '',
       longDescription: p.long_description || '',
@@ -8518,7 +8527,11 @@ function App() {
             onChangeText={setEditBio}
             placeholder="A short intro about your work..."
             placeholderTextColor="#94A3B8"
+            maxLength={500}
           />
+          <Text style={{ color: '#64748B', fontSize: 11, marginTop: -4, marginBottom: 4, textAlign: 'right' }}>
+            {editBio.length}/500
+          </Text>
 
           <Text style={styles.formGroupLabel}>Email</Text>
           <FocusableTextInput
@@ -11170,7 +11183,11 @@ function App() {
                 onChangeText={setEditBio}
                 placeholder="Short bio..."
                 placeholderTextColor="#94A3B8"
+                maxLength={500}
               />
+              <Text style={{ color: '#64748B', fontSize: 11, marginTop: -4, marginBottom: 4, textAlign: 'right' }}>
+                {editBio.length}/500
+              </Text>
 
               <Text style={styles.formGroupLabel}>Email Address</Text>
               <View style={styles.inputWithClearRow}>
