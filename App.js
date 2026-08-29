@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 421;
+const BUILD_NUMBER = 422;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -140,8 +140,8 @@ const BUILD_NUMBER = 421;
 // further code changes needed, whenever real demand justifies it.
 const PORTFOLIO_TYPE_ENABLED = {
   ui_ux: true,
-  graphic_design: false,
-  illustration: false,
+  graphic_design: true,
+  illustration: true,
   frontend: false
 };
 // Fill these in with your real donation links before this goes live -
@@ -12677,7 +12677,7 @@ function App() {
               {optionsView !== 'root' && (
                 <BouncyButton
                   style={{ padding: 4 }}
-                  onPress={() => setOptionsView(optionsView === 'blockedUsers' || optionsView === 'notificationHistory' ? 'privacy' : 'root')}
+                  onPress={() => setOptionsView(optionsView === 'blockedUsers' || optionsView === 'notificationHistory' ? 'privacy' : optionsView === 'tutorialLibrary' ? 'aboutApp' : 'root')}
                 >
                   <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
                 </BouncyButton>
@@ -12753,7 +12753,6 @@ function App() {
                   >
                     <Text style={styles.settingItemTitle}>Privacy</Text>
                     <View style={styles.iconTextInlineRow}>
-                      <Text style={styles.settingItemValue}>Manage</Text>
                       <ChevronRightSVG color={theme.accent} size={16} />
                     </View>
                   </BouncyButton>
@@ -12764,7 +12763,6 @@ function App() {
                   >
                     <Text style={styles.settingItemTitle}>Support & Legal</Text>
                     <View style={styles.iconTextInlineRow}>
-                      <Text style={styles.settingItemValue}>View</Text>
                       <ChevronRightSVG color={theme.accent} size={16} />
                     </View>
                   </BouncyButton>
@@ -12775,18 +12773,6 @@ function App() {
                   >
                     <Text style={styles.settingItemTitle}>About App</Text>
                     <View style={styles.iconTextInlineRow}>
-                      <Text style={styles.settingItemValue}>View</Text>
-                      <ChevronRightSVG color={theme.accent} size={16} />
-                    </View>
-                  </BouncyButton>
-
-                  <BouncyButton
-                    style={styles.settingItemRow}
-                    onPress={() => setOptionsView('tutorialLibrary')}
-                  >
-                    <Text style={styles.settingItemTitle}>Tutorials</Text>
-                    <View style={styles.iconTextInlineRow}>
-                      <Text style={styles.settingItemValue}>View</Text>
                       <ChevronRightSVG color={theme.accent} size={16} />
                     </View>
                   </BouncyButton>
@@ -13125,6 +13111,16 @@ function App() {
                     <Text style={styles.settingItemTitle}>Visit GitHub</Text>
                     <View style={styles.iconTextInlineRow}>
                       <GitHubIconSVG color={theme.textSecondary} size={16} />
+                      <ChevronRightSVG color={theme.accent} size={16} />
+                    </View>
+                  </BouncyButton>
+
+                  <BouncyButton
+                    style={styles.settingItemRow}
+                    onPress={() => setOptionsView('tutorialLibrary')}
+                  >
+                    <Text style={styles.settingItemTitle}>Tutorials</Text>
+                    <View style={styles.iconTextInlineRow}>
                       <ChevronRightSVG color={theme.accent} size={16} />
                     </View>
                   </BouncyButton>
