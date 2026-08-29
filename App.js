@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 420;
+const BUILD_NUMBER = 421;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -6546,8 +6546,6 @@ function App() {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.history.pushState({ decentNavStep: true }, '', window.location.href);
     }
-    const newVisits = (proj.visitsCount || 0) + 1;
-    const updatedProj = { ...proj, visitsCount: newVisits };
 
     // If a Designer Profile is currently open, remember it so this
     // portfolio's back button can return to it - Designer Profile already
@@ -6571,24 +6569,54 @@ function App() {
     setGalleryCanScrollLeft(false);
     setGalleryCanScrollRight((proj.images || []).length > 2);
 
-    setProjects((prev) =>
-      prev.map((p) => (p.id === proj.id ? updatedProj : p))
-    );
-    setActiveProject(updatedProj);
+    // No longer optimistically bumping visitsCount here - whether this
+    // view actually counts depends on the async dedup check below (same
+    // viewer within the last 24h doesn't count again), so incrementing
+    // the displayed number immediately could show "+1" and then have it
+    // silently revert on the next real fetch when the server-side count
+    // never actually moved. The displayed count now only ever reflects
+    // genuinely confirmed server values.
+    setActiveProject(proj);
     setShowModalBackToTop(false);
     trackEvent('portfolio_viewed', { portfolio_id: proj.id });
 
-    supabase.rpc('increment_portfolio_views', { pid: proj.id }).then(({ error }) => {
-      if (error) console.warn('View count increment failed:', error);
-    });
-    // Logs a timestamped row alongside the existing all-time counter above -
-    // that counter alone can't answer "how many views this week", only a
-    // running total. Fire-and-forget, same as the increment call - a
-    // failed insert here shouldn't block or slow down opening the
-    // portfolio.
-    supabase.from('portfolio_views').insert({ portfolio_id: proj.id }).then(({ error }) => {
-      if (error) console.warn('View event log failed:', error);
-    });
+    // Dedupes repeat views from the SAME logged-in account within a 24h
+    // window, so refreshing/reopening your own (or anyone's) portfolio
+    // repeatedly doesn't inflate the count - previously every single open
+    // counted, regardless of who or how many times. Anonymous/guest views
+    // (no session) still count every time below, same as before - there's
+    // no existing device/session-identity system in this app to dedupe
+    // guests against, so that's a separate, bigger feature if it's ever
+    // wanted; this only covers "same account" viewing, which is what was
+    // actually asked for.
+    (async () => {
+      if (session) {
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: recentView } = await supabase
+          .from('portfolio_views')
+          .select('id')
+          .eq('portfolio_id', proj.id)
+          .eq('viewer_id', session.user.id)
+          .gte('viewed_at', oneDayAgo)
+          .maybeSingle();
+        if (recentView) return;
+      }
+
+      supabase.rpc('increment_portfolio_views', { pid: proj.id }).then(({ error }) => {
+        if (error) console.warn('View count increment failed:', error);
+      });
+      // Logs a timestamped row alongside the existing all-time counter above -
+      // that counter alone can't answer "how many views this week", only a
+      // running total. Fire-and-forget, same as the increment call - a
+      // failed insert here shouldn't block or slow down opening the
+      // portfolio.
+      supabase.from('portfolio_views').insert({
+        portfolio_id: proj.id,
+        viewer_id: session ? session.user.id : null
+      }).then(({ error }) => {
+        if (error) console.warn('View event log failed:', error);
+      });
+    })();
 
     if (proj.caseStudy || proj.brief || proj.images) {
       setActiveTab('case');
