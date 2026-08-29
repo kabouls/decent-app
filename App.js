@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 416;
+const BUILD_NUMBER = 417;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -9705,7 +9705,7 @@ function App() {
           {bottomNav === 'forYou' && (
             <View>
 
-              <View style={{ marginBottom: 10 }}>
+              <View style={{ marginBottom: 10, overflow: 'visible' }}>
                 {/* zIndex here (not just on the panel below) is what
                     actually lifts this whole block above the feed content
                     that follows it in the DOM - the panel's own zIndex:100
@@ -9713,7 +9713,16 @@ function App() {
                     as the AI Disclosure dropdown fixed earlier. Only
                     elevated while open, so it's a no-op the rest of the
                     time. */}
-                <View style={forYouTypeFilterOpen ? { zIndex: 100, alignSelf: 'flex-start' } : { alignSelf: 'flex-start' }}>
+                {/* overflow:'visible' explicitly counters what's very
+                    likely an implicit overflow:hidden default on this
+                    wrapper - confirmed via a diagnostic test box that
+                    used dead-simple hardcoded dimensions (no theme/
+                    conditional styling at all) and STILL got clipped to
+                    the exact same thin sliver as the real panel, ruling
+                    out a styling-specific cause and pointing squarely at
+                    this wrapper clipping anything extending past its own
+                    natural height (the trigger button's height). */}
+                <View style={forYouTypeFilterOpen ? { zIndex: 100, alignSelf: 'flex-start', overflow: 'visible' } : { alignSelf: 'flex-start', overflow: 'visible' }}>
                   <BouncyButton
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
@@ -9744,12 +9753,6 @@ function App() {
                       activeOpacity={1}
                       onPress={() => setForYouTypeFilterOpen(false)}
                     />
-                    {/* TEMP DIAGNOSTIC - remove once the dropdown mystery is
-                        solved. Dead simple, no theme/conditional styling,
-                        impossible to miss if it renders at all. */}
-                    <View style={{ position: 'absolute', top: 34, left: 0, width: 200, height: 100, backgroundColor: 'red', zIndex: 999999 }}>
-                      <Text style={{ color: '#fff', fontWeight: '900' }}>FILTER TEST</Text>
-                    </View>
                     <View style={{
                       position: 'absolute', top: 34, left: 0, width: 200, height: 225, zIndex: 100,
                       backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
