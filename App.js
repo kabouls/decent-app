@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 412;
+const BUILD_NUMBER = 414;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -5179,6 +5179,16 @@ function App() {
     }
   };
 
+  // Web-only custom scroll indicator (see scrollProgress below) - the
+  // ScrollView itself lives inside the width-capped, centered main content
+  // column, so its native scrollbar renders at that column's edge rather
+  // than the true browser window edge. Rather than restructure which
+  // element actually scrolls (mainScrollViewRef is targeted by several
+  // scroll-to-section calls elsewhere - risky to move), this hides that
+  // native scrollbar and tracks progress here to drive a simple visual
+  // indicator pinned to the real viewport edge instead.
+  const [scrollProgress, setScrollProgress] = useState({ ratio: 0, thumbHeightRatio: 1 });
+
   const handleScroll = (event) => {
     const offsetY = event.nativeEvent.contentOffset.y;
     tabScrollOffsetsRef.current[bottomNav] = offsetY;
@@ -5200,6 +5210,14 @@ function App() {
       discoverDesignersLimit < searchedDesigners.length
     ) {
       setDiscoverDesignersLimit((prev) => prev + DISCOVER_PAGE_SIZE);
+    }
+
+    if (Platform.OS === 'web' && isWebWide) {
+      const maxScroll = Math.max(1, contentSize.height - layoutMeasurement.height);
+      setScrollProgress({
+        ratio: Math.min(1, Math.max(0, offsetY / maxScroll)),
+        thumbHeightRatio: Math.min(1, layoutMeasurement.height / contentSize.height)
+      });
     }
   };
 
@@ -9654,6 +9672,13 @@ function App() {
         <ScrollView
           ref={mainScrollViewRef}
           style={styles.scrollView}
+          // Hidden on wide web specifically since the custom indicator
+          // (rendered at the true viewport edge, near the end of this
+          // component's return) replaces it there - this ScrollView's own
+          // native scrollbar renders at the edge of the width-capped
+          // content column instead of the actual browser window edge.
+          // Native app and narrow web keep the normal scrollbar.
+          showsVerticalScrollIndicator={!(Platform.OS === 'web' && isWebWide)}
           contentContainerStyle={[
             styles.scrollContent,
             Platform.OS !== 'web' && !isWebWide && { paddingTop: headerBottomY + 20 },
@@ -9688,7 +9713,7 @@ function App() {
                     as the AI Disclosure dropdown fixed earlier. Only
                     elevated while open, so it's a no-op the rest of the
                     time. */}
-                <View style={forYouTypeFilterOpen ? { zIndex: 100 } : undefined}>
+                <View style={forYouTypeFilterOpen ? { zIndex: 100, alignSelf: 'flex-start' } : { alignSelf: 'flex-start' }}>
                   <BouncyButton
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
@@ -16778,6 +16803,26 @@ function App() {
       </View>
       </View>
       </View>
+
+      {/* Web-only custom scroll indicator, pinned to the TRUE right edge
+          of the browser window (this sits as a direct child of the root
+          SafeAreaView, a sibling of the sidebar+content row above - not
+          nested inside the width-capped content column, which is exactly
+          why the native scrollbar looked wrong in the first place). */}
+      {Platform.OS === 'web' && isWebWide && (
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 2, bottom: 0, width: 4, zIndex: 9999 }}>
+          <View
+            style={{
+              position: 'absolute',
+              top: `${scrollProgress.ratio * (1 - scrollProgress.thumbHeightRatio) * 100}%`,
+              height: `${Math.max(6, scrollProgress.thumbHeightRatio * 100)}%`,
+              width: 4,
+              borderRadius: 2,
+              backgroundColor: 'rgba(139, 92, 246, 0.5)'
+            }}
+          />
+        </View>
+      )}
     </SafeAreaView>
   );
 }
