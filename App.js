@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 409;
+const BUILD_NUMBER = 411;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1888,7 +1888,7 @@ const ProjectCard = React.memo(({
       {item.isAiGenerated === true && (
         <View style={{
           position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: 6,
-          backgroundColor: 'rgba(100, 116, 139, 0.85)', alignItems: 'center', justifyContent: 'center', zIndex: 10
+          backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10
         }}>
           <SparkleIconSVG size={13} color="#E2E8F0" />
         </View>
@@ -4811,10 +4811,10 @@ function App() {
   const mapNotificationRow = (n) => ({
     id: n.id,
     type: n.type,
-    user: n.actor ? n.actor.name : 'Someone',
+    user: n.type === 'create_password' ? 'DECENT' : (n.actor ? n.actor.name : 'Someone'),
     actorId: n.actor ? n.actor.id : null,
     portfolioId: n.portfolio_id || null,
-    action: n.type === 'like' ? 'liked your portfolio package' : n.type === 'follow' ? 'started following your profile' : 'sent you a notification',
+    action: n.type === 'like' ? 'liked your portfolio package' : n.type === 'follow' ? 'started following your profile' : n.type === 'create_password' ? 'reminder: add a password to your account so you can still sign in if Google ever isn\'t available' : 'sent you a notification',
     target: n.portfolio ? n.portfolio.title : '',
     time: formatRelativeTime(n.created_at),
     avatar: (n.actor && n.actor.avatar_url) || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
@@ -5765,6 +5765,36 @@ function App() {
   // client-side), so no functional change is needed there - only the label
   // shown to the user needs to reflect which case they're in.
   const hasPasswordAuth = !!(session && session.user && session.user.identities && session.user.identities.some((i) => i.provider === 'email'));
+
+  // Nudges OAuth-only accounts (Google, and any other provider added later)
+  // to set a password, since they'd otherwise have no way to sign in if
+  // that provider ever has an outage or they want to use a different
+  // device without it. Re-sent every 7 days until a password identity
+  // shows up - checked once per session load rather than a server cron
+  // job, same "no more infrastructure than needed" approach as the
+  // notification cleanup elsewhere in this file.
+  useEffect(() => {
+    if (!session || hasPasswordAuth) return;
+    (async () => {
+      const { data: last } = await supabase
+        .from('notifications')
+        .select('created_at')
+        .eq('recipient_id', session.user.id)
+        .eq('type', 'create_password')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      if (!last || new Date(last.created_at).getTime() < sevenDaysAgo) {
+        const { error } = await supabase.from('notifications').insert({
+          recipient_id: session.user.id,
+          type: 'create_password'
+        });
+        if (!error) fetchNotifications();
+      }
+    })();
+  }, [session, hasPasswordAuth]);
 
   const showStickySaveButton = accountSettingsModalVisible && hasUnsavedAccountChanges();
   const [stickySaveRendered, setStickySaveRendered] = useState(false);
@@ -10796,10 +10826,22 @@ function App() {
                         <BouncyButton
                           onPress={() => {
                             setNotificationModalVisible(false);
-                            openDesignerProfileById(notif.actorId);
+                            if (notif.type === 'create_password') {
+                              setNewPassword('');
+                              setConfirmNewPassword('');
+                              setChangePasswordPageVisible(true);
+                            } else {
+                              openDesignerProfileById(notif.actorId);
+                            }
                           }}
                         >
-                          <Image source={{ uri: notif.avatar }} style={styles.notifAvatar} />
+                          {notif.type === 'create_password' ? (
+                            <View style={[styles.notifAvatar, { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }]}>
+                              <LockIconSVG color={theme.accent} size={16} />
+                            </View>
+                          ) : (
+                            <Image source={{ uri: notif.avatar }} style={styles.notifAvatar} />
+                          )}
                         </BouncyButton>
                         <BouncyButton
                           style={{ flex: 1, marginRight: 6 }}
@@ -10809,6 +10851,10 @@ function App() {
                               openPortfolioById(notif.portfolioId);
                             } else if (notif.type === 'follow') {
                               openDesignerProfileById(notif.actorId);
+                            } else if (notif.type === 'create_password') {
+                              setNewPassword('');
+                              setConfirmNewPassword('');
+                              setChangePasswordPageVisible(true);
                             }
                           }}
                         >
@@ -10828,7 +10874,7 @@ function App() {
                               {isFollowingUser ? 'Following' : 'Follow Back'}
                             </Text>
                           </BouncyButton>
-                        ) : (
+                        ) : notif.type === 'create_password' ? null : (
                           <View style={styles.notifTypeIconBox}>
                             <HeartIconSVG liked={true} />
                           </View>
@@ -13031,10 +13077,22 @@ function App() {
                             style={{ position: 'relative' }}
                             onPress={() => {
                               setSettingsModalVisible(false);
-                              openDesignerProfileById(notif.actorId);
+                              if (notif.type === 'create_password') {
+                                setNewPassword('');
+                                setConfirmNewPassword('');
+                                setChangePasswordPageVisible(true);
+                              } else {
+                                openDesignerProfileById(notif.actorId);
+                              }
                             }}
                           >
-                            <Image source={{ uri: notif.avatar }} style={styles.notifAvatar} />
+                            {notif.type === 'create_password' ? (
+                              <View style={[styles.notifAvatar, { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }]}>
+                                <LockIconSVG color={theme.accent} size={16} />
+                              </View>
+                            ) : (
+                              <Image source={{ uri: notif.avatar }} style={styles.notifAvatar} />
+                            )}
                             {!notif.read && (
                               <View style={{ position: 'absolute', top: 0, right: 0, width: 9, height: 9, borderRadius: 4.5, backgroundColor: '#EF4444', borderWidth: 1.5, borderColor: theme.surface }} />
                             )}
@@ -13047,6 +13105,10 @@ function App() {
                                 openPortfolioById(notif.portfolioId);
                               } else if (notif.type === 'follow') {
                                 openDesignerProfileById(notif.actorId);
+                              } else if (notif.type === 'create_password') {
+                                setNewPassword('');
+                                setConfirmNewPassword('');
+                                setChangePasswordPageVisible(true);
                               }
                             }}
                           >
@@ -15985,9 +16047,9 @@ function App() {
                   {activeProject.categories && activeProject.categories.length > 0 && (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
                       {activeProject.isAiGenerated === true && (
-                        <View style={{ position: 'relative' }}>
+                        <View style={{ position: 'relative', alignSelf: 'flex-start' }}>
                           <BouncyButton
-                            style={{ width: 26, height: 26, borderRadius: 7, backgroundColor: 'rgba(100, 116, 139, 0.85)', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ width: 26, height: 26, borderRadius: 7, backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center' }}
                             onPress={handleAiIconPress}
                           >
                             <SparkleIconSVG size={14} color="#E2E8F0" />
@@ -16000,7 +16062,7 @@ function App() {
                                 backgroundColor: theme.mode === 'light' ? '#1E293B' : '#0F172A',
                                 borderWidth: 1, borderColor: theme.border,
                                 borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
-                                maxWidth: 220,
+                                width: 220,
                                 opacity: aiTooltipAnim,
                                 transform: [{
                                   translateY: aiTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] })
