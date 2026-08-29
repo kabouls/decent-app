@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 415;
+const BUILD_NUMBER = 416;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -9744,6 +9744,12 @@ function App() {
                       activeOpacity={1}
                       onPress={() => setForYouTypeFilterOpen(false)}
                     />
+                    {/* TEMP DIAGNOSTIC - remove once the dropdown mystery is
+                        solved. Dead simple, no theme/conditional styling,
+                        impossible to miss if it renders at all. */}
+                    <View style={{ position: 'absolute', top: 34, left: 0, width: 200, height: 100, backgroundColor: 'red', zIndex: 999999 }}>
+                      <Text style={{ color: '#fff', fontWeight: '900' }}>FILTER TEST</Text>
+                    </View>
                     <View style={{
                       position: 'absolute', top: 34, left: 0, width: 200, height: 225, zIndex: 100,
                       backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
