@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 414;
+const BUILD_NUMBER = 415;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -9745,7 +9745,7 @@ function App() {
                       onPress={() => setForYouTypeFilterOpen(false)}
                     />
                     <View style={{
-                      position: 'absolute', top: 34, left: 0, width: 200, zIndex: 100,
+                      position: 'absolute', top: 34, left: 0, width: 200, height: 225, zIndex: 100,
                       backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
                       padding: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                     }}>
