@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 422;
+const BUILD_NUMBER = 423;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1884,16 +1884,27 @@ const ProjectCard = React.memo(({
         </View>
       )}
       <View style={styles.prototypeBadgesRow}>
-        {item.figmaProto ? (
-          <View style={styles.protoBadgeIconOnly}>
-            <MobileIconSVG size={13} />
+        <View style={styles.protoBadgeIconOnly}>
+          {item.portfolioType === 'graphic_design' ? (
+            <PaletteSVG size={13} color="#FFFFFF" />
+          ) : item.portfolioType === 'illustration' ? (
+            <PaintBrushSVG size={13} color="#FFFFFF" />
+          ) : (
+            <CursorArrowSVG size={13} color="#FFFFFF" />
+          )}
+        </View>
+        {(item.figmaProto || item.desktopProto) && (
+          // Both prototype icons share one rounded container (rather than
+          // each getting its own separate pill, which is what made two
+          // side-by-side badges look like duplicated chrome instead of one
+          // "prototypes available" indicator) - only the icons themselves
+          // are conditional, the container renders once whenever at least
+          // one prototype link exists.
+          <View style={[styles.protoBadgeIconOnly, { flexDirection: 'row', gap: 6 }]}>
+            {item.figmaProto ? <MobileIconSVG size={13} /> : null}
+            {item.desktopProto ? <DesktopIconSVG size={13} /> : null}
           </View>
-        ) : null}
-        {item.desktopProto ? (
-          <View style={styles.protoBadgeIconOnly}>
-            <DesktopIconSVG size={13} />
-          </View>
-        ) : null}
+        )}
       </View>
       {item.isAiGenerated === true && (
         <View style={{
