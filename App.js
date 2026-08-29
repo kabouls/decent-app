@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 423;
+const BUILD_NUMBER = 424;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -3526,6 +3526,11 @@ function App() {
   const galleryScrollRef = useRef(null);
   const [galleryCanScrollLeft, setGalleryCanScrollLeft] = useState(false);
   const [galleryCanScrollRight, setGalleryCanScrollRight] = useState(false);
+  // Image Gallery section becomes a collapsed-by-default accordion
+  // specifically when the portfolio also has a detailed description -
+  // otherwise it stays the plain always-visible horizontal scroll it's
+  // always been, unaffected by this flag.
+  const [galleryExpanded, setGalleryExpanded] = useState(false);
   const galleryScrollContentWidthRef = useRef(0);
   const galleryScrollContainerWidthRef = useRef(0);
   const galleryScrollXRef = useRef(0);
@@ -6579,6 +6584,10 @@ function App() {
     galleryScrollXRef.current = 0;
     setGalleryCanScrollLeft(false);
     setGalleryCanScrollRight((proj.images || []).length > 2);
+    // Image Gallery accordion (only relevant when the portfolio also has a
+    // detailed description/content blocks - see render site) starts
+    // collapsed for every newly opened portfolio, not just the first one.
+    setGalleryExpanded(false);
 
     // No longer optimistically bumping visitsCount here - whether this
     // view actually counts depends on the async dedup check below (same
@@ -14191,7 +14200,11 @@ function App() {
                     placeholderTextColor="#94A3B8"
                     value={fTitle}
                     onChangeText={(t) => { setFTitle(t); setErrors({ ...errors, fTitle: null }); }}
+                    maxLength={100}
                   />
+                  <Text style={{ color: '#64748B', fontSize: 11, marginTop: 4, textAlign: 'right' }}>
+                    {fTitle.length}/100
+                  </Text>
                   {errors.fTitle ? <Text style={styles.errorText}>{errors.fTitle}</Text> : null}
 
                   <View style={{ marginTop: 12 }}>
@@ -15583,9 +15596,44 @@ function App() {
                 </BouncyButton>
               )}
 
-              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20, textAlign: 'center' }]} numberOfLines={1}>
+              <Text
+                style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20, textAlign: 'center' }, !isWebWide && { opacity: 0 }]}
+                numberOfLines={1}
+                pointerEvents={isWebWide ? 'auto' : 'none'}
+              >
                 {activeProject.title}
               </Text>
+
+              {/* Engagement stats now live here (left side of the top bar,
+                  alongside share/dots/close) for app/narrow-web specifically
+                  - the full, untruncated title moved down into the
+                  scrollable content instead (see caseTitle below, right
+                  above the designer row). Wide web's split-layout header is
+                  untouched: title stays centered here, stats stay in their
+                  original spot in the case study pane. The title Text
+                  above is kept mounted (not removed) with opacity:0 so this
+                  row's overall height/spacing doesn't shift between the two
+                  layouts - it's just invisible and non-interactive on
+                  narrow/native. */}
+              {!isWebWide && (
+                <View style={{ position: 'absolute', left: Platform.OS === 'web' ? 50 : 16, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <LikeButton
+                      liked={activeProject.liked}
+                      likesCount={activeProject.likesCount}
+                      onPress={() => toggleLike(activeProject.id)}
+                      color={theme.textSecondary}
+                      monochrome
+                      size={17}
+                    />
+                    <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.likesCount || 0}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <EyeViewIconSVG size={17} color={theme.textSecondary} />
+                    <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.visitsCount || 0}</Text>
+                  </View>
+                </View>
+              )}
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, ...(isWebWide ? { width: 68, justifyContent: 'flex-end' } : {}) }}>
                 <BouncyButton
@@ -15868,27 +15916,34 @@ function App() {
                   onScroll={handleModalScroll}
                   scrollEventThrottle={16}
                 >
-                  {/* Small monochrome engagement stats, centered - moved here
-                      from the top bar (was left-aligned, colored). Lives in
-                      normal scroll flow at the very top of the content, not
-                      in the sticky/fixed top bar area. */}
-                  <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <LikeButton
-                        liked={activeProject.liked}
-                        likesCount={activeProject.likesCount}
-                        onPress={() => toggleLike(activeProject.id)}
-                        color={theme.textSecondary}
-                        monochrome
-                        size={18}
-                      />
-                      <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.likesCount || 1}</Text>
+                  {/* Full, untruncated title - swapped down here from the
+                      top bar for app/narrow-web specifically (that bar now
+                      shows engagement stats instead, on its left side).
+                      Wide web keeps its title centered in the top bar and
+                      keeps this exact stats row unchanged below. */}
+                  {!isWebWide ? (
+                    <Text style={[styles.caseTitle, { textAlign: 'left', marginBottom: 14 }]}>
+                      {activeProject.title}
+                    </Text>
+                  ) : (
+                    <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <LikeButton
+                          liked={activeProject.liked}
+                          likesCount={activeProject.likesCount}
+                          onPress={() => toggleLike(activeProject.id)}
+                          color={theme.textSecondary}
+                          monochrome
+                          size={18}
+                        />
+                        <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.likesCount || 1}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <EyeViewIconSVG size={18} color={theme.textSecondary} />
+                        <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.visitsCount || 120}</Text>
+                      </View>
                     </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <EyeViewIconSVG size={18} color={theme.textSecondary} />
-                      <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.visitsCount || 120}</Text>
-                    </View>
-                  </View>
+                  )}
 
                   {/* Designer Row with Right-Aligned Follow/Following Button */}
                   <View style={styles.designerRowModal}>
@@ -16031,9 +16086,33 @@ function App() {
                       mediaPane below). Every other case (native, narrow
                       web, or wide web WITH a prototype) keeps this exact
                       horizontal carousel, unchanged. */}
-                  {!(Platform.OS === 'web' && isWebWide && !hasPrototype) && (
-                  <>
-                  <Text style={styles.sectionHeader}>UI SCREENSHOTS & HIGHLIGHTS</Text>
+                  {!(Platform.OS === 'web' && isWebWide && !hasPrototype) && (() => {
+                    // "Detailed description" = the same condition already
+                    // used just below to decide whether Case Study Overview
+                    // shows real content blocks vs a plain brief fallback -
+                    // only in that case does the gallery become a
+                    // collapsed-by-default accordion instead of the plain
+                    // always-open carousel it's always been.
+                    const hasDetailedDescription = !!(activeProject.contentBlocks && activeProject.contentBlocks.length > 0);
+                    const galleryOpen = !hasDetailedDescription || galleryExpanded;
+                    return (
+                      <>
+                        {hasDetailedDescription ? (
+                          <BouncyButton
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                            onPress={() => setGalleryExpanded((prev) => !prev)}
+                          >
+                            <Text style={styles.sectionHeader}>IMAGE GALLERY</Text>
+                            {galleryOpen ? (
+                              <ChevronUpSVG color={theme.textSecondary} size={16} />
+                            ) : (
+                              <ChevronDownSVG color={theme.textSecondary} size={16} />
+                            )}
+                          </BouncyButton>
+                        ) : (
+                          <Text style={styles.sectionHeader}>IMAGE GALLERY</Text>
+                        )}
+                        {galleryOpen && (
                   <View style={{ position: 'relative' }}>
                     <ScrollView
                       ref={galleryScrollRef}
@@ -16099,8 +16178,10 @@ function App() {
                       </BouncyButton>
                     )}
                   </View>
-                  </>
-                  )}
+                        )}
+                      </>
+                    );
+                  })()}
 
                   <Text style={styles.sectionHeader}>CASE STUDY OVERVIEW</Text>
                   {activeProject.contentBlocks && activeProject.contentBlocks.length > 0 ? (
