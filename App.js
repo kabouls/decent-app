@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 425;
+const BUILD_NUMBER = 426;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -3356,6 +3356,13 @@ function App() {
   // return to keeps its scroll position for free - React never unmounted
   // it, so there's nothing to restore.
   const [cameFromPortfolioId, setCameFromPortfolioId] = useState(null); // set when Designer Profile was opened from a Portfolio Detail
+  // Set when a portfolio was hidden (not closed - activeProject data is
+  // kept intact) because a tag on it was tapped, switching to the Search
+  // tab underneath. Restoration here is a straight setModalVisible(true)
+  // rather than the designer flow's "unhide a still-mounted modal"
+  // approach, since a bottom-nav tab change (unlike a stacked modal)
+  // doesn't leave anything visually mounted underneath to reveal.
+  const [hiddenPortfolioForSearch, setHiddenPortfolioForSearch] = useState(false);
   const [cameFromDesignerId, setCameFromDesignerId] = useState(null); // set when Portfolio Detail was opened from a Designer Profile
   // Multi-level designer-to-designer navigation (e.g. viewing someone's
   // profile, opening their Followers list, tapping into a follower, tapping
@@ -6718,7 +6725,15 @@ function App() {
   }, []);
 
   const openDesignerProfileById = useCallback((designerId, preloadedData = null) => {
-    if (session && designerId === session.user.id) {
+    // The "jump straight to the Profile tab" shortcut below only makes
+    // sense when there's nothing to preserve underneath - if a portfolio
+    // is currently open and you tap your OWN name/avatar on it, this used
+    // to discard that entirely (closing the portfolio, wiping the back-
+    // stack) with no way back. Falling through to the normal designer-
+    // profile-modal path instead treats "yourself" like any other
+    // designer in that specific case, which correctly preserves
+    // cameFromPortfolioId below for proper back navigation.
+    if (session && designerId === session.user.id && !(modalVisible && activeProject)) {
       setModalVisible(false);
       setDesignerModalVisible(false);
       setCameFromPortfolioId(null);
@@ -7835,6 +7850,14 @@ function App() {
       setAllCategoriesModalVisible(false);
       return true;
     }
+    if (hiddenPortfolioForSearch) {
+      // Portfolio was hidden (not closed) when a tag was tapped from it -
+      // activeProject still holds its data, so this just re-shows it
+      // rather than needing to re-fetch or re-navigate anything.
+      setHiddenPortfolioForSearch(false);
+      setModalVisible(true);
+      return true;
+    }
     if (tabVisitStack.length > 0) {
       const prevTab = tabVisitStack[tabVisitStack.length - 1];
       setTabVisitStack((prevStack) => prevStack.slice(0, -1));
@@ -7851,7 +7874,7 @@ function App() {
   }, [
     linkPreview, lightboxImageUri, settingsModalVisible, notificationModalVisible,
     fullscreenDescEditorVisible, addModalVisible, designerModalVisible, modalVisible,
-    allCategoriesModalVisible, bottomNav, tabVisitStack,
+    allCategoriesModalVisible, hiddenPortfolioForSearch, bottomNav, tabVisitStack,
     handleBackFromDesignerProfile, handleBackFromPortfolioDetail
   ]);
 
@@ -16089,6 +16112,7 @@ function App() {
                             key={idx}
                             style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}
                             onPress={() => {
+                              setHiddenPortfolioForSearch(true);
                               setModalVisible(false);
                               setSearchQuery(cat);
                               handleNavChange('search');
