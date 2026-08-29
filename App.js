@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 424;
+const BUILD_NUMBER = 425;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -3540,6 +3540,23 @@ function App() {
     const containerW = galleryScrollContainerWidthRef.current;
     setGalleryCanScrollLeft(scrollX > 4);
     setGalleryCanScrollRight(scrollX < contentW - containerW - 4);
+  };
+
+  // Same left/right arrow treatment again, this time for the portfolio
+  // detail page's own tag/category pill row (previously flex-wrap across
+  // multiple lines, now a single-line horizontal scroll).
+  const detailTagsScrollRef = useRef(null);
+  const [detailTagsCanScrollLeft, setDetailTagsCanScrollLeft] = useState(false);
+  const [detailTagsCanScrollRight, setDetailTagsCanScrollRight] = useState(false);
+  const detailTagsScrollContentWidthRef = useRef(0);
+  const detailTagsScrollContainerWidthRef = useRef(0);
+  const detailTagsScrollXRef = useRef(0);
+  const updateDetailTagsScrollArrows = (scrollX) => {
+    detailTagsScrollXRef.current = scrollX;
+    const contentW = detailTagsScrollContentWidthRef.current;
+    const containerW = detailTagsScrollContainerWidthRef.current;
+    setDetailTagsCanScrollLeft(scrollX > 4);
+    setDetailTagsCanScrollRight(scrollX < contentW - containerW - 4);
   };
   const [showBackToTop, setShowBackToTop] = useState(false);
 
@@ -15617,6 +15634,11 @@ function App() {
                   narrow/native. */}
               {!isWebWide && (
                 <View style={{ position: 'absolute', left: Platform.OS === 'web' ? 50 : 16, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                  {Platform.OS !== 'web' && (
+                    <BouncyButton style={styles.closeBtn} onPress={handleBackFromPortfolioDetail}>
+                      <Text style={styles.closeBtnText}>✕</Text>
+                    </BouncyButton>
+                  )}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                     <LikeButton
                       liked={activeProject.liked}
@@ -15660,12 +15682,6 @@ function App() {
                     <Text style={{ color: theme.textSecondary, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
                   </BouncyButton>
                 </View>
-
-                {!(Platform.OS === 'web') && (
-                  <BouncyButton style={styles.closeBtn} onPress={handleBackFromPortfolioDetail}>
-                    <Text style={styles.closeBtnText}>✕</Text>
-                  </BouncyButton>
-                )}
 
                 <Modal
                   transparent
@@ -16021,51 +16037,82 @@ function App() {
                   </View>
 
                   {activeProject.categories && activeProject.categories.length > 0 && (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-                      {activeProject.isAiGenerated === true && (
-                        <View style={{ position: 'relative', alignSelf: 'flex-start' }}>
-                          <BouncyButton
-                            style={{ width: 26, height: 26, borderRadius: 7, backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center' }}
-                            onPress={handleAiIconPress}
-                          >
-                            <SparkleIconSVG size={14} color="#E2E8F0" />
-                          </BouncyButton>
-                          {showAiTooltip && (
-                            <Animated.View
-                              pointerEvents="none"
-                              style={{
-                                position: 'absolute', top: 32, left: -6, zIndex: 50,
-                                backgroundColor: theme.mode === 'light' ? '#1E293B' : '#0F172A',
-                                borderWidth: 1, borderColor: theme.border,
-                                borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
-                                width: 220,
-                                opacity: aiTooltipAnim,
-                                transform: [{
-                                  translateY: aiTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] })
-                                }]
-                              }}
+                    <View style={{ position: 'relative', marginBottom: 20 }}>
+                      <ScrollView
+                        ref={detailTagsScrollRef}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={{ flexDirection: 'row', gap: 8, paddingRight: Platform.OS === 'web' ? 24 : 0 }}
+                        onScroll={Platform.OS === 'web' ? (e) => updateDetailTagsScrollArrows(e.nativeEvent.contentOffset.x) : undefined}
+                        scrollEventThrottle={16}
+                        onContentSizeChange={Platform.OS === 'web' ? (w) => {
+                          detailTagsScrollContentWidthRef.current = w;
+                          updateDetailTagsScrollArrows(detailTagsScrollXRef.current);
+                        } : undefined}
+                        onLayout={Platform.OS === 'web' ? (e) => {
+                          detailTagsScrollContainerWidthRef.current = e.nativeEvent.layout.width;
+                          updateDetailTagsScrollArrows(detailTagsScrollXRef.current);
+                        } : undefined}
+                      >
+                        {activeProject.isAiGenerated === true && (
+                          <View style={{ position: 'relative', alignSelf: 'flex-start' }}>
+                            <BouncyButton
+                              style={{ width: 26, height: 26, borderRadius: 7, backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center' }}
+                              onPress={handleAiIconPress}
                             >
-                              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', lineHeight: 17 }}>
-                                This content is AI generated/assisted
-                              </Text>
-                            </Animated.View>
-                          )}
+                              <SparkleIconSVG size={14} color="#E2E8F0" />
+                            </BouncyButton>
+                            {showAiTooltip && (
+                              <Animated.View
+                                pointerEvents="none"
+                                style={{
+                                  position: 'absolute', top: 32, left: -6, zIndex: 50,
+                                  backgroundColor: theme.mode === 'light' ? '#1E293B' : '#0F172A',
+                                  borderWidth: 1, borderColor: theme.border,
+                                  borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+                                  width: 220,
+                                  opacity: aiTooltipAnim,
+                                  transform: [{
+                                    translateY: aiTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] })
+                                  }]
+                                }}
+                              >
+                                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', lineHeight: 17 }}>
+                                  This content is AI generated/assisted
+                                </Text>
+                              </Animated.View>
+                            )}
+                          </View>
+                        )}
+                        {activeProject.categories.map((cat, idx) => (
+                          <BouncyButton
+                            key={idx}
+                            style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}
+                            onPress={() => {
+                              setModalVisible(false);
+                              setSearchQuery(cat);
+                              handleNavChange('search');
+                            }}
+                            onLongPress={() => handleReportContent('tag', cat, `the tag "${cat}"`)}
+                          >
+                            <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '600' }}>{cat}</Text>
+                          </BouncyButton>
+                        ))}
+                      </ScrollView>
+
+                      {/* Bare arrow heads only - no circular button chrome
+                          behind them, per request, unlike the gallery's own
+                          scroll arrows just below this section. */}
+                      {Platform.OS === 'web' && detailTagsCanScrollLeft && (
+                        <View style={{ position: 'absolute', left: -2, top: 0, bottom: 0, justifyContent: 'center', backgroundColor: theme.bg, paddingRight: 4 }}>
+                          <ChevronLeftSVG color={theme.textSecondary} size={16} />
                         </View>
                       )}
-                      {activeProject.categories.map((cat, idx) => (
-                        <BouncyButton
-                          key={idx}
-                          style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}
-                          onPress={() => {
-                            setModalVisible(false);
-                            setSearchQuery(cat);
-                            handleNavChange('search');
-                          }}
-                          onLongPress={() => handleReportContent('tag', cat, `the tag "${cat}"`)}
-                        >
-                          <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '600' }}>{cat}</Text>
-                        </BouncyButton>
-                      ))}
+                      {Platform.OS === 'web' && detailTagsCanScrollRight && (
+                        <View style={{ position: 'absolute', right: -2, top: 0, bottom: 0, justifyContent: 'center', backgroundColor: theme.bg, paddingLeft: 4 }}>
+                          <ChevronRightSVG color={theme.textSecondary} size={16} />
+                        </View>
+                      )}
                     </View>
                   )}
 
