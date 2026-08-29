@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 411;
+const BUILD_NUMBER = 412;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -4081,14 +4081,12 @@ function App() {
       }
       if (finalStatus !== 'granted') {
         console.warn('Push notification permission not granted');
-        setPushRegistrationStatus('Permission not granted');
         return;
       }
 
       const projectId = Constants?.expoConfig?.extra?.eas?.projectId;
       if (!projectId) {
         console.warn('No EAS projectId found - push token cannot be generated');
-        setPushRegistrationStatus('No EAS project linked (missing projectId)');
         return;
       }
       const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
@@ -4100,20 +4098,17 @@ function App() {
         .select();
 
       if (updateError) {
-        setPushRegistrationStatus('Save failed: ' + updateError.message);
+        console.warn('Push token save failed:', updateError.message);
         return;
       }
       if (!updatedRows || updatedRows.length === 0) {
         // Belt-and-suspenders check - upsert should always affect a row, but
         // if this ever fires again it means a genuine RLS/permission block,
         // not a missing-row issue.
-        setPushRegistrationStatus('Token generated but NOT saved - check profiles table permissions');
-        return;
+        console.warn('Push token generated but NOT saved - check profiles table permissions');
       }
-      setPushRegistrationStatus('Registered: ' + token.slice(0, 24) + '...');
     } catch (e) {
       console.warn('Push notification registration failed:', e);
-      setPushRegistrationStatus('Failed: ' + (e.message || 'unknown error'));
     }
   };
 
@@ -5791,7 +5786,10 @@ function App() {
           recipient_id: session.user.id,
           type: 'create_password'
         });
-        if (!error) fetchNotifications();
+        if (!error) {
+          fetchNotifications();
+          sendPushNotification(session.user.id, 'Secure your account', 'Add a password so you can still sign in if Google ever isn\'t available.');
+        }
       }
     })();
   }, [session, hasPasswordAuth]);
