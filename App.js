@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 417;
+const BUILD_NUMBER = 418;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -9705,7 +9705,7 @@ function App() {
           {bottomNav === 'forYou' && (
             <View>
 
-              <View style={{ marginBottom: 10, overflow: 'visible' }}>
+              <View style={forYouTypeFilterOpen ? { marginBottom: 10, overflow: 'visible', zIndex: 100 } : { marginBottom: 10, overflow: 'visible' }}>
                 {/* zIndex here (not just on the panel below) is what
                     actually lifts this whole block above the feed content
                     that follows it in the DOM - the panel's own zIndex:100
