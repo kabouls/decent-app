@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 401;
+const BUILD_NUMBER = 406;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -316,15 +316,15 @@ const VideoFilledIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
   </Svg>
 ));
 
-const MobileIconSVG = React.memo(() => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+const MobileIconSVG = React.memo(({ size = 18 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="6" y="2" width="12" height="20" rx="2.5" stroke="#FFFFFF" strokeWidth="2" />
     <Path d="M12 18h.01" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" />
   </Svg>
 ));
 
-const DesktopIconSVG = React.memo(() => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+const DesktopIconSVG = React.memo(({ size = 18 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="2" y="3" width="20" height="13" rx="2" stroke="#FFFFFF" strokeWidth="2" />
     <Path d="M8 21h8M12 16v5" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
   </Svg>
@@ -1876,21 +1876,21 @@ const ProjectCard = React.memo(({
       <View style={styles.prototypeBadgesRow}>
         {item.figmaProto ? (
           <View style={styles.protoBadgeIconOnly}>
-            <MobileIconSVG />
+            <MobileIconSVG size={13} />
           </View>
         ) : null}
         {item.desktopProto ? (
           <View style={styles.protoBadgeIconOnly}>
-            <DesktopIconSVG />
+            <DesktopIconSVG size={13} />
           </View>
         ) : null}
       </View>
       {item.isAiGenerated === true && (
         <View style={{
-          position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 8,
-          backgroundColor: '#10B981', alignItems: 'center', justifyContent: 'center', zIndex: 10
+          position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: 6,
+          backgroundColor: 'rgba(100, 116, 139, 0.85)', alignItems: 'center', justifyContent: 'center', zIndex: 10
         }}>
-          <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontWeight: '900' }}>AI</Text>
+          <SparkleIconSVG size={13} color="#E2E8F0" />
         </View>
       )}
       {showPinControl ? (
@@ -2507,17 +2507,46 @@ function AuthScreen({ onCancel } = {}) {
         return;
       }
 
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-      if (result.type === 'success' && result.url) {
-        const params = new URLSearchParams(result.url.split('#')[1] || result.url.split('?')[1] || '');
-        const access_token = params.get('access_token');
-        const refresh_token = params.get('refresh_token');
-        if (access_token && refresh_token) {
-          const { error: sessionError } = await supabase.auth.setSession({ access_token, refresh_token });
-          if (sessionError) showAppAlert('Google Sign-In Failed', sessionError.message);
-        } else {
-          showAppAlert('Google Sign-In Failed', 'No session returned - please try again.');
+      let linkingSub;
+      try {
+        let deepLinkResolve;
+        const deepLinkPromise = new Promise((resolve) => { deepLinkResolve = resolve; });
+        linkingSub = ExpoLinking.addEventListener('url', ({ url }) => {
+          if (url.startsWith(redirectUrl)) deepLinkResolve(url);
+        });
+
+        const sessionResult = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+        let resultUrl = (sessionResult.type === 'success' && sessionResult.url) ? sessionResult.url : null;
+
+        if (!resultUrl) {
+          // Session didn't report success - give the deep link a brief
+          // grace period in case it's still in flight (e.g. the user just
+          // approved in the Gmail app and the OS is about to hand back
+          // control) before treating this as a genuine cancellation.
+          resultUrl = await Promise.race([
+            deepLinkPromise,
+            new Promise((resolve) => setTimeout(() => resolve(null), 4000))
+          ]);
         }
+
+        if (resultUrl) {
+          const params = new URLSearchParams(resultUrl.split('#')[1] || resultUrl.split('?')[1] || '');
+          const access_token = params.get('access_token');
+          const refresh_token = params.get('refresh_token');
+          if (access_token && refresh_token) {
+            const { error: sessionError } = await supabase.auth.setSession({ access_token, refresh_token });
+            if (sessionError) showAppAlert('Google Sign-In Failed', sessionError.message);
+          } else {
+            showAppAlert('Google Sign-In Failed', 'No session returned - please try again.');
+          }
+        } else {
+          showAppAlert(
+            'Sign-In Not Completed',
+            'The sign-in window closed before finishing. If you approved a verification step in the Gmail or Google app, please try again.'
+          );
+        }
+      } finally {
+        linkingSub?.remove();
       }
       setGoogleLoading(false);
     } catch (e) {
@@ -9593,7 +9622,14 @@ function App() {
             <View>
 
               <View style={{ marginBottom: 10 }}>
-                <View>
+                {/* zIndex here (not just on the panel below) is what
+                    actually lifts this whole block above the feed content
+                    that follows it in the DOM - the panel's own zIndex:100
+                    only wins locally within this wrapper, same bug class
+                    as the AI Disclosure dropdown fixed earlier. Only
+                    elevated while open, so it's a no-op the rest of the
+                    time. */}
+                <View style={forYouTypeFilterOpen ? { zIndex: 100 } : undefined}>
                   <BouncyButton
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
@@ -10311,27 +10347,11 @@ function App() {
       {/* STICKY BACK TO TOP FLOATING BUTTON */}
       {showBackToTop && (
         <BouncyButton
-          style={[styles.stickyBackToTopBtn, Platform.OS !== 'web' && { backgroundColor: 'transparent', overflow: 'hidden' }]}
+          style={styles.stickyBackToTopBtn}
           activeOpacity={0.85}
           onPress={scrollToTop}
         >
-          {Platform.OS !== 'web' && (
-            lightweightMode ? (
-              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#8B5CF6' }} />
-            ) : (notificationPopupRendered || settingsPopupRendered) ? (
-              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(139, 92, 246, 0.75)' }} />
-            ) : (
-              <>
-                <BlurView
-                  intensity={45}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(139, 92, 246, 0.55)' }} />
-              </>
-            )
-          )}
-          <ChevronUpSVG />
+          <ChevronUpSVG color="#8B5CF6" />
         </BouncyButton>
       )}
 
@@ -10685,9 +10705,15 @@ function App() {
               left: notifDropdownPos.left,
               right: notifDropdownPos.right,
               ...(notifDropdownPos.width ? { width: notifDropdownPos.width } : {}),
-              ...(notificationsList.length > 5
-                ? { bottom: 16 }
-                : { maxHeight: 420 }),
+              // Hugs content by default (no explicit height forces it) and
+              // only caps out once content would run past the bottom of
+              // the screen - at which point the notification list's own
+              // ScrollView (flex:1 below) takes over and scrolls, while
+              // the header and "Notification History" footer stay fixed
+              // in place. Previously forced itself to nearly full screen
+              // height for any list over 5 items regardless of whether
+              // the content actually needed that much room.
+              maxHeight: Dimensions.get('window').height - notifDropdownPos.top - 20,
               backgroundColor: theme.surface,
               borderRadius: 16,
               borderWidth: 1,
@@ -13569,7 +13595,12 @@ function App() {
                 <ProjectGrid
                   items={designerProfileTab === 'myWork' ? selectedDesignerProjects : designerLikedProjects}
                   onPress={(item) => {
-                    setDesignerModalVisible(false);
+                    // openProjectModal already tracks cameFromDesignerId
+                    // and expects this modal to stay mounted underneath so
+                    // its own back button (handleBackFromPortfolioDetail)
+                    // can reveal it again - closing it here directly
+                    // contradicted that, which is what made "back" exit
+                    // the profile entirely instead of returning to it.
                     openProjectModal(item);
                   }}
                   onToggleLike={toggleLike}
@@ -13587,7 +13618,6 @@ function App() {
                       : designerLikedProjects
                   }
                   onPress={(item) => {
-                    setDesignerModalVisible(false);
                     openProjectModal(item);
                   }}
                   onOpenDesignerProfile={openDesignerProfileById}
@@ -15920,9 +15950,8 @@ function App() {
                   {activeProject.categories && activeProject.categories.length > 0 && (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
                       {activeProject.isAiGenerated === true && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#10B981', borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}>
-                          <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontWeight: '900' }}>AI</Text>
-                          <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>AI-Generated</Text>
+                        <View style={{ width: 26, height: 26, borderRadius: 7, backgroundColor: 'rgba(100, 116, 139, 0.85)', alignItems: 'center', justifyContent: 'center' }}>
+                          <SparkleIconSVG size={14} color="#E2E8F0" />
                         </View>
                       )}
                       {activeProject.categories.map((cat, idx) => (
@@ -16136,7 +16165,6 @@ function App() {
                 <BouncyButton
                   style={[
                     styles.stickyModalBackToTopBtn,
-                    Platform.OS !== 'web' && { backgroundColor: 'transparent', overflow: 'hidden' },
                     // Anchored via LEFT, not right - confirmed via live
                     // testing that "right" positioning silently fails to
                     // resolve inside this container on web (likely needs a
@@ -16151,21 +16179,7 @@ function App() {
                   activeOpacity={0.85}
                   onPress={scrollModalToTop}
                 >
-                  {Platform.OS !== 'web' && (
-                    lightweightMode ? (
-                      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#8B5CF6' }} />
-                    ) : (
-                      <>
-                        <BlurView
-                          intensity={45}
-                          tint={themeMode === 'light' ? 'light' : 'dark'}
-                          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                        />
-                        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(139, 92, 246, 0.55)' }} />
-                      </>
-                    )
-                  )}
-                  <ChevronUpSVG />
+                  <ChevronUpSVG color="#8B5CF6" />
                 </BouncyButton>
               )}
 
@@ -16909,7 +16923,7 @@ const getStyles = (theme) => StyleSheet.create({
   stickyModalBackToTopBtn: {
     position: 'absolute', bottom: 90, right: 20,
     width: 44, height: 44, borderRadius: 99,
-    backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: theme.surface, borderWidth: 1.5, borderColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center',
     elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 6, zIndex: 99
   },
 
@@ -16955,7 +16969,7 @@ const getStyles = (theme) => StyleSheet.create({
 
   stickyBackToTopBtn: {
     position: 'absolute', bottom: 100, right: 20, width: 42, height: 42,
-    borderRadius: 99, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center',
+    borderRadius: 99, backgroundColor: theme.surface, borderWidth: 1.5, borderColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center',
     elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 99
   },
 
@@ -16978,11 +16992,11 @@ const getStyles = (theme) => StyleSheet.create({
   },
   thumbnailContainer: { position: 'relative', width: '100%', aspectRatio: 16 / 9, backgroundColor: '#070A10' },
   cardCover: { width: '100%', height: '100%' },
-  prototypeBadgesRow: { position: 'absolute', top: 12, left: 12, flexDirection: 'row', gap: 8, zIndex: 10 },
+  prototypeBadgesRow: { position: 'absolute', top: 12, left: 12, flexDirection: 'row', gap: 5, zIndex: 10 },
   protoBadgeIconOnly: {
     backgroundColor: 'rgba(15, 23, 42, 0.82)',
-    padding: 8,
-    borderRadius: 12,
+    padding: 5,
+    borderRadius: 9,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.25)',
     alignItems: 'center',
