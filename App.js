@@ -46,6 +46,7 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { decode } from 'base64-arraybuffer';
 import { BlurView } from 'expo-blur';
 import * as Notifications from 'expo-notifications';
@@ -132,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 435;
+const BUILD_NUMBER = 441;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1533,6 +1534,7 @@ const mapPortfolioRow = (p, { liked = false, visitsFallback = 120 } = {}) => ({
   cover: p.cover_url || '',
   images: getShowcaseImagesFromRow(p),
   videoLinks: [],
+  uploadedVideos: Array.isArray(p.video_urls) ? p.video_urls : [],
   caseStudy: p.brief || ''
 });
 
@@ -2375,6 +2377,58 @@ const uploadImageToSupabase = async (uri, path) => {
   }
 };
 
+// Helper to upload video URIs to Supabase Storage. Mirrors
+// uploadImageToSupabase's platform-specific body handling (web reads the
+// blob: URI directly via fetch, native reads bytes via FileSystem) since
+// that split is required regardless of file type - FileSystem.
+// readAsStringAsync simply doesn't exist on web. Does NOT compress here -
+// compression already happened on-device at pick time (see
+// pickUploadedVideo), so by the time this runs the file is already as
+// small as it's going to get; this function only uploads whatever URI
+// it's given.
+const uploadVideoToSupabase = async (uri, path) => {
+  if (!uri || !uri.startsWith('file://') && !uri.startsWith('content://') && !uri.startsWith('blob:') && !uri.startsWith('data:')) {
+    return uri; // Already a remote URL
+  }
+  try {
+    const fileExt = 'mp4';
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `${path}/${fileName}`;
+
+    let uploadBody;
+    if (Platform.OS === 'web') {
+      const response = await fetch(uri);
+      uploadBody = await response.blob();
+    } else {
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      uploadBody = decode(base64);
+    }
+
+    const { data, error } = await supabase.storage
+      .from('portfolio-media')
+      .upload(filePath, uploadBody, {
+        contentType: `video/${fileExt}`,
+        upsert: true
+      });
+
+    if (error) {
+      console.warn('Supabase video upload error:', error);
+      return null;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('portfolio-media')
+      .getPublicUrl(filePath);
+
+    return publicUrlData.publicUrl || null;
+  } catch (err) {
+    console.warn('Video upload exception:', err);
+    return null;
+  }
+};
+
 function AuthScreen({ onCancel } = {}) {
   const { theme, themeMode } = useTheme();
   const { lightweightMode } = useLightweightMode();
@@ -2858,14 +2912,16 @@ function AuthScreen({ onCancel } = {}) {
             </View>
             <ScrollView style={{ marginBottom: 16, marginTop: 8 }}>
               <Text style={{ color: theme.textSecondary, fontSize: 13, lineHeight: 20 }}>
-                By using DECENT, operated from Indonesia, you agree to these terms.{'\n\n'}
+                By creating an account or using DECENT, operated from Indonesia by Iqbal Aprianda Putra, you agree to these terms. You must be at least 13 years old to use DECENT.{'\n\n'}
                 <Text style={{ fontWeight: '700', color: theme.text }}>Your Content{'\n'}</Text>
-                You retain ownership of everything you upload. You confirm you have the right to share what you post. We may remove content that violates these terms.{'\n\n'}
+                You retain ownership of everything you upload. By posting, you grant DECENT a license to display and distribute it within the app and your public DECENT link. You confirm you have the right to share what you post, including client work. We may remove content that violates these terms.{'\n\n'}
                 <Text style={{ fontWeight: '700', color: theme.text }}>Acceptable Use{'\n'}</Text>
-                No spam, harassment, or impersonation. No uploading content you don't have rights to. We may suspend accounts that break these rules.{'\n\n'}
+                No spam, harassment, hate speech, or impersonation. No uploading content you don't have rights to. No manipulating likes, views, or follower counts. We may suspend or ban accounts that break these rules.{'\n\n'}
+                <Text style={{ fontWeight: '700', color: theme.text }}>Reports & Moderation{'\n'}</Text>
+                You can report content or accounts that violate these terms. We review reports and may take action at our discretion, including removal, suspension, or bans.{'\n\n'}
                 <Text style={{ fontWeight: '700', color: theme.text }}>Disclaimer{'\n'}</Text>
-                DECENT is provided "as is" without warranties. We're not liable for content posted by users.{'\n\n'}
-                This is a placeholder for testing purposes and should be reviewed by a legal professional before public release.
+                DECENT is provided "as is" without warranties. We're not liable for content posted by users or third-party content embedded via Figma or live links.{'\n\n'}
+                These terms are governed by the laws of Indonesia. See the full Terms of Service in Settings for complete details.
               </Text>
             </ScrollView>
             <BouncyButton
@@ -2882,6 +2938,130 @@ function AuthScreen({ onCancel } = {}) {
     </KeyboardAvoidingView>
   );
 }
+
+// Portfolio type filter for a single profile's uploaded work. Unlike For
+// You's global filter (which always lists all 4 canonical types), this only
+// ever lists the types actually present in THIS profile's uploads, and the
+// caller doesn't even render it when there's only one type - narrowing down
+// a single-type profile is meaningless. Self-contained (owns its own open/
+// closed state), explicit props only - no App()-local variables assumed.
+const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, theme }) => {
+  const [open, setOpen] = useState(false);
+  if (availableTypes.length <= 1) return null;
+  const allSelected = selected.size === availableTypes.length;
+  // Explicit height instead of content-based sizing - same known RN-Web
+  // collapsing-to-zero-height bug class as the For You filter dropdown.
+  const dropdownHeight = 58 + availableTypes.length * 40;
+
+  return (
+    <View style={open ? { alignSelf: 'flex-start', overflow: 'visible', zIndex: 100, marginBottom: 10 } : { alignSelf: 'flex-start', overflow: 'visible', marginBottom: 10 }}>
+      <BouncyButton
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+          paddingVertical: 5, paddingHorizontal: 10, borderRadius: 99,
+          borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
+        }}
+        onPress={() => setOpen((v) => !v)}
+      >
+        <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
+          {allSelected
+            ? 'All Portfolios'
+            : selected.size === 0
+              ? 'None Selected'
+              : availableTypes.filter((t) => selected.has(t.key)).map((t) => t.label).join(', ')}
+        </Text>
+        <ChevronDownSVG color={theme.textSecondary} size={13} />
+      </BouncyButton>
+
+      {open && (
+        <>
+          <TouchableOpacity
+            style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
+            activeOpacity={1}
+            onPress={() => setOpen(false)}
+          />
+          <View style={{
+            position: 'absolute', top: 34, left: 0, width: 200, height: dropdownHeight, zIndex: 100,
+            backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+            padding: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+          }}>
+            <BouncyButton
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
+              onPress={() => onChange(allSelected ? new Set() : new Set(availableTypes.map((t) => t.key)))}
+            >
+              <View style={{
+                width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
+                borderWidth: 1.5, borderColor: allSelected ? theme.accent : theme.border,
+                backgroundColor: allSelected ? theme.accent : 'transparent'
+              }}>
+                {allSelected && <CheckIconSVG color="#FFFFFF" />}
+              </View>
+              <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>All Portfolios</Text>
+            </BouncyButton>
+
+            <View style={{ height: 1, backgroundColor: theme.border, marginVertical: 4 }} />
+
+            {availableTypes.map((type) => (
+              <BouncyButton
+                key={type.key}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
+                onPress={() => {
+                  const next = new Set(selected);
+                  if (next.has(type.key)) next.delete(type.key); else next.add(type.key);
+                  onChange(next);
+                }}
+              >
+                <View style={{
+                  width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
+                  borderWidth: 1.5, borderColor: selected.has(type.key) ? theme.accent : theme.border,
+                  backgroundColor: selected.has(type.key) ? theme.accent : 'transparent'
+                }}>
+                  {selected.has(type.key) && <CheckIconSVG color="#FFFFFF" />}
+                </View>
+                <Text style={{ color: theme.text, fontSize: 13 }}>{type.label}</Text>
+              </BouncyButton>
+            ))}
+          </View>
+        </>
+      )}
+    </View>
+  );
+});
+
+// Plays an uploaded portfolio video. Aspect ratio always follows the
+// original uploaded file (via stored width/height), never a fixed 16:9 -
+// portrait phone-recorded clips display correctly instead of being
+// letterboxed. Native uses expo-video (VideoView + useVideoPlayer); web
+// renders a real HTML5 <video> element directly via React.createElement,
+// since react-native-web is built on react-dom and will happily mount an
+// actual DOM tag this way - more reliable than depending on expo-video's
+// own web support given how much of this app's RN-Web behavior has needed
+// hand-written platform branches already. Platform.OS is fixed for the
+// life of a given build (web build only ever runs 'web'), so branching a
+// hook call around it here is safe despite looking conditional.
+const PortfolioVideoPlayer = React.memo(({ uri, width, height }) => {
+  const aspectRatio = width && height ? width / height : 16 / 9;
+
+  if (Platform.OS === 'web') {
+    return React.createElement('video', {
+      src: uri,
+      controls: true,
+      playsInline: true,
+      style: { width: '100%', aspectRatio, borderRadius: 12, backgroundColor: '#000', display: 'block' }
+    });
+  }
+
+  const player = useVideoPlayer(uri, (p) => { p.loop = false; });
+  return (
+    <VideoView
+      player={player}
+      style={{ width: '100%', aspectRatio, borderRadius: 12, backgroundColor: '#000' }}
+      contentFit="contain"
+      allowsFullscreen
+      nativeControls
+    />
+  );
+});
 
 function App() {
   const { theme, themeMode, toggleTheme } = useTheme();
@@ -4044,6 +4224,12 @@ function App() {
   // destructively modifying the original uploaded files.
   const [fShowcaseAspectRatio, setFShowcaseAspectRatio] = useState('16:9'); // '16:9' | '9:16'
   const [fVideoLinks, setFVideoLinks] = useState(['']);
+  // Uploaded video files (Graphic Design portfolios only) - separate from
+  // fVideoLinks above (external YouTube/Vimeo URLs), which stays untouched.
+  // Each entry: { uri, width, height, compressing } - uri is a local file
+  // during editing, swapped for the Supabase public URL at submit time
+  // (same deferred-upload pattern as fCover/fShowcaseImages).
+  const [fUploadedVideos, setFUploadedVideos] = useState([]);
   const [errors, setErrors] = useState({});
   const [toastMessage, setToastMessage] = useState(null);
   const [appAlertConfig, setAppAlertConfig] = useState(null); // { title, message, buttons }
@@ -7134,6 +7320,7 @@ function App() {
     setFCover(proj.cover || '');
     setFShowcaseImages(proj.images && proj.images.length >= 2 ? proj.images : [proj.cover || '', '']);
     setFVideoLinks(proj.videoLinks && proj.videoLinks.length > 0 ? proj.videoLinks : ['']);
+    setFUploadedVideos(Array.isArray(proj.uploadedVideos) ? proj.uploadedVideos.map((v) => ({ uri: v.url, width: v.width, height: v.height, compressing: false })) : []);
     setFormStep(1);
     setModalVisible(false);
     setAddModalVisible(true);
@@ -7146,6 +7333,76 @@ function App() {
     }
     const updated = fShowcaseImages.filter((_, i) => i !== index);
     setFShowcaseImages(updated);
+  };
+
+  // Picks one video at a time (max 3 total), compresses it on-device via
+  // react-native-compressor before it ever touches state, then stores the
+  // COMPRESSED local uri + its real width/height so the aspect ratio shown
+  // in the wizard preview and later on the portfolio detail page always
+  // matches the actual uploaded file. Compression is native-only -
+  // react-native-compressor has no web implementation, so web uploads the
+  // original file as-is (browsers already produce reasonably-sized video
+  // files; there's no equivalent pure-JS compressor without pulling in a
+  // full ffmpeg.wasm build).
+  const MAX_UPLOADED_VIDEO_DURATION_SEC = 60;
+  const pickUploadedVideo = async () => {
+    if (fUploadedVideos.length >= 3) {
+      showAppAlert('Maximum Limit Reached', 'You can upload up to 3 videos.');
+      return;
+    }
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showAppAlert('Permission Denied', 'Media library access is required to upload local videos.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      quality: 1
+    });
+
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+    const asset = result.assets[0];
+
+    if (asset.duration && asset.duration / 1000 > MAX_UPLOADED_VIDEO_DURATION_SEC) {
+      showAppAlert('Video Too Long', `Videos must be ${MAX_UPLOADED_VIDEO_DURATION_SEC} seconds or shorter.`);
+      return;
+    }
+
+    const placeholderIndex = fUploadedVideos.length;
+    setFUploadedVideos((prev) => [...prev, { uri: asset.uri, width: asset.width || 1280, height: asset.height || 720, compressing: Platform.OS !== 'web' }]);
+
+    if (Platform.OS === 'web') return; // no on-device compressor available on web - original file is used as-is
+
+    try {
+      // Lazy require, native-only: react-native-compressor has no web
+      // build at all, and its native module instantiates a hybrid native
+      // object the instant it's imported (not lazily inside a function) -
+      // a static top-level import would execute that on the web bundle too
+      // and crash the website build before a single line of app code runs.
+      // Gating the require() itself behind this same Platform.OS check
+      // (already true at this point, since web already returned above)
+      // means that line of code, and therefore react-native-compressor's
+      // own top-level side effect, never executes in the web bundle.
+      const { Video: VideoCompressor } = require('react-native-compressor');
+      const compressedUri = await VideoCompressor.compress(
+        asset.uri,
+        { compressionMethod: 'auto' },
+        () => {} // progress callback available here if a progress bar is wanted later
+      );
+      setFUploadedVideos((prev) =>
+        prev.map((v, i) => (i === placeholderIndex ? { ...v, uri: compressedUri, compressing: false } : v))
+      );
+    } catch (e) {
+      console.warn('Video compression failed, using original file:', e);
+      setFUploadedVideos((prev) =>
+        prev.map((v, i) => (i === placeholderIndex ? { ...v, compressing: false } : v))
+      );
+    }
+  };
+
+  const handleRemoveUploadedVideo = (index) => {
+    setFUploadedVideos((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Lets the user pick several images in one go instead of one slot at a
@@ -7517,6 +7774,20 @@ function App() {
   const performPortfolioSubmit = async () => {
     const validVideos = fVideoLinks.filter((v) => v.trim() !== '');
     const validShowcaseImgs = fShowcaseImages.filter((img) => img.trim() !== '');
+    // Graphic Design only, per the feature's scope - other portfolio types
+    // never show the upload UI in the first place, but this guards the
+    // actual DB write too in case selectedPortfolioType changes mid-edit.
+    const uploadUploadedVideos = async () =>
+      selectedPortfolioType === 'graphic_design'
+        ? (await Promise.all(
+            fUploadedVideos.map(async (v) => {
+              const url = (v.uri.startsWith('file://') || v.uri.startsWith('content://') || v.uri.startsWith('blob:') || v.uri.startsWith('data:'))
+                ? await uploadVideoToSupabase(v.uri, 'videos')
+                : v.uri;
+              return url ? { url, width: v.width, height: v.height } : null;
+            })
+          )).filter(Boolean)
+        : [];
 
     // Upload any freshly-picked local images inside the block editor
     // (standalone image blocks and row-column images) before saving.
@@ -7552,6 +7823,7 @@ function App() {
         )
       );
       const finalImages = uploadedShowcase.length > 0 ? uploadedShowcase : [finalCoverUrl];
+      const finalUploadedVideos = await uploadUploadedVideos();
 
       // 2. Update the portfolios row in Supabase
       const { error: updateError } = await supabase
@@ -7573,7 +7845,8 @@ function App() {
           live_links: fHasLiveLink ? fLiveLinks.filter((l) => l.url.trim()) : [],
           categories: fCategories,
           is_nsfw: fIsNsfw,
-          showcase_aspect_ratio: fShowcaseAspectRatio
+          showcase_aspect_ratio: fShowcaseAspectRatio,
+          video_urls: finalUploadedVideos
         })
         .eq('id', editingProjectId);
 
@@ -7632,6 +7905,7 @@ function App() {
                 cover: finalCoverUrl,
                 images: finalImages,
                 videoLinks: validVideos,
+                uploadedVideos: finalUploadedVideos,
                 showcaseAspectRatio: fShowcaseAspectRatio
               }
             : p
@@ -7658,6 +7932,7 @@ function App() {
       );
 
       const finalImages = uploadedShowcase.length > 0 ? uploadedShowcase : [finalCoverUrl];
+      const finalUploadedVideos = await uploadUploadedVideos();
 
       // 3. Insert into Supabase 'portfolios' table
       let insertedId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -7686,7 +7961,8 @@ function App() {
             is_nsfw: fIsNsfw,
             likes_count: 0,
             visits_count: 1,
-            showcase_aspect_ratio: fShowcaseAspectRatio
+            showcase_aspect_ratio: fShowcaseAspectRatio,
+            video_urls: finalUploadedVideos
           }])
           .select();
 
@@ -7734,6 +8010,7 @@ function App() {
         cover: finalCoverUrl,
         images: finalImages,
         videoLinks: validVideos,
+        uploadedVideos: finalUploadedVideos,
         caseStudy: fBrief,
         showcaseAspectRatio: fShowcaseAspectRatio
       };
@@ -7910,6 +8187,7 @@ function App() {
     setFShowcaseImages(['', '']);
     setFShowcaseAspectRatio('16:9');
     setFVideoLinks(['']);
+    setFUploadedVideos([]);
     setErrors({});
   };
 
@@ -8396,6 +8674,37 @@ function App() {
   const myLikedProjects = useMemo(() => {
     return projects.filter((p) => p.liked === true);
   }, [projects]);
+
+  // Portfolio type filter, scoped per-profile (not global like For You's).
+  // Hidden entirely when a profile only has one type of uploaded work -
+  // only useful once there's actually something to narrow down.
+  const myUploadedProjectTypes = useMemo(() => {
+    const keys = new Set(myUploadedProjects.map((p) => p.portfolioType || 'ui_ux'));
+    return PORTFOLIO_TYPE_OPTIONS.filter((t) => keys.has(t.key));
+  }, [myUploadedProjects]);
+  const myUploadedProjectTypeKeys = useMemo(() => myUploadedProjectTypes.map((t) => t.key).join(','), [myUploadedProjectTypes]);
+  const [myProfileTypeFilter, setMyProfileTypeFilter] = useState(new Set());
+  useEffect(() => {
+    setMyProfileTypeFilter(new Set(myUploadedProjectTypeKeys ? myUploadedProjectTypeKeys.split(',') : []));
+  }, [myUploadedProjectTypeKeys]);
+  const myUploadedProjectsFiltered = useMemo(() => {
+    if (myUploadedProjectTypes.length <= 1) return myUploadedProjects;
+    return myUploadedProjects.filter((p) => myProfileTypeFilter.has(p.portfolioType || 'ui_ux'));
+  }, [myUploadedProjects, myUploadedProjectTypes, myProfileTypeFilter]);
+
+  const selectedDesignerProjectTypes = useMemo(() => {
+    const keys = new Set(selectedDesignerProjects.map((p) => p.portfolioType || 'ui_ux'));
+    return PORTFOLIO_TYPE_OPTIONS.filter((t) => keys.has(t.key));
+  }, [selectedDesignerProjects]);
+  const selectedDesignerProjectTypeKeys = useMemo(() => selectedDesignerProjectTypes.map((t) => t.key).join(','), [selectedDesignerProjectTypes]);
+  const [designerTypeFilter, setDesignerTypeFilter] = useState(new Set());
+  useEffect(() => {
+    setDesignerTypeFilter(new Set(selectedDesignerProjectTypeKeys ? selectedDesignerProjectTypeKeys.split(',') : []));
+  }, [selectedDesignerProjectTypeKeys, selectedDesigner]);
+  const selectedDesignerProjectsFiltered = useMemo(() => {
+    if (selectedDesignerProjectTypes.length <= 1) return selectedDesignerProjects;
+    return selectedDesignerProjects.filter((p) => designerTypeFilter.has(p.portfolioType || 'ui_ux'));
+  }, [selectedDesignerProjects, selectedDesignerProjectTypes, designerTypeFilter]);
 
   const filteredCategoriesForWizard = useMemo(() => {
     if (!categorySearchQuery.trim()) return masterCategoriesList;
@@ -10310,21 +10619,29 @@ function App() {
               </View>
 
               {profileTab === 'myWork' && (
-                <BouncyButton
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-end', marginBottom: 10 }}
-                  onPress={() => setPortfolioLayoutMode(portfolioLayoutMode === 'compact' ? 'full' : 'compact')}
-                >
-                  <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
-                    {portfolioLayoutMode === 'compact' ? 'Compact View' : 'Full Width View'}
-                  </Text>
-                  <LayoutToggleSVG mode={portfolioLayoutMode} size={15} />
-                </BouncyButton>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: myUploadedProjectTypes.length > 1 ? 'space-between' : 'flex-end', marginBottom: 10, zIndex: 100 }}>
+                  <ProfileTypeFilterBar
+                    availableTypes={myUploadedProjectTypes}
+                    selected={myProfileTypeFilter}
+                    onChange={setMyProfileTypeFilter}
+                    theme={theme}
+                  />
+                  <BouncyButton
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                    onPress={() => setPortfolioLayoutMode(portfolioLayoutMode === 'compact' ? 'full' : 'compact')}
+                  >
+                    <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                      {portfolioLayoutMode === 'compact' ? 'Compact View' : 'Full Width View'}
+                    </Text>
+                    <LayoutToggleSVG mode={portfolioLayoutMode} size={15} />
+                  </BouncyButton>
+                </View>
               )}
 
               <Animated.View style={{ opacity: profileTabContentAnim }}>
                 {profileTab === 'likedWork' || (profileTab === 'myWork' && portfolioLayoutMode === 'full') ? (
                   <ProjectGrid
-                    items={profileTab === 'myWork' ? myUploadedProjects : myLikedProjects}
+                    items={profileTab === 'myWork' ? myUploadedProjectsFiltered : myLikedProjects}
                     onPress={openProjectModal}
                     onToggleLike={toggleLike}
                     onOpenDesignerProfile={openDesignerProfileById}
@@ -10337,7 +10654,7 @@ function App() {
                   />
                 ) : (
                   <TwoRowHorizontalGrid
-                    items={profileTab === 'myWork' ? myUploadedProjects : myLikedProjects}
+                    items={profileTab === 'myWork' ? myUploadedProjectsFiltered : myLikedProjects}
                     onPress={openProjectModal}
                     onToggleLike={toggleLike}
                     onOpenDesignerProfile={openDesignerProfileById}
@@ -13761,15 +14078,23 @@ function App() {
 
               <Animated.View style={{ opacity: designerProfileTabContentAnim }}>
               {designerProfileTab === 'myWork' && (
-                <BouncyButton
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-end', marginBottom: 10 }}
-                  onPress={() => setPortfolioLayoutMode(portfolioLayoutMode === 'compact' ? 'full' : 'compact')}
-                >
-                  <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
-                    {portfolioLayoutMode === 'compact' ? 'Compact View' : 'Full Width View'}
-                  </Text>
-                  <LayoutToggleSVG mode={portfolioLayoutMode} size={15} />
-                </BouncyButton>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: selectedDesignerProjectTypes.length > 1 ? 'space-between' : 'flex-end', marginBottom: 10, zIndex: 100 }}>
+                  <ProfileTypeFilterBar
+                    availableTypes={selectedDesignerProjectTypes}
+                    selected={designerTypeFilter}
+                    onChange={setDesignerTypeFilter}
+                    theme={theme}
+                  />
+                  <BouncyButton
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                    onPress={() => setPortfolioLayoutMode(portfolioLayoutMode === 'compact' ? 'full' : 'compact')}
+                  >
+                    <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                      {portfolioLayoutMode === 'compact' ? 'Compact View' : 'Full Width View'}
+                    </Text>
+                    <LayoutToggleSVG mode={portfolioLayoutMode} size={15} />
+                  </BouncyButton>
+                </View>
               )}
 
               {designerProfileTab === 'likedWork' && loadingDesignerLikes && (
@@ -13780,7 +14105,7 @@ function App() {
 
               {designerProfileTab === 'likedWork' || (designerProfileTab === 'myWork' && portfolioLayoutMode === 'full') ? (
                 <ProjectGrid
-                  items={designerProfileTab === 'myWork' ? selectedDesignerProjects : designerLikedProjects}
+                  items={designerProfileTab === 'myWork' ? selectedDesignerProjectsFiltered : designerLikedProjects}
                   onPress={(item) => {
                     // openProjectModal already tracks cameFromDesignerId
                     // and expects this modal to stay mounted underneath so
@@ -13801,7 +14126,7 @@ function App() {
                 <TwoRowHorizontalGrid
                   items={
                     designerProfileTab === 'myWork'
-                      ? selectedDesignerProjects
+                      ? selectedDesignerProjectsFiltered
                       : designerLikedProjects
                   }
                   onPress={(item) => {
@@ -13893,7 +14218,7 @@ function App() {
             <View
               style={{
                 width: isWebWide ? '48%' : '100%',
-                borderWidth: 1.5, borderColor: theme.accent, borderRadius: 14, padding: 16,
+                borderWidth: 1.5, borderColor: themeMode === 'light' ? 'rgba(109, 40, 217, 0.35)' : 'rgba(139,92,246,0.35)', borderRadius: 14, padding: 16,
                 backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)',
                 overflow: 'hidden'
               }}
@@ -13964,7 +14289,7 @@ function App() {
                   key={type.key}
                   style={{
                     width: isWebWide ? '48%' : '100%',
-                    borderWidth: 1.5, borderColor: theme.accent, borderRadius: 14, padding: 16,
+                    borderWidth: 1.5, borderColor: themeMode === 'light' ? 'rgba(109, 40, 217, 0.35)' : 'rgba(139,92,246,0.35)', borderRadius: 14, padding: 16,
                     backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)',
                     overflow: 'hidden'
                   }}
@@ -15403,6 +15728,50 @@ function App() {
                   <BouncyButton style={styles.addMoreVideoBtn} onPress={handleAddMoreVideo}>
                     <Text style={styles.addMoreVideoText}>+ Add More Video Links</Text>
                   </BouncyButton>
+
+                  {selectedPortfolioType === 'graphic_design' && (
+                    <View style={{ marginTop: 20 }}>
+                      <Text style={styles.formGroupLabel}>
+                        Upload Videos (Optional - up to 3, max {MAX_UPLOADED_VIDEO_DURATION_SEC}s each)
+                      </Text>
+                      <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 8 }}>
+                        Videos are automatically compressed to save space, which may slightly reduce quality. Plays back at the video's own aspect ratio.
+                      </Text>
+
+                      {fUploadedVideos.map((vid, idx) => (
+                        <View key={idx} style={{ marginBottom: 12 }}>
+                          <View style={{ position: 'relative' }}>
+                            <PortfolioVideoPlayer uri={vid.uri} width={vid.width} height={vid.height} />
+                            {vid.compressing && (
+                              <View style={{
+                                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                                backgroundColor: 'rgba(11, 15, 23, 0.6)', borderRadius: 12,
+                                alignItems: 'center', justifyContent: 'center'
+                              }}>
+                                <ActivityIndicator color="#FFFFFF" />
+                                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', marginTop: 6 }}>Compressing...</Text>
+                              </View>
+                            )}
+                            <BouncyButton
+                              style={{
+                                position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 14,
+                                backgroundColor: 'rgba(11, 15, 23, 0.7)', alignItems: 'center', justifyContent: 'center'
+                              }}
+                              onPress={() => handleRemoveUploadedVideo(idx)}
+                            >
+                              <TrashIconSVG />
+                            </BouncyButton>
+                          </View>
+                        </View>
+                      ))}
+
+                      {fUploadedVideos.length < 3 && (
+                        <BouncyButton style={styles.addMoreVideoBtn} onPress={pickUploadedVideo}>
+                          <Text style={styles.addMoreVideoText}>+ Upload Video ({fUploadedVideos.length}/3)</Text>
+                        </BouncyButton>
+                      )}
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -15444,6 +15813,12 @@ function App() {
                         <VideoFilledIconSVG size={13} />
                         <Text style={styles.reviewStat}>Video Demos: <Text style={{ fontWeight: '800', color: theme.text }}>{fVideoLinks.filter(v => v.trim()).length}</Text> Attached</Text>
                       </View>
+                      {selectedPortfolioType === 'graphic_design' && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                          <VideoFilledIconSVG size={13} />
+                          <Text style={styles.reviewStat}>Uploaded Videos: <Text style={{ fontWeight: '800', color: theme.text }}>{fUploadedVideos.length}</Text> Attached</Text>
+                        </View>
+                      )}
                     </View>
                   </View>
                 </View>
@@ -16204,6 +16579,19 @@ function App() {
                           </BouncyButton>
                         ) : null
                       ))}
+                    </View>
+                  )}
+
+                  {activeProject.portfolioType === 'graphic_design' && activeProject.uploadedVideos && activeProject.uploadedVideos.length > 0 && (
+                    <View style={{ gap: 4, marginBottom: 16 }}>
+                      {activeProject.uploadedVideos.map((vid, idx) => (
+                        <View key={idx} style={{ marginBottom: 6 }}>
+                          <PortfolioVideoPlayer uri={vid.url} width={vid.width} height={vid.height} />
+                        </View>
+                      ))}
+                      <Text style={{ color: theme.textTertiary, fontSize: 11 }}>
+                        Video compressed to save space - quality may differ slightly from the original upload.
+                      </Text>
                     </View>
                   )}
 
