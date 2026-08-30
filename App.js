@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 441;
+const BUILD_NUMBER = 443;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1890,6 +1890,18 @@ const ProjectCard = React.memo(({
           <View style={[styles.protoBadgeIconOnly, { flexDirection: 'row', gap: 6 }]}>
             {item.figmaProto ? <MobileIconSVG size={13} /> : null}
             {item.desktopProto ? <DesktopIconSVG size={13} /> : null}
+          </View>
+        )}
+        {(item.portfolioType === 'graphic_design' || item.portfolioType === 'illustration') &&
+          ((item.uploadedVideos && item.uploadedVideos.length > 0) ||
+           (item.videoLinks && item.videoLinks.some((v) => v && v.trim())) ||
+           (item.images && item.images.length > 1)) && (
+          <View style={[styles.protoBadgeIconOnly, { flexDirection: 'row', gap: 6 }]}>
+            {((item.uploadedVideos && item.uploadedVideos.length > 0) ||
+              (item.videoLinks && item.videoLinks.some((v) => v && v.trim()))) ? (
+              <VideoFilledIconSVG size={13} color="#FFFFFF" />
+            ) : null}
+            {(item.images && item.images.length > 1) ? <ImageFilledIconSVG size={13} color="#FFFFFF" /> : null}
           </View>
         )}
       </View>
@@ -3710,6 +3722,22 @@ function App() {
   // otherwise it stays the plain always-visible horizontal scroll it's
   // always been, unaffected by this flag.
   const [galleryExpanded, setGalleryExpanded] = useState(false);
+  // Case Study / Video / Image tab switcher - Graphic Design and
+  // Illustration portfolio types only. Reset to 'caseStudy' on every new
+  // portfolio open (see openProjectModal).
+  const [gdTab, setGdTab] = useState('caseStudy');
+  // Fullscreen swipeable image viewer, used by the Image tab above (and
+  // reachable from nowhere else - the existing single-image lightboxImageUri
+  // stays untouched for avatars and other single-tap-to-enlarge spots).
+  // openId increments on every open so the ScrollView below can be keyed to
+  // force a fresh mount + correct initial scroll position even when
+  // reopening on the same index. { images: string[], index: number } | null
+  const [imageViewerState, setImageViewerState] = useState(null);
+  const [imageViewerOpenId, setImageViewerOpenId] = useState(0);
+  const openImageViewer = (images, index) => {
+    setImageViewerState({ images, index });
+    setImageViewerOpenId((id) => id + 1);
+  };
   const galleryScrollContentWidthRef = useRef(0);
   const galleryScrollContainerWidthRef = useRef(0);
   const galleryScrollXRef = useRef(0);
@@ -6790,6 +6818,11 @@ function App() {
     // detailed description/content blocks - see render site) starts
     // collapsed for every newly opened portfolio, not just the first one.
     setGalleryExpanded(false);
+    // New tab switcher (Case Study / Video / Image), Graphic Design and
+    // Illustration only - always starts back on Case Study for whichever
+    // portfolio was just opened, same reset-on-open pattern as the gallery
+    // accordion just above.
+    setGdTab('caseStudy');
 
     // No longer optimistically bumping visitsCount here - whether this
     // view actually counts depends on the async dedup check below (same
@@ -11197,6 +11230,60 @@ function App() {
             <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>✕</Text>
           </BouncyButton>
         </TouchableOpacity>
+      </Modal>
+
+      {/* FULLSCREEN SWIPEABLE IMAGE VIEWER - Graphic Design/Illustration
+          Image tab. Separate from the single-image lightbox above (which
+          stays as-is for avatars and other single-tap spots) since this one
+          needs an array + index and swipe-between-images, not just a single
+          uri. Keyed on imageViewerOpenId so the ScrollView remounts fresh on
+          every open, guaranteeing correct initial scroll position even when
+          reopening on the same index a second time. */}
+      <Modal
+        animationType={Platform.OS === 'web' ? 'none' : 'fade'}
+        transparent={true}
+        visible={!!imageViewerState}
+        onRequestClose={() => setImageViewerState(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
+          {imageViewerState && (
+            <ScrollView
+              key={imageViewerOpenId}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              contentOffset={{ x: imageViewerState.index * Dimensions.get('window').width, y: 0 }}
+              onMomentumScrollEnd={(e) => {
+                const idx = Math.round(e.nativeEvent.contentOffset.x / Dimensions.get('window').width);
+                setImageViewerState((prev) => (prev ? { ...prev, index: idx } : prev));
+              }}
+            >
+              {imageViewerState.images.map((uri, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={{ width: Dimensions.get('window').width, height: '100%', alignItems: 'center', justifyContent: 'center' }}
+                  activeOpacity={1}
+                  onPress={() => setImageViewerState(null)}
+                >
+                  <Image source={{ uri }} style={{ width: '100%', height: '80%' }} resizeMode="contain" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+          <BouncyButton
+            style={{ position: 'absolute', top: 50, right: 20, width: 40, height: 40, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+            onPress={() => setImageViewerState(null)}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>✕</Text>
+          </BouncyButton>
+          {imageViewerState && imageViewerState.images.length > 1 && (
+            <View style={{ position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}>
+              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                {imageViewerState.index + 1} / {imageViewerState.images.length}
+              </Text>
+            </View>
+          )}
+        </View>
       </Modal>
 
       {/* LINK PREVIEW - press-and-hold on a profile link button */}
@@ -15704,31 +15791,6 @@ function App() {
                     <Text style={styles.errorText}>{errors.showcaseImages}</Text>
                   ) : null}
 
-                  <Text style={[styles.formGroupLabel, { marginTop: 20 }]}>Video Demo Links (Optional - YouTube/Vimeo)</Text>
-                  {fVideoLinks.map((vid, idx) => (
-                    <View key={idx} style={styles.videoInputRow}>
-                      <FocusableTextInput
-                        style={[styles.formInput, { flex: 1 }]}
-                        placeholder={`https://www.youtube.com/watch?v=... (${idx + 1})`}
-                        placeholderTextColor="#94A3B8"
-                        value={vid}
-                        onChangeText={(t) => handleVideoUrlChange(t, idx)}
-                      />
-                      {fVideoLinks.length > 1 && (
-                        <BouncyButton
-                          style={styles.removeVideoBtn}
-                          onPress={() => handleRemoveVideoLink(idx)}
-                        >
-                          <TrashIconSVG />
-                        </BouncyButton>
-                      )}
-                    </View>
-                  ))}
-
-                  <BouncyButton style={styles.addMoreVideoBtn} onPress={handleAddMoreVideo}>
-                    <Text style={styles.addMoreVideoText}>+ Add More Video Links</Text>
-                  </BouncyButton>
-
                   {selectedPortfolioType === 'graphic_design' && (
                     <View style={{ marginTop: 20 }}>
                       <Text style={styles.formGroupLabel}>
@@ -15772,6 +15834,31 @@ function App() {
                       )}
                     </View>
                   )}
+
+                  <Text style={[styles.formGroupLabel, { marginTop: 20 }]}>Video Demo Links (Optional - YouTube/Vimeo)</Text>
+                  {fVideoLinks.map((vid, idx) => (
+                    <View key={idx} style={styles.videoInputRow}>
+                      <FocusableTextInput
+                        style={[styles.formInput, { flex: 1 }]}
+                        placeholder={`https://www.youtube.com/watch?v=... (${idx + 1})`}
+                        placeholderTextColor="#94A3B8"
+                        value={vid}
+                        onChangeText={(t) => handleVideoUrlChange(t, idx)}
+                      />
+                      {fVideoLinks.length > 1 && (
+                        <BouncyButton
+                          style={styles.removeVideoBtn}
+                          onPress={() => handleRemoveVideoLink(idx)}
+                        >
+                          <TrashIconSVG />
+                        </BouncyButton>
+                      )}
+                    </View>
+                  ))}
+
+                  <BouncyButton style={styles.addMoreVideoBtn} onPress={handleAddMoreVideo}>
+                    <Text style={styles.addMoreVideoText}>+ Add More Video Links</Text>
+                  </BouncyButton>
                 </View>
               )}
 
@@ -16405,6 +16492,280 @@ function App() {
 
             <View style={styles.modalBody}>
               {(() => {
+                // Graphic Design / Illustration: no prototype ever exists for
+                // these types, so instead of the UI/UX split-pane logic below,
+                // this is a fully separate, simpler layout - one column,
+                // always, on every screen size - with its own Case Study /
+                // Video / Image tab switcher. Early-returns before any of the
+                // hasPrototype/showSplitLayout logic below even runs, so none
+                // of that UI/UX-specific branching is touched by this at all.
+                if (activeProject.portfolioType === 'graphic_design' || activeProject.portfolioType === 'illustration') {
+                  const allVideos = [
+                    ...(activeProject.uploadedVideos || []).map((v) => ({ kind: 'uploaded', url: v.url, width: v.width, height: v.height })),
+                    ...(activeProject.videoLinks || []).filter((v) => v && v.trim()).map((v) => ({ kind: 'link', url: v }))
+                  ];
+                  const allImages = activeProject.images || [];
+                  const hasUploadedVideo = allVideos.some((v) => v.kind === 'uploaded');
+
+                  const GD_TABS = [
+                    { key: 'caseStudy', label: 'Case Study' },
+                    { key: 'video', label: 'Video' },
+                    { key: 'image', label: 'Image' }
+                  ];
+
+                  return (
+                    <ScrollView
+                      ref={modalScrollViewRef}
+                      style={styles.caseScrollView}
+                      contentContainerStyle={[styles.caseContent, { paddingBottom: 110 }]}
+                      onScroll={handleModalScroll}
+                      scrollEventThrottle={16}
+                    >
+                      {!isWebWide ? (
+                        <Text style={[styles.caseTitle, { textAlign: 'left', marginBottom: 14 }]}>
+                          {activeProject.title}
+                        </Text>
+                      ) : (
+                        <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                            <LikeButton
+                              liked={activeProject.liked}
+                              likesCount={activeProject.likesCount}
+                              onPress={() => toggleLike(activeProject.id)}
+                              color={theme.textSecondary}
+                              monochrome
+                              size={18}
+                            />
+                            <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.likesCount || 1}</Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                            <EyeViewIconSVG size={18} color={theme.textSecondary} />
+                            <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.visitsCount || 120}</Text>
+                          </View>
+                        </View>
+                      )}
+
+                      <View style={styles.designerRowModal}>
+                        <BouncyButton
+                          style={styles.designerRowModalLeftCol}
+                          activeOpacity={0.7}
+                          onPress={() => openDesignerProfileById(activeProject.ownerId)}
+                        >
+                          <Image
+                            source={{ uri: activeProject.designerAvatar }}
+                            style={styles.designerAvatarModal}
+                          />
+                          <View style={{ flex: 1, marginRight: 8 }}>
+                            <Text style={styles.caseDesigner}>By {activeProject.designer}</Text>
+                            <Text style={styles.caseDesignerRole}>{getDesignerRole(activeProject.designer)}</Text>
+                          </View>
+                        </BouncyButton>
+
+                        {!(session && activeProject.ownerId === session.user.id) && (
+                          <BouncyButton
+                            style={[
+                              styles.modalDesignerFollowBtnRight,
+                              followedDesigners.includes(activeProject.ownerId) && styles.modalDesignerFollowBtnRightActive
+                            ]}
+                            onPress={() => toggleFollowDesigner(activeProject.ownerId)}
+                          >
+                            <Text style={[
+                              styles.modalDesignerFollowTextRight,
+                              followedDesigners.includes(activeProject.ownerId) && styles.modalDesignerFollowTextRightActive
+                            ]}>
+                              {followedDesigners.includes(activeProject.ownerId) ? 'Following' : (activeProject.followsMe ? 'Follow Back' : '+ Follow')}
+                            </Text>
+                          </BouncyButton>
+                        )}
+                      </View>
+
+                      {activeProject.liveLinks && activeProject.liveLinks.length > 0 && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                          {activeProject.liveLinks.map((link, idx) => (
+                            link.url && link.url.trim() !== '' ? (
+                              <BouncyButton
+                                key={idx}
+                                style={{
+                                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                  backgroundColor: '#8B5CF6', borderRadius: 99, paddingVertical: 10, paddingHorizontal: 16
+                                }}
+                                onPress={() => openExternalLinkWithWarning(link.url)}
+                              >
+                                {getSocialLogoSVG(link.url)}
+                                <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
+                                  {link.label && link.label.trim() !== '' ? link.label : 'Visit Live Link'}
+                                </Text>
+                                <ExternalLinkSVG color="#FFFFFF" size={15} />
+                              </BouncyButton>
+                            ) : null
+                          ))}
+                        </View>
+                      )}
+
+                      {/* Case Study / Video / Image tab switcher - plain
+                          static highlight rather than the animated sliding
+                          pill used for the 2-tab proto switcher elsewhere,
+                          since that one's slide math is hardcoded for
+                          exactly 2 segments. */}
+                      <View style={{
+                        flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 99, padding: 4,
+                        marginBottom: 16, borderWidth: 1, borderColor: theme.border, gap: 4
+                      }}>
+                        {GD_TABS.map((tab) => (
+                          <BouncyButton
+                            key={tab.key}
+                            style={{
+                              flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 99,
+                              backgroundColor: gdTab === tab.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent'
+                            }}
+                            onPress={() => setGdTab(tab.key)}
+                          >
+                            <Text style={{ color: gdTab === tab.key ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 13 }}>
+                              {tab.label}
+                            </Text>
+                          </BouncyButton>
+                        ))}
+                      </View>
+
+                      {gdTab === 'caseStudy' && (
+                        <>
+                          <View style={styles.briefBox}>
+                            <Text style={styles.briefText}>{activeProject.brief}</Text>
+                          </View>
+
+                          {activeProject.categories && activeProject.categories.length > 0 && (
+                            <View style={showAiTooltip ? { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 20, zIndex: 100, position: 'relative' } : { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 20 }}>
+                              {activeProject.isAiGenerated === true && (
+                                <View style={showAiTooltip ? { position: 'relative', zIndex: 100 } : { position: 'relative' }}>
+                                  <BouncyButton
+                                    style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                    onPress={handleAiIconPress}
+                                  >
+                                    <Text style={{ color: '#E2E8F0', fontSize: 11, fontWeight: '800' }}>AI</Text>
+                                  </BouncyButton>
+                                  {showAiTooltip && (
+                                    <Animated.View
+                                      pointerEvents="none"
+                                      style={{
+                                        position: 'absolute', top: 32, left: -6, zIndex: 50,
+                                        backgroundColor: theme.mode === 'light' ? '#1E293B' : '#0F172A',
+                                        borderWidth: 1, borderColor: theme.border,
+                                        borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+                                        width: 220,
+                                        opacity: 1,
+                                        transform: [{
+                                          translateY: aiTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] })
+                                        }]
+                                      }}
+                                    >
+                                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', lineHeight: 17 }}>
+                                        This content is AI generated/assisted
+                                      </Text>
+                                    </Animated.View>
+                                  )}
+                                </View>
+                              )}
+
+                              <View style={{ flex: 1, position: 'relative' }}>
+                              <ScrollView
+                                ref={detailTagsScrollRef}
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={{ flexDirection: 'row', gap: 8, paddingRight: Platform.OS === 'web' ? 24 : 0 }}
+                                onScroll={Platform.OS === 'web' ? (e) => updateDetailTagsScrollArrows(e.nativeEvent.contentOffset.x) : undefined}
+                                scrollEventThrottle={16}
+                                onContentSizeChange={Platform.OS === 'web' ? (w) => {
+                                  detailTagsScrollContentWidthRef.current = w;
+                                  updateDetailTagsScrollArrows(detailTagsScrollXRef.current);
+                                } : undefined}
+                                onLayout={Platform.OS === 'web' ? (e) => {
+                                  detailTagsScrollContainerWidthRef.current = e.nativeEvent.layout.width;
+                                  updateDetailTagsScrollArrows(detailTagsScrollXRef.current);
+                                } : undefined}
+                              >
+                                {activeProject.categories.map((cat, idx) => (
+                                  <BouncyButton
+                                    key={idx}
+                                    style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}
+                                    onPress={() => {
+                                      setModalVisible(false);
+                                      setSearchQuery(cat);
+                                      handleNavChange('search');
+                                    }}
+                                    onLongPress={() => handleReportContent('tag', cat, `the tag "${cat}"`)}
+                                  >
+                                    <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '600' }}>{cat}</Text>
+                                  </BouncyButton>
+                                ))}
+                              </ScrollView>
+
+                              {Platform.OS === 'web' && detailTagsCanScrollLeft && (
+                                <View style={{ position: 'absolute', left: -2, top: 0, bottom: 0, justifyContent: 'center', backgroundColor: theme.bg, paddingRight: 4 }}>
+                                  <ChevronLeftSVG color={theme.textSecondary} size={16} />
+                                </View>
+                              )}
+                              {Platform.OS === 'web' && detailTagsCanScrollRight && (
+                                <View style={{ position: 'absolute', right: -2, top: 0, bottom: 0, justifyContent: 'center', backgroundColor: theme.bg, paddingLeft: 4 }}>
+                                  <ChevronRightSVG color={theme.textSecondary} size={16} />
+                                </View>
+                              )}
+                              </View>
+                            </View>
+                          )}
+
+                          <Text style={styles.sectionHeader}>CASE STUDY OVERVIEW</Text>
+                          {activeProject.contentBlocks && activeProject.contentBlocks.length > 0 ? (
+                            <View>{renderContentBlocks(activeProject.contentBlocks, setLightboxImageUri, theme)}</View>
+                          ) : (
+                            <Text style={styles.caseBodyText}>{activeProject.brief}</Text>
+                          )}
+                        </>
+                      )}
+
+                      {gdTab === 'video' && (
+                        <View style={{ gap: 16 }}>
+                          {allVideos.length === 0 ? (
+                            <Text style={styles.caseBodyText}>No videos added to this portfolio yet.</Text>
+                          ) : allVideos.map((v, idx) => (
+                            v.kind === 'uploaded' ? (
+                              <PortfolioVideoPlayer key={idx} uri={v.url} width={v.width} height={v.height} />
+                            ) : (
+                              <BouncyButton key={idx} style={styles.linkChip} onPress={() => openExternalLinkWithWarning(v.url)}>
+                                <Text style={styles.linkChipText}>▶ Watch Video Demo ↗</Text>
+                              </BouncyButton>
+                            )
+                          ))}
+                          {hasUploadedVideo && (
+                            <Text style={{ color: theme.textTertiary, fontSize: 11 }}>
+                              Video compressed to save space - quality may differ slightly from the original upload.
+                            </Text>
+                          )}
+                        </View>
+                      )}
+
+                      {gdTab === 'image' && (
+                        <View style={{ gap: 12 }}>
+                          {allImages.length === 0 ? (
+                            <Text style={styles.caseBodyText}>No images added to this portfolio yet.</Text>
+                          ) : allImages.map((imgUrl, index) => (
+                            <BouncyButton key={index} activeOpacity={0.9} onPress={() => openImageViewer(allImages, index)}>
+                              <Image
+                                source={{ uri: imgUrl }}
+                                style={{
+                                  width: '100%',
+                                  aspectRatio: activeProject.showcaseAspectRatio === '9:16' ? 9 / 16 : 16 / 9,
+                                  borderRadius: 12
+                                }}
+                                resizeMode="cover"
+                              />
+                            </BouncyButton>
+                          ))}
+                        </View>
+                      )}
+                    </ScrollView>
+                  );
+                }
+
                 const hasPrototype = !!(activeProject.figmaProto || activeProject.desktopProto || activeProject.componentProto);
                 const showSplitLayout = Platform.OS === 'web' && isWebWide;
                 const protoUri = getFigmaEmbedUrl(
