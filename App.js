@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 452;
+const BUILD_NUMBER = 453;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -7287,7 +7287,17 @@ function App() {
     // a portfolio outside whatever's paginated in right now) - fetch it
     // directly instead.
     const [{ data: p, error }, { data: likeRow }] = await Promise.all([
-      supabase.from('portfolios').select('*').eq('id', portfolioId).single(),
+      // Missing the portfolio_images join here specifically was the actual
+      // cause of "edited images don't persist after reload" - this is the
+      // fetch path used whenever a portfolio isn't already sitting in the
+      // currently-loaded feed (projectsRef.current), which is exactly what
+      // happens on a fresh page reload/refresh while viewing /p/:id
+      // directly, or opening from a notification. The edit itself was
+      // saving correctly the whole time (confirmed directly in the
+      // database) - this separate fetch path just never asked for the
+      // images at all, silently falling back to a single cover image via
+      // getShowcaseImagesFromRow's fallback branch.
+      supabase.from('portfolios').select('*, portfolio_images(image_url, caption)').eq('id', portfolioId).single(),
       session
         ? supabase.from('likes').select('id').eq('user_id', session.user.id).eq('portfolio_id', portfolioId).maybeSingle()
         : Promise.resolve({ data: null })
