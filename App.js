@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 433;
+const BUILD_NUMBER = 434;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -8619,7 +8619,17 @@ function App() {
             }}
           >
             <SafeAreaView style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', paddingHorizontal: 16, marginBottom: sidebarCollapsed ? 20 : 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: sidebarCollapsed ? 20 : 8, gap: 10 }}>
+                <BouncyButton
+                  style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}
+                  onPress={() => setSidebarCollapsed(!sidebarCollapsed)}
+                >
+                  {sidebarCollapsed ? (
+                    <HamburgerSVG inactiveColor={theme.accentLight} size={18} />
+                  ) : (
+                    <ChevronLeftSVG color={theme.accentLight} size={18} />
+                  )}
+                </BouncyButton>
                 {!sidebarCollapsed && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
                     <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -8628,14 +8638,6 @@ function App() {
                     <Text style={styles.logoText}>ECENT</Text>
                   </View>
                 )}
-                <BouncyButton
-                  style={{ width: headerIconBtnSize, height: headerIconBtnSize, borderRadius: headerIconBtnSize / 2, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}
-                  onPress={() => setSidebarCollapsed(!sidebarCollapsed)}
-                >
-                  <View style={{ transform: [{ scale: headerIconSize / 18 }, { rotate: sidebarCollapsed ? '180deg' : '0deg' }] }}>
-                    <ChevronLeftSVG color={theme.accentLight} />
-                  </View>
-                </BouncyButton>
               </View>
 
               <BouncyButton
