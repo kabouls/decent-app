@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 429;
+const BUILD_NUMBER = 430;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1884,22 +1884,7 @@ const ProjectCard = React.memo(({
         </View>
       )}
       <View style={styles.prototypeBadgesRow}>
-        <View style={styles.protoBadgeIconOnly}>
-          {item.portfolioType === 'graphic_design' ? (
-            <PaletteSVG size={13} color="#FFFFFF" />
-          ) : item.portfolioType === 'illustration' ? (
-            <PaintBrushSVG size={13} color="#FFFFFF" />
-          ) : (
-            <CursorArrowSVG size={13} color="#FFFFFF" />
-          )}
-        </View>
         {(item.figmaProto || item.desktopProto) && (
-          // Both prototype icons share one rounded container (rather than
-          // each getting its own separate pill, which is what made two
-          // side-by-side badges look like duplicated chrome instead of one
-          // "prototypes available" indicator) - only the icons themselves
-          // are conditional, the container renders once whenever at least
-          // one prototype link exists.
           <View style={[styles.protoBadgeIconOnly, { flexDirection: 'row', gap: 6 }]}>
             {item.figmaProto ? <MobileIconSVG size={13} /> : null}
             {item.desktopProto ? <DesktopIconSVG size={13} /> : null}
@@ -1943,6 +1928,27 @@ const ProjectCard = React.memo(({
     </View>
 
     <View style={[styles.cardBody, isTwoRowCard && styles.cardBodyCompact]}>
+      {/* Portfolio type moved here from the thumbnail badge, now paired
+          with its name rather than just an icon - AI tag (when present)
+          sits to its left, same color/style as before. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+        {item.isAiGenerated === true && (
+          <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: 5, backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#E2E8F0', fontSize: 9, fontWeight: '800' }}>AI</Text>
+          </View>
+        )}
+        {item.portfolioType === 'graphic_design' ? (
+          <PaletteSVG size={13} color={theme.textSecondary} />
+        ) : item.portfolioType === 'illustration' ? (
+          <PaintBrushSVG size={13} color={theme.textSecondary} />
+        ) : (
+          <CursorArrowSVG size={13} color={theme.textSecondary} />
+        )}
+        <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
+          {item.portfolioType === 'graphic_design' ? 'Graphic Design' : item.portfolioType === 'illustration' ? 'Illustration' : 'UI/UX Design'}
+        </Text>
+      </View>
+
       <View style={styles.titleRow}>
         <Text style={[styles.cardTitle, isTwoRowCard && styles.cardTitleCompact]} numberOfLines={2}>{item.title}</Text>
         {onToggleLike ? (
@@ -1956,10 +1962,6 @@ const ProjectCard = React.memo(({
           />
         ) : null}
       </View>
-
-      {!hideBrief && (
-        <Text style={styles.cardDesc} numberOfLines={2}>{item.brief}</Text>
-      )}
 
       <View style={styles.designerRowWithFollow}>
         <BouncyButton
