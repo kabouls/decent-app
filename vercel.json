@@ -5,20 +5,6 @@
   "cleanUrls": true,
   "framework": null,
   "rewrites": [
-    {
-      "source": "/p/:id",
-      "has": [
-        { "type": "header", "key": "user-agent", "value": ".*(bot|crawl|spider|facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|WhatsApp|Discordbot|TelegramBot|Googlebot|Bingbot).*" }
-      ],
-      "destination": "/api/bot?type=portfolio&id=:id"
-    },
-    {
-      "source": "/@:handle",
-      "has": [
-        { "type": "header", "key": "user-agent", "value": ".*(bot|crawl|spider|facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|WhatsApp|Discordbot|TelegramBot|Googlebot|Bingbot).*" }
-      ],
-      "destination": "/api/bot?type=profile&handle=:handle"
-    },
     { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
     { "source": "/:path*", "destination": "/" }
   ]
