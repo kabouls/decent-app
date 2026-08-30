@@ -1932,15 +1932,15 @@ const ProjectCard = React.memo(({
             <Text style={{ color: '#E2E8F0', fontSize: 9, fontWeight: '800' }}>AI</Text>
           </View>
         )}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 20, paddingHorizontal: 6, borderRadius: 5, borderWidth: 1, borderColor: '#8B5CF6' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 20, paddingHorizontal: 6, borderRadius: 5, borderWidth: 1, borderColor: theme.border }}>
           {item.portfolioType === 'graphic_design' ? (
-            <PaletteSVG size={12} color="#8B5CF6" />
+            <PaletteSVG size={12} color={theme.textSecondary} />
           ) : item.portfolioType === 'illustration' ? (
-            <PaintBrushSVG size={12} color="#8B5CF6" />
+            <PaintBrushSVG size={12} color={theme.textSecondary} />
           ) : (
-            <CursorArrowSVG size={12} color="#8B5CF6" />
+            <CursorArrowSVG size={12} color={theme.textSecondary} />
           )}
-          <Text style={{ color: '#8B5CF6', fontSize: 10, fontWeight: '700' }}>
+          <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '700' }}>
             {item.portfolioType === 'graphic_design' ? 'Graphic Design' : item.portfolioType === 'illustration' ? 'Illustration' : 'UI/UX Design'}
           </Text>
         </View>
