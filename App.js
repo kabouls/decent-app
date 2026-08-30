@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 444;
+const BUILD_NUMBER = 445;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -17026,19 +17026,6 @@ function App() {
                     </View>
                   )}
 
-                  {activeProject.portfolioType === 'graphic_design' && activeProject.uploadedVideos && activeProject.uploadedVideos.length > 0 && (
-                    <View style={{ gap: 4, marginBottom: 16 }}>
-                      {activeProject.uploadedVideos.map((vid, idx) => (
-                        <View key={idx} style={{ marginBottom: 6 }}>
-                          <PortfolioVideoPlayer uri={vid.url} width={vid.width} height={vid.height} />
-                        </View>
-                      ))}
-                      <Text style={{ color: theme.textTertiary, fontSize: 11 }}>
-                        Video compressed to save space - quality may differ slightly from the original upload.
-                      </Text>
-                    </View>
-                  )}
-
                   <View style={styles.briefBox}>
                     <Text style={styles.briefText}>{activeProject.brief}</Text>
                   </View>
@@ -17174,7 +17161,7 @@ function App() {
                             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
                             onPress={() => setGalleryExpanded((prev) => !prev)}
                           >
-                            <Text style={styles.sectionHeader}>IMAGE GALLERY</Text>
+                            <Text style={styles.sectionHeader}>{isGdType ? 'MEDIA GALLERY' : 'IMAGE GALLERY'}</Text>
                             {galleryOpen ? (
                               <ChevronUpSVG color={theme.textSecondary} size={16} />
                             ) : (
@@ -17182,7 +17169,7 @@ function App() {
                             )}
                           </BouncyButton>
                         ) : (
-                          <Text style={styles.sectionHeader}>IMAGE GALLERY</Text>
+                          <Text style={styles.sectionHeader}>{isGdType ? 'MEDIA GALLERY' : 'IMAGE GALLERY'}</Text>
                         )}
                         {galleryOpen && (
                   <View style={{ position: 'relative' }}>
@@ -17211,6 +17198,23 @@ function App() {
                           <BouncyButton key={index} activeOpacity={0.9} onPress={() => setLightboxImageUri(imgUrl)}>
                             <Image source={{ uri: imgUrl }} style={[styles.galleryImage, { width: galleryWidth, height: galleryHeight }]} resizeMode="cover" />
                           </BouncyButton>
+                        );
+                      })}
+                      {/* Media Gallery (Graphic Design/Illustration only) also
+                          includes uploaded videos in this same horizontal
+                          strip, alongside images - external video LINKS
+                          aren't included here (no thumbnail/dimensions to show
+                          in a strip like this), those stay in the right-panel
+                          Video tab only. Each video keeps its own real aspect
+                          ratio rather than the showcase setting used for
+                          images. */}
+                      {isGdType && (activeProject.uploadedVideos || []).map((vid, index) => {
+                        const galleryHeight = 220;
+                        const vidAspect = vid.width && vid.height ? vid.width / vid.height : 16 / 9;
+                        return (
+                          <View key={`vid-${index}`} style={{ height: galleryHeight, width: galleryHeight * vidAspect, borderRadius: 12, overflow: 'hidden' }}>
+                            <PortfolioVideoPlayer uri={vid.url} width={vid.width} height={vid.height} />
+                          </View>
                         );
                       })}
                     </ScrollView>
