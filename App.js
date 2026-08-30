@@ -12036,18 +12036,55 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ color: '#0F172A', fontSize: 20, fontWeight: '800' }}>Privacy Policy</Text>
               <Text style={{ color: '#64748B', fontSize: 13, fontStyle: 'italic' }}>
-                Last updated: August 2026. This is a placeholder policy for testing purposes and should be reviewed by a legal professional before public release.
+                Last updated: August 30, 2026.
               </Text>
               <Text style={{ color: '#1E293B', fontSize: 14, lineHeight: 21 }}>
-                DECENT ("we", "us") is operated from Indonesia. This policy explains what data we collect and how it's used, in line with Indonesia's Personal Data Protection Law (UU No. 27 Tahun 2022).
+                DECENT ("we", "us", "our") is a portfolio-sharing platform for designers, operated from Indonesia by Iqbal Aprianda Putra. This policy explains what personal data we collect through the DECENT app and website, why we collect it, and the choices you have, in line with Indonesia's Personal Data Protection Law (UU No. 27 Tahun 2022).
               </Text>
 
               <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Data We Collect</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Account info: email, name, role, bio, location, profile photo</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Content you upload: portfolio images, links, descriptions</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• Usage data: likes, follows, views, notifications</Text>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Account & Profile Data</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Email address and password when you sign up directly</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• If you sign in with Google instead, your name, email, and profile photo as shared by Google</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Your display name, handle, bio, role/title, and location, if you choose to add them</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Your profile photo</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• External links you choose to add to your profile (e.g. LinkedIn, Dribbble)</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• A push notification token for your device, only if you allow notifications</Text>
               </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Content You Create</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Portfolio titles, briefs, and case-study descriptions you write</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Cover images and any images or content blocks you upload</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Figma prototype links and embeds you add</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• "Live" project links and labels you add</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• Category/type tags you assign (e.g. UI/UX, Graphic Design, Illustration)</Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Social & Engagement Data</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Who you follow and who follows you</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Portfolios you like</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Which portfolios you view while signed in - used only to power view counts and avoid counting the same view twice within 24 hours; never shown publicly next to your account</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Notifications you receive and whether you've read them</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• Reports you submit about other content or accounts, and reports submitted about you - used only for moderation</Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Automatically Collected / Technical Data</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Device platform and app version, so we know what you're running when troubleshooting</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Last-active timestamp</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Crash and error reports (via Sentry) - technical details like stack traces, device model, and OS version, used only to find and fix bugs</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• Basic connection metadata generated automatically by our hosting providers as part of normal web/server operation</Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Photo Library Access</Text>
+                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
+                  If you upload a cover image or profile photo, the app asks for permission to access your photo library so you can pick one. We only ever access the specific photo you select and upload - we don't scan or access your library beyond that.
+                </Text>
+              </View>
+
 
               <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
                 <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Feature Interest ("I'm Interested" buttons)</Text>
@@ -12063,23 +12100,76 @@ function App() {
                 <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>How We Use It</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
                   <View style={{ marginTop: 2 }}><LockIconSVG /></View>
-                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To operate core features (profiles, portfolios, follows)</Text>
+                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To operate core features (profiles, portfolios, follows, likes, notifications)</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
                   <View style={{ marginTop: 2 }}><LockIconSVG /></View>
-                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To show your public profile and work to other users</Text>
+                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To show your public profile and work to other users, exactly as you've set them up</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
+                  <View style={{ marginTop: 2 }}><LockIconSVG /></View>
+                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To count and display deduplicated view counts on your portfolios</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
+                  <View style={{ marginTop: 2 }}><LockIconSVG /></View>
+                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To send push notifications you've opted into</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
+                  <View style={{ marginTop: 2 }}><LockIconSVG /></View>
+                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To review reports and enforce our Terms of Service (warnings, suspensions, bans)</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
+                  <View style={{ marginTop: 2 }}><LockIconSVG /></View>
+                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To diagnose and fix bugs or crashes</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
                   <View style={{ marginTop: 2 }}><LockIconSVG /></View>
-                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>We do not sell your data to third parties</Text>
+                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>We do not sell your data, and we do not use it for third-party advertising</Text>
                 </View>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Who We Share Data With</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 6, lineHeight: 19 }}>
+                  We use a small number of service providers to run DECENT. None of them are permitted to use your data for their own purposes:
+                </Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Supabase - hosts our database, sign-in, and file storage (portfolio images, avatars)</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Vercel - hosts the DECENT website</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Expo / EAS - builds the app and delivers push notifications and app updates</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Google - provides optional sign-in</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 6 }}>• Sentry - provides crash/error monitoring</Text>
+                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
+                  Prototype content you embed from Figma is subject to Figma's own privacy practices, not ours.
+                </Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Data Retention & Deletion</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You can edit or delete your own portfolios and profile info at any time</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Deleting your account via Account Settings permanently removes your profile, portfolios, likes, follows, and related records - this cannot be undone</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• We may retain limited records (e.g. moderation logs for reported content) as needed to enforce these policies or meet legal obligations, even after account deletion</Text>
               </View>
 
               <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
                 <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Your Rights</Text>
                 <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Edit or delete your profile and portfolios anytime</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Request account deletion via Account Settings</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• Contact us with data requests via Feedback & Support</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Request account deletion or a copy of your data via Account Settings or Feedback & Support</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Turn off push notifications anytime via your device settings</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• Lodge a complaint with Indonesia's data protection authority if you believe your rights have been violated</Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Children's Privacy</Text>
+                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
+                  DECENT isn't directed at children under 13, and we don't knowingly collect data from them. If you believe a child has created an account, contact us via Feedback & Support so we can remove it.
+                </Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Changes to This Policy</Text>
+                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
+                  We may update this policy as DECENT evolves. Material changes will be reflected here with an updated "Last updated" date.
+                </Text>
               </View>
 
               <BouncyButton
@@ -12157,30 +12247,82 @@ function App() {
             <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ color: '#0F172A', fontSize: 20, fontWeight: '800' }}>Terms of Service</Text>
               <Text style={{ color: '#64748B', fontSize: 13, fontStyle: 'italic' }}>
-                Last updated: August 2026. This is a placeholder for testing purposes and should be reviewed by a legal professional before public release.
+                Last updated: August 30, 2026.
               </Text>
               <Text style={{ color: '#1E293B', fontSize: 14, lineHeight: 21 }}>
-                By using DECENT, operated from Indonesia, you agree to these terms.
+                By creating an account or using DECENT, operated from Indonesia by Iqbal Aprianda Putra, you agree to these Terms of Service. If you don't agree, please don't use the app.
               </Text>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Eligibility</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You must be at least 13 years old to use DECENT</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• You must provide accurate information when creating your account</Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Your Account</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You're responsible for keeping your login credentials secure</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You're responsible for all activity under your account</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• Your handle can't impersonate someone else or violate these terms</Text>
+              </View>
 
               <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
                 <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Your Content</Text>
                 <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You retain ownership of everything you upload</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You confirm you have the right to share what you post</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• By posting content, you grant DECENT a non-exclusive, worldwide license to display and distribute it within the app and on your public DECENT link, for as long as it stays on DECENT</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You confirm you have the right to share what you post - including client work, so make sure you have permission before uploading it</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Content linked via Figma or "live link" fields stays governed by those external platforms' own terms</Text>
                 <Text style={{ color: '#334155', fontSize: 13 }}>• We may remove content that violates these terms</Text>
               </View>
 
               <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
                 <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Acceptable Use</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• No spam, harassment, or impersonation</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• No spam, harassment, hate speech, or impersonation</Text>
                 <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• No uploading content you don't have rights to</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• We may suspend accounts that break these rules</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• No NSFW content outside what's explicitly flagged and permitted by our NSFW settings</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• No manipulating likes, views, or follower counts</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• No scraping, reverse-engineering, or abusing the app</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• We may suspend or ban accounts that break these rules</Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Reports & Moderation</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You can report content or accounts that violate these terms</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• We review reports and may take action including content removal, warnings, temporary suspension, or permanent bans</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• Moderation decisions are made at our discretion</Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Intellectual Property</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• The DECENT name, logo, and app design belong to us</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• Nothing here transfers our IP to you, or your IP to us, beyond the content license described above</Text>
               </View>
 
               <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
                 <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Disclaimer</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• DECENT is provided "as is" without warranties</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• We're not liable for content posted by users</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• DECENT is provided "as is" and "as available," without warranties of any kind</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• We're not liable for content posted by users, or third-party content embedded via Figma or live links</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• To the fullest extent permitted by law, we're not liable for indirect or consequential damages arising from your use of DECENT</Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Termination</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You may delete your account at any time via Account Settings</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• We may suspend or terminate your account for violating these terms, at our discretion</Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Governing Law</Text>
+                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
+                  These terms are governed by the laws of Indonesia. Any disputes will be handled under Indonesian jurisdiction.
+                </Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Changes to These Terms</Text>
+                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
+                  We may update these terms as DECENT evolves. Continued use of DECENT after changes means you accept the updated terms.
+                </Text>
               </View>
 
               <BouncyButton
@@ -16093,7 +16235,15 @@ function App() {
                                 borderWidth: 1, borderColor: theme.border,
                                 borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
                                 width: 220,
-                                opacity: aiTooltipAnim,
+                                // Opacity is locked to 1, not driven by aiTooltipAnim - on
+                                // RN Web, an Animated opacity interpolate can get stuck
+                                // mid-fade (especially with useNativeDriver) if a re-render
+                                // or scroll interrupts it, which is what was making this
+                                // tooltip look permanently translucent on the website
+                                // version. The slide-in motion is still animated via
+                                // translateY only; visibility itself is controlled by the
+                                // showAiTooltip conditional render, not opacity.
+                                opacity: 1,
                                 transform: [{
                                   translateY: aiTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] })
                                 }]
