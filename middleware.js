@@ -59,7 +59,7 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-function ogPage({ title, description, image, url, jsonLd }) {
+function ogPage({ title, description, image, url, jsonLd, heading, bodyText, authorLine }) {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -79,7 +79,12 @@ function ogPage({ title, description, image, url, jsonLd }) {
 <meta name="twitter:image" content="${escapeHtml(image)}" />
 <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
 </head>
-<body></body>
+<body>
+<h1>${escapeHtml(heading)}</h1>
+${authorLine ? `<p>${escapeHtml(authorLine)}</p>` : ''}
+<p>${escapeHtml(bodyText)}</p>
+${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(heading)}" />` : ''}
+</body>
 </html>`;
 }
 
@@ -101,12 +106,12 @@ export default async function middleware(req) {
       // Same handle-then-id fallback as handleIncomingRoute in App.js, so
       // this stays correct for both /@handle and /@rawUserId share links.
       let rows = await (await fetch(
-        `${SUPABASE_URL}/rest/v1/profiles?handle=eq.${encodeURIComponent(handleOrId)}&select=name,avatar_url,bio,role,handle`,
+        `${SUPABASE_URL}/rest/v1/profiles?handle=eq.${encodeURIComponent(handleOrId)}&select=name,avatar_url,bio,role,handle,links`,
         { headers: sbHeaders }
       )).json();
       if (!Array.isArray(rows) || !rows.length) {
         rows = await (await fetch(
-          `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(handleOrId)}&select=name,avatar_url,bio,role,handle`,
+          `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(handleOrId)}&select=name,avatar_url,bio,role,handle,links`,
           { headers: sbHeaders }
         )).json();
       }
@@ -114,11 +119,18 @@ export default async function middleware(req) {
       if (!profile) return; // unknown handle/id - fall through to the normal app (which shows its own not-found state)
 
       const description = profile.bio || profile.role || "Check out this designer's portfolio on DECENT.";
+      // sameAs: profiles.links is already a plain array of URL strings the
+      // user added themselves (LinkedIn, Dribbble, etc) - passing it straight
+      // through helps Google tie "Iqbal Aprianda Putra" to one consistent
+      // entity across platforms for exact-name searches.
+      const sameAs = Array.isArray(profile.links) ? profile.links.filter((l) => typeof l === 'string' && l.trim()) : [];
       return new Response(ogPage({
         title: `${profile.name || 'Designer'} on DECENT`,
         description,
         image: profile.avatar_url || DEFAULT_IMAGE,
         url: canonicalUrl,
+        heading: profile.name || 'Designer',
+        bodyText: description,
         jsonLd: {
           '@context': 'https://schema.org',
           '@type': 'Person',
@@ -127,7 +139,8 @@ export default async function middleware(req) {
           jobTitle: profile.role || undefined,
           description,
           image: profile.avatar_url || undefined,
-          url: canonicalUrl
+          url: canonicalUrl,
+          sameAs: sameAs.length ? sameAs : undefined
         }
       }), { headers: { 'content-type': 'text/html; charset=utf-8' } });
     }
@@ -143,11 +156,15 @@ export default async function middleware(req) {
       if (!portfolio) return;
 
       const description = portfolio.brief || 'Check out this portfolio on DECENT.';
+      const authorLine = portfolio.user_name ? `By ${portfolio.user_name}` : undefined;
       return new Response(ogPage({
         title: `${portfolio.title || 'Portfolio'} by ${portfolio.user_name || 'a DECENT designer'}`,
         description,
         image: portfolio.cover_url || DEFAULT_IMAGE,
         url: canonicalUrl,
+        heading: portfolio.title || 'Portfolio',
+        bodyText: description,
+        authorLine,
         jsonLd: {
           '@context': 'https://schema.org',
           '@type': 'CreativeWork',
