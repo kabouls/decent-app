@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 427;
+const BUILD_NUMBER = 429;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15633,14 +15633,7 @@ function App() {
                   untouched: title stays centered, share/dots stay on the
                   right where they've always been. */}
               {!isWebWide && (
-                <View style={{ position: 'absolute', left: 16, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <BouncyButton
-                    style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
-                    onPress={() => handleSharePortfolio(activeProject)}
-                  >
-                    <ShareIconSVG color={theme.accentLight} />
-                  </BouncyButton>
-
+                <View style={{ position: 'absolute', left: 16, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
                   <View ref={portfolioDotsWrapRef} style={{ zIndex: 100 }}>
                     <BouncyButton
                       style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
@@ -15656,6 +15649,22 @@ function App() {
                     >
                       <Text style={{ color: theme.textSecondary, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
                     </BouncyButton>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <LikeButton
+                      liked={activeProject.liked}
+                      likesCount={activeProject.likesCount}
+                      onPress={() => toggleLike(activeProject.id)}
+                      color={theme.textSecondary}
+                      monochrome
+                      size={17}
+                    />
+                    <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.likesCount || 0}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <EyeViewIconSVG size={17} color={theme.textSecondary} />
+                    <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.visitsCount || 0}</Text>
                   </View>
                 </View>
               )}
@@ -15690,21 +15699,12 @@ function App() {
                   </>
                 ) : (
                   <>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <LikeButton
-                        liked={activeProject.liked}
-                        likesCount={activeProject.likesCount}
-                        onPress={() => toggleLike(activeProject.id)}
-                        color={theme.textSecondary}
-                        monochrome
-                        size={17}
-                      />
-                      <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.likesCount || 0}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <EyeViewIconSVG size={17} color={theme.textSecondary} />
-                      <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.visitsCount || 0}</Text>
-                    </View>
+                    <BouncyButton
+                      style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                      onPress={() => handleSharePortfolio(activeProject)}
+                    >
+                      <ShareIconSVG color={theme.accentLight} />
+                    </BouncyButton>
                     {Platform.OS !== 'web' && (
                       <BouncyButton style={styles.closeBtn} onPress={handleBackFromPortfolioDetail}>
                         <Text style={styles.closeBtnText}>✕</Text>
