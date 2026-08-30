@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 456;
+const BUILD_NUMBER = 457;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -441,7 +441,16 @@ const LikeButton = React.memo(({ liked, likesCount, onPress, showCount = false, 
   const { theme, themeMode } = useTheme();
   const { lightweightMode } = useLightweightMode();
 
-  const handlePress = () => {
+  const handlePress = (e) => {
+    // Stops the click from bubbling up to an ancestor <a> - portfolio cards
+    // now wrap their title/like row in a real anchor (CardLink) for
+    // new-tab support, and a real anchor's onClick fires for ANY click
+    // within its bounds, including nested interactive children, unless
+    // explicitly stopped. Without this, tapping the heart also opened the
+    // portfolio instead of (or as well as) toggling the like. Harmless
+    // wherever this component is used outside that context too - the pin
+    // button on the same cards already does the same thing.
+    if (e && e.stopPropagation) e.stopPropagation();
     scaleAnim.setValue(0.55);
     Animated.spring(scaleAnim, { toValue: 1, friction: 3.5, tension: 140, useNativeDriver: true }).start();
 
@@ -10755,7 +10764,7 @@ function App() {
                               <View style={styles.designerCardActionsRow}>
                                 <BouncyButton
                                   style={[styles.smallFollowBtn, isFollowing && styles.smallFollowBtnActive]}
-                                  onPress={() => toggleFollowDesigner(des.id)}
+                                  onPress={(e) => { e.stopPropagation && e.stopPropagation(); toggleFollowDesigner(des.id); }}
                                 >
                                   <Text style={[styles.smallFollowText, isFollowing && styles.smallFollowTextActive]}>
                                     {isFollowing ? 'Following' : (des.followsMe ? 'Follow Back' : '+ Follow')}
@@ -10764,7 +10773,7 @@ function App() {
 
                                 <BouncyButton
                                   style={styles.smallShareBtnIconOnly}
-                                  onPress={() => handleShareDesigner(des)}
+                                  onPress={(e) => { e.stopPropagation && e.stopPropagation(); handleShareDesigner(des); }}
                                 >
                                   <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
                                 </BouncyButton>
@@ -10831,7 +10840,7 @@ function App() {
                             <View style={styles.designerCardActionsRow}>
                               <BouncyButton
                                 style={[styles.smallFollowBtn, isFollowing && styles.smallFollowBtnActive]}
-                                onPress={() => toggleFollowDesigner(des.id)}
+                                onPress={(e) => { e.stopPropagation && e.stopPropagation(); toggleFollowDesigner(des.id); }}
                               >
                                 <Text style={[styles.smallFollowText, isFollowing && styles.smallFollowTextActive]}>
                                   {isFollowing ? 'Following' : (des.followsMe ? 'Follow Back' : '+ Follow')}
@@ -10840,7 +10849,7 @@ function App() {
 
                               <BouncyButton
                                 style={styles.smallShareBtnIconOnly}
-                                onPress={() => handleShareDesigner(des)}
+                                onPress={(e) => { e.stopPropagation && e.stopPropagation(); handleShareDesigner(des); }}
                               >
                                 <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
                               </BouncyButton>
@@ -10848,7 +10857,8 @@ function App() {
                               <View ref={(el) => { discoverDotsRefsMap[des.id] = el; }} style={{ zIndex: 100 }}>
                                 <BouncyButton
                                   style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
-                                  onPress={() => {
+                                  onPress={(e) => {
+                                    e.stopPropagation && e.stopPropagation();
                                     const next = discoverDotsMenuOpenId === des.id ? null : des.id;
                                     if (next && discoverDotsRefsMap[des.id]) {
                                       discoverDotsRefsMap[des.id].measureInWindow((x, y, width, height) => {
