@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 448;
+const BUILD_NUMBER = 449;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1973,17 +1973,25 @@ const ProjectCard = React.memo(({
     : null;
 
   return (
-  <CardLink
-    href={`/p/${item.id}`}
+  <View
     style={[
       styles.card,
       fancyCardStyle,
       customWidth ? { width: customWidth } : null,
       isTwoRowCard && styles.cardCompactProfile
     ]}
-    activeOpacity={0.88}
-    onPress={() => onPress(item)}
   >
+    {/* Split into two separate portfolio-destination links (thumbnail
+        region + title/badge region) plus one separate designer-destination
+        link below, rather than one link wrapping the whole card - a real
+        <a href> can't contain another <a href> (invalid HTML, and browsers
+        just ignore/flatten the inner one), which was exactly why the
+        designer mini-link couldn't get its own "open in new tab" support
+        while nested inside the portfolio's own link. Kept as siblings here
+        instead, each with its own real href, so both destinations get
+        real new-tab support. Normal left-click behavior for either is
+        completely unchanged from before. */}
+    <CardLink href={`/p/${item.id}`} style={{ width: '100%' }} activeOpacity={0.88} onPress={() => onPress(item)}>
     <View style={[styles.thumbnailContainer, isTwoRowCard && styles.thumbnailContainerCompact]}>
       <Image source={{ uri: item.cover }} style={styles.cardCover} blurRadius={item.isNsfw ? 25 : 0} />
       {item.isNsfw && (
@@ -2043,8 +2051,10 @@ const ProjectCard = React.memo(({
         )
       )}
     </View>
+    </CardLink>
 
     <View style={[styles.cardBody, isTwoRowCard && styles.cardBodyCompact]}>
+      <CardLink href={`/p/${item.id}`} style={{ width: '100%' }} activeOpacity={0.88} onPress={() => onPress(item)}>
       {/* Portfolio type moved here from the thumbnail badge, now paired
           with its name rather than just an icon, and given a bordered
           rectangular tag treatment (not the fully-rounded pill style used
@@ -2084,16 +2094,18 @@ const ProjectCard = React.memo(({
           />
         ) : null}
       </View>
+      </CardLink>
 
       <View style={styles.designerRowWithFollow}>
-        <BouncyButton
+        <CardLink
+          href={`/@${item.designerHandle || item.ownerId}`}
           style={styles.designerRowLeftCol}
           activeOpacity={0.7}
           onPress={() => onOpenDesignerProfile && onOpenDesignerProfile(item.ownerId)}
         >
           <Image source={{ uri: item.designerAvatar }} style={styles.designerAvatar} />
           <Text style={styles.cardDesignerName} numberOfLines={2}>{item.designerHandle ? formatHandleDisplay(item.designerHandle) : item.designer}</Text>
-        </BouncyButton>
+        </CardLink>
 
         {onToggleFollow && !isOwnContent && (
           <BouncyButton
@@ -2107,7 +2119,7 @@ const ProjectCard = React.memo(({
         )}
       </View>
     </View>
-  </CardLink>
+  </View>
   );
 });
 
@@ -3725,6 +3737,11 @@ function App() {
   const [designerProfileTab, setDesignerProfileTab] = useState('myWork');
 
   const [allCategoriesModalVisible, setAllCategoriesModalVisible] = useState(false);
+  // All Categories browse modal: search + a type tab switcher (All/UI-UX/
+  // Graphic Design/Illustration), replacing the old fixed 20-item UI/UX-only
+  // list. Reset together whenever the modal opens (see grid2x2CategoryBtn).
+  const [allCategoriesTab, setAllCategoriesTab] = useState('all');
+  const [allCategoriesSearchQuery, setAllCategoriesSearchQuery] = useState('');
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [settingsPopupRendered, setSettingsPopupRendered] = useState(false);
   const settingsPopupAnim = useRef(new Animated.Value(0)).current;
@@ -4337,6 +4354,34 @@ function App() {
       }
     })();
   }, []);
+
+  // Union of all 3 base lists + custom tags, deduped case-insensitively -
+  // this is the "All" tab in the All Categories browse modal. Custom tags
+  // have no type of their own (global across the app), so they only ever
+  // appear under "All", not under a specific type's tab.
+  const combinedAllCategories = useMemo(() => {
+    const merged = [...ALL_UIUX_CATEGORIES_MASTER, ...ALL_GRAPHIC_DESIGN_CATEGORIES_MASTER, ...ALL_ILLUSTRATION_CATEGORIES_MASTER, ...customCategoriesList];
+    const seenLower = new Set();
+    const deduped = [];
+    merged.forEach((c) => {
+      const lower = c.toLowerCase();
+      if (!seenLower.has(lower)) {
+        seenLower.add(lower);
+        deduped.push(c);
+      }
+    });
+    return deduped.sort();
+  }, [customCategoriesList]);
+
+  const allCategoriesTabList = useMemo(() => {
+    const q = allCategoriesSearchQuery.trim().toLowerCase();
+    const list =
+      allCategoriesTab === 'ui_ux' ? ALL_UIUX_CATEGORIES_MASTER :
+      allCategoriesTab === 'graphic_design' ? ALL_GRAPHIC_DESIGN_CATEGORIES_MASTER :
+      allCategoriesTab === 'illustration' ? ALL_ILLUSTRATION_CATEGORIES_MASTER :
+      combinedAllCategories;
+    return q ? list.filter((c) => c.toLowerCase().includes(q)) : list;
+  }, [allCategoriesTab, allCategoriesSearchQuery, combinedAllCategories]);
 
   const [fBrief, setFBrief] = useState('');
   const [fLongDescription, setFLongDescription] = useState('');
@@ -5013,7 +5058,7 @@ function App() {
 
       const ranked = Object.entries(counts)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 9)
+        .slice(0, 10)
         .map(([cat]) => cat);
 
       setPopularKeywords(ranked);
@@ -10041,7 +10086,7 @@ function App() {
                     </View>
                   </BouncyButton>
 
-                  {['Mobile App', 'Web Design', 'Design System', 'FinTech', 'Healthcare', 'E-Commerce', 'SaaS'].map((cat) => (
+                  {popularKeywords.map((cat) => (
                     <BouncyButton
                       key={cat}
                       style={[styles.topCategoryChip, categoryFilter === cat && styles.topCategoryChipActive]}
@@ -10057,7 +10102,11 @@ function App() {
                   <BouncyButton
                     style={styles.grid2x2CategoryBtn}
                     activeOpacity={0.8}
-                    onPress={() => setAllCategoriesModalVisible(true)}
+                    onPress={() => {
+                      setAllCategoriesSearchQuery('');
+                      setAllCategoriesTab('all');
+                      setAllCategoriesModalVisible(true);
+                    }}
                   >
                     <Grid2x2SVG />
                   </BouncyButton>
@@ -13974,8 +14023,42 @@ function App() {
               </BouncyButton>
             </View>
 
+            <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+              <FocusableTextInput
+                style={styles.formInput}
+                placeholder="Search categories..."
+                placeholderTextColor="#94A3B8"
+                value={allCategoriesSearchQuery}
+                onChangeText={setAllCategoriesSearchQuery}
+              />
+
+              <View style={{ flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 99, padding: 4, marginTop: 12, marginBottom: 4, borderWidth: 1, borderColor: theme.border, gap: 4 }}>
+                {[
+                  { key: 'all', label: 'All' },
+                  { key: 'ui_ux', label: 'UI/UX' },
+                  { key: 'graphic_design', label: 'Graphic Design' },
+                  { key: 'illustration', label: 'Illustration' }
+                ].map((tab) => (
+                  <BouncyButton
+                    key={tab.key}
+                    style={{
+                      flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 99,
+                      backgroundColor: allCategoriesTab === tab.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent'
+                    }}
+                    onPress={() => setAllCategoriesTab(tab.key)}
+                  >
+                    <Text style={{ color: allCategoriesTab === tab.key ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>
+                      {tab.label}
+                    </Text>
+                  </BouncyButton>
+                ))}
+              </View>
+            </View>
+
             <ScrollView contentContainerStyle={styles.allCategoriesGrid}>
-              {ALL_UIUX_CATEGORIES_MASTER.slice(0, 20).map((cat) => (
+              {allCategoriesTabList.length === 0 ? (
+                <Text style={styles.emptySearchText}>No categories match your search.</Text>
+              ) : allCategoriesTabList.map((cat) => (
                 <BouncyButton
                   key={cat}
                   style={[styles.overlayCategoryCard, categoryFilter === cat && styles.overlayCategoryCardActive]}
