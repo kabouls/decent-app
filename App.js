@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 443;
+const BUILD_NUMBER = 444;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -3726,6 +3726,12 @@ function App() {
   // Illustration portfolio types only. Reset to 'caseStudy' on every new
   // portfolio open (see openProjectModal).
   const [gdTab, setGdTab] = useState('caseStudy');
+  // Wide-web-only right-pane switcher (Video/Image), replacing the
+  // Mobile/Desktop prototype switcher for Graphic Design/Illustration -
+  // separate from gdTab above since that one includes a Case Study option
+  // that doesn't apply here (case study is already the left pane on wide
+  // web).
+  const [gdSplitTab, setGdSplitTab] = useState('video');
   // Fullscreen swipeable image viewer, used by the Image tab above (and
   // reachable from nowhere else - the existing single-image lightboxImageUri
   // stays untouched for avatars and other single-tap-to-enlarge spots).
@@ -6823,6 +6829,7 @@ function App() {
     // portfolio was just opened, same reset-on-open pattern as the gallery
     // accordion just above.
     setGdTab('caseStudy');
+    setGdSplitTab('video');
 
     // No longer optimistically bumping visitsCount here - whether this
     // view actually counts depends on the async dedup check below (same
@@ -16493,13 +16500,15 @@ function App() {
             <View style={styles.modalBody}>
               {(() => {
                 // Graphic Design / Illustration: no prototype ever exists for
-                // these types, so instead of the UI/UX split-pane logic below,
-                // this is a fully separate, simpler layout - one column,
-                // always, on every screen size - with its own Case Study /
-                // Video / Image tab switcher. Early-returns before any of the
-                // hasPrototype/showSplitLayout logic below even runs, so none
-                // of that UI/UX-specific branching is touched by this at all.
-                if (activeProject.portfolioType === 'graphic_design' || activeProject.portfolioType === 'illustration') {
+                // these types. On narrow/native this still uses its own
+                // simpler single-column Case Study/Video/Image tab layout
+                // below. On wide web specifically, it now falls through to
+                // the same split-pane structure as UI/UX instead (see the
+                // isGdType checks further down) - Image Gallery + Case Study
+                // Overview together on the left, Video/Image tabs on the
+                // right in place of the Mobile/Desktop prototype switcher.
+                const isGdType = activeProject.portfolioType === 'graphic_design' || activeProject.portfolioType === 'illustration';
+                if (isGdType && !(Platform.OS === 'web' && isWebWide)) {
                   const allVideos = [
                     ...(activeProject.uploadedVideos || []).map((v) => ({ kind: 'uploaded', url: v.url, width: v.width, height: v.height })),
                     ...(activeProject.videoLinks || []).filter((v) => v && v.trim()).map((v) => ({ kind: 'link', url: v }))
@@ -16835,6 +16844,80 @@ function App() {
                   </ScrollView>
                 );
 
+                // Graphic Design / Illustration, wide web: right pane in
+                // place of the Mobile/Desktop prototype switcher these types
+                // never have. Video tab covers both uploaded videos and
+                // external video links together; Image tab reuses the exact
+                // same vertical-stack content as mediaPane above.
+                const gdAllVideos = isGdType ? [
+                  ...(activeProject.uploadedVideos || []).map((v) => ({ kind: 'uploaded', url: v.url, width: v.width, height: v.height })),
+                  ...(activeProject.videoLinks || []).filter((v) => v && v.trim()).map((v) => ({ kind: 'link', url: v }))
+                ] : [];
+                const gdHasUploadedVideo = gdAllVideos.some((v) => v.kind === 'uploaded');
+                const gdVideoImagePane = (
+                  <View style={{ flex: 1 }}>
+                    <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+                      <Text style={styles.sectionHeader}>MEDIA</Text>
+                      <View style={{ flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 99, padding: 4, marginBottom: 4, borderWidth: 1, borderColor: theme.border, gap: 4 }}>
+                        {[{ key: 'video', label: 'Video' }, { key: 'image', label: 'Image' }].map((tab) => (
+                          <BouncyButton
+                            key={tab.key}
+                            style={{
+                              flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 99,
+                              backgroundColor: gdSplitTab === tab.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent'
+                            }}
+                            onPress={() => setGdSplitTab(tab.key)}
+                          >
+                            <Text style={{ color: gdSplitTab === tab.key ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 13 }}>
+                              {tab.label}
+                            </Text>
+                          </BouncyButton>
+                        ))}
+                      </View>
+                    </View>
+                    <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ padding: 16, gap: 16, width: '100%' }}>
+                      {gdSplitTab === 'video' ? (
+                        gdAllVideos.length === 0 ? (
+                          <Text style={styles.caseBodyText}>No videos added to this portfolio yet.</Text>
+                        ) : (
+                          <>
+                            {gdAllVideos.map((v, idx) => (
+                              v.kind === 'uploaded' ? (
+                                <PortfolioVideoPlayer key={idx} uri={v.url} width={v.width} height={v.height} />
+                              ) : (
+                                <BouncyButton key={idx} style={styles.linkChip} onPress={() => openExternalLinkWithWarning(v.url)}>
+                                  <Text style={styles.linkChipText}>▶ Watch Video Demo ↗</Text>
+                                </BouncyButton>
+                              )
+                            ))}
+                            {gdHasUploadedVideo && (
+                              <Text style={{ color: theme.textTertiary, fontSize: 11 }}>
+                                Video compressed to save space - quality may differ slightly from the original upload.
+                              </Text>
+                            )}
+                          </>
+                        )
+                      ) : (
+                        (activeProject.images || []).length === 0 ? (
+                          <Text style={styles.caseBodyText}>No images added to this portfolio yet.</Text>
+                        ) : (activeProject.images || []).map((imgUrl, index) => (
+                          <BouncyButton key={index} activeOpacity={0.9} onPress={() => setLightboxImageUri(imgUrl)}>
+                            <Image
+                              source={{ uri: imgUrl }}
+                              style={{
+                                width: '100%',
+                                aspectRatio: activeProject.showcaseAspectRatio === '9:16' ? 9 / 16 : 16 / 9,
+                                borderRadius: 12
+                              }}
+                              resizeMode="cover"
+                            />
+                          </BouncyButton>
+                        ))
+                      )}
+                    </ScrollView>
+                  </View>
+                );
+
                 const caseStudyPane = (
                 <ScrollView
                   ref={modalScrollViewRef}
@@ -17075,7 +17158,7 @@ function App() {
                       mediaPane below). Every other case (native, narrow
                       web, or wide web WITH a prototype) keeps this exact
                       horizontal carousel, unchanged. */}
-                  {!(Platform.OS === 'web' && isWebWide && !hasPrototype) && (() => {
+                  {!(Platform.OS === 'web' && isWebWide && !hasPrototype && !isGdType) && (() => {
                     // "Detailed description" = the same condition already
                     // used just below to decide whether Case Study Overview
                     // shows real content blocks vs a plain brief fallback -
@@ -17207,7 +17290,7 @@ function App() {
                         {caseStudyPane}
                       </View>
                       <View style={{ width: paneWidth, flex: 1, backgroundColor: theme.bg }}>
-                        {hasPrototype ? (
+                        {isGdType ? gdVideoImagePane : hasPrototype ? (
                           <>
                             {activeProject.figmaProto && activeProject.desktopProto && (
                               <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
