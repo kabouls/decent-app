@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 455;
+const BUILD_NUMBER = 456;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -2329,6 +2329,14 @@ const WebImageCropModal = ({ visible, imageUri, aspect, onConfirm, onCancel, the
           <View
             style={{ width: frameW, height: frameH, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' }}
             {...panResponder.panHandlers}
+            // onWheel is a plain DOM event prop, ignored harmlessly on
+            // native (this whole modal only ever renders on web anyway -
+            // see the Platform.OS === 'web' gate around where it's used).
+            // Mouse-wheel zoom is the more discoverable interaction people
+            // actually reach for in a crop tool, versus the small +/-
+            // buttons below - both work, this just makes zoom easier to
+            // find in the first place.
+            onWheel={Platform.OS === 'web' ? (e) => { e.preventDefault(); adjustZoom(e.deltaY < 0 ? 0.1 : -0.1); } : undefined}
           >
             {naturalSize && (
               <Image
@@ -2351,7 +2359,7 @@ const WebImageCropModal = ({ visible, imageUri, aspect, onConfirm, onCancel, the
             >
               <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>−</Text>
             </BouncyButton>
-            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Drag to reposition</Text>
+            <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Drag to reposition, scroll or +/- to zoom</Text>
             <BouncyButton
               style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}
               onPress={() => adjustZoom(0.2)}
@@ -3107,31 +3115,37 @@ function AuthScreen({ onCancel } = {}) {
 // sized), not a full player. Real playback with controls happens later, in
 // the review/detail views via PortfolioVideoPlayer.
 const VideoSquareThumb = React.memo(({ uri }) => {
-  const [errored, setErrored] = useState(false);
+  // 'loading' | 'ready' | 'error' - not just an error flag, since the
+  // profiler trace showed Firefox's blank/error state could show during
+  // the LOADING window too (confirmed ~770ms between click and the native
+  // error icon appearing), not only after a final failure. The video
+  // element itself sits underneath a themed placeholder the whole time,
+  // still loading in the background - the placeholder only lifts once
+  // onLoadedData actually confirms there's a real frame to show, so
+  // nothing but the themed placeholder is ever visible in between.
+  const [status, setStatus] = useState('loading');
   if (Platform.OS === 'web') {
-    // If the video fails to load/decode, Firefox specifically renders its
-    // own native broken-media icon (chrome://global/skin/media/error.png,
-    // confirmed via a Firefox performance profile) filling the element's
-    // bounds - visible as a stark white/blank flash wherever this renders,
-    // regardless of the CSS backgroundColor set below (the browser's own
-    // error graphic isn't guaranteed to respect it). Catching onError and
-    // swapping to a plain themed placeholder avoids ever showing that
-    // browser-native error state at all.
-    if (errored) {
-      return (
-        <View style={{ width: '100%', height: '100%', backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }}>
-          <VideoFilledIconSVG size={20} color="#64748B" />
-        </View>
-      );
-    }
-    return React.createElement('video', {
-      src: uri,
-      muted: true,
-      playsInline: true,
-      preload: 'metadata',
-      onError: () => setErrored(true),
-      style: { width: '100%', height: '100%', objectFit: 'cover', backgroundColor: '#000' }
-    });
+    return (
+      <View style={{ width: '100%', height: '100%', backgroundColor: '#000' }}>
+        {React.createElement('video', {
+          src: uri,
+          muted: true,
+          playsInline: true,
+          preload: 'metadata',
+          onLoadedData: () => setStatus('ready'),
+          onError: () => setStatus('error'),
+          style: {
+            width: '100%', height: '100%', objectFit: 'cover', backgroundColor: '#000',
+            display: status === 'ready' ? 'block' : 'none'
+          }
+        })}
+        {status !== 'ready' && (
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
+            <VideoFilledIconSVG size={20} color="#64748B" />
+          </View>
+        )}
+      </View>
+    );
   }
   const player = useVideoPlayer(uri, (p) => { p.loop = false; p.muted = true; });
   return <VideoView player={player} style={{ width: '100%', height: '100%', backgroundColor: '#000' }} contentFit="cover" nativeControls={false} />;
@@ -3296,28 +3310,31 @@ const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, t
 // life of a given build (web build only ever runs 'web'), so branching a
 // hook call around it here is safe despite looking conditional.
 const PortfolioVideoPlayer = React.memo(({ uri, width, height }) => {
-  const [errored, setErrored] = useState(false);
+  const [status, setStatus] = useState('loading');
   const aspectRatio = width && height ? width / height : 16 / 9;
 
   if (Platform.OS === 'web') {
-    // Same reasoning as VideoSquareThumb above - a failed load shows
-    // Firefox's own native broken-media icon otherwise, which doesn't
-    // reliably respect this element's own backgroundColor.
-    if (errored) {
-      return (
-        <View style={{ width: '100%', aspectRatio, borderRadius: 12, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }}>
-          <VideoFilledIconSVG size={28} color="#64748B" />
-        </View>
-      );
-    }
-    return React.createElement('video', {
-      src: uri,
-      controls: true,
-      playsInline: true,
-      preload: 'metadata',
-      onError: () => setErrored(true),
-      style: { width: '100%', aspectRatio, borderRadius: 12, backgroundColor: '#000', display: 'block' }
-    });
+    // Same layered loading/error placeholder as VideoSquareThumb above.
+    return (
+      <View style={{ width: '100%', aspectRatio, borderRadius: 12, backgroundColor: '#000', overflow: 'hidden' }}>
+        {React.createElement('video', {
+          src: uri,
+          controls: true,
+          playsInline: true,
+          preload: 'metadata',
+          onLoadedData: () => setStatus('ready'),
+          onError: () => setStatus('error'),
+          style: {
+            width: '100%', height: '100%', backgroundColor: '#000', display: status === 'ready' ? 'block' : 'none'
+          }
+        })}
+        {status !== 'ready' && (
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
+            <VideoFilledIconSVG size={28} color="#64748B" />
+          </View>
+        )}
+      </View>
+    );
   }
 
   const player = useVideoPlayer(uri, (p) => { p.loop = false; });
@@ -7797,7 +7814,25 @@ function App() {
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      const newItems = result.assets.map((a) => ({ uri: a.uri, caption: '' }));
+      let pickedUris = result.assets.map((a) => a.uri);
+      if (Platform.OS === 'web') {
+        // Same web-only crop step as the cover photo and content-block
+        // images (expo-image-picker's allowsEditing has no crop screen at
+        // all on web, and is additionally unsupported here specifically
+        // because allowsMultipleSelection is on) - applied to each newly
+        // picked image in turn, at whatever aspect ratio (16:9 or 9:16) is
+        // currently selected for the showcase gallery. A cancelled crop
+        // just drops that one image rather than aborting the whole pick.
+        const aspectArr = fShowcaseAspectRatio === '9:16' ? [9, 16] : [16, 9];
+        const cropped = [];
+        for (const uri of pickedUris) {
+          const c = await openWebCrop(uri, aspectArr);
+          if (c) cropped.push(c);
+        }
+        pickedUris = cropped;
+      }
+      if (pickedUris.length === 0) return;
+      const newItems = pickedUris.map((uri) => ({ uri, caption: '' }));
       const combined = [...existingFilled, ...newItems].slice(0, 10);
       setFShowcaseImages(combined.length >= 2 ? combined : [...combined, { uri: '', caption: '' }]);
       setErrors({ ...errors, showcaseImages: null });
@@ -16139,7 +16174,7 @@ function App() {
                 <View>
                   <Text style={styles.formGroupLabel}>Cover Thumbnail Photo * (Big Rectangle)</Text>
                   <BouncyButton
-                    style={[styles.bigRectanglePicker, errors.fCover && styles.inputErrorBorder]}
+                    style={[styles.bigRectanglePicker, isWebWide && { maxWidth: 420, alignSelf: 'flex-start' }, errors.fCover && styles.inputErrorBorder]}
                     activeOpacity={0.8}
                     onPress={pickCoverImage}
                   >
@@ -16192,7 +16227,7 @@ function App() {
                   <View style={styles.smallSquaresGrid}>
                     {fShowcaseImages.filter((img) => img.uri.trim() !== '').length === 0 && (
                       <BouncyButton
-                        style={[styles.smallSquarePicker, errors.showcaseImages && styles.inputErrorBorder]}
+                        style={[styles.smallSquarePicker, isWebWide && { width: 110, height: 110 }, errors.showcaseImages && styles.inputErrorBorder]}
                         onPress={pickMultipleShowcaseImages}
                       >
                         <View style={styles.pickerPlaceholderCol}>
@@ -16204,7 +16239,7 @@ function App() {
 
                     {fShowcaseImages.filter((img) => img.uri.trim() !== '').map((img, index) => (
                       <View key={index} style={styles.squarePickerWrapper}>
-                        <View style={[styles.smallSquarePicker, errors.showcaseImages && styles.inputErrorBorder]}>
+                        <View style={[styles.smallSquarePicker, isWebWide && { width: 110, height: 110 }, errors.showcaseImages && styles.inputErrorBorder]}>
                           <Image source={{ uri: img.uri }} style={styles.smallSquarePreview} />
                         </View>
 
@@ -16243,7 +16278,7 @@ function App() {
                     {fShowcaseImages.filter((img) => img.uri.trim() !== '').length > 0 &&
                      fShowcaseImages.filter((img) => img.uri.trim() !== '').length < 10 && (
                       <BouncyButton
-                        style={styles.smallSquarePicker}
+                        style={[styles.smallSquarePicker, isWebWide && { width: 110, height: 110 }]}
                         onPress={pickMultipleShowcaseImages}
                       >
                         <PlusSVG />
@@ -16269,7 +16304,7 @@ function App() {
                           const vid = fUploadedVideos[slotIdx];
                           if (!vid) {
                             return (
-                              <BouncyButton key={slotIdx} style={styles.smallSquarePicker} onPress={pickUploadedVideo}>
+                              <BouncyButton key={slotIdx} style={[styles.smallSquarePicker, isWebWide && { width: 110, height: 110 }]} onPress={pickUploadedVideo}>
                                 <View style={styles.pickerPlaceholderCol}>
                                   <VideoFilledIconSVG size={20} color={theme.textSecondary} />
                                   <Text style={styles.squarePickerText}>Add Video</Text>
@@ -16279,7 +16314,7 @@ function App() {
                           }
                           return (
                             <View key={slotIdx} style={styles.squarePickerWrapper}>
-                              <View style={styles.smallSquarePicker}>
+                              <View style={[styles.smallSquarePicker, isWebWide && { width: 110, height: 110 }]}>
                                 <VideoSquareThumb uri={vid.uri} />
                                 {vid.compressing && (
                                   <View style={{
