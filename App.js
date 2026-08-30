@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 446;
+const BUILD_NUMBER = 447;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -7352,6 +7352,16 @@ function App() {
 
   const openEditWizard = (proj) => {
     setEditingProjectId(proj.id);
+    // Both of these were missing before - without them, editing a
+    // portfolio rendered the wizard using whatever selectedPortfolioType/
+    // aspect ratio happened to be left over from the last wizard session
+    // (or the hardcoded defaults), not this portfolio's own actual type and
+    // saved setting. That's what made editing a Graphic Design portfolio
+    // sometimes silently hide the video upload section entirely - the type
+    // picker screen is skipped entirely when editing, so this was the only
+    // place selectedPortfolioType could ever get set to match.
+    setSelectedPortfolioType(proj.portfolioType || 'ui_ux');
+    setFShowcaseAspectRatio(proj.showcaseAspectRatio || '16:9');
     setFTitle(proj.title || '');
     setFDesigner(proj.designer || userProfile.name);
     setFCategories(Array.isArray(proj.categories) && proj.categories.length > 0 ? proj.categories : [proj.category || 'Mobile App']);
