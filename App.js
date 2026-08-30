@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 454;
+const BUILD_NUMBER = 455;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -3107,16 +3107,34 @@ function AuthScreen({ onCancel } = {}) {
 // sized), not a full player. Real playback with controls happens later, in
 // the review/detail views via PortfolioVideoPlayer.
 const VideoSquareThumb = React.memo(({ uri }) => {
+  const [errored, setErrored] = useState(false);
   if (Platform.OS === 'web') {
+    // If the video fails to load/decode, Firefox specifically renders its
+    // own native broken-media icon (chrome://global/skin/media/error.png,
+    // confirmed via a Firefox performance profile) filling the element's
+    // bounds - visible as a stark white/blank flash wherever this renders,
+    // regardless of the CSS backgroundColor set below (the browser's own
+    // error graphic isn't guaranteed to respect it). Catching onError and
+    // swapping to a plain themed placeholder avoids ever showing that
+    // browser-native error state at all.
+    if (errored) {
+      return (
+        <View style={{ width: '100%', height: '100%', backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }}>
+          <VideoFilledIconSVG size={20} color="#64748B" />
+        </View>
+      );
+    }
     return React.createElement('video', {
       src: uri,
       muted: true,
       playsInline: true,
-      style: { width: '100%', height: '100%', objectFit: 'cover' }
+      preload: 'metadata',
+      onError: () => setErrored(true),
+      style: { width: '100%', height: '100%', objectFit: 'cover', backgroundColor: '#000' }
     });
   }
   const player = useVideoPlayer(uri, (p) => { p.loop = false; p.muted = true; });
-  return <VideoView player={player} style={{ width: '100%', height: '100%' }} contentFit="cover" nativeControls={false} />;
+  return <VideoView player={player} style={{ width: '100%', height: '100%', backgroundColor: '#000' }} contentFit="cover" nativeControls={false} />;
 });
 
 // Shared animated sliding-pill tab bar, generalizing the same motion/config
@@ -3278,13 +3296,26 @@ const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, t
 // life of a given build (web build only ever runs 'web'), so branching a
 // hook call around it here is safe despite looking conditional.
 const PortfolioVideoPlayer = React.memo(({ uri, width, height }) => {
+  const [errored, setErrored] = useState(false);
   const aspectRatio = width && height ? width / height : 16 / 9;
 
   if (Platform.OS === 'web') {
+    // Same reasoning as VideoSquareThumb above - a failed load shows
+    // Firefox's own native broken-media icon otherwise, which doesn't
+    // reliably respect this element's own backgroundColor.
+    if (errored) {
+      return (
+        <View style={{ width: '100%', aspectRatio, borderRadius: 12, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }}>
+          <VideoFilledIconSVG size={28} color="#64748B" />
+        </View>
+      );
+    }
     return React.createElement('video', {
       src: uri,
       controls: true,
       playsInline: true,
+      preload: 'metadata',
+      onError: () => setErrored(true),
       style: { width: '100%', aspectRatio, borderRadius: 12, backgroundColor: '#000', display: 'block' }
     });
   }
@@ -17656,7 +17687,7 @@ function App() {
                         const galleryHeight = 220;
                         const vidAspect = vid.width && vid.height ? vid.width / vid.height : 16 / 9;
                         return (
-                          <View key={`vid-${index}`} style={{ height: galleryHeight, width: galleryHeight * vidAspect, borderRadius: 12, overflow: 'hidden' }}>
+                          <View key={`vid-${index}`} style={{ height: galleryHeight, width: galleryHeight * vidAspect, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' }}>
                             <PortfolioVideoPlayer uri={vid.url} width={vid.width} height={vid.height} />
                           </View>
                         );
