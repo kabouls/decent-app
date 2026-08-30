@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 447;
+const BUILD_NUMBER = 448;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -268,6 +268,68 @@ const ALL_UIUX_CATEGORIES_MASTER = [
   'Web Design',
   'Wireframing & User Flow',
   '3D Assets & Animation'
+].sort();
+
+// Separate base category list per portfolio type - Graphic Design and
+// Illustration each get their own generic, relevant starting set instead of
+// sharing UI/UX's list (which was full of app/software-specific terms like
+// "iOS" and "Figma Prototype" that don't apply to this work at all). Custom
+// tags stay global across every type, unchanged - only these base/seed
+// lists differ per type (see masterCategoriesList below).
+const ALL_GRAPHIC_DESIGN_CATEGORIES_MASTER = [
+  'Adobe Illustrator',
+  'Adobe InDesign',
+  'Adobe Photoshop',
+  'Advertising Campaign',
+  'Album Cover Art',
+  'Brand Guidelines',
+  'Branding & Identity',
+  'Business Card Design',
+  'Corporate Identity',
+  'Event Branding',
+  'Flyer & Brochure',
+  'Infographic Design',
+  'Label Design',
+  'Logo Design',
+  'Menu Design',
+  'Merchandise Design',
+  'Packaging Design',
+  'Poster Design',
+  'Print Design',
+  'Signage & Wayfinding',
+  'Social Media Graphics',
+  'Stationery Design',
+  'Typography',
+  'Vector Art',
+  'Editorial Design'
+].sort();
+
+const ALL_ILLUSTRATION_CATEGORIES_MASTER = [
+  'Adobe Fresco',
+  'Character Design',
+  "Children's Book",
+  'Comic Art',
+  'Concept Art',
+  'Digital Painting',
+  'Editorial Illustration',
+  'Environment Art',
+  'Fantasy Art',
+  'Flat Illustration',
+  'Game Art',
+  'Icon Set',
+  'Isometric Illustration',
+  'Mascot Design',
+  'NFT Art',
+  'Pattern Design',
+  'Portrait Illustration',
+  'Procreate',
+  'Sci-Fi Art',
+  'Sticker Design',
+  'Storyboard Art',
+  'Tattoo Design',
+  'Vector Illustration',
+  'Book Illustration',
+  'Watercolor Style'
 ].sort();
 
 // SVG Icons
@@ -1846,6 +1908,41 @@ const POPULAR_DESIGNERS = []; // Mockup designers removed — only real register
 const INITIAL_PROJECTS = [];
 
 // Memoized Project Card Component
+// Wraps a card's tap target in a real <a href> on web, so right-click
+// "open in new tab", middle-click, and cmd/ctrl-click all work the way
+// they do on any normal website - none of that is possible on a plain
+// Pressable/TouchableOpacity, since browsers only offer those actions on
+// real anchor elements. Plain left-click still runs the exact same in-app
+// SPA navigation as before (preventDefault + call onPress directly) rather
+// than a full page reload. For modifier-clicks/middle-click, onPress is
+// deliberately NOT also called - only the anchor's native new-tab/new-
+// window behavior fires, avoiding a confusing double-navigation (current
+// tab jumping AND a new tab opening at once). Native (iOS/Android) has no
+// concept of "open in new tab" at all, so it renders a plain BouncyButton,
+// completely unchanged from before.
+const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
+  if (Platform.OS !== 'web' || !href) {
+    return <BouncyButton style={style} activeOpacity={activeOpacity} onPress={onPress}>{children}</BouncyButton>;
+  }
+  const handleClick = (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+    e.preventDefault();
+    onPress();
+  };
+  // display:'contents' makes the anchor itself layout-transparent, so it
+  // doesn't affect the card's sizing/flex behavior at all - the BouncyButton
+  // inside lays out exactly as if the anchor wasn't there. The inner
+  // BouncyButton's own onPress is intentionally a no-op: the anchor's
+  // onClick above is the single source of truth for the click action, so
+  // plain clicks aren't handled twice and modifier-clicks aren't handled at
+  // all beyond the browser's own native behavior.
+  return React.createElement(
+    'a',
+    { href, onClick: handleClick, style: { textDecoration: 'none', color: 'inherit', display: 'contents' } },
+    <BouncyButton style={style} activeOpacity={activeOpacity} onPress={() => {}}>{children}</BouncyButton>
+  );
+};
+
 const ProjectCard = React.memo(({
   item,
   onPress,
@@ -1876,7 +1973,8 @@ const ProjectCard = React.memo(({
     : null;
 
   return (
-  <BouncyButton
+  <CardLink
+    href={`/p/${item.id}`}
     style={[
       styles.card,
       fancyCardStyle,
@@ -2009,7 +2107,7 @@ const ProjectCard = React.memo(({
         )}
       </View>
     </View>
-  </BouncyButton>
+  </CardLink>
   );
 });
 
@@ -4223,17 +4321,17 @@ function App() {
   const [aiDisclosureTooltipVisible, setAiDisclosureTooltipVisible] = useState(false);
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [categoryPickerModalVisible, setCategoryPickerModalVisible] = useState(false);
-  const [masterCategoriesList, setMasterCategoriesList] = useState(ALL_UIUX_CATEGORIES_MASTER);
+  // Custom tags (user-typed, not in any base list) are global across every
+  // portfolio type, unchanged from before - kept separate from the base
+  // list here specifically so switching selectedPortfolioType can swap
+  // which base list applies without losing or duplicating these.
+  const [customCategoriesList, setCustomCategoriesList] = useState([]);
 
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase.from('custom_categories').select('name');
       if (!error && data && data.length > 0) {
-        setMasterCategoriesList((prev) => {
-          const existingLower = new Set(prev.map((c) => c.toLowerCase()));
-          const additions = data.map((r) => r.name).filter((name) => !existingLower.has(name.toLowerCase()));
-          return additions.length > 0 ? [...prev, ...additions].sort() : prev;
-        });
+        setCustomCategoriesList(data.map((r) => r.name));
       } else if (error) {
         console.warn('Failed to fetch custom categories:', error);
       }
@@ -7333,7 +7431,7 @@ function App() {
     const finalName = existingMatch || trimmed;
 
     if (!existingMatch) {
-      setMasterCategoriesList((prev) => [...prev, finalName].sort());
+      setCustomCategoriesList((prev) => [...prev, finalName]);
       // Persist so this tag is available to everyone, not just this
       // session - upsert with an incrementing usage_count means multiple
       // users independently "creating" the same tag just merges into one
@@ -7962,38 +8060,42 @@ function App() {
         }
       }
 
-      // 4. Update local state to match
-      setProjects((prev) =>
-        prev.map((p) =>
-          p.id === editingProjectId
-            ? {
-                ...p,
-                title: fTitle,
-                designer: fDesigner || userProfile.name,
+      // 4. Update local state to match, and re-show this exact portfolio
+      // instead of leaving the person wherever they were underneath the
+      // wizard - editing previously closed the wizard without reopening the
+      // detail view at all, since openEditWizard had set modalVisible false
+      // to get into the wizard in the first place and nothing ever set it
+      // back. Built once here so the exact same fresh object goes into both
+      // the projects list and activeProject, rather than risking the two
+      // drifting from writing the spread twice.
+      const updatedProject = {
+        ...activeProject,
+        title: fTitle,
+        designer: fDesigner || userProfile.name,
         designerHandle: userProfile.handle || '',
-                category: fCategories[0] || 'Mobile App',
-                categories: fCategories,
-                isNsfw: fIsNsfw,
-                figmaProfile: fFigmaProfile,
-                liveLinks: fHasLiveLink ? fLiveLinks.filter((l) => l.url.trim()) : [],
-                figmaProto: fFigmaProto,
-                componentProto: fComponentProto,
-                desktopProto: fDesktopProto,
-                figmaFile: fFigmaFile,
-                brief: fBrief,
-                longDescription: flattenedDescription,
-                contentBlocks: finalContentBlocks,
-                cover: finalCoverUrl,
-                images: finalImages,
-                imagesCaptions: finalImageCaptions,
-                videoLinks: validVideos,
-                uploadedVideos: finalUploadedVideos,
-                showcaseAspectRatio: fShowcaseAspectRatio
-              }
-            : p
-        )
-      );
+        category: fCategories[0] || 'Mobile App',
+        categories: fCategories,
+        isNsfw: fIsNsfw,
+        figmaProfile: fFigmaProfile,
+        liveLinks: fHasLiveLink ? fLiveLinks.filter((l) => l.url.trim()) : [],
+        figmaProto: fFigmaProto,
+        componentProto: fComponentProto,
+        desktopProto: fDesktopProto,
+        figmaFile: fFigmaFile,
+        brief: fBrief,
+        longDescription: flattenedDescription,
+        contentBlocks: finalContentBlocks,
+        cover: finalCoverUrl,
+        images: finalImages,
+        imagesCaptions: finalImageCaptions,
+        videoLinks: validVideos,
+        uploadedVideos: finalUploadedVideos,
+        showcaseAspectRatio: fShowcaseAspectRatio
+      };
+      setProjects((prev) => prev.map((p) => (p.id === editingProjectId ? updatedProject : p)));
+      setActiveProject(updatedProject);
       setAddModalVisible(false);
+      setModalVisible(true);
       resetFormWizard();
       showAutoSuccess('Updated', 'Portfolio package updated successfully!');
       return;
@@ -8296,6 +8398,22 @@ function App() {
 
   const [portfolioTypeModalVisible, setPortfolioTypeModalVisible] = useState(false);
   const [selectedPortfolioType, setSelectedPortfolioType] = useState('ui_ux');
+  // Base category list swaps per portfolio type; custom tags (fetched into
+  // customCategoriesList near categorySearchQuery above) merge on top of
+  // whichever base is active, deduped case-insensitively against it. Placed
+  // here specifically, after selectedPortfolioType's own declaration - this
+  // block used to sit up near customCategoriesList, before
+  // selectedPortfolioType existed yet, which is a TDZ crash the moment this
+  // component rendered (referencing a const before its own line executes).
+  const masterCategoriesList = useMemo(() => {
+    const base =
+      selectedPortfolioType === 'graphic_design' ? ALL_GRAPHIC_DESIGN_CATEGORIES_MASTER :
+      selectedPortfolioType === 'illustration' ? ALL_ILLUSTRATION_CATEGORIES_MASTER :
+      ALL_UIUX_CATEGORIES_MASTER;
+    const baseLower = new Set(base.map((c) => c.toLowerCase()));
+    const additions = customCategoriesList.filter((c) => !baseLower.has(c.toLowerCase()));
+    return additions.length > 0 ? [...base, ...additions].sort() : base;
+  }, [selectedPortfolioType, customCategoriesList]);
   const [myFeatureInterests, setMyFeatureInterests] = useState(new Set());
   const [interestConfirmTarget, setInterestConfirmTarget] = useState(null); // feature_name string, or null if no confirm popup showing
   const [interestConfirmMode, setInterestConfirmMode] = useState('add'); // 'add' | 'remove' - which action interestConfirmTarget is for
@@ -10362,8 +10480,9 @@ function App() {
                       {relatedDesigners.map((des) => {
                         const isFollowing = followedDesigners.includes(des.id);
                         return (
-                          <BouncyButton
+                          <CardLink
                             key={des.id}
+                            href={`/@${des.handle || des.id}`}
                             style={styles.designerItemCard}
                             onPress={() => openDesignerModal(des)}
                           >
@@ -10401,7 +10520,7 @@ function App() {
                               </View>
                             </View>
                             <ChevronRightSVG color="#8B5CF6" size={20} />
-                          </BouncyButton>
+                          </CardLink>
                         );
                       })}
                     </View>
@@ -10443,8 +10562,9 @@ function App() {
                     {searchedDesigners.slice(0, discoverDesignersLimit).map((des) => {
                       const isFollowing = followedDesigners.includes(des.id);
                       return (
-                        <BouncyButton
+                        <CardLink
                           key={des.id}
+                          href={`/@${des.handle || des.id}`}
                           style={[styles.designerItemCard, isWebWide && { width: '48%' }]}
                           onPress={() => openDesignerModal(des)}
                         >
@@ -10546,7 +10666,7 @@ function App() {
                               </View>
                             </View>
                           </View>
-                        </BouncyButton>
+                        </CardLink>
                       );
                     })}
                   </View>
@@ -16625,11 +16745,11 @@ function App() {
                               monochrome
                               size={18}
                             />
-                            <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.likesCount || 1}</Text>
+                            <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.likesCount || 0}</Text>
                           </View>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                             <EyeViewIconSVG size={18} color={theme.textSecondary} />
-                            <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.visitsCount || 120}</Text>
+                            <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.visitsCount || 0}</Text>
                           </View>
                         </View>
                       )}
@@ -17046,11 +17166,11 @@ function App() {
                           monochrome
                           size={18}
                         />
-                        <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.likesCount || 1}</Text>
+                        <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.likesCount || 0}</Text>
                       </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                         <EyeViewIconSVG size={18} color={theme.textSecondary} />
-                        <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.visitsCount || 120}</Text>
+                        <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.visitsCount || 0}</Text>
                       </View>
                     </View>
                   )}
