@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 449;
+const BUILD_NUMBER = 450;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -8203,14 +8203,28 @@ function App() {
         } else if (dbData && dbData.length > 0) {
           insertedId = dbData[0].id;
 
-          // Insert showcase images into portfolio_images table
+          // Insert showcase images into portfolio_images table. Previously
+          // fire-and-forget with zero error handling - a failure here (e.g.
+          // a missing column, an RLS policy issue) was completely silent:
+          // no console warning, no user-facing message. The portfolio would
+          // still appear to save fine locally (client-side state doesn't
+          // know the DB write failed), and only a page refresh - which
+          // refetches from Supabase - would reveal the images never
+          // actually persisted. Now surfaced clearly either way.
           if (finalImages.length > 0) {
             const imgRows = finalImages.map((url, i) => ({
               portfolio_id: insertedId,
               image_url: url,
               caption: finalImageCaptions[i] || null
             }));
-            await supabase.from('portfolio_images').insert(imgRows);
+            const { error: imgInsertError } = await supabase.from('portfolio_images').insert(imgRows);
+            if (imgInsertError) {
+              console.warn('Failed to insert showcase images:', imgInsertError);
+              showAppAlert(
+                'Images Not Saved',
+                `Your portfolio was created, but the images could not be saved: ${imgInsertError.message}. Please edit the portfolio and try adding them again.`
+              );
+            }
           }
         }
       } catch (err) {
