@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 430;
+const BUILD_NUMBER = 431;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1848,7 +1848,7 @@ const ProjectCard = React.memo(({
   styles
 }) => {
   const { lightweightMode } = useLightweightMode();
-  const { themeMode } = useTheme();
+  const { theme, themeMode } = useTheme();
   // Translucent card background, Fancy Mode only - isolated entirely
   // behind this one conditional so Fancy Mode off always falls back to
   // the exact original opaque styles.card, untouched. Semi-transparent
