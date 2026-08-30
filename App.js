@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 431;
+const BUILD_NUMBER = 432;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1891,14 +1891,6 @@ const ProjectCard = React.memo(({
           </View>
         )}
       </View>
-      {item.isAiGenerated === true && (
-        <View style={{
-          position: 'absolute', top: 8, right: 8, height: 22, minWidth: 22, paddingHorizontal: 5, borderRadius: 6,
-          backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10
-        }}>
-          <Text style={{ color: '#E2E8F0', fontSize: 10, fontWeight: '800' }}>AI</Text>
-        </View>
-      )}
       {showPinControl ? (
         <BouncyButton
           style={{
@@ -1929,24 +1921,29 @@ const ProjectCard = React.memo(({
 
     <View style={[styles.cardBody, isTwoRowCard && styles.cardBodyCompact]}>
       {/* Portfolio type moved here from the thumbnail badge, now paired
-          with its name rather than just an icon - AI tag (when present)
-          sits to its left, same color/style as before. */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          with its name rather than just an icon, and given a bordered
+          rectangular tag treatment (not the fully-rounded pill style used
+          for the category tags on the detail page). AI badge sits to its
+          left when present - moved down from the thumbnail image itself,
+          which no longer shows it there. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginBottom: 6 }}>
         {item.isAiGenerated === true && (
           <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: 5, backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: '#E2E8F0', fontSize: 9, fontWeight: '800' }}>AI</Text>
           </View>
         )}
-        {item.portfolioType === 'graphic_design' ? (
-          <PaletteSVG size={13} color={theme.textSecondary} />
-        ) : item.portfolioType === 'illustration' ? (
-          <PaintBrushSVG size={13} color={theme.textSecondary} />
-        ) : (
-          <CursorArrowSVG size={13} color={theme.textSecondary} />
-        )}
-        <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
-          {item.portfolioType === 'graphic_design' ? 'Graphic Design' : item.portfolioType === 'illustration' ? 'Illustration' : 'UI/UX Design'}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: theme.border, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4 }}>
+          {item.portfolioType === 'graphic_design' ? (
+            <PaletteSVG size={13} color={theme.textSecondary} />
+          ) : item.portfolioType === 'illustration' ? (
+            <PaintBrushSVG size={13} color={theme.textSecondary} />
+          ) : (
+            <CursorArrowSVG size={13} color={theme.textSecondary} />
+          )}
+          <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
+            {item.portfolioType === 'graphic_design' ? 'Graphic Design' : item.portfolioType === 'illustration' ? 'Illustration' : 'UI/UX Design'}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.titleRow}>
