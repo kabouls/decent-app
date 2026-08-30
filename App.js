@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 432;
+const BUILD_NUMBER = 433;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -16210,7 +16210,7 @@ function App() {
                   </View>
 
                   {activeProject.categories && activeProject.categories.length > 0 && (
-                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 20 }}>
+                    <View style={showAiTooltip ? { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 20, zIndex: 100, position: 'relative' } : { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 20 }}>
                       {/* Pulled out of the ScrollView below entirely (was
                           inside it, tooltip and all) - a horizontally
                           scrolling container clips absolutely-positioned
@@ -16219,7 +16219,7 @@ function App() {
                           here as a fixed sibling means it can never be
                           affected by that regardless of scroll position. */}
                       {activeProject.isAiGenerated === true && (
-                        <View style={{ position: 'relative' }}>
+                        <View style={showAiTooltip ? { position: 'relative', zIndex: 100 } : { position: 'relative' }}>
                           <BouncyButton
                             style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center' }}
                             onPress={handleAiIconPress}
