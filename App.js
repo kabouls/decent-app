@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 451;
+const BUILD_NUMBER = 452;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -9884,7 +9884,11 @@ function App() {
       {/* FIRST-TIME APP INTRODUCTION CAROUSEL */}
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'fade'}
-        transparent={false}
+        // Same fix as the portfolio/designer detail modals - the content
+        // right below already has its own opaque theme.bg background, so
+        // the Modal's own separate white backdrop was redundant and is
+        // what flashed before that content painted.
+        transparent={true}
         visible={showIntroCarousel}
         onRequestClose={handleCloseIntroCarousel}
       >
@@ -14637,7 +14641,11 @@ function App() {
         return (
           <Modal
             animationType={Platform.OS === 'web' ? 'none' : 'slide'}
-            transparent={false}
+            // Same fix as the portfolio detail modal just above - the
+            // Modal's own default white backdrop (transparent:false) was
+            // flashing before designerProfileContent's own theme.bg
+            // background could paint over it.
+            transparent={true}
             visible={designerModalVisible}
             onRequestClose={handleBackFromDesignerProfile}
           >
@@ -17834,7 +17842,17 @@ function App() {
         return (
           <Modal
             animationType={Platform.OS === 'web' ? 'none' : 'slide'}
-            transparent={false}
+            // transparent:true here specifically because the Modal's own
+            // default opaque backdrop (white, when transparent:false) was
+            // what was flashing before portfolioDetailContent's own themed
+            // background (backgroundColor: theme.bg, set on its outermost
+            // View just above) had a chance to paint over it - one frame of
+            // the Modal's own white backdrop, on every single open. Since
+            // portfolioDetailContent already fully covers the screen with
+            // the correct theme color itself, the Modal's own backdrop was
+            // redundant anyway - this removes it rather than trying to
+            // theme it, since we don't need it at all.
+            transparent={true}
             visible={modalVisible}
             onRequestClose={handleBackFromPortfolioDetail}
           >
