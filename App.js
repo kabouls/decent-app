@@ -132,7 +132,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 426;
+const BUILD_NUMBER = 427;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1908,10 +1908,10 @@ const ProjectCard = React.memo(({
       </View>
       {item.isAiGenerated === true && (
         <View style={{
-          position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: 6,
+          position: 'absolute', top: 8, right: 8, height: 22, minWidth: 22, paddingHorizontal: 5, borderRadius: 6,
           backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10
         }}>
-          <SparkleIconSVG size={13} color="#E2E8F0" />
+          <Text style={{ color: '#E2E8F0', fontSize: 10, fontWeight: '800' }}>AI</Text>
         </View>
       )}
       {showPinControl ? (
@@ -3356,13 +3356,6 @@ function App() {
   // return to keeps its scroll position for free - React never unmounted
   // it, so there's nothing to restore.
   const [cameFromPortfolioId, setCameFromPortfolioId] = useState(null); // set when Designer Profile was opened from a Portfolio Detail
-  // Set when a portfolio was hidden (not closed - activeProject data is
-  // kept intact) because a tag on it was tapped, switching to the Search
-  // tab underneath. Restoration here is a straight setModalVisible(true)
-  // rather than the designer flow's "unhide a still-mounted modal"
-  // approach, since a bottom-nav tab change (unlike a stacked modal)
-  // doesn't leave anything visually mounted underneath to reveal.
-  const [hiddenPortfolioForSearch, setHiddenPortfolioForSearch] = useState(false);
   const [cameFromDesignerId, setCameFromDesignerId] = useState(null); // set when Portfolio Detail was opened from a Designer Profile
   // Multi-level designer-to-designer navigation (e.g. viewing someone's
   // profile, opening their Followers list, tapping into a follower, tapping
@@ -3426,7 +3419,7 @@ function App() {
   const designerDotsWrapRef = useRef(null);
   const portfolioDotsWrapRef = useRef(null);
   const [designerMenuPos, setDesignerMenuPos] = useState({ top: 90, right: 20 });
-  const [portfolioMenuPos, setPortfolioMenuPos] = useState({ top: 60, right: 16 });
+  const [portfolioMenuPos, setPortfolioMenuPos] = useState({ top: 60, right: 16, left: 16 });
   const [designerProfileTab, setDesignerProfileTab] = useState('myWork');
 
   const [allCategoriesModalVisible, setAllCategoriesModalVisible] = useState(false);
@@ -6725,15 +6718,7 @@ function App() {
   }, []);
 
   const openDesignerProfileById = useCallback((designerId, preloadedData = null) => {
-    // The "jump straight to the Profile tab" shortcut below only makes
-    // sense when there's nothing to preserve underneath - if a portfolio
-    // is currently open and you tap your OWN name/avatar on it, this used
-    // to discard that entirely (closing the portfolio, wiping the back-
-    // stack) with no way back. Falling through to the normal designer-
-    // profile-modal path instead treats "yourself" like any other
-    // designer in that specific case, which correctly preserves
-    // cameFromPortfolioId below for proper back navigation.
-    if (session && designerId === session.user.id && !(modalVisible && activeProject)) {
+    if (session && designerId === session.user.id) {
       setModalVisible(false);
       setDesignerModalVisible(false);
       setCameFromPortfolioId(null);
@@ -7850,14 +7835,6 @@ function App() {
       setAllCategoriesModalVisible(false);
       return true;
     }
-    if (hiddenPortfolioForSearch) {
-      // Portfolio was hidden (not closed) when a tag was tapped from it -
-      // activeProject still holds its data, so this just re-shows it
-      // rather than needing to re-fetch or re-navigate anything.
-      setHiddenPortfolioForSearch(false);
-      setModalVisible(true);
-      return true;
-    }
     if (tabVisitStack.length > 0) {
       const prevTab = tabVisitStack[tabVisitStack.length - 1];
       setTabVisitStack((prevStack) => prevStack.slice(0, -1));
@@ -7874,7 +7851,7 @@ function App() {
   }, [
     linkPreview, lightboxImageUri, settingsModalVisible, notificationModalVisible,
     fullscreenDescEditorVisible, addModalVisible, designerModalVisible, modalVisible,
-    allCategoriesModalVisible, hiddenPortfolioForSearch, bottomNav, tabVisitStack,
+    allCategoriesModalVisible, bottomNav, tabVisitStack,
     handleBackFromDesignerProfile, handleBackFromPortfolioDetail
   ]);
 
@@ -15644,67 +15621,97 @@ function App() {
                 {activeProject.title}
               </Text>
 
-              {/* Engagement stats now live here (left side of the top bar,
-                  alongside share/dots/close) for app/narrow-web specifically
-                  - the full, untruncated title moved down into the
-                  scrollable content instead (see caseTitle below, right
-                  above the designer row). Wide web's split-layout header is
-                  untouched: title stays centered here, stats stay in their
-                  original spot in the case study pane. The title Text
-                  above is kept mounted (not removed) with opacity:0 so this
-                  row's overall height/spacing doesn't shift between the two
-                  layouts - it's just invisible and non-interactive on
-                  narrow/native. */}
+              {/* Share/dots now sit on the LEFT for app/narrow-web
+                  specifically, with engagement stats and close on the
+                  RIGHT instead (previously the reverse) - the dots menu's
+                  own popup position is computed dynamically from this
+                  button's actual on-screen location either way, so no
+                  separate fix was needed there beyond switching its anchor
+                  from right-edge to left-edge (see setPortfolioMenuPos and
+                  the popup's own style below) now that it can sit near the
+                  left edge of the screen. Wide web's split-layout header is
+                  untouched: title stays centered, share/dots stay on the
+                  right where they've always been. */}
               {!isWebWide && (
-                <View style={{ position: 'absolute', left: Platform.OS === 'web' ? 50 : 16, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                  {Platform.OS !== 'web' && (
-                    <BouncyButton style={styles.closeBtn} onPress={handleBackFromPortfolioDetail}>
-                      <Text style={styles.closeBtnText}>✕</Text>
+                <View style={{ position: 'absolute', left: 16, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <BouncyButton
+                    style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                    onPress={() => handleSharePortfolio(activeProject)}
+                  >
+                    <ShareIconSVG color={theme.accentLight} />
+                  </BouncyButton>
+
+                  <View ref={portfolioDotsWrapRef} style={{ zIndex: 100 }}>
+                    <BouncyButton
+                      style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                      onPress={() => {
+                        const next = !portfolioOptionsMenuVisible;
+                        if (next && portfolioDotsWrapRef.current) {
+                          portfolioDotsWrapRef.current.measureInWindow((x, y, width, height) => {
+                            setPortfolioMenuPos({ top: y + height + 8, left: x });
+                          });
+                        }
+                        setPortfolioOptionsMenuVisible(next);
+                      }}
+                    >
+                      <Text style={{ color: theme.textSecondary, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
                     </BouncyButton>
-                  )}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                    <LikeButton
-                      liked={activeProject.liked}
-                      likesCount={activeProject.likesCount}
-                      onPress={() => toggleLike(activeProject.id)}
-                      color={theme.textSecondary}
-                      monochrome
-                      size={17}
-                    />
-                    <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.likesCount || 0}</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                    <EyeViewIconSVG size={17} color={theme.textSecondary} />
-                    <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.visitsCount || 0}</Text>
                   </View>
                 </View>
               )}
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, ...(isWebWide ? { width: 68, justifyContent: 'flex-end' } : {}) }}>
-                <BouncyButton
-                  style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
-                  onPress={() => handleSharePortfolio(activeProject)}
-                >
-                  <ShareIconSVG color={theme.accentLight} />
-                </BouncyButton>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: isWebWide ? 4 : 14, ...(isWebWide ? { width: 68, justifyContent: 'flex-end' } : {}) }}>
+                {isWebWide ? (
+                  <>
+                    <BouncyButton
+                      style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                      onPress={() => handleSharePortfolio(activeProject)}
+                    >
+                      <ShareIconSVG color={theme.accentLight} />
+                    </BouncyButton>
 
-                <View ref={portfolioDotsWrapRef} style={{ zIndex: 100 }}>
-                  <BouncyButton
-                    style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
-                    onPress={() => {
-                      const next = !portfolioOptionsMenuVisible;
-                      if (next && portfolioDotsWrapRef.current) {
-                        portfolioDotsWrapRef.current.measureInWindow((x, y, width, height) => {
-                          const screenWidth = Platform.OS === 'web' ? window.innerWidth : Dimensions.get('window').width;
-                          setPortfolioMenuPos({ top: y + height + 8, right: Math.max(8, screenWidth - (x + width)) });
-                        });
-                      }
-                      setPortfolioOptionsMenuVisible(next);
-                    }}
-                  >
-                    <Text style={{ color: theme.textSecondary, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
-                  </BouncyButton>
-                </View>
+                    <View ref={portfolioDotsWrapRef} style={{ zIndex: 100 }}>
+                      <BouncyButton
+                        style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                        onPress={() => {
+                          const next = !portfolioOptionsMenuVisible;
+                          if (next && portfolioDotsWrapRef.current) {
+                            portfolioDotsWrapRef.current.measureInWindow((x, y, width, height) => {
+                              const screenWidth = Platform.OS === 'web' ? window.innerWidth : Dimensions.get('window').width;
+                              setPortfolioMenuPos({ top: y + height + 8, right: Math.max(8, screenWidth - (x + width)) });
+                            });
+                          }
+                          setPortfolioOptionsMenuVisible(next);
+                        }}
+                      >
+                        <Text style={{ color: theme.textSecondary, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
+                      </BouncyButton>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                      <LikeButton
+                        liked={activeProject.liked}
+                        likesCount={activeProject.likesCount}
+                        onPress={() => toggleLike(activeProject.id)}
+                        color={theme.textSecondary}
+                        monochrome
+                        size={17}
+                      />
+                      <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.likesCount || 0}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                      <EyeViewIconSVG size={17} color={theme.textSecondary} />
+                      <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>{activeProject.visitsCount || 0}</Text>
+                    </View>
+                    {Platform.OS !== 'web' && (
+                      <BouncyButton style={styles.closeBtn} onPress={handleBackFromPortfolioDetail}>
+                        <Text style={styles.closeBtnText}>✕</Text>
+                      </BouncyButton>
+                    )}
+                  </>
+                )}
 
                 <Modal
                   transparent
@@ -15722,7 +15729,9 @@ function App() {
                       onPress={() => setPortfolioOptionsMenuVisible(false)}
                     />
                     <View style={{
-                      position: 'absolute', top: portfolioMenuPos.top, right: portfolioMenuPos.right, width: 220,
+                      position: 'absolute', top: portfolioMenuPos.top,
+                      ...(isWebWide ? { right: portfolioMenuPos.right } : { left: portfolioMenuPos.left }),
+                      width: 220,
                       backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
                       padding: 6,
                       shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
@@ -16060,7 +16069,46 @@ function App() {
                   </View>
 
                   {activeProject.categories && activeProject.categories.length > 0 && (
-                    <View style={{ position: 'relative', marginBottom: 20 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 20 }}>
+                      {/* Pulled out of the ScrollView below entirely (was
+                          inside it, tooltip and all) - a horizontally
+                          scrolling container clips absolutely-positioned
+                          content that extends past its own bounds, which is
+                          exactly why the tooltip stopped showing. Sitting
+                          here as a fixed sibling means it can never be
+                          affected by that regardless of scroll position. */}
+                      {activeProject.isAiGenerated === true && (
+                        <View style={{ position: 'relative' }}>
+                          <BouncyButton
+                            style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center' }}
+                            onPress={handleAiIconPress}
+                          >
+                            <Text style={{ color: '#E2E8F0', fontSize: 11, fontWeight: '800' }}>AI</Text>
+                          </BouncyButton>
+                          {showAiTooltip && (
+                            <Animated.View
+                              pointerEvents="none"
+                              style={{
+                                position: 'absolute', top: 32, left: -6, zIndex: 50,
+                                backgroundColor: theme.mode === 'light' ? '#1E293B' : '#0F172A',
+                                borderWidth: 1, borderColor: theme.border,
+                                borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+                                width: 220,
+                                opacity: aiTooltipAnim,
+                                transform: [{
+                                  translateY: aiTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] })
+                                }]
+                              }}
+                            >
+                              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', lineHeight: 17 }}>
+                                This content is AI generated/assisted
+                              </Text>
+                            </Animated.View>
+                          )}
+                        </View>
+                      )}
+
+                      <View style={{ flex: 1, position: 'relative' }}>
                       <ScrollView
                         ref={detailTagsScrollRef}
                         horizontal
@@ -16077,42 +16125,11 @@ function App() {
                           updateDetailTagsScrollArrows(detailTagsScrollXRef.current);
                         } : undefined}
                       >
-                        {activeProject.isAiGenerated === true && (
-                          <View style={{ position: 'relative', alignSelf: 'flex-start' }}>
-                            <BouncyButton
-                              style={{ width: 26, height: 26, borderRadius: 7, backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center' }}
-                              onPress={handleAiIconPress}
-                            >
-                              <SparkleIconSVG size={14} color="#E2E8F0" />
-                            </BouncyButton>
-                            {showAiTooltip && (
-                              <Animated.View
-                                pointerEvents="none"
-                                style={{
-                                  position: 'absolute', top: 32, left: -6, zIndex: 50,
-                                  backgroundColor: theme.mode === 'light' ? '#1E293B' : '#0F172A',
-                                  borderWidth: 1, borderColor: theme.border,
-                                  borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
-                                  width: 220,
-                                  opacity: aiTooltipAnim,
-                                  transform: [{
-                                    translateY: aiTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] })
-                                  }]
-                                }}
-                              >
-                                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', lineHeight: 17 }}>
-                                  This content is AI generated/assisted
-                                </Text>
-                              </Animated.View>
-                            )}
-                          </View>
-                        )}
                         {activeProject.categories.map((cat, idx) => (
                           <BouncyButton
                             key={idx}
                             style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}
                             onPress={() => {
-                              setHiddenPortfolioForSearch(true);
                               setModalVisible(false);
                               setSearchQuery(cat);
                               handleNavChange('search');
@@ -16137,6 +16154,7 @@ function App() {
                           <ChevronRightSVG color={theme.textSecondary} size={16} />
                         </View>
                       )}
+                      </View>
                     </View>
                   )}
 
@@ -17138,7 +17156,7 @@ const getStyles = (theme) => StyleSheet.create({
   stickyModalBackToTopBtn: {
     position: 'absolute', bottom: 90, right: 20,
     width: 44, height: 44, borderRadius: 99,
-    backgroundColor: theme.surface, borderWidth: 1.5, borderColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center',
     elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 6, zIndex: 99
   },
 
@@ -17184,7 +17202,7 @@ const getStyles = (theme) => StyleSheet.create({
 
   stickyBackToTopBtn: {
     position: 'absolute', bottom: 100, right: 20, width: 42, height: 42,
-    borderRadius: 99, backgroundColor: theme.surface, borderWidth: 1.5, borderColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center',
+    borderRadius: 99, backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center',
     elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 99
   },
 
