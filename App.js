@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 453;
+const BUILD_NUMBER = 454;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -14640,7 +14640,12 @@ function App() {
           </View>
         );
 
-        if (Platform.OS === 'web' && isWebWide) {
+        if (Platform.OS === 'web') {
+          // Same reasoning as the portfolio detail modal - a plain View has
+          // no separate portal/paint lifecycle the way RN-Web's <Modal>
+          // does, which is what was actually causing the flash rather than
+          // just the transparent prop. Real native <Modal> below now only
+          // ever runs on iOS/Android.
           return designerModalVisible && (
             <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: topStackedPage === 'designer' ? 160 : 150, elevation: 10, backgroundColor: theme.bg }}>
               {designerProfileContent}
@@ -17841,7 +17846,21 @@ function App() {
           </View>
         );
 
-        if (Platform.OS === 'web' && isWebWide) {
+        if (Platform.OS === 'web') {
+          // Same plain absolutely-positioned View already used for wide
+          // web, now covering narrow web too - real RN <Modal> is only used
+          // for actual native (iOS/Android) below. This is what finally
+          // eliminates the flash rather than trying to configure it away:
+          // RN-Web's Modal creates its own separate portal/DOM structure
+          // with its own paint lifecycle, and something in that (beyond
+          // just the transparent prop, already tried) still painted a
+          // blank white frame before this content committed on top of it -
+          // worse on slow connections/complex portfolios, per what actually
+          // got reported, consistent with a real portal-vs-content-commit
+          // timing gap rather than a simple prop misconfiguration. A plain
+          // View has no such separate portal at all - it's just a normal
+          // part of this same render tree, so there's no gap for a blank
+          // frame to appear in between.
           return modalVisible && (
             <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: topStackedPage === 'portfolio' ? 160 : 150, elevation: 10, backgroundColor: theme.bg }}>
               {portfolioDetailContent}
