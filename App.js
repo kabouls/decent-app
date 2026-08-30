@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 445;
+const BUILD_NUMBER = 446;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1487,13 +1487,25 @@ const getContentBlocksFromRow = (row) => {
 };
 
 // Showcase images live in a separate portfolio_images table (joined via
-// select('*, portfolio_images(image_url)')), not a column on portfolios
-// itself - falls back to just the cover if the join comes back empty.
+// select('*, portfolio_images(image_url, caption)')), not a column on
+// portfolios itself - falls back to just the cover if the join comes back
+// empty.
 const getShowcaseImagesFromRow = (row) => {
   if (row && Array.isArray(row.portfolio_images) && row.portfolio_images.length > 0) {
     return row.portfolio_images.map((img) => img.image_url).filter(Boolean);
   }
   return [row && row.cover_url ? row.cover_url : ''];
+};
+
+// Captions, same order as getShowcaseImagesFromRow above - pulled from the
+// exact same joined array in one pass, so the two stay index-aligned
+// without needing a second query. '' (not null) for images with no caption,
+// so callers can render straight from this without a null check.
+const getShowcaseCaptionsFromRow = (row) => {
+  if (row && Array.isArray(row.portfolio_images) && row.portfolio_images.length > 0) {
+    return row.portfolio_images.filter((img) => img.image_url).map((img) => img.caption || '');
+  }
+  return [''];
 };
 
 // Single source of truth for turning a raw `portfolios` row (plus its
@@ -1533,6 +1545,7 @@ const mapPortfolioRow = (p, { liked = false, visitsFallback = 120 } = {}) => ({
   pinned: !!p.is_pinned,
   cover: p.cover_url || '',
   images: getShowcaseImagesFromRow(p),
+  imagesCaptions: getShowcaseCaptionsFromRow(p),
   videoLinks: [],
   uploadedVideos: Array.isArray(p.video_urls) ? p.video_urls : [],
   caseStudy: p.brief || ''
@@ -3737,11 +3750,12 @@ function App() {
   // stays untouched for avatars and other single-tap-to-enlarge spots).
   // openId increments on every open so the ScrollView below can be keyed to
   // force a fresh mount + correct initial scroll position even when
-  // reopening on the same index. { images: string[], index: number } | null
+  // reopening on the same index. { images: string[], index: number,
+  // captions?: string[] } | null
   const [imageViewerState, setImageViewerState] = useState(null);
   const [imageViewerOpenId, setImageViewerOpenId] = useState(0);
-  const openImageViewer = (images, index) => {
-    setImageViewerState({ images, index });
+  const openImageViewer = (images, index, captions) => {
+    setImageViewerState({ images, index, captions: captions || [] });
     setImageViewerOpenId((id) => id + 1);
   };
   const galleryScrollContentWidthRef = useRef(0);
@@ -4250,7 +4264,7 @@ function App() {
   const [fLiveLinks, setFLiveLinks] = useState([{ label: '', url: '' }]);
   const [fCover, setFCover] = useState('');
   
-  const [fShowcaseImages, setFShowcaseImages] = useState(['', '']);
+  const [fShowcaseImages, setFShowcaseImages] = useState([{ uri: '', caption: '' }, { uri: '', caption: '' }]);
   // Applied as a display-time crop (aspectRatio + resizeMode:'cover'), not
   // an actual file crop - expo-image-picker doesn't support allowsEditing/
   // aspect when allowsMultipleSelection is true, so there's no way to force
@@ -4493,7 +4507,7 @@ function App() {
       // Try fetching online portfolios from Supabase
       const { data: onlinePortfolios, error } = await supabase
         .from('portfolios')
-        .select('*, portfolio_images(image_url)')
+        .select('*, portfolio_images(image_url, caption)')
         .or('is_nsfw.eq.false,is_nsfw.is.null')
         .order('created_at', { ascending: false })
         .range(0, PAGE_SIZE - 1);
@@ -4525,7 +4539,7 @@ function App() {
     try {
       const { data: morePortfolios, error } = await supabase
         .from('portfolios')
-        .select('*, portfolio_images(image_url)')
+        .select('*, portfolio_images(image_url, caption)')
         .or('is_nsfw.eq.false,is_nsfw.is.null')
         .order('created_at', { ascending: false })
         .range(projects.length, projects.length + PAGE_SIZE - 1);
@@ -6908,7 +6922,7 @@ function App() {
       setLoadingDesignerLikes(false);
       return;
     }
-    const { data: portfolioRows } = await supabase.from('portfolios').select('*, portfolio_images(image_url)').in('id', likedIds);
+    const { data: portfolioRows } = await supabase.from('portfolios').select('*, portfolio_images(image_url, caption)').in('id', likedIds);
     const mapped = (portfolioRows || []).map((p) => mapPortfolioRow(p, { liked: true }));
     setDesignerLikedProjects(mapped);
     setLoadingDesignerLikes(false);
@@ -7358,9 +7372,13 @@ function App() {
     setFHasLiveLink(!!(proj.liveLinks && proj.liveLinks.length > 0));
     setFLiveLinks(proj.liveLinks && proj.liveLinks.length > 0 ? proj.liveLinks : [{ label: '', url: '' }]);
     setFCover(proj.cover || '');
-    setFShowcaseImages(proj.images && proj.images.length >= 2 ? proj.images : [proj.cover || '', '']);
+    setFShowcaseImages(
+      proj.images && proj.images.length >= 2
+        ? proj.images.map((uri, i) => ({ uri, caption: (proj.imagesCaptions && proj.imagesCaptions[i]) || '' }))
+        : [{ uri: proj.cover || '', caption: '' }, { uri: '', caption: '' }]
+    );
     setFVideoLinks(proj.videoLinks && proj.videoLinks.length > 0 ? proj.videoLinks : ['']);
-    setFUploadedVideos(Array.isArray(proj.uploadedVideos) ? proj.uploadedVideos.map((v) => ({ uri: v.url, width: v.width, height: v.height, compressing: false })) : []);
+    setFUploadedVideos(Array.isArray(proj.uploadedVideos) ? proj.uploadedVideos.map((v) => ({ uri: v.url, width: v.width, height: v.height, compressing: false, caption: v.caption || '' })) : []);
     setFormStep(1);
     setModalVisible(false);
     setAddModalVisible(true);
@@ -7373,6 +7391,17 @@ function App() {
     }
     const updated = fShowcaseImages.filter((_, i) => i !== index);
     setFShowcaseImages(updated);
+  };
+
+  // Matches by uri rather than by the filtered-array index passed in, since
+  // that index is relative to the non-empty subset shown on screen, not the
+  // full fShowcaseImages array underneath - matching by uri sidesteps that
+  // mismatch entirely rather than needing to re-derive the real index.
+  const handleShowcaseCaptionChange = (filteredIndex, text) => {
+    const filled = fShowcaseImages.filter((img) => img.uri.trim() !== '');
+    if (filteredIndex < 0 || filteredIndex >= filled.length) return;
+    const targetUri = filled[filteredIndex].uri;
+    setFShowcaseImages((prev) => prev.map((img) => (img.uri === targetUri ? { ...img, caption: text } : img)));
   };
 
   // Picks one video at a time (max 3 total), compresses it on-device via
@@ -7410,7 +7439,7 @@ function App() {
     }
 
     const placeholderIndex = fUploadedVideos.length;
-    setFUploadedVideos((prev) => [...prev, { uri: asset.uri, width: asset.width || 1280, height: asset.height || 720, compressing: Platform.OS !== 'web' }]);
+    setFUploadedVideos((prev) => [...prev, { uri: asset.uri, width: asset.width || 1280, height: asset.height || 720, compressing: Platform.OS !== 'web', caption: '' }]);
 
     if (Platform.OS === 'web') return; // no on-device compressor available on web - original file is used as-is
 
@@ -7456,7 +7485,7 @@ function App() {
       return;
     }
 
-    const existingFilled = fShowcaseImages.filter((img) => img.trim() !== '');
+    const existingFilled = fShowcaseImages.filter((img) => img.uri.trim() !== '');
     const remainingSlots = 10 - existingFilled.length;
     if (remainingSlots <= 0) {
       showAppAlert('Maximum Limit Reached', 'You can upload up to 10 showcase images.');
@@ -7471,9 +7500,9 @@ function App() {
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      const newUris = result.assets.map((a) => a.uri);
-      const combined = [...existingFilled, ...newUris].slice(0, 10);
-      setFShowcaseImages(combined.length >= 2 ? combined : [...combined, '']);
+      const newItems = result.assets.map((a) => ({ uri: a.uri, caption: '' }));
+      const combined = [...existingFilled, ...newItems].slice(0, 10);
+      setFShowcaseImages(combined.length >= 2 ? combined : [...combined, { uri: '', caption: '' }]);
       setErrors({ ...errors, showcaseImages: null });
     }
   };
@@ -7798,7 +7827,7 @@ function App() {
     let errs = {};
     if (!fCover.trim()) errs.fCover = 'Please select a cover thumbnail photo from your phone or PC';
     
-    const validShowcase = fShowcaseImages.filter((img) => img.trim() !== '');
+    const validShowcase = fShowcaseImages.filter((img) => img.uri.trim() !== '');
     if (validShowcase.length < 2) {
       errs.showcaseImages = 'Please pick at least 2 showcase images.';
     }
@@ -7813,7 +7842,7 @@ function App() {
 
   const performPortfolioSubmit = async () => {
     const validVideos = fVideoLinks.filter((v) => v.trim() !== '');
-    const validShowcaseImgs = fShowcaseImages.filter((img) => img.trim() !== '');
+    const validShowcaseImgs = fShowcaseImages.filter((img) => img.uri.trim() !== '');
     // Graphic Design only, per the feature's scope - other portfolio types
     // never show the upload UI in the first place, but this guards the
     // actual DB write too in case selectedPortfolioType changes mid-edit.
@@ -7824,7 +7853,7 @@ function App() {
               const url = (v.uri.startsWith('file://') || v.uri.startsWith('content://') || v.uri.startsWith('blob:') || v.uri.startsWith('data:'))
                 ? await uploadVideoToSupabase(v.uri, 'videos')
                 : v.uri;
-              return url ? { url, width: v.width, height: v.height } : null;
+              return url ? { url, width: v.width, height: v.height, caption: v.caption || '' } : null;
             })
           )).filter(Boolean)
         : [];
@@ -7856,13 +7885,15 @@ function App() {
       }
 
       const uploadedShowcase = await Promise.all(
-        validShowcaseImgs.map((img) =>
-          (img.startsWith('file://') || img.startsWith('content://') || img.startsWith('ph://') || img.startsWith('blob:') || img.startsWith('data:'))
-            ? uploadImageChecked(img, 'showcase')
-            : Promise.resolve(img)
-        )
+        validShowcaseImgs.map(async (img) => ({
+          url: (img.uri.startsWith('file://') || img.uri.startsWith('content://') || img.uri.startsWith('ph://') || img.uri.startsWith('blob:') || img.uri.startsWith('data:'))
+            ? await uploadImageChecked(img.uri, 'showcase')
+            : img.uri,
+          caption: img.caption || ''
+        }))
       );
-      const finalImages = uploadedShowcase.length > 0 ? uploadedShowcase : [finalCoverUrl];
+      const finalImages = uploadedShowcase.length > 0 ? uploadedShowcase.map((u) => u.url) : [finalCoverUrl];
+      const finalImageCaptions = uploadedShowcase.length > 0 ? uploadedShowcase.map((u) => u.caption) : [''];
       const finalUploadedVideos = await uploadUploadedVideos();
 
       // 2. Update the portfolios row in Supabase
@@ -7914,7 +7945,7 @@ function App() {
         return;
       }
       if (finalImages.length > 0) {
-        const imgRows = finalImages.map((url) => ({ portfolio_id: editingProjectId, image_url: url }));
+        const imgRows = finalImages.map((url, i) => ({ portfolio_id: editingProjectId, image_url: url, caption: finalImageCaptions[i] || null }));
         const { error: imgInsertError } = await supabase.from('portfolio_images').insert(imgRows);
         if (imgInsertError) {
           console.warn('Failed to insert new showcase images:', imgInsertError);
@@ -7944,6 +7975,7 @@ function App() {
                 contentBlocks: finalContentBlocks,
                 cover: finalCoverUrl,
                 images: finalImages,
+                imagesCaptions: finalImageCaptions,
                 videoLinks: validVideos,
                 uploadedVideos: finalUploadedVideos,
                 showcaseAspectRatio: fShowcaseAspectRatio
@@ -7964,14 +7996,16 @@ function App() {
 
       // 2. Upload Showcase Images to Supabase Storage
       const uploadedShowcase = await Promise.all(
-        validShowcaseImgs.map((img) =>
-          (img.startsWith('file://') || img.startsWith('content://') || img.startsWith('ph://') || img.startsWith('blob:') || img.startsWith('data:'))
-            ? uploadImageChecked(img, 'showcase')
-            : Promise.resolve(img)
-        )
+        validShowcaseImgs.map(async (img) => ({
+          url: (img.uri.startsWith('file://') || img.uri.startsWith('content://') || img.uri.startsWith('ph://') || img.uri.startsWith('blob:') || img.uri.startsWith('data:'))
+            ? await uploadImageChecked(img.uri, 'showcase')
+            : img.uri,
+          caption: img.caption || ''
+        }))
       );
 
-      const finalImages = uploadedShowcase.length > 0 ? uploadedShowcase : [finalCoverUrl];
+      const finalImages = uploadedShowcase.length > 0 ? uploadedShowcase.map((u) => u.url) : [finalCoverUrl];
+      const finalImageCaptions = uploadedShowcase.length > 0 ? uploadedShowcase.map((u) => u.caption) : [''];
       const finalUploadedVideos = await uploadUploadedVideos();
 
       // 3. Insert into Supabase 'portfolios' table
@@ -8014,9 +8048,10 @@ function App() {
 
           // Insert showcase images into portfolio_images table
           if (finalImages.length > 0) {
-            const imgRows = finalImages.map(url => ({
+            const imgRows = finalImages.map((url, i) => ({
               portfolio_id: insertedId,
-              image_url: url
+              image_url: url,
+              caption: finalImageCaptions[i] || null
             }));
             await supabase.from('portfolio_images').insert(imgRows);
           }
@@ -8049,6 +8084,7 @@ function App() {
         contentBlocks: finalContentBlocks,
         cover: finalCoverUrl,
         images: finalImages,
+        imagesCaptions: finalImageCaptions,
         videoLinks: validVideos,
         uploadedVideos: finalUploadedVideos,
         caseStudy: fBrief,
@@ -8224,7 +8260,7 @@ function App() {
     setFHasLiveLink(false);
     setFLiveLinks([{ label: '', url: '' }]);
     setFCover('');
-    setFShowcaseImages(['', '']);
+    setFShowcaseImages([{ uri: '', caption: '' }, { uri: '', caption: '' }]);
     setFShowcaseAspectRatio('16:9');
     setFVideoLinks(['']);
     setFUploadedVideos([]);
@@ -8573,7 +8609,7 @@ function App() {
         (() => {
           let q1 = supabase
             .from('portfolios')
-            .select('*, portfolio_images(image_url)')
+            .select('*, portfolio_images(image_url, caption)')
             .or(`title.ilike.%${q}%,user_name.ilike.%${q}%,brief.ilike.%${q}%,user_handle.ilike.%${q}%`);
           if (safeSearchEnabled) q1 = q1.or('is_nsfw.eq.false,is_nsfw.is.null');
           return q1.limit(30);
@@ -11283,6 +11319,13 @@ function App() {
           >
             <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>✕</Text>
           </BouncyButton>
+          {imageViewerState && imageViewerState.captions && imageViewerState.captions[imageViewerState.index] && imageViewerState.captions[imageViewerState.index].trim() !== '' && (
+            <View style={{ position: 'absolute', bottom: imageViewerState.images.length > 1 ? 80 : 40, left: 24, right: 24, alignItems: 'center' }}>
+              <Text style={{ color: '#FFFFFF', fontSize: 14, textAlign: 'center' }}>
+                {imageViewerState.captions[imageViewerState.index]}
+              </Text>
+            </View>
+          )}
           {imageViewerState && imageViewerState.images.length > 1 && (
             <View style={{ position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}>
               <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
@@ -15749,7 +15792,7 @@ function App() {
                   </View>
 
                   <View style={styles.smallSquaresGrid}>
-                    {fShowcaseImages.filter((img) => img.trim() !== '').length === 0 && (
+                    {fShowcaseImages.filter((img) => img.uri.trim() !== '').length === 0 && (
                       <BouncyButton
                         style={[styles.smallSquarePicker, errors.showcaseImages && styles.inputErrorBorder]}
                         onPress={pickMultipleShowcaseImages}
@@ -15761,13 +15804,13 @@ function App() {
                       </BouncyButton>
                     )}
 
-                    {fShowcaseImages.filter((img) => img.trim() !== '').map((imgUri, index) => (
+                    {fShowcaseImages.filter((img) => img.uri.trim() !== '').map((img, index) => (
                       <View key={index} style={styles.squarePickerWrapper}>
                         <View style={[styles.smallSquarePicker, errors.showcaseImages && styles.inputErrorBorder]}>
-                          <Image source={{ uri: imgUri }} style={styles.smallSquarePreview} />
+                          <Image source={{ uri: img.uri }} style={styles.smallSquarePreview} />
                         </View>
 
-                        {fShowcaseImages.filter((img) => img.trim() !== '').length > 2 && (
+                        {fShowcaseImages.filter((im) => im.uri.trim() !== '').length > 2 && (
                           <BouncyButton
                             style={{
                               position: 'absolute', top: -4, right: -4, width: 24, height: 24, borderRadius: 12,
@@ -15780,11 +15823,27 @@ function App() {
                             <DashCircleIconSVG size={16} />
                           </BouncyButton>
                         )}
+
+                        {/* Caption is optional, shown only in the right-panel
+                            media view and the fullscreen viewer - never in
+                            the compact gallery strip or this small picker
+                            thumbnail itself. */}
+                        <FocusableTextInput
+                          style={{
+                            marginTop: 6, width: '100%', fontSize: 11, color: theme.text,
+                            borderWidth: 1, borderColor: theme.border, borderRadius: 8,
+                            paddingHorizontal: 8, paddingVertical: 6, backgroundColor: theme.surface
+                          }}
+                          placeholder="Caption (optional)"
+                          placeholderTextColor="#64748B"
+                          value={img.caption}
+                          onChangeText={(t) => handleShowcaseCaptionChange(index, t)}
+                        />
                       </View>
                     ))}
 
-                    {fShowcaseImages.filter((img) => img.trim() !== '').length > 0 &&
-                     fShowcaseImages.filter((img) => img.trim() !== '').length < 10 && (
+                    {fShowcaseImages.filter((img) => img.uri.trim() !== '').length > 0 &&
+                     fShowcaseImages.filter((img) => img.uri.trim() !== '').length < 10 && (
                       <BouncyButton
                         style={styles.smallSquarePicker}
                         onPress={pickMultipleShowcaseImages}
@@ -15831,6 +15890,17 @@ function App() {
                               <TrashIconSVG />
                             </BouncyButton>
                           </View>
+                          <FocusableTextInput
+                            style={{
+                              marginTop: 6, width: '100%', fontSize: 11, color: theme.text,
+                              borderWidth: 1, borderColor: theme.border, borderRadius: 8,
+                              paddingHorizontal: 8, paddingVertical: 6, backgroundColor: theme.surface
+                            }}
+                            placeholder="Caption (optional)"
+                            placeholderTextColor="#64748B"
+                            value={vid.caption}
+                            onChangeText={(t) => setFUploadedVideos((prev) => prev.map((v, i) => (i === idx ? { ...v, caption: t } : v)))}
+                          />
                         </View>
                       ))}
 
@@ -15901,7 +15971,7 @@ function App() {
                       )}
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                         <ImageFilledIconSVG size={13} />
-                        <Text style={styles.reviewStat}>Showcase Images: <Text style={{ fontWeight: '800', color: theme.text }}>{fShowcaseImages.filter(v => v.trim()).length}</Text> Picked</Text>
+                        <Text style={styles.reviewStat}>Showcase Images: <Text style={{ fontWeight: '800', color: theme.text }}>{fShowcaseImages.filter(v => v.uri.trim()).length}</Text> Picked</Text>
                       </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                         <VideoFilledIconSVG size={13} />
@@ -16737,7 +16807,12 @@ function App() {
                             <Text style={styles.caseBodyText}>No videos added to this portfolio yet.</Text>
                           ) : allVideos.map((v, idx) => (
                             v.kind === 'uploaded' ? (
-                              <PortfolioVideoPlayer key={idx} uri={v.url} width={v.width} height={v.height} />
+                              <View key={idx}>
+                                <PortfolioVideoPlayer uri={v.url} width={v.width} height={v.height} />
+                                {v.caption && v.caption.trim() !== '' && (
+                                  <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 6 }}>{v.caption}</Text>
+                                )}
+                              </View>
                             ) : (
                               <BouncyButton key={idx} style={styles.linkChip} onPress={() => openExternalLinkWithWarning(v.url)}>
                                 <Text style={styles.linkChipText}>▶ Watch Video Demo ↗</Text>
@@ -16757,17 +16832,22 @@ function App() {
                           {allImages.length === 0 ? (
                             <Text style={styles.caseBodyText}>No images added to this portfolio yet.</Text>
                           ) : allImages.map((imgUrl, index) => (
-                            <BouncyButton key={index} activeOpacity={0.9} onPress={() => openImageViewer(allImages, index)}>
-                              <Image
-                                source={{ uri: imgUrl }}
-                                style={{
-                                  width: '100%',
-                                  aspectRatio: activeProject.showcaseAspectRatio === '9:16' ? 9 / 16 : 16 / 9,
-                                  borderRadius: 12
-                                }}
-                                resizeMode="cover"
-                              />
-                            </BouncyButton>
+                            <View key={index}>
+                              <BouncyButton activeOpacity={0.9} onPress={() => openImageViewer(allImages, index, activeProject.imagesCaptions)}>
+                                <Image
+                                  source={{ uri: imgUrl }}
+                                  style={{
+                                    width: '100%',
+                                    aspectRatio: activeProject.showcaseAspectRatio === '9:16' ? 9 / 16 : 16 / 9,
+                                    borderRadius: 12
+                                  }}
+                                  resizeMode="cover"
+                                />
+                              </BouncyButton>
+                              {activeProject.imagesCaptions && activeProject.imagesCaptions[index] && activeProject.imagesCaptions[index].trim() !== '' && (
+                                <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 6 }}>{activeProject.imagesCaptions[index]}</Text>
+                              )}
+                            </View>
                           ))}
                         </View>
                       )}
@@ -16883,7 +16963,12 @@ function App() {
                           <>
                             {gdAllVideos.map((v, idx) => (
                               v.kind === 'uploaded' ? (
-                                <PortfolioVideoPlayer key={idx} uri={v.url} width={v.width} height={v.height} />
+                                <View key={idx}>
+                                  <PortfolioVideoPlayer uri={v.url} width={v.width} height={v.height} />
+                                  {v.caption && v.caption.trim() !== '' && (
+                                    <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 6 }}>{v.caption}</Text>
+                                  )}
+                                </View>
                               ) : (
                                 <BouncyButton key={idx} style={styles.linkChip} onPress={() => openExternalLinkWithWarning(v.url)}>
                                   <Text style={styles.linkChipText}>▶ Watch Video Demo ↗</Text>
@@ -16901,17 +16986,22 @@ function App() {
                         (activeProject.images || []).length === 0 ? (
                           <Text style={styles.caseBodyText}>No images added to this portfolio yet.</Text>
                         ) : (activeProject.images || []).map((imgUrl, index) => (
-                          <BouncyButton key={index} activeOpacity={0.9} onPress={() => setLightboxImageUri(imgUrl)}>
-                            <Image
-                              source={{ uri: imgUrl }}
-                              style={{
-                                width: '100%',
-                                aspectRatio: activeProject.showcaseAspectRatio === '9:16' ? 9 / 16 : 16 / 9,
-                                borderRadius: 12
-                              }}
-                              resizeMode="cover"
-                            />
-                          </BouncyButton>
+                          <View key={index}>
+                            <BouncyButton activeOpacity={0.9} onPress={() => openImageViewer(activeProject.images, index, activeProject.imagesCaptions)}>
+                              <Image
+                                source={{ uri: imgUrl }}
+                                style={{
+                                  width: '100%',
+                                  aspectRatio: activeProject.showcaseAspectRatio === '9:16' ? 9 / 16 : 16 / 9,
+                                  borderRadius: 12
+                                }}
+                                resizeMode="cover"
+                              />
+                            </BouncyButton>
+                            {activeProject.imagesCaptions && activeProject.imagesCaptions[index] && activeProject.imagesCaptions[index].trim() !== '' && (
+                              <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 6 }}>{activeProject.imagesCaptions[index]}</Text>
+                            )}
+                          </View>
                         ))
                       )}
                     </ScrollView>
