@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 450;
+const BUILD_NUMBER = 451;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1929,16 +1929,38 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
     e.preventDefault();
     onPress();
   };
-  // display:'contents' makes the anchor itself layout-transparent, so it
-  // doesn't affect the card's sizing/flex behavior at all - the BouncyButton
-  // inside lays out exactly as if the anchor wasn't there. The inner
-  // BouncyButton's own onPress is intentionally a no-op: the anchor's
-  // onClick above is the single source of truth for the click action, so
-  // plain clicks aren't handled twice and modifier-clicks aren't handled at
-  // all beyond the browser's own native behavior.
+  // A plain <a> with no special display trick - deliberately NOT
+  // display:'contents'. That property is what was causing the current-tab
+  // flash in Firefox specifically: Firefox has a well-documented bug where
+  // display:contents elements get ejected from the accessibility tree in a
+  // way that forces a broader accessibility-tree recalculation on
+  // interaction, visible as a brief repaint/flash - confirmed by the fact
+  // that it happened even via right-click "open in new tab" (which never
+  // fires this component's own onClick at all, ruling out the click-
+  // handling logic itself as the cause). A real <a> wrapping a block-level
+  // child works correctly across every browser without needing
+  // display:contents at all - this pattern predates that CSS property and
+  // is what every "the whole card is a link" site used long before it
+  // existed. The inner BouncyButton's own onPress is intentionally a no-op:
+  // the anchor's onClick above is the single source of truth for the click
+  // action, so plain clicks aren't handled twice and modifier-clicks aren't
+  // handled at all beyond the browser's own native behavior.
+  // Flattened and applied to the anchor itself too, not just the inner
+  // BouncyButton - critical for contexts where CardLink sits as a flex item
+  // inside a row (e.g. the designer row next to the Follow button):
+  // flex/margin properties only affect how much space an element claims
+  // from its OWN direct parent, so a flex:1 buried two levels down on a
+  // grandchild has no effect on the actual flex item's sizing.
+  // StyleSheet.flatten collapses the arbitrary array/conditional style this
+  // is called with (e.g. [styles.card, cond && {...}]) into one plain
+  // object, since a raw DOM node's style prop can't accept RN's
+  // array-with-booleans convention directly. Applied on top of the inner
+  // BouncyButton's own identical style too (redundant, but harmless) so the
+  // actual visible box/animation there is completely unchanged.
+  const flatStyle = StyleSheet.flatten(style) || {};
   return React.createElement(
     'a',
-    { href, onClick: handleClick, style: { textDecoration: 'none', color: 'inherit', display: 'contents' } },
+    { href, onClick: handleClick, style: { textDecoration: 'none', color: 'inherit', display: 'block', ...flatStyle } },
     <BouncyButton style={style} activeOpacity={activeOpacity} onPress={() => {}}>{children}</BouncyButton>
   );
 };
@@ -2063,7 +2085,7 @@ const ProjectCard = React.memo(({
           which no longer shows it there. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginBottom: 6 }}>
         {item.isAiGenerated === true && (
-          <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: 5, backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: 5, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: '#E2E8F0', fontSize: 9, fontWeight: '800' }}>AI</Text>
           </View>
         )}
@@ -3080,6 +3102,87 @@ function AuthScreen({ onCancel } = {}) {
 // caller doesn't even render it when there's only one type - narrowing down
 // a single-type profile is meaningless. Self-contained (owns its own open/
 // closed state), explicit props only - no App()-local variables assumed.
+// Small square, controls-free video preview for the wizard's picker grid -
+// same visual role as the showcase image thumbnail (styles.smallSquarePreview
+// sized), not a full player. Real playback with controls happens later, in
+// the review/detail views via PortfolioVideoPlayer.
+const VideoSquareThumb = React.memo(({ uri }) => {
+  if (Platform.OS === 'web') {
+    return React.createElement('video', {
+      src: uri,
+      muted: true,
+      playsInline: true,
+      style: { width: '100%', height: '100%', objectFit: 'cover' }
+    });
+  }
+  const player = useVideoPlayer(uri, (p) => { p.loop = false; p.muted = true; });
+  return <VideoView player={player} style={{ width: '100%', height: '100%' }} contentFit="cover" nativeControls={false} />;
+});
+
+// Shared animated sliding-pill tab bar, generalizing the same motion/config
+// already used by the Mobile/Desktop prototype switcher and the My
+// Portfolios/Liked Portfolios switcher (Animated.spring, speed:20,
+// bounciness:6, pill inset top:4/bottom:4/left:4) - those two keep their
+// own separate implementations untouched since they already animate
+// correctly, but every tab switcher added since (Case Study/Video/Image,
+// the wide-web Video/Image switcher, All Categories' type tabs) was built
+// with a plain instant-highlight swap instead. This is what those three now
+// use, so every tab switcher in the app shares one consistent feel.
+const AnimatedPillTabBar = ({ tabs, activeKey, onChange, theme, themeMode, fontSize = 13 }) => {
+  const [barWidth, setBarWidth] = useState(0);
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const activeIndex = Math.max(0, tabs.findIndex((t) => t.key === activeKey));
+
+  useEffect(() => {
+    Animated.spring(slideAnim, {
+      toValue: activeIndex,
+      useNativeDriver: true,
+      speed: 20,
+      bounciness: 6
+    }).start();
+  }, [activeIndex]);
+
+  const gap = 4;
+  const segmentWidth = barWidth > 0 ? (barWidth - 8 - gap * (tabs.length - 1)) / tabs.length : 0;
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 99, padding: 4,
+        borderWidth: 1, borderColor: theme.border, gap
+      }}
+      onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+    >
+      {barWidth > 0 && (
+        <Animated.View
+          style={{
+            position: 'absolute', top: 4, bottom: 4, left: 4,
+            width: segmentWidth, borderRadius: 99,
+            backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+            transform: [{
+              translateX: slideAnim.interpolate({
+                inputRange: tabs.map((_, i) => i),
+                outputRange: tabs.map((_, i) => i * (segmentWidth + gap))
+              })
+            }]
+          }}
+        />
+      )}
+      {tabs.map((tab) => (
+        <BouncyButton
+          key={tab.key}
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 99 }}
+          onPress={() => onChange(tab.key)}
+        >
+          <Text style={{ color: activeKey === tab.key ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize }}>
+            {tab.label}
+          </Text>
+        </BouncyButton>
+      ))}
+    </View>
+  );
+};
+
 const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, theme }) => {
   const [open, setOpen] = useState(false);
   if (availableTypes.length <= 1) return null;
@@ -8102,6 +8205,11 @@ function App() {
         const { error: imgInsertError } = await supabase.from('portfolio_images').insert(imgRows);
         if (imgInsertError) {
           console.warn('Failed to insert new showcase images:', imgInsertError);
+          showAppAlert(
+            'Images Not Saved',
+            `Your other portfolio details were updated, but the images could not be saved: ${imgInsertError.message}. Please try updating again.`
+          );
+          return;
         }
       }
 
@@ -14020,7 +14128,17 @@ function App() {
                 />
               )
             )}
-          <SafeAreaView style={styles.overlayModalContainer}
+          <SafeAreaView
+            style={[
+              styles.overlayModalContainer,
+              // Wider container per breakpoint so the grid can go to more
+              // columns while each card stays the same physical size as
+              // before (~230px) - only the container width and column count
+              // change, not the card style itself. Mobile keeps the
+              // original maxWidth/2-column default untouched.
+              isWebDesktop && { maxWidth: 960 },
+              isWebTablet && { maxWidth: 720 }
+            ]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
@@ -14046,26 +14164,20 @@ function App() {
                 onChangeText={setAllCategoriesSearchQuery}
               />
 
-              <View style={{ flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 99, padding: 4, marginTop: 12, marginBottom: 4, borderWidth: 1, borderColor: theme.border, gap: 4 }}>
-                {[
-                  { key: 'all', label: 'All' },
-                  { key: 'ui_ux', label: 'UI/UX' },
-                  { key: 'graphic_design', label: 'Graphic Design' },
-                  { key: 'illustration', label: 'Illustration' }
-                ].map((tab) => (
-                  <BouncyButton
-                    key={tab.key}
-                    style={{
-                      flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 99,
-                      backgroundColor: allCategoriesTab === tab.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent'
-                    }}
-                    onPress={() => setAllCategoriesTab(tab.key)}
-                  >
-                    <Text style={{ color: allCategoriesTab === tab.key ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>
-                      {tab.label}
-                    </Text>
-                  </BouncyButton>
-                ))}
+              <View style={{ marginTop: 12, marginBottom: 4 }}>
+                <AnimatedPillTabBar
+                  tabs={[
+                    { key: 'all', label: 'All' },
+                    { key: 'ui_ux', label: 'UI/UX' },
+                    { key: 'graphic_design', label: 'Graphic Design' },
+                    { key: 'illustration', label: 'Illustration' }
+                  ]}
+                  activeKey={allCategoriesTab}
+                  onChange={setAllCategoriesTab}
+                  theme={theme}
+                  themeMode={themeMode}
+                  fontSize={12}
+                />
               </View>
             </View>
 
@@ -14075,7 +14187,12 @@ function App() {
               ) : allCategoriesTabList.map((cat) => (
                 <BouncyButton
                   key={cat}
-                  style={[styles.overlayCategoryCard, categoryFilter === cat && styles.overlayCategoryCardActive]}
+                  style={[
+                    styles.overlayCategoryCard,
+                    isWebDesktop && { width: '23%' },
+                    isWebTablet && { width: '31%' },
+                    categoryFilter === cat && styles.overlayCategoryCardActive
+                  ]}
                   onPress={() => {
                     setCategoryFilter(cat);
                     setAllCategoriesModalVisible(false);
@@ -16093,49 +16210,61 @@ function App() {
                         Videos are automatically compressed to save space, which may slightly reduce quality. Plays back at the video's own aspect ratio.
                       </Text>
 
-                      {fUploadedVideos.map((vid, idx) => (
-                        <View key={idx} style={{ marginBottom: 12 }}>
-                          <View style={{ position: 'relative' }}>
-                            <PortfolioVideoPlayer uri={vid.uri} width={vid.width} height={vid.height} />
-                            {vid.compressing && (
-                              <View style={{
-                                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                backgroundColor: 'rgba(11, 15, 23, 0.6)', borderRadius: 12,
-                                alignItems: 'center', justifyContent: 'center'
-                              }}>
-                                <ActivityIndicator color="#FFFFFF" />
-                                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', marginTop: 6 }}>Compressing...</Text>
+                      <View style={styles.smallSquaresGrid}>
+                        {[0, 1, 2].map((slotIdx) => {
+                          const vid = fUploadedVideos[slotIdx];
+                          if (!vid) {
+                            return (
+                              <BouncyButton key={slotIdx} style={styles.smallSquarePicker} onPress={pickUploadedVideo}>
+                                <View style={styles.pickerPlaceholderCol}>
+                                  <VideoFilledIconSVG size={20} color={theme.textSecondary} />
+                                  <Text style={styles.squarePickerText}>Add Video</Text>
+                                </View>
+                              </BouncyButton>
+                            );
+                          }
+                          return (
+                            <View key={slotIdx} style={styles.squarePickerWrapper}>
+                              <View style={styles.smallSquarePicker}>
+                                <VideoSquareThumb uri={vid.uri} />
+                                {vid.compressing && (
+                                  <View style={{
+                                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                                    backgroundColor: 'rgba(11, 15, 23, 0.6)',
+                                    alignItems: 'center', justifyContent: 'center'
+                                  }}>
+                                    <ActivityIndicator color="#FFFFFF" size="small" />
+                                  </View>
+                                )}
                               </View>
-                            )}
-                            <BouncyButton
-                              style={{
-                                position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 14,
-                                backgroundColor: 'rgba(11, 15, 23, 0.7)', alignItems: 'center', justifyContent: 'center'
-                              }}
-                              onPress={() => handleRemoveUploadedVideo(idx)}
-                            >
-                              <TrashIconSVG />
-                            </BouncyButton>
-                          </View>
-                          <FocusableTextInput
-                            style={{
-                              marginTop: 6, width: '100%', fontSize: 11, color: theme.text,
-                              borderWidth: 1, borderColor: theme.border, borderRadius: 8,
-                              paddingHorizontal: 8, paddingVertical: 6, backgroundColor: theme.surface
-                            }}
-                            placeholder="Caption (optional)"
-                            placeholderTextColor="#64748B"
-                            value={vid.caption}
-                            onChangeText={(t) => setFUploadedVideos((prev) => prev.map((v, i) => (i === idx ? { ...v, caption: t } : v)))}
-                          />
-                        </View>
-                      ))}
 
-                      {fUploadedVideos.length < 3 && (
-                        <BouncyButton style={styles.addMoreVideoBtn} onPress={pickUploadedVideo}>
-                          <Text style={styles.addMoreVideoText}>+ Upload Video ({fUploadedVideos.length}/3)</Text>
-                        </BouncyButton>
-                      )}
+                              <BouncyButton
+                                style={{
+                                  position: 'absolute', top: -4, right: -4, width: 24, height: 24, borderRadius: 12,
+                                  backgroundColor: 'rgba(11, 15, 23, 0.55)',
+                                  alignItems: 'center', justifyContent: 'center', zIndex: 10
+                                }}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                onPress={() => handleRemoveUploadedVideo(slotIdx)}
+                              >
+                                <DashCircleIconSVG size={16} />
+                              </BouncyButton>
+
+                              <FocusableTextInput
+                                style={{
+                                  marginTop: 6, width: '100%', fontSize: 11, color: theme.text,
+                                  borderWidth: 1, borderColor: theme.border, borderRadius: 8,
+                                  paddingHorizontal: 8, paddingVertical: 6, backgroundColor: theme.surface
+                                }}
+                                placeholder="Caption (optional)"
+                                placeholderTextColor="#64748B"
+                                value={vid.caption}
+                                onChangeText={(t) => setFUploadedVideos((prev) => prev.map((v, i) => (i === slotIdx ? { ...v, caption: t } : v)))}
+                              />
+                            </View>
+                          );
+                        })}
+                      </View>
                     </View>
                   )}
 
@@ -16908,29 +17037,11 @@ function App() {
                         </View>
                       )}
 
-                      {/* Case Study / Video / Image tab switcher - plain
-                          static highlight rather than the animated sliding
-                          pill used for the 2-tab proto switcher elsewhere,
-                          since that one's slide math is hardcoded for
-                          exactly 2 segments. */}
-                      <View style={{
-                        flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 99, padding: 4,
-                        marginBottom: 16, borderWidth: 1, borderColor: theme.border, gap: 4
-                      }}>
-                        {GD_TABS.map((tab) => (
-                          <BouncyButton
-                            key={tab.key}
-                            style={{
-                              flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 99,
-                              backgroundColor: gdTab === tab.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent'
-                            }}
-                            onPress={() => setGdTab(tab.key)}
-                          >
-                            <Text style={{ color: gdTab === tab.key ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 13 }}>
-                              {tab.label}
-                            </Text>
-                          </BouncyButton>
-                        ))}
+                      {/* Case Study / Video / Image tab switcher - now uses
+                          the same animated sliding-pill as every other tab
+                          switcher in the app. */}
+                      <View style={{ marginBottom: 16 }}>
+                        <AnimatedPillTabBar tabs={GD_TABS} activeKey={gdTab} onChange={setGdTab} theme={theme} themeMode={themeMode} />
                       </View>
 
                       {gdTab === 'caseStudy' && (
@@ -16944,7 +17055,7 @@ function App() {
                               {activeProject.isAiGenerated === true && (
                                 <View style={showAiTooltip ? { position: 'relative', zIndex: 100 } : { position: 'relative' }}>
                                   <BouncyButton
-                                    style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                    style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
                                     onPress={handleAiIconPress}
                                   >
                                     <Text style={{ color: '#E2E8F0', fontSize: 11, fontWeight: '800' }}>AI</Text>
@@ -17165,21 +17276,14 @@ function App() {
                   <View style={{ flex: 1 }}>
                     <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
                       <Text style={styles.sectionHeader}>MEDIA</Text>
-                      <View style={{ flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 99, padding: 4, marginBottom: 4, borderWidth: 1, borderColor: theme.border, gap: 4 }}>
-                        {[{ key: 'video', label: 'Video' }, { key: 'image', label: 'Image' }].map((tab) => (
-                          <BouncyButton
-                            key={tab.key}
-                            style={{
-                              flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 99,
-                              backgroundColor: gdSplitTab === tab.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent'
-                            }}
-                            onPress={() => setGdSplitTab(tab.key)}
-                          >
-                            <Text style={{ color: gdSplitTab === tab.key ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 13 }}>
-                              {tab.label}
-                            </Text>
-                          </BouncyButton>
-                        ))}
+                      <View style={{ marginBottom: 4 }}>
+                        <AnimatedPillTabBar
+                          tabs={[{ key: 'video', label: 'Video' }, { key: 'image', label: 'Image' }]}
+                          activeKey={gdSplitTab}
+                          onChange={setGdSplitTab}
+                          theme={theme}
+                          themeMode={themeMode}
+                        />
                       </View>
                     </View>
                     <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ padding: 16, gap: 16, width: '100%' }}>
@@ -17359,7 +17463,7 @@ function App() {
                       {activeProject.isAiGenerated === true && (
                         <View style={showAiTooltip ? { position: 'relative', zIndex: 100 } : { position: 'relative' }}>
                           <BouncyButton
-                            style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: 'rgba(139, 92, 246, 0.55)', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
                             onPress={handleAiIconPress}
                           >
                             <Text style={{ color: '#E2E8F0', fontSize: 11, fontWeight: '800' }}>AI</Text>
