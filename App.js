@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 470;
+const BUILD_NUMBER = 471;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -4156,9 +4156,19 @@ function App() {
   const [showBackToTop, setShowBackToTop] = useState(false);
 
   const modalScrollViewRef = useRef(null);
-  useHideScrollbarOnWeb(modalScrollViewRef, isWebWide);
+  // Gated on modalVisible too, not just isWebWide - this ScrollView lives
+  // inside conditionally-rendered content (modalVisible && (...)) that
+  // doesn't exist in the DOM until a portfolio is actually opened. Without
+  // this, the effect fires once on app load (ref still null then, since
+  // nothing's open yet), finds no node, and never re-runs since isWebWide
+  // alone doesn't change again - meaning the fix silently never applied at
+  // all after the first portfolio open. Including modalVisible in what's
+  // passed as "enabled" makes the dependency actually change (false->true)
+  // the moment the view mounts, by which point React has already attached
+  // the ref during commit (guaranteed to happen before this effect fires).
+  useHideScrollbarOnWeb(modalScrollViewRef, isWebWide && modalVisible);
   const designerScrollViewRef = useRef(null);
-  useHideScrollbarOnWeb(designerScrollViewRef, isWebWide);
+  useHideScrollbarOnWeb(designerScrollViewRef, isWebWide && designerModalVisible);
   const [showModalBackToTop, setShowModalBackToTop] = useState(false);
 
   // Small tap-to-explain bubble under the AI-generated badge on the
