@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 475;
+const BUILD_NUMBER = 476;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -4594,6 +4594,17 @@ function App() {
   // list here specifically so switching selectedPortfolioType can swap
   // which base list applies without losing or duplicating these.
   const [customCategoriesList, setCustomCategoriesList] = useState([]);
+  // Categories actually in use somewhere on For You, grouped by portfolio
+  // type plus an "all" bucket - this is what the All Categories browse
+  // modal shows, replacing the full static master lists there. The
+  // wizard's OWN category picker (masterCategoriesList, further down)
+  // intentionally keeps using the full static lists instead - you need to
+  // be able to pick a category nobody's used yet when creating a new
+  // portfolio, so that one stays untouched. Declared here specifically
+  // because combinedAllCategories/allCategoriesTabList just below need it,
+  // and are declared earlier in the component than the effect that
+  // actually populates this (further down, alongside popularKeywords).
+  const [usedCategoriesByType, setUsedCategoriesByType] = useState({ all: [], ui_ux: [], graphic_design: [], illustration: [] });
 
   useEffect(() => {
     (async () => {
@@ -4606,33 +4617,23 @@ function App() {
     })();
   }, []);
 
-  // Union of all 3 base lists + custom tags, deduped case-insensitively -
-  // this is the "All" tab in the All Categories browse modal. Custom tags
-  // have no type of their own (global across the app), so they only ever
-  // appear under "All", not under a specific type's tab.
-  const combinedAllCategories = useMemo(() => {
-    const merged = [...ALL_UIUX_CATEGORIES_MASTER, ...ALL_GRAPHIC_DESIGN_CATEGORIES_MASTER, ...ALL_ILLUSTRATION_CATEGORIES_MASTER, ...customCategoriesList];
-    const seenLower = new Set();
-    const deduped = [];
-    merged.forEach((c) => {
-      const lower = c.toLowerCase();
-      if (!seenLower.has(lower)) {
-        seenLower.add(lower);
-        deduped.push(c);
-      }
-    });
-    return deduped.sort();
-  }, [customCategoriesList]);
+  // Only categories actually used by at least one portfolio on For You -
+  // was previously the full static master lists regardless of real usage,
+  // showing dozens of categories nobody's ever tagged anything with. Custom
+  // tags are already usage-derived by definition (someone had to type and
+  // save one to create it), so they're included in "all" naturally via
+  // usedCategoriesByType.all rather than merged in separately here anymore.
+  const combinedAllCategories = usedCategoriesByType.all;
 
   const allCategoriesTabList = useMemo(() => {
     const q = allCategoriesSearchQuery.trim().toLowerCase();
     const list =
-      allCategoriesTab === 'ui_ux' ? ALL_UIUX_CATEGORIES_MASTER :
-      allCategoriesTab === 'graphic_design' ? ALL_GRAPHIC_DESIGN_CATEGORIES_MASTER :
-      allCategoriesTab === 'illustration' ? ALL_ILLUSTRATION_CATEGORIES_MASTER :
+      allCategoriesTab === 'ui_ux' ? usedCategoriesByType.ui_ux :
+      allCategoriesTab === 'graphic_design' ? usedCategoriesByType.graphic_design :
+      allCategoriesTab === 'illustration' ? usedCategoriesByType.illustration :
       combinedAllCategories;
     return q ? list.filter((c) => c.toLowerCase().includes(q)) : list;
-  }, [allCategoriesTab, allCategoriesSearchQuery, combinedAllCategories]);
+  }, [allCategoriesTab, allCategoriesSearchQuery, combinedAllCategories, usedCategoriesByType]);
 
   const [fBrief, setFBrief] = useState('');
   const [fLongDescription, setFLongDescription] = useState('');
@@ -5295,15 +5296,18 @@ function App() {
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase.from('portfolios').select('categories');
+      const { data, error } = await supabase.from('portfolios').select('categories, portfolio_type');
       if (error || !data) return;
 
       // Count how many portfolios use each category/tag, then rank by real frequency.
       const counts = {};
+      const byType = { ui_ux: {}, graphic_design: {}, illustration: {} };
       data.forEach((row) => {
+        const t = row.portfolio_type || 'ui_ux';
         (row.categories || []).forEach((cat) => {
           if (!cat) return;
           counts[cat] = (counts[cat] || 0) + 1;
+          if (byType[t]) byType[t][cat] = (byType[t][cat] || 0) + 1;
         });
       });
 
@@ -5313,6 +5317,12 @@ function App() {
         .map(([cat]) => cat);
 
       setPopularKeywords(ranked);
+      setUsedCategoriesByType({
+        all: Object.keys(counts).sort(),
+        ui_ux: Object.keys(byType.ui_ux).sort(),
+        graphic_design: Object.keys(byType.graphic_design).sort(),
+        illustration: Object.keys(byType.illustration).sort()
+      });
     })();
   }, [projects.length]);
 
@@ -16946,8 +16956,12 @@ function App() {
                 )
               )}
 
-              {Platform.OS === 'web' && (
-                <BouncyButton style={[{ padding: 4, marginRight: 8 }, isWebWide && { width: 68, alignItems: 'flex-start' }]} onPress={handleBackFromPortfolioDetail}>
+              {/* Wide web only now - narrow web's version of this moved to
+                  a close (X) button on the right, past the Share icon,
+                  instead of a back chevron on the left (see further down,
+                  next to Share). */}
+              {Platform.OS === 'web' && isWebWide && (
+                <BouncyButton style={[{ padding: 4, marginRight: 8 }, { width: 68, alignItems: 'flex-start' }]} onPress={handleBackFromPortfolioDetail}>
                   <ChevronLeftSVG color={theme.accentLight} size={20} />
                 </BouncyButton>
               )}
@@ -17044,11 +17058,13 @@ function App() {
                     >
                       <ShareIconSVG color={theme.accentLight} />
                     </BouncyButton>
-                    {Platform.OS !== 'web' && (
-                      <BouncyButton style={styles.closeBtn} onPress={handleBackFromPortfolioDetail}>
-                        <Text style={styles.closeBtnText}>✕</Text>
-                      </BouncyButton>
-                    )}
+                    {/* Was native-only before - now also shows on narrow
+                        web, replacing the back chevron that used to sit on
+                        the left there (see the isWebWide-gated chevron
+                        further up). Wide web is unaffected either way. */}
+                    <BouncyButton style={styles.closeBtn} onPress={handleBackFromPortfolioDetail}>
+                      <Text style={styles.closeBtnText}>✕</Text>
+                    </BouncyButton>
                   </>
                 )}
 
