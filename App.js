@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 459;
+const BUILD_NUMBER = 460;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1934,6 +1934,18 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
     return <BouncyButton style={style} activeOpacity={activeOpacity} onPress={onPress}>{children}</BouncyButton>;
   }
   const handleClick = (e) => {
+    // Checks the ACTUAL DOM at the moment of click, using a plain native
+    // attribute + Element.closest() - not relying on stopPropagation
+    // correctly traversing from a nested component up through this anchor,
+    // which is exactly what two previous attempts at this assumed and
+    // neither actually worked in practice (react-native-web's touch/press
+    // handling doesn't necessarily map cleanly onto standard DOM event
+    // bubbling). closest() walks the REAL rendered DOM tree directly from
+    // the real click target, completely bypassing any uncertainty about
+    // React's synthetic event system or how Pressable/TouchableOpacity
+    // internally decides to fire onPress - about as close to bulletproof
+    // as this can get.
+    if (e.target && e.target.closest && e.target.closest('[data-stop-card-nav]')) return;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
     e.preventDefault();
     onPress();
@@ -1987,9 +1999,12 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
 // there), so this is a plain passthrough View on that platform.
 const StopClickWrapper = ({ style, children }) => {
   if (Platform.OS === 'web') {
+    // data-stop-card-nav is the marker CardLink's own handleClick checks
+    // for via closest() - see the comment there for why this replaced the
+    // onClickCapture approach (two attempts at that didn't actually work).
     return React.createElement(
       'div',
-      { onClickCapture: (e) => e.stopPropagation(), style: StyleSheet.flatten(style) || undefined },
+      { 'data-stop-card-nav': 'true', style: StyleSheet.flatten(style) || undefined },
       children
     );
   }
