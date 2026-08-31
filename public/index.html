@@ -32,6 +32,38 @@
       body {
         overflow: hidden;
       }
+      /* overflow:hidden on body alone doesn't reliably suppress
+         document-level scrolling in every browser - html itself needs it
+         too, since html and body are separate scrolling boxes and content
+         overflowing html's own box can still trigger a native scrollbar on
+         the DOCUMENT regardless of what body's own overflow says. This is
+         exactly what was showing as a scrollbar that looked "wrong"/inset
+         in Chrome: it wasn't the app's own custom scroll indicator (a thin
+         purple bar, working correctly) at all - it was this leftover
+         native document scrollbar, which Chrome's classic (non-overlay)
+         scrollbar rendering made obvious while Firefox's overlay-style
+         scrollbar happened to hide from view even though it was still
+         there. */
+      html {
+        overflow: hidden;
+      }
+      /* Dark is the default/most common theme in the app - setting it here
+         directly means the very first paint already matches, with zero
+         flash, before any JS has even started. The inline script right
+         after this stylesheet corrects it to light for the (`AsyncStorage`)
+         minority of users who've switched, before the browser paints
+         anything - so neither case ever flashes the wrong color. */
+      html, body {
+        background-color: #0B0F17;
+      }
+      /* Applied by the inline script below, before body is even parsed -
+         a CSS selector targeting html.light-mode's body descendant applies
+         the instant the <body> tag opens, which is reliable in a way that
+         trying to set body's own inline style from a <head> script is not
+         (document.body doesn't exist yet at that point). */
+      html.light-mode, html.light-mode body {
+        background-color: #FFFFFF;
+      }
       /* These styles make the root element full-height */
       #root {
         display: flex;
@@ -86,6 +118,24 @@
         margin: 0;
       }
     </style>
+
+    <!-- Corrects the background to light mode, synchronously, before the
+         browser paints anything - the CSS above already defaults to dark
+         (the common case, zero-flash by default), so this only ever needs
+         to run for users who've actually switched to light mode. Reads the
+         exact same AsyncStorage key/values the app itself writes
+         (THEME_STORAGE_KEY = '@decent_theme_mode'; AsyncStorage's web
+         implementation is a thin wrapper directly over localStorage, so
+         this reads the identical raw value the app wrote, no polyfill
+         mismatch). Wrapped in try/catch since localStorage can throw in
+         some privacy modes - falls back to the dark default in that case. -->
+    <script>
+      try {
+        if (localStorage.getItem('@decent_theme_mode') === 'light') {
+          document.documentElement.classList.add('light-mode');
+        }
+      } catch (e) {}
+    </script>
   </head>
 
   <body>
