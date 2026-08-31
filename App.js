@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 473;
+const BUILD_NUMBER = 475;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -772,21 +772,6 @@ const QrFinderEye = ({ gridX, gridY, cellSize, color, backgroundColor }) => {
 // so switching between differently-sized tabs will snap-resize instantly
 // while still sliding smoothly, which is barely noticeable in practice for
 // a two-tab switcher used occasionally.
-// Plain background image, no blur/fade/opacity effects applied in code -
-// whatever the image file itself looks like is exactly what renders. Fade,
-// blur, and any other visual treatment are expected to already be baked
-// into the image files themselves before they're placed in
-// assets/card-images/.
-const PortfolioTypeCardWatermark = ({ imageSource }) => (
-  <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
-    <Image
-      source={imageSource}
-      resizeMode="cover"
-      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
-    />
-  </View>
-);
-
 const AnimatedPillTabs = React.memo(({ tabs, activeKey, onChange, theme, themeMode, containerStyle }) => {
   const [tabWidths, setTabWidths] = useState({});
   const activeIndex = tabs.findIndex((t) => t.key === activeKey);
@@ -14327,6 +14312,38 @@ function App() {
                       <ChevronRightSVG color={theme.accent} size={16} />
                     </View>
                   </BouncyButton>
+
+                  {/* Owner-only diagnostic - not a real user-facing feature,
+                      just a fast way to check whether push delivery
+                      actually works (including OS-level display when the
+                      app is backgrounded/killed, which this code can't
+                      verify on its own - only manual testing can). Gated
+                      to your own handle specifically rather than any
+                      broader admin flag, since none exists in this app and
+                      this is the only feature that needs one so far. */}
+                  {userProfile.handle === 'iputra07' && (
+                    <BouncyButton
+                      style={styles.settingItemRow}
+                      onPress={async () => {
+                        const result = await sendPushNotification(
+                          session.user.id,
+                          'Test Notification',
+                          'If you see this as a real OS notification, push delivery works.'
+                        );
+                        showAppAlert(
+                          result.ok ? 'Sent' : 'Failed',
+                          result.ok
+                            ? 'Sent successfully. Background or close the app now to check if it arrives as a real OS-level notification.'
+                            : (result.reason || 'Unknown error.')
+                        );
+                      }}
+                    >
+                      <Text style={styles.settingItemTitle}>Send Test Push Notification</Text>
+                      <View style={styles.iconTextInlineRow}>
+                        <ChevronRightSVG color={theme.accent} size={16} />
+                      </View>
+                    </BouncyButton>
+                  )}
                 </>
               )}
 
@@ -18680,55 +18697,6 @@ const getStyles = (theme) => StyleSheet.create({
     fontSize: 15,
     fontWeight: '700'
   },
-  donateIconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    borderWidth: 1,
-    borderColor: '#F59E0B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8
-  },
-  donateTiersRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginVertical: 12
-  },
-  donateTierChip: {
-    flex: 1,
-    paddingVertical: 12,
-    backgroundColor: '#1E293B',
-    borderRadius: 14.4,
-    borderWidth: 1,
-    borderColor: theme.border,
-    alignItems: 'center'
-  },
-  donateTierChipActive: {
-    backgroundColor: 'rgba(245, 158, 11, 0.2)',
-    borderColor: '#F59E0B'
-  },
-  donateTierText: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '700'
-  },
-  donateTierTextActive: {
-    color: '#F59E0B',
-    fontSize: 16,
-    fontWeight: '700'
-  },
-  donateTierSub: {
-    color: theme.textSecondary,
-    fontSize: 11,
-    marginTop: 2
-  },
-  donateTierSubActive: {
-    color: '#F59E0B',
-    fontSize: 11,
-    marginTop: 2
-  },
   contrastDonateBtnFull: {
     width: '100%',
     backgroundColor: '#F59E0B',
@@ -18823,19 +18791,6 @@ const getStyles = (theme) => StyleSheet.create({
   mainViewContainer: { flex: 1 },
   scrollView: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 110 },
-  hero: { marginBottom: 16, alignItems: 'center' },
-  heroBadge: {
-    color: theme.accent,
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 99,
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 10
-  },
-  heroTitle: { fontSize: 24, fontWeight: '800', color: theme.text, textAlign: 'center', marginBottom: 8 },
-  heroSubtitle: { fontSize: 13, color: theme.textSecondary, textAlign: 'center', lineHeight: 20 },
   
   pageHeaderBox: { marginBottom: 12 },
   pageHeaderTitle: { fontSize: 20, fontWeight: '800', color: theme.text, marginBottom: 4 },
@@ -18880,35 +18835,14 @@ const getStyles = (theme) => StyleSheet.create({
     backgroundColor: '#8B5CF6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99
   },
   selectedCategoryText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
-  categoryVerticalListContainer: {
-    backgroundColor: theme.surface, borderRadius: 14.4, borderWidth: 1, borderColor: theme.border, padding: 8, marginBottom: 14
-  },
   categoryVerticalItem: { paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: theme.border },
   categoryVerticalItemActive: { backgroundColor: 'rgba(139, 92, 246, 0.2)' },
   categoryVerticalText: { color: theme.text, fontSize: 13, fontWeight: '600' },
   categoryVerticalTextActive: { color: theme.accent, fontWeight: '800' },
   addCustomCategoryItemBtn: { paddingVertical: 12, alignItems: 'center', backgroundColor: theme.bg, borderRadius: 99, marginTop: 4 },
   addCustomCategoryItemText: { color: '#8B5CF6', fontSize: 12, fontWeight: '700' },
-  moreCategoriesChip: { backgroundColor: theme.bg, borderWidth: 1, borderColor: '#8B5CF6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 99 },
-  moreCategoriesText: { color: theme.accent, fontSize: 11, fontWeight: '700' },
 
-  leftAlignedEngagementStatsRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  statInlinePill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.bg, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: theme.border },
-  statInlineNumText: { color: theme.text, fontSize: 12, fontWeight: '700' },
 
-  stickyModalTitleBar: {
-    backgroundColor: theme.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
-    alignItems: 'center'
-  },
-  stickyModalTitleText: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '800'
-  },
 
   stickyModalBackToTopBtn: {
     position: 'absolute', bottom: 90, right: 20,
@@ -18996,7 +18930,6 @@ const getStyles = (theme) => StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   cardTitle: { fontSize: 16, fontWeight: '700', color: theme.text, flex: 1, marginRight: 8 },
   likeButtonRightAligned: { padding: 4, alignSelf: 'flex-start' },
-  cardDesc: { fontSize: 13, color: theme.textSecondary, marginBottom: 16, lineHeight: 18 },
   
   designerRowWithFollow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 12 },
   designerRowLeftCol: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 },
@@ -19012,7 +18945,6 @@ const getStyles = (theme) => StyleSheet.create({
     marginVertical: 20, borderWidth: 1, borderColor: theme.border, gap: 4
   },
   profileTabBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 99 },
-  profileTabBtnActive: { backgroundColor: '#8B5CF6' },
   profileTabBtnText: { fontSize: 12, color: theme.textSecondary, fontWeight: '700' },
   profileTabBtnTextActive: { color: '#FFFFFF' },
 
@@ -19035,7 +18967,6 @@ const getStyles = (theme) => StyleSheet.create({
     shadowColor: '#8B5CF6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 6
   },
 
-  searchContainer: { marginBottom: 20 },
   searchInput: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 14.4, paddingHorizontal: 16, paddingVertical: 12, color: theme.text, fontSize: 14 },
   keywordsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 10 },
   keywordChip: { backgroundColor: theme.surface, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, borderWidth: 1, borderColor: theme.border },
@@ -19067,16 +18998,9 @@ const getStyles = (theme) => StyleSheet.create({
   modalFollowBtnActive: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#8B5CF6' },
   modalFollowText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   modalFollowTextActive: { color: theme.accent },
-  modalShareBtnIconOnly: { width: 44, height: 44, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
 
-  categoryPillsRow: { flexDirection: 'row', gap: 8, marginBottom: 14, flexWrap: 'wrap' },
-  categoryPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border },
-  categoryPillActive: { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
-  categoryPillText: { color: theme.textSecondary, fontSize: 12, fontWeight: '600' },
-  categoryPillTextActive: { color: '#FFFFFF' },
 
   profileCard: { backgroundColor: theme.surface, borderRadius: 19.2, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center', position: 'relative' },
-  profileTopRightShareBtn: { position: 'absolute', top: 16, right: 16, width: 36, height: 36, borderRadius: 99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   profileLargeAvatar: { width: 80, height: 80, borderRadius: 40, marginBottom: 12 },
   profileName: { fontSize: 20, fontWeight: '800', color: theme.text, marginBottom: 4, textAlign: 'center' },
   profileRole: { fontSize: 13, color: theme.accent, fontWeight: '600', marginBottom: 2 },
@@ -19085,7 +19009,6 @@ const getStyles = (theme) => StyleSheet.create({
 
   socialCircularLinksRow: { flexDirection: 'row', gap: 10, marginTop: 14, justifyContent: 'center' },
   socialCircleBtn: { width: 38, height: 38, borderRadius: 99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
-  socialCirclePreviewBtn: { width: 42, height: 42, borderRadius: 99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
 
   avatarEditPickerBtn: { alignSelf: 'center', width: 90, height: 90, borderRadius: 99, overflow: 'hidden', position: 'relative', marginBottom: 10 },
   avatarEditPreview: { width: '100%', height: '100%' },
@@ -19100,12 +19023,9 @@ const getStyles = (theme) => StyleSheet.create({
 
   smallSquaresGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 10 },
   squarePickerWrapper: { position: 'relative' },
-  removeImageBadge: { position: 'absolute', top: -6, right: -6, width: 26, height: 26, borderRadius: 13, backgroundColor: theme.bg, borderWidth: 1, borderColor: '#EF4444', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   videoInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   removeVideoBtn: { width: 42, height: 42, backgroundColor: theme.bg, borderWidth: 1, borderColor: '#EF4444', borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
 
-  ownerActionsRow: { flexDirection: 'row', gap: 8, marginRight: 10 },
-  ownerIconBtn: { width: 32, height: 32, borderRadius: 99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
 
   warningNoteBox: {
     backgroundColor: 'rgba(234, 179, 8, 0.12)', borderWidth: 1, borderColor: 'rgba(234, 179, 8, 0.3)',
