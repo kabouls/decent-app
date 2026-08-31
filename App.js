@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 457;
+const BUILD_NUMBER = 458;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -2056,15 +2056,20 @@ const ProjectCard = React.memo(({
         )}
       </View>
       {showPinControl ? (
-        <BouncyButton
-          style={{
-            position: 'absolute', bottom: 8, right: 8, width: 28, height: 28, borderRadius: 14,
-            backgroundColor: 'rgba(11, 15, 23, 0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10
-          }}
-          onPress={(e) => { e.stopPropagation && e.stopPropagation(); onTogglePin && onTogglePin(item.id); }}
+        <View
+          style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }}
+          onClickCapture={Platform.OS === 'web' ? (e) => e.stopPropagation() : undefined}
         >
-          <PinIconSVG pinned={!!item.pinned} size={15} color={item.pinned ? '#C084FC' : '#FFFFFF'} />
-        </BouncyButton>
+          <BouncyButton
+            style={{
+              width: 28, height: 28, borderRadius: 14,
+              backgroundColor: 'rgba(11, 15, 23, 0.55)', alignItems: 'center', justifyContent: 'center'
+            }}
+            onPress={() => onTogglePin && onTogglePin(item.id)}
+          >
+            <PinIconSVG pinned={!!item.pinned} size={15} color={item.pinned ? '#C084FC' : '#FFFFFF'} />
+          </BouncyButton>
+        </View>
       ) : (
         // Read-only indicator when viewing someone else's profile - viewers
         // can see a portfolio is pinned/featured, just can't toggle it.
@@ -2115,14 +2120,16 @@ const ProjectCard = React.memo(({
       <View style={styles.titleRow}>
         <Text style={[styles.cardTitle, isTwoRowCard && styles.cardTitleCompact]} numberOfLines={2}>{item.title}</Text>
         {onToggleLike ? (
-          <LikeButton
-            liked={item.liked}
-            likesCount={item.likesCount}
-            onPress={() => onToggleLike(item.id)}
-            showCount
-            style={styles.likeButtonRightAligned}
-            countStyle={{ color: '#94A3B8', fontSize: 10, fontWeight: '700', marginTop: 1 }}
-          />
+          <View onClickCapture={Platform.OS === 'web' ? (e) => e.stopPropagation() : undefined}>
+            <LikeButton
+              liked={item.liked}
+              likesCount={item.likesCount}
+              onPress={() => onToggleLike(item.id)}
+              showCount
+              style={styles.likeButtonRightAligned}
+              countStyle={{ color: '#94A3B8', fontSize: 10, fontWeight: '700', marginTop: 1 }}
+            />
+          </View>
         ) : null}
       </View>
       </CardLink>
@@ -10761,10 +10768,13 @@ function App() {
                                 </Text>
                               )}
 
-                              <View style={styles.designerCardActionsRow}>
+                              <View
+                                style={styles.designerCardActionsRow}
+                                onClickCapture={Platform.OS === 'web' ? (e) => e.stopPropagation() : undefined}
+                              >
                                 <BouncyButton
                                   style={[styles.smallFollowBtn, isFollowing && styles.smallFollowBtnActive]}
-                                  onPress={(e) => { e.stopPropagation && e.stopPropagation(); toggleFollowDesigner(des.id); }}
+                                  onPress={() => toggleFollowDesigner(des.id)}
                                 >
                                   <Text style={[styles.smallFollowText, isFollowing && styles.smallFollowTextActive]}>
                                     {isFollowing ? 'Following' : (des.followsMe ? 'Follow Back' : '+ Follow')}
@@ -10773,7 +10783,7 @@ function App() {
 
                                 <BouncyButton
                                   style={styles.smallShareBtnIconOnly}
-                                  onPress={(e) => { e.stopPropagation && e.stopPropagation(); handleShareDesigner(des); }}
+                                  onPress={() => handleShareDesigner(des)}
                                 >
                                   <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
                                 </BouncyButton>
@@ -10837,10 +10847,13 @@ function App() {
                               <Text style={styles.designerListLoc}>{des.location}</Text>
                             </View>
 
-                            <View style={styles.designerCardActionsRow}>
+                            <View
+                              style={styles.designerCardActionsRow}
+                              onClickCapture={Platform.OS === 'web' ? (e) => e.stopPropagation() : undefined}
+                            >
                               <BouncyButton
                                 style={[styles.smallFollowBtn, isFollowing && styles.smallFollowBtnActive]}
-                                onPress={(e) => { e.stopPropagation && e.stopPropagation(); toggleFollowDesigner(des.id); }}
+                                onPress={() => toggleFollowDesigner(des.id)}
                               >
                                 <Text style={[styles.smallFollowText, isFollowing && styles.smallFollowTextActive]}>
                                   {isFollowing ? 'Following' : (des.followsMe ? 'Follow Back' : '+ Follow')}
@@ -10849,7 +10862,7 @@ function App() {
 
                               <BouncyButton
                                 style={styles.smallShareBtnIconOnly}
-                                onPress={(e) => { e.stopPropagation && e.stopPropagation(); handleShareDesigner(des); }}
+                                onPress={() => handleShareDesigner(des)}
                               >
                                 <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
                               </BouncyButton>
@@ -10857,8 +10870,7 @@ function App() {
                               <View ref={(el) => { discoverDotsRefsMap[des.id] = el; }} style={{ zIndex: 100 }}>
                                 <BouncyButton
                                   style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
-                                  onPress={(e) => {
-                                    e.stopPropagation && e.stopPropagation();
+                                  onPress={() => {
                                     const next = discoverDotsMenuOpenId === des.id ? null : des.id;
                                     if (next && discoverDotsRefsMap[des.id]) {
                                       discoverDotsRefsMap[des.id].measureInWindow((x, y, width, height) => {
