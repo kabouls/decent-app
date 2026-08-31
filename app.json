@@ -2,7 +2,7 @@
   "expo": {
     "name": "DECENT",
     "slug": "decent-portfolio-app",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "scheme": "decent",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -27,7 +27,11 @@
           "data": [
             {
               "scheme": "https",
-              "host": "decent-portfolio-decent6.vercel.app"
+              "host": "www.decent.ink"
+            },
+            {
+              "scheme": "https",
+              "host": "decent.ink"
             }
           ],
           "category": [

@@ -1,6 +1,6 @@
 {
   "name": "decent-portfolio-app",
-  "version": "5.3.0",
+  "version": "0.3.0",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
@@ -24,7 +24,6 @@
     "expo-linking": "~8.0.12",
     "expo-media-library": "~18.2.1",
     "expo-notifications": "~0.32.17",
-    "expo-status-bar": "~3.0.2",
     "expo-updates": "~29.0.19",
     "expo-video": "~3.0.16",
     "expo-web-browser": "~15.0.11",

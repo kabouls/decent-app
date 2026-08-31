@@ -132,8 +132,8 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // every single change regardless of size, JS-only or native - it's purely
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
-const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 476;
+const APP_VERSION = '0.3.0';
+const BUILD_NUMBER = 477;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
