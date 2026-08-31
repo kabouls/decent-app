@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 466;
+const BUILD_NUMBER = 467;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -4008,6 +4008,27 @@ function App() {
     });
 
   const mainScrollViewRef = useRef(null);
+  // Directly grabs the real DOM node behind the main ScrollView and applies
+  // scrollbar-hiding there, imperatively - see the comment on that
+  // ScrollView further down for why (nativeID and className both failed to
+  // reach this element via React's normal prop-to-DOM path, confirmed via
+  // DevTools). getScrollableNode() is react-native-web's own official
+  // escape hatch for exactly this situation - it bypasses React's props
+  // entirely and hands back the actual scrolling div. Re-runs whenever
+  // isWebWide changes, in case the window crosses the breakpoint after
+  // mount (toggles both ways, not just applies once).
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const node = mainScrollViewRef.current?.getScrollableNode?.();
+    if (!node) return;
+    if (isWebWide) {
+      node.style.scrollbarWidth = 'none';
+      node.classList.add('decent-hide-scrollbar');
+    } else {
+      node.style.scrollbarWidth = '';
+      node.classList.remove('decent-hide-scrollbar');
+    }
+  }, [isWebWide]);
   // Per-tab remembered scroll position. Previously this was a single shared
   // ScrollView with no memory at all between tab switches - scrolling deep
   // into For You, then switching to Search, would leave the ScrollView at
@@ -10408,15 +10429,17 @@ function App() {
           // showsVerticalScrollIndicator alone wasn't actually suppressing
           // Chrome's native scrollbar here (confirmed via DevTools Computed
           // panel: overflow-y:auto with no scrollbar-hiding CSS present at
-          // all) - whatever mechanism that prop is meant to use in this
-          // react-native-web version isn't producing the expected CSS.
-          // nativeID gives this element a real DOM id so a plain, guaranteed
-          // CSS rule (::-webkit-scrollbar, scrollbar-width - see index.html)
-          // can hide it directly, without depending on that prop at all.
-          // Still passed for correctness/native parity even though the
-          // actual hiding now happens via CSS.
+          // all). Two follow-up attempts (nativeID, then className) both
+          // tried to give this element a stable hook for a plain CSS rule -
+          // DevTools confirmed BOTH failed to actually land on the real
+          // scrolling DOM node at all, meaning react-native-web's
+          // ScrollView doesn't forward either prop the way plain View does.
+          // The class/style-hiding fix is now applied imperatively instead,
+          // in a useEffect below, via getScrollableNode() - ScrollView's
+          // own official method for reaching the real underlying DOM node
+          // directly, bypassing React's prop-to-DOM translation entirely
+          // rather than depending on it working correctly.
           showsVerticalScrollIndicator={!(Platform.OS === 'web' && isWebWide)}
-          {...(Platform.OS === 'web' && isWebWide ? { nativeID: 'decent-main-scroll', className: 'decent-hide-scrollbar' } : {})}
           contentContainerStyle={[
             styles.scrollContent,
             Platform.OS !== 'web' && !isWebWide && { paddingTop: headerBottomY + 20 },
