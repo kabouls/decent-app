@@ -5,6 +5,7 @@
   "cleanUrls": true,
   "framework": null,
   "rewrites": [
+    { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
     { "source": "/:path*", "destination": "/" }
   ],
   "headers": [

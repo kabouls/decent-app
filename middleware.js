@@ -142,7 +142,22 @@ export default async function middleware(req) {
           url: canonicalUrl,
           sameAs: sameAs.length ? sameAs : undefined
         }
-      }), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+      }), {
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          // Every crawler hit was triggering a fresh Supabase query with
+          // zero caching at all before this - not a correctness problem
+          // (bots don't need second-by-second freshness for a preview),
+          // just wasted reads and slower repeated hits. s-maxage is the
+          // CDN-level cache duration (Vercel's edge network respects this
+          // specifically, separate from a browser's own cache);
+          // stale-while-revalidate lets it keep serving the cached version
+          // for up to a day while quietly refreshing in the background,
+          // rather than ever blocking a crawler on a live query once it's
+          // been hit once.
+          'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=86400'
+        }
+      });
     }
 
     const portfolioMatch = path.match(/^\/p\/([^/]+)$/);
@@ -180,7 +195,22 @@ export default async function middleware(req) {
               }
             : undefined
         }
-      }), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+      }), {
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          // Every crawler hit was triggering a fresh Supabase query with
+          // zero caching at all before this - not a correctness problem
+          // (bots don't need second-by-second freshness for a preview),
+          // just wasted reads and slower repeated hits. s-maxage is the
+          // CDN-level cache duration (Vercel's edge network respects this
+          // specifically, separate from a browser's own cache);
+          // stale-while-revalidate lets it keep serving the cached version
+          // for up to a day while quietly refreshing in the background,
+          // rather than ever blocking a crawler on a live query once it's
+          // been hit once.
+          'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=86400'
+        }
+      });
     }
   } catch (e) {
     return; // any failure (network, bad data) falls through to the normal SPA instead of a broken preview
