@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 471;
+const BUILD_NUMBER = 473;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -3132,7 +3132,7 @@ function AuthScreen({ onCancel } = {}) {
                 <Text style={{ color: theme.textSecondary, fontSize: 18, fontWeight: '700' }}>✕</Text>
               </BouncyButton>
             </View>
-            <ScrollView ref={hideScrollbarRefCallback(isWebWide)} style={{ marginBottom: 16, marginTop: 8 }}>
+            <ScrollView style={{ marginBottom: 16, marginTop: 8 }}>
               <Text style={{ color: theme.textSecondary, fontSize: 13, lineHeight: 20 }}>
                 By creating an account or using DECENT, operated from Indonesia by Iqbal Aprianda Putra, you agree to these terms. You must be at least 13 years old to use DECENT.{'\n\n'}
                 <Text style={{ fontWeight: '700', color: theme.text }}>Your Content{'\n'}</Text>
@@ -16784,10 +16784,15 @@ function App() {
           interactive Figma prototype. Unlike the tutorial overlay above,
           this isn't a one-time onboarding step - it reappears every time a
           prototype is opened until "Never Show Again" is tapped, so it
-          only needs a plain boolean flag rather than the tutorials array. */}
+          only needs a plain boolean flag rather than the tutorials array.
+          On wide web this is suppressed here - a pane-scoped version (see
+          prototypePane) covers just the prototype pane there instead of
+          the whole screen, so the case study on the left stays usable.
+          Narrow web and native keep this full-screen version, since the
+          prototype IS the whole screen in those cases anyway. */}
       <Modal
         transparent
-        visible={showProtoTutorial}
+        visible={showProtoTutorial && !(Platform.OS === 'web' && isWebWide)}
         animationType="fade"
         onRequestClose={dismissProtoTutorial}
       >
@@ -17510,6 +17515,46 @@ function App() {
                       javaScriptEnabled={true}
                       domStorageEnabled={true}
                     />
+                    {/* On wide web, this hint is scoped to just the
+                        prototype pane instead of a full-screen modal - the
+                        case study on the left stays fully usable while this
+                        forces acknowledgment before interacting with the
+                        prototype specifically. webViewWrapper (this pane's
+                        own container) already has position:'relative', so
+                        this absolute overlay bounds to exactly this pane,
+                        not the whole viewport. Narrow web and native keep
+                        the original full-screen modal below (the prototype
+                        IS the whole screen there, so there's no separate
+                        "left side" to leave interactive anyway). */}
+                    {Platform.OS === 'web' && isWebWide && showProtoTutorial && (
+                      <View
+                        style={[styles.overlayModalBg, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}
+                        onStartShouldSetResponder={() => true}
+                        onResponderRelease={dismissProtoTutorial}
+                      >
+                        <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, { maxWidth: 340 }]}>
+                          <FigmaLogoSVG />
+                          <Text style={[styles.confirmTitle, { marginTop: 12 }]}>This is a live Figma prototype</Text>
+                          <Text style={styles.confirmSubText}>
+                            You can interact with it like a normal website - tap buttons, scroll, and navigate between screens.
+                          </Text>
+                          <View style={[styles.confirmActionsRow, { marginTop: 4 }]}>
+                            <BouncyButton
+                              style={[styles.confirmCancelBtn]}
+                              onPress={neverShowProtoTutorialAgain}
+                            >
+                              <Text style={styles.confirmCancelText}>Never Show Again</Text>
+                            </BouncyButton>
+                            <BouncyButton
+                              style={[styles.confirmDeleteBtn]}
+                              onPress={dismissProtoTutorial}
+                            >
+                              <Text style={styles.confirmDeleteText}>Got it</Text>
+                            </BouncyButton>
+                          </View>
+                        </View>
+                      </View>
+                    )}
                   </View>
                 );
 
