@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 461;
+const BUILD_NUMBER = 462;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -13630,6 +13630,50 @@ function App() {
                     >
                       <Text style={styles.contrastDonateBtnText}>Donate via Ko-fi</Text>
                     </BouncyButton>
+
+                    {/* GitHub Sponsors - a real HTML <iframe>, so web-only,
+                        no native equivalent exists at all. Unlike the Ko-fi
+                        button above (a plain BouncyButton where we can just
+                        check donateTermsAgreed before acting), a cross-origin
+                        iframe's internal click handling is completely opaque
+                        to us - there's no way to intercept a tap that lands
+                        inside it. Same solution as the QRIS code above:
+                        overlay a blur + tap-blocking layer on top until
+                        agreed, since that's the one thing that reliably
+                        works regardless of what's underneath. */}
+                    {Platform.OS === 'web' && (
+                      <View style={{ alignItems: 'center', marginTop: 4 }}>
+                        <Text style={{ color: theme.textSecondary, fontSize: 12, textAlign: 'center', marginBottom: 10 }}>
+                          Or sponsor on GitHub:
+                        </Text>
+                        <View style={{ width: 114, height: 32, borderRadius: 6, overflow: 'hidden' }}>
+                          {React.createElement('iframe', {
+                            src: 'https://github.com/sponsors/kabouls/button',
+                            title: 'Sponsor kabouls',
+                            height: 32,
+                            width: 114,
+                            style: { border: 0, borderRadius: 6 }
+                          })}
+                          {!donateTermsAgreed && (
+                            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                              <BlurView
+                                intensity={80}
+                                tint={themeMode === 'light' ? 'light' : 'dark'}
+                                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                              />
+                              <BouncyButton
+                                style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+                                onPress={() => {
+                                  showAppAlert('Agreement Required', 'Please check the box agreeing to the Terms of Service above to enable this.');
+                                }}
+                              >
+                                <EyeViewIconSVG color="#FFFFFF" size={14} />
+                              </BouncyButton>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    )}
                   </View>
                 )}
               </View>
