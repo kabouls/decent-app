@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 458;
+const BUILD_NUMBER = 459;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1974,6 +1974,28 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
   );
 };
 
+// Stops a click from ever reaching an ancestor CardLink's <a onClick>, for
+// interactive elements nested inside one (Like/Pin buttons, Follow/Share
+// rows). The previous attempt at this used <View onClickCapture={...}>,
+// which assumed react-native-web forwards an arbitrary on*Capture prop
+// through to the real DOM node - unverified, and evidently wrong, since it
+// didn't actually work. A raw DOM element via React.createElement is the
+// same proven-reliable technique already used for the anchor and video
+// elements elsewhere in this file: guaranteed real DOM event behavior,
+// no dependency on RN-Web's prop-forwarding whitelist. Native has no
+// anchor to escape in the first place (CardLink itself is a no-op wrapper
+// there), so this is a plain passthrough View on that platform.
+const StopClickWrapper = ({ style, children }) => {
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'div',
+      { onClickCapture: (e) => e.stopPropagation(), style: StyleSheet.flatten(style) || undefined },
+      children
+    );
+  }
+  return <View style={style}>{children}</View>;
+};
+
 const ProjectCard = React.memo(({
   item,
   onPress,
@@ -2056,10 +2078,7 @@ const ProjectCard = React.memo(({
         )}
       </View>
       {showPinControl ? (
-        <View
-          style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }}
-          onClickCapture={Platform.OS === 'web' ? (e) => e.stopPropagation() : undefined}
-        >
+        <StopClickWrapper style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }}>
           <BouncyButton
             style={{
               width: 28, height: 28, borderRadius: 14,
@@ -2069,7 +2088,7 @@ const ProjectCard = React.memo(({
           >
             <PinIconSVG pinned={!!item.pinned} size={15} color={item.pinned ? '#C084FC' : '#FFFFFF'} />
           </BouncyButton>
-        </View>
+        </StopClickWrapper>
       ) : (
         // Read-only indicator when viewing someone else's profile - viewers
         // can see a portfolio is pinned/featured, just can't toggle it.
@@ -2120,7 +2139,7 @@ const ProjectCard = React.memo(({
       <View style={styles.titleRow}>
         <Text style={[styles.cardTitle, isTwoRowCard && styles.cardTitleCompact]} numberOfLines={2}>{item.title}</Text>
         {onToggleLike ? (
-          <View onClickCapture={Platform.OS === 'web' ? (e) => e.stopPropagation() : undefined}>
+          <StopClickWrapper>
             <LikeButton
               liked={item.liked}
               likesCount={item.likesCount}
@@ -2129,7 +2148,7 @@ const ProjectCard = React.memo(({
               style={styles.likeButtonRightAligned}
               countStyle={{ color: '#94A3B8', fontSize: 10, fontWeight: '700', marginTop: 1 }}
             />
-          </View>
+          </StopClickWrapper>
         ) : null}
       </View>
       </CardLink>
@@ -2235,7 +2254,11 @@ const WebImageCropModal = ({ visible, imageUri, aspect, onConfirm, onCancel, the
   const dragStartRef = useRef({ x: 0, y: 0 });
   const offsetRef = useRef({ x: 0, y: 0 });
 
-  const frameW = Math.min(360, (viewportWidth || 400) - 64);
+  // Capped larger on tablet/desktop (same 768px breakpoint used everywhere
+  // else for isWebWide) - was capped at a phone-sized 360px even on a huge
+  // desktop viewport, making fine positioning/zoom harder than it needed
+  // to be. Mobile keeps its original size untouched.
+  const frameW = viewportWidth >= 768 ? Math.min(640, viewportWidth - 200) : Math.min(360, (viewportWidth || 400) - 64);
   const frameH = frameW * (aspect ? aspect[1] / aspect[0] : 1);
   const baseScale = naturalSize ? Math.max(frameW / naturalSize.width, frameH / naturalSize.height) : 1;
   const displayScale = baseScale * zoom;
@@ -2820,13 +2843,13 @@ function AuthScreen({ onCancel } = {}) {
       {onCancel && (
         <BouncyButton
           style={{
-            position: 'absolute', top: 8, left: 0, width: 36, height: 36, borderRadius: 18,
+            position: 'absolute', top: 20, right: 20, width: 36, height: 36, borderRadius: 18,
             backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
             alignItems: 'center', justifyContent: 'center', zIndex: 10
           }}
           onPress={onCancel}
         >
-          <ChevronLeftSVG color={theme.accentLight} size={20} />
+          <Text style={{ color: theme.accentLight, fontSize: 16, fontWeight: '700' }}>✕</Text>
         </BouncyButton>
       )}
       <View style={{ alignItems: 'center', marginBottom: 20 }}>
@@ -10768,10 +10791,7 @@ function App() {
                                 </Text>
                               )}
 
-                              <View
-                                style={styles.designerCardActionsRow}
-                                onClickCapture={Platform.OS === 'web' ? (e) => e.stopPropagation() : undefined}
-                              >
+                              <StopClickWrapper style={styles.designerCardActionsRow}>
                                 <BouncyButton
                                   style={[styles.smallFollowBtn, isFollowing && styles.smallFollowBtnActive]}
                                   onPress={() => toggleFollowDesigner(des.id)}
@@ -10787,7 +10807,7 @@ function App() {
                                 >
                                   <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
                                 </BouncyButton>
-                              </View>
+                              </StopClickWrapper>
                             </View>
                             <ChevronRightSVG color="#8B5CF6" size={20} />
                           </CardLink>
@@ -10847,10 +10867,7 @@ function App() {
                               <Text style={styles.designerListLoc}>{des.location}</Text>
                             </View>
 
-                            <View
-                              style={styles.designerCardActionsRow}
-                              onClickCapture={Platform.OS === 'web' ? (e) => e.stopPropagation() : undefined}
-                            >
+                            <StopClickWrapper style={styles.designerCardActionsRow}>
                               <BouncyButton
                                 style={[styles.smallFollowBtn, isFollowing && styles.smallFollowBtnActive]}
                                 onPress={() => toggleFollowDesigner(des.id)}
@@ -10937,7 +10954,7 @@ function App() {
                                   </View>
                                 </Modal>
                               </View>
-                            </View>
+                            </StopClickWrapper>
                           </View>
                         </CardLink>
                       );
