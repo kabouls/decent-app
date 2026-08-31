@@ -66,7 +66,7 @@ import * as MediaLibrary from 'expo-media-library';
 // extraScrollHeight) that ScrollView doesn't know about. Native behavior
 // (NativeKeyboardAwareScrollView) is untouched.
 const AppKeyboardAwareScrollView = Platform.OS === 'web'
-  ? ({ enableOnAndroid, extraScrollHeight, ...rest }) => <ScrollView {...rest} />
+  ? React.forwardRef(({ enableOnAndroid, extraScrollHeight, ...rest }, ref) => <ScrollView ref={ref} {...rest} />)
   : NativeKeyboardAwareScrollView;
 
 // react-native-webview has no web support at all. The only usage here is
@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 468;
+const BUILD_NUMBER = 469;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -3124,7 +3124,7 @@ function AuthScreen({ onCancel } = {}) {
                 <Text style={{ color: theme.textSecondary, fontSize: 18, fontWeight: '700' }}>✕</Text>
               </BouncyButton>
             </View>
-            <ScrollView style={{ marginBottom: 16, marginTop: 8 }}>
+            <ScrollView ref={hideScrollbarRefCallback(isWebWide)} style={{ marginBottom: 16, marginTop: 8 }}>
               <Text style={{ color: theme.textSecondary, fontSize: 13, lineHeight: 20 }}>
                 By creating an account or using DECENT, operated from Indonesia by Iqbal Aprianda Putra, you agree to these terms. You must be at least 13 years old to use DECENT.{'\n\n'}
                 <Text style={{ fontWeight: '700', color: theme.text }}>Your Content{'\n'}</Text>
@@ -3423,6 +3423,23 @@ const useHideScrollbarOnWeb = (ref, enabled) => {
       node.classList.remove('decent-hide-scrollbar');
     }
   }, [enabled, ref]);
+};
+
+// Ref-callback version of the same fix, for the many other ScrollViews
+// across the app that don't have (and don't otherwise need) a dedicated
+// named ref of their own - avoids declaring ~18 separate refs plus
+// useHideScrollbarOnWeb calls for what's the exact same one-line fix
+// everywhere. React invokes a ref callback with the real node the moment
+// it mounts, so this applies immediately with no separate effect needed -
+// every one of these instances lives inside a modal/panel that fully
+// unmounts and remounts on close/reopen anyway, so there's no "changed
+// after mount" case a useEffect would otherwise be needed to catch.
+const hideScrollbarRefCallback = (isWebWide) => (instance) => {
+  if (Platform.OS !== 'web' || !instance || !isWebWide) return;
+  const node = instance.getScrollableNode ? instance.getScrollableNode() : instance;
+  if (!node || !node.classList) return;
+  node.style.scrollbarWidth = 'none';
+  node.classList.add('decent-hide-scrollbar');
 };
 
 function App() {
@@ -9269,6 +9286,7 @@ function App() {
       <SafeAreaView style={[{ flex: 1, backgroundColor: theme.bg }, Platform.OS === 'web' && { alignItems: 'center', backgroundColor: webCanvasColor }]}>
         <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', maxWidth: 480, backgroundColor: theme.bg } : { flex: 1 }}>
         <AppKeyboardAwareScrollView
+          ref={hideScrollbarRefCallback(isWebWide)}
           contentContainerStyle={{ padding: 24, paddingBottom: 40 }}
           enableOnAndroid={true}
           extraScrollHeight={140}
@@ -11648,7 +11666,7 @@ function App() {
                 <Text style={{ color: theme.textSecondary, fontSize: 13 }}>No notifications</Text>
               </View>
             ) : (
-              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 10 }}>
+              <ScrollView ref={hideScrollbarRefCallback(isWebWide)} style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 10 }}>
                 {notificationsList.map((notif) => {
                   const isFollowingUser = followedDesigners.includes(notif.actorId);
                   return (
@@ -12033,6 +12051,7 @@ function App() {
             </View>
 
             <AppKeyboardAwareScrollView
+              ref={hideScrollbarRefCallback(isWebWide)}
               contentContainerStyle={styles.accountSettingsScrollContent}
               enableOnAndroid={true}
               extraScrollHeight={140}
@@ -12366,6 +12385,7 @@ function App() {
             </View>
 
             <AppKeyboardAwareScrollView
+              ref={hideScrollbarRefCallback(isWebWide)}
               contentContainerStyle={{ padding: 20 }}
               enableOnAndroid={true}
               extraScrollHeight={140}
@@ -12805,7 +12825,7 @@ function App() {
               </BouncyButton>
             </View>
 
-            <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
+            <ScrollView ref={hideScrollbarRefCallback(isWebWide)} contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ fontSize: 18 }}>
                 <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
                 <Text style={{ color: theme.text, fontWeight: '800' }}> v{APP_VERSION} (b{BUILD_NUMBER})</Text>
@@ -12883,7 +12903,7 @@ function App() {
                 <Text style={{ color: theme.textSecondary, fontSize: 13 }}>No updates logged yet.</Text>
               </View>
             ) : (
-              <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
+              <ScrollView ref={hideScrollbarRefCallback(isWebWide)} contentContainerStyle={{ padding: 16, gap: 14 }}>
                 {changelogEntries.map((entry) => (
                   <View
                     key={entry.id}
@@ -12975,7 +12995,7 @@ function App() {
               </BouncyButton>
             </View>
 
-            <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
+            <ScrollView ref={hideScrollbarRefCallback(isWebWide)} contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ color: '#0F172A', fontSize: 20, fontWeight: '800' }}>Privacy Policy</Text>
               <Text style={{ color: '#64748B', fontSize: 13, fontStyle: 'italic' }}>
                 Last updated: August 30, 2026.
@@ -13186,7 +13206,7 @@ function App() {
               </BouncyButton>
             </View>
 
-            <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
+            <ScrollView ref={hideScrollbarRefCallback(isWebWide)} contentContainerStyle={{ padding: 20, gap: 14 }}>
               <Text style={{ color: '#0F172A', fontSize: 20, fontWeight: '800' }}>Terms of Service</Text>
               <Text style={{ color: '#64748B', fontSize: 13, fontStyle: 'italic' }}>
                 Last updated: August 30, 2026.
@@ -13341,6 +13361,7 @@ function App() {
             </View>
 
             <AppKeyboardAwareScrollView
+              ref={hideScrollbarRefCallback(isWebWide)}
               contentContainerStyle={{ padding: 20, gap: 12 }}
               enableOnAndroid={true}
               extraScrollHeight={140}
@@ -13889,7 +13910,7 @@ function App() {
               )}
             </View>
 
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 14 }}>
+            <ScrollView ref={hideScrollbarRefCallback(isWebWide)} style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 14 }}>
               {optionsView === 'root' && (
                 <>
                   <BouncyButton
@@ -14410,7 +14431,7 @@ function App() {
               </View>
             </View>
 
-            <ScrollView contentContainerStyle={styles.allCategoriesGrid}>
+            <ScrollView ref={hideScrollbarRefCallback(isWebWide)} contentContainerStyle={styles.allCategoriesGrid}>
               {allCategoriesTabList.length === 0 ? (
                 <Text style={styles.emptySearchText}>No categories match your search.</Text>
               ) : allCategoriesTabList.map((cat) => (
@@ -15385,6 +15406,7 @@ function App() {
           </View>
 
           <AppKeyboardAwareScrollView
+            ref={hideScrollbarRefCallback(isWebWide)}
             style={styles.caseScrollView}
             contentContainerStyle={[styles.caseContent, { paddingBottom: 110 }]}
             enableOnAndroid={true}
@@ -15667,7 +15689,7 @@ function App() {
                           )}
                         </View>
 
-                        <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}>
+                        <ScrollView ref={hideScrollbarRefCallback(isWebWide)} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}>
                           {filteredCategoriesForWizard.map((cat) => {
                             const isSelected = fCategories.includes(cat);
                             return (
@@ -15813,7 +15835,7 @@ function App() {
                   </View>
 
                   {descEditorMode === 'preview' ? (
-                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+                    <ScrollView ref={hideScrollbarRefCallback(isWebWide)} style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
                       {fContentBlocks.length > 0 ? (
                         renderContentBlocks(fContentBlocks, undefined, theme)
                       ) : (
@@ -15822,6 +15844,7 @@ function App() {
                     </ScrollView>
                   ) : (
                     <AppKeyboardAwareScrollView
+                      ref={hideScrollbarRefCallback(isWebWide)}
                       style={{ flex: 1 }}
                       contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }}
                       keyboardShouldPersistTaps="handled"
@@ -17481,6 +17504,7 @@ function App() {
                 // strip would.
                 const mediaPane = (
                   <ScrollView
+                    ref={hideScrollbarRefCallback(isWebWide)}
                     style={{ flex: 1, width: '100%' }}
                     contentContainerStyle={{ padding: 16, gap: 16, width: '100%' }}
                   >
@@ -17524,7 +17548,7 @@ function App() {
                         />
                       </View>
                     </View>
-                    <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ padding: 16, gap: 16, width: '100%' }}>
+                    <ScrollView ref={hideScrollbarRefCallback(isWebWide)} style={{ flex: 1, width: '100%' }} contentContainerStyle={{ padding: 16, gap: 16, width: '100%' }}>
                       {gdSplitTab === 'video' ? (
                         gdAllVideos.length === 0 ? (
                           <Text style={styles.caseBodyText}>No videos added to this portfolio yet.</Text>
@@ -18480,7 +18504,7 @@ function App() {
                 </Text>
               </View>
             ) : (
-            <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+            <ScrollView ref={hideScrollbarRefCallback(isWebWide)} contentContainerStyle={{ padding: 16, gap: 12 }}>
               {userListItems.map((usr) => {
                 const isFollowing = followedDesigners.includes(usr.id);
                 return (
