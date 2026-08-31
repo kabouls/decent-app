@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 469;
+const BUILD_NUMBER = 470;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1933,7 +1933,30 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
   if (Platform.OS !== 'web' || !href) {
     return <BouncyButton style={style} activeOpacity={activeOpacity} onPress={onPress}>{children}</BouncyButton>;
   }
-  const handleClick = (e) => {
+  // Single handler, attached via onClickCapture ONLY - not onClick (bubble
+  // phase), and not both together. This replaces two earlier approaches
+  // that both turned out to be wrong:
+  //   1. A plain onClick (bubble) handler calling preventDefault - looked
+  //      correct, but concrete evidence (a Chrome Recorder session showing
+  //      an explicit "type":"navigation" event, and a Firefox performance
+  //      profile showing an actual Navigation::Start + full document
+  //      fetch + Unload + complete app reboot re-querying everything from
+  //      scratch, ~1s round trip) proved this was NEVER actually
+  //      preventing the browser's real navigation. Every single card click
+  //      was silently triggering a full page reload the whole time - what
+  //      looked like "briefly flashes the wrong page" was literally the
+  //      app rebooting from cold and defaulting to its home screen before
+  //      routing logic caught up and swapped to the right view.
+  //   2. Adding a SEPARATE onClickCapture handler ALONGSIDE that onClick
+  //      one (plus stopPropagation on the bubble handler), as a backstop -
+  //      this broke title/name/avatar clicks entirely (bouncy animation
+  //      fired, nothing else did) and was reverted.
+  // This time there's exactly ONE handler, doing everything (checking
+  // modifiers, preventDefault, calling onPress) together in the earliest
+  // possible phase - no second handler for any cross-phase interaction to
+  // go wrong between, and no reliance on a bubble-phase preventDefault
+  // that evidence showed doesn't reliably suppress real navigation here.
+  const handleClickCapture = (e) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
     e.preventDefault();
     onPress();
@@ -1945,30 +1968,15 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
   // way that forces a broader accessibility-tree recalculation on
   // interaction, visible as a brief repaint/flash - confirmed by the fact
   // that it happened even via right-click "open in new tab" (which never
-  // fires this component's own onClick at all, ruling out the click-
+  // fires this component's own click handler at all, ruling out the click-
   // handling logic itself as the cause). A real <a> wrapping a block-level
   // child works correctly across every browser without needing
   // display:contents at all - this pattern predates that CSS property and
   // is what every "the whole card is a link" site used long before it
   // existed. The inner BouncyButton's own onPress is intentionally a no-op:
-  // the anchor's onClick above is the single source of truth for the click
-  // action, so plain clicks aren't handled twice and modifier-clicks aren't
-  // handled at all beyond the browser's own native behavior.
-  //
-  // NOTE: a onClickCapture backstop (calling preventDefault even earlier,
-  // in the capture phase) was tried here briefly to chase a separate,
-  // narrower bug - a real page reload specifically when tapping your own
-  // name/avatar on a card, landing on /@yourhandle before redirecting to
-  // /profile. That capture handler broke title/name/avatar clicks
-  // entirely (bouncy animation fired, nothing else did) - almost certainly
-  // because React's synthetic event system doesn't handle
-  // onClickCapture+onClick on the exact same element the way raw native
-  // DOM addEventListener does, unlike standard spec behavior where
-  // preventDefault in one phase doesn't stop other listeners from running.
-  // Reverted immediately since breaking working navigation broadly is far
-  // worse than leaving one specific edge case (your own profile link)
-  // unresolved. That edge case needs a different, more targeted approach -
-  // not another blanket capture-phase intervention on every CardLink.
+  // the anchor's click handler above is the single source of truth for the
+  // click action, so plain clicks aren't handled twice and modifier-clicks
+  // aren't handled at all beyond the browser's own native behavior.
   // Flattened and applied to the anchor itself too, not just the inner
   // BouncyButton - critical for contexts where CardLink sits as a flex item
   // inside a row (e.g. the designer row next to the Follow button):
@@ -1984,7 +1992,7 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
   const flatStyle = StyleSheet.flatten(style) || {};
   return React.createElement(
     'a',
-    { href, onClick: handleClick, style: { textDecoration: 'none', color: 'inherit', display: 'block', ...flatStyle } },
+    { href, onClickCapture: handleClickCapture, style: { textDecoration: 'none', color: 'inherit', display: 'block', ...flatStyle } },
     <BouncyButton style={style} activeOpacity={activeOpacity} onPress={() => {}}>{children}</BouncyButton>
   );
 };
