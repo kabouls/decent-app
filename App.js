@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 463;
+const BUILD_NUMBER = 464;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -10405,13 +10405,18 @@ function App() {
         <ScrollView
           ref={mainScrollViewRef}
           style={styles.scrollView}
-          // Hidden on wide web specifically since the custom indicator
-          // (rendered at the true viewport edge, near the end of this
-          // component's return) replaces it there - this ScrollView's own
-          // native scrollbar renders at the edge of the width-capped
-          // content column instead of the actual browser window edge.
-          // Native app and narrow web keep the normal scrollbar.
+          // showsVerticalScrollIndicator alone wasn't actually suppressing
+          // Chrome's native scrollbar here (confirmed via DevTools Computed
+          // panel: overflow-y:auto with no scrollbar-hiding CSS present at
+          // all) - whatever mechanism that prop is meant to use in this
+          // react-native-web version isn't producing the expected CSS.
+          // nativeID gives this element a real DOM id so a plain, guaranteed
+          // CSS rule (::-webkit-scrollbar, scrollbar-width - see index.html)
+          // can hide it directly, without depending on that prop at all.
+          // Still passed for correctness/native parity even though the
+          // actual hiding now happens via CSS.
           showsVerticalScrollIndicator={!(Platform.OS === 'web' && isWebWide)}
+          {...(Platform.OS === 'web' && isWebWide ? { nativeID: 'decent-main-scroll' } : {})}
           contentContainerStyle={[
             styles.scrollContent,
             Platform.OS !== 'web' && !isWebWide && { paddingTop: headerBottomY + 20 },

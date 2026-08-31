@@ -47,6 +47,24 @@
       html {
         overflow: hidden;
       }
+      /* Hides the main content ScrollView's native scrollbar on wide web,
+         where the app's own custom purple scroll indicator (pinned to the
+         true browser window edge) replaces it. The React Native `View`
+         prop meant to do this (showsVerticalScrollIndicator={false})
+         wasn't actually producing this CSS in practice - confirmed via
+         DevTools showing overflow-y:auto with no scrollbar-hiding rule
+         present at all - so this does it directly and reliably instead,
+         targeting the element by its nativeID (App.js sets nativeID=
+         "decent-main-scroll" on that ScrollView, wide web only). Both
+         properties needed since they're two unrelated, non-overlapping
+         mechanisms: ::-webkit-scrollbar for Chrome/Safari/Edge,
+         scrollbar-width for Firefox. */
+      #decent-main-scroll::-webkit-scrollbar {
+        display: none;
+      }
+      #decent-main-scroll {
+        scrollbar-width: none;
+      }
       /* Dark is the default/most common theme in the app - setting it here
          directly means the very first paint already matches, with zero
          flash, before any JS has even started. The inline script right
