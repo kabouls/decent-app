@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 460;
+const BUILD_NUMBER = 461;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1934,18 +1934,6 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
     return <BouncyButton style={style} activeOpacity={activeOpacity} onPress={onPress}>{children}</BouncyButton>;
   }
   const handleClick = (e) => {
-    // Checks the ACTUAL DOM at the moment of click, using a plain native
-    // attribute + Element.closest() - not relying on stopPropagation
-    // correctly traversing from a nested component up through this anchor,
-    // which is exactly what two previous attempts at this assumed and
-    // neither actually worked in practice (react-native-web's touch/press
-    // handling doesn't necessarily map cleanly onto standard DOM event
-    // bubbling). closest() walks the REAL rendered DOM tree directly from
-    // the real click target, completely bypassing any uncertainty about
-    // React's synthetic event system or how Pressable/TouchableOpacity
-    // internally decides to fire onPress - about as close to bulletproof
-    // as this can get.
-    if (e.target && e.target.closest && e.target.closest('[data-stop-card-nav]')) return;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
     e.preventDefault();
     onPress();
@@ -1984,31 +1972,6 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
     { href, onClick: handleClick, style: { textDecoration: 'none', color: 'inherit', display: 'block', ...flatStyle } },
     <BouncyButton style={style} activeOpacity={activeOpacity} onPress={() => {}}>{children}</BouncyButton>
   );
-};
-
-// Stops a click from ever reaching an ancestor CardLink's <a onClick>, for
-// interactive elements nested inside one (Like/Pin buttons, Follow/Share
-// rows). The previous attempt at this used <View onClickCapture={...}>,
-// which assumed react-native-web forwards an arbitrary on*Capture prop
-// through to the real DOM node - unverified, and evidently wrong, since it
-// didn't actually work. A raw DOM element via React.createElement is the
-// same proven-reliable technique already used for the anchor and video
-// elements elsewhere in this file: guaranteed real DOM event behavior,
-// no dependency on RN-Web's prop-forwarding whitelist. Native has no
-// anchor to escape in the first place (CardLink itself is a no-op wrapper
-// there), so this is a plain passthrough View on that platform.
-const StopClickWrapper = ({ style, children }) => {
-  if (Platform.OS === 'web') {
-    // data-stop-card-nav is the marker CardLink's own handleClick checks
-    // for via closest() - see the comment there for why this replaced the
-    // onClickCapture approach (two attempts at that didn't actually work).
-    return React.createElement(
-      'div',
-      { 'data-stop-card-nav': 'true', style: StyleSheet.flatten(style) || undefined },
-      children
-    );
-  }
-  return <View style={style}>{children}</View>;
 };
 
 const ProjectCard = React.memo(({
@@ -2059,6 +2022,7 @@ const ProjectCard = React.memo(({
         instead, each with its own real href, so both destinations get
         real new-tab support. Normal left-click behavior for either is
         completely unchanged from before. */}
+    <View style={{ position: 'relative' }}>
     <CardLink href={`/p/${item.id}`} style={{ width: '100%' }} activeOpacity={0.88} onPress={() => onPress(item)}>
     <View style={[styles.thumbnailContainer, isTwoRowCard && styles.thumbnailContainerCompact]}>
       <Image source={{ uri: item.cover }} style={styles.cardCover} blurRadius={item.isNsfw ? 25 : 0} />
@@ -2092,18 +2056,24 @@ const ProjectCard = React.memo(({
           </View>
         )}
       </View>
+    </View>
+    </CardLink>
+      {/* Pin control pulled out as a true sibling of CardLink, same
+          reasoning as the Like button below - it can never trigger
+          navigation if it structurally isn't inside the anchor at all.
+          The wrapping View above (position:'relative') tightly hugs just
+          the thumbnail's own bounds, so bottom/right positioning here
+          still lines up with the thumbnail corner exactly as before. */}
       {showPinControl ? (
-        <StopClickWrapper style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 10 }}>
-          <BouncyButton
-            style={{
-              width: 28, height: 28, borderRadius: 14,
-              backgroundColor: 'rgba(11, 15, 23, 0.55)', alignItems: 'center', justifyContent: 'center'
-            }}
-            onPress={() => onTogglePin && onTogglePin(item.id)}
-          >
-            <PinIconSVG pinned={!!item.pinned} size={15} color={item.pinned ? '#C084FC' : '#FFFFFF'} />
-          </BouncyButton>
-        </StopClickWrapper>
+        <BouncyButton
+          style={{
+            position: 'absolute', bottom: 8, right: 8, width: 28, height: 28, borderRadius: 14,
+            backgroundColor: 'rgba(11, 15, 23, 0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10
+          }}
+          onPress={() => onTogglePin && onTogglePin(item.id)}
+        >
+          <PinIconSVG pinned={!!item.pinned} size={15} color={item.pinned ? '#C084FC' : '#FFFFFF'} />
+        </BouncyButton>
       ) : (
         // Read-only indicator when viewing someone else's profile - viewers
         // can see a portfolio is pinned/featured, just can't toggle it.
@@ -2121,7 +2091,6 @@ const ProjectCard = React.memo(({
         )
       )}
     </View>
-    </CardLink>
 
     <View style={[styles.cardBody, isTwoRowCard && styles.cardBodyCompact]}>
       <CardLink href={`/p/${item.id}`} style={{ width: '100%' }} activeOpacity={0.88} onPress={() => onPress(item)}>
@@ -2150,23 +2119,34 @@ const ProjectCard = React.memo(({
           </Text>
         </View>
       </View>
+      </CardLink>
 
+      {/* The Like button is a true DOM SIBLING of this CardLink, not nested
+          inside it - three earlier attempts at stopping a nested click from
+          reaching the anchor (stopPropagation on the inner event,
+          onClickCapture, a closest()-based check in the anchor's own
+          handler) all failed, which means react-native-web's touch
+          handling doesn't actually dispatch/bubble a real click the way
+          plain nested HTML would, so there was no reliable event-based fix
+          available at all. Making the Like button structurally impossible
+          to be "inside" the anchor removes the need to intercept anything -
+          it can never trigger navigation, regardless of how any event
+          system behaves, because it simply isn't a descendant of it. */}
       <View style={styles.titleRow}>
-        <Text style={[styles.cardTitle, isTwoRowCard && styles.cardTitleCompact]} numberOfLines={2}>{item.title}</Text>
+        <CardLink href={`/p/${item.id}`} style={{ flex: 1 }} activeOpacity={0.88} onPress={() => onPress(item)}>
+          <Text style={[styles.cardTitle, isTwoRowCard && styles.cardTitleCompact]} numberOfLines={2}>{item.title}</Text>
+        </CardLink>
         {onToggleLike ? (
-          <StopClickWrapper>
-            <LikeButton
-              liked={item.liked}
-              likesCount={item.likesCount}
-              onPress={() => onToggleLike(item.id)}
-              showCount
-              style={styles.likeButtonRightAligned}
-              countStyle={{ color: '#94A3B8', fontSize: 10, fontWeight: '700', marginTop: 1 }}
-            />
-          </StopClickWrapper>
+          <LikeButton
+            liked={item.liked}
+            likesCount={item.likesCount}
+            onPress={() => onToggleLike(item.id)}
+            showCount
+            style={styles.likeButtonRightAligned}
+            countStyle={{ color: '#94A3B8', fontSize: 10, fontWeight: '700', marginTop: 1 }}
+          />
         ) : null}
       </View>
-      </CardLink>
 
       <View style={styles.designerRowWithFollow}>
         <CardLink
@@ -10785,47 +10765,55 @@ function App() {
                       {relatedDesigners.map((des) => {
                         const isFollowing = followedDesigners.includes(des.id);
                         return (
-                          <CardLink
-                            key={des.id}
-                            href={`/@${des.handle || des.id}`}
-                            style={styles.designerItemCard}
-                            onPress={() => openDesignerModal(des)}
-                          >
-                            <Image source={{ uri: des.avatar }} style={styles.designerListAvatar} />
-                            <View style={styles.designerInfoCol}>
-                              <Text style={styles.designerListName}>{des.name}</Text>
-                              <Text style={styles.designerListRole}>{des.role}</Text>
-                              <View style={styles.iconTextInlineRow}>
-                                <LocationPinSVG />
-                                <Text style={styles.designerListLoc}>{des.location}</Text>
-                              </View>
+                          <View key={des.id} style={{ backgroundColor: theme.surface, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border, padding: 14 }}>
+                            <CardLink
+                              href={`/@${des.handle || des.id}`}
+                              style={{ flexDirection: 'row', alignItems: 'center' }}
+                              onPress={() => openDesignerModal(des)}
+                            >
+                              <Image source={{ uri: des.avatar }} style={styles.designerListAvatar} />
+                              <View style={styles.designerInfoCol}>
+                                <Text style={styles.designerListName}>{des.name}</Text>
+                                <Text style={styles.designerListRole}>{des.role}</Text>
+                                <View style={styles.iconTextInlineRow}>
+                                  <LocationPinSVG />
+                                  <Text style={styles.designerListLoc}>{des.location}</Text>
+                                </View>
 
-                              {des.matchedViaTag && (
-                                <Text style={{ color: '#64748B', fontSize: 11, fontStyle: 'italic', marginTop: 2 }}>
-                                  Shows up because they've published a portfolio tagged "{des.matchedViaTag}"
-                                </Text>
-                              )}
-
-                              <StopClickWrapper style={styles.designerCardActionsRow}>
-                                <BouncyButton
-                                  style={[styles.smallFollowBtn, isFollowing && styles.smallFollowBtnActive]}
-                                  onPress={() => toggleFollowDesigner(des.id)}
-                                >
-                                  <Text style={[styles.smallFollowText, isFollowing && styles.smallFollowTextActive]}>
-                                    {isFollowing ? 'Following' : (des.followsMe ? 'Follow Back' : '+ Follow')}
+                                {des.matchedViaTag && (
+                                  <Text style={{ color: '#64748B', fontSize: 11, fontStyle: 'italic', marginTop: 2 }}>
+                                    Shows up because they've published a portfolio tagged "{des.matchedViaTag}"
                                   </Text>
-                                </BouncyButton>
+                                )}
+                              </View>
+                              <ChevronRightSVG color="#8B5CF6" size={20} />
+                            </CardLink>
 
-                                <BouncyButton
-                                  style={styles.smallShareBtnIconOnly}
-                                  onPress={() => handleShareDesigner(des)}
-                                >
-                                  <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
-                                </BouncyButton>
-                              </StopClickWrapper>
+                            {/* True sibling of the CardLink above, not
+                                nested inside it - same reasoning as the Like/
+                                Pin buttons on portfolio cards. marginLeft
+                                approximates the avatar's width+gap (48+12)
+                                so this still lines up under the name/role
+                                text as before, now that it's structurally
+                                outside the row it used to sit inside. */}
+                            <View style={[styles.designerCardActionsRow, { marginLeft: 60 }]}>
+                              <BouncyButton
+                                style={[styles.smallFollowBtn, isFollowing && styles.smallFollowBtnActive]}
+                                onPress={() => toggleFollowDesigner(des.id)}
+                              >
+                                <Text style={[styles.smallFollowText, isFollowing && styles.smallFollowTextActive]}>
+                                  {isFollowing ? 'Following' : (des.followsMe ? 'Follow Back' : '+ Follow')}
+                                </Text>
+                              </BouncyButton>
+
+                              <BouncyButton
+                                style={styles.smallShareBtnIconOnly}
+                                onPress={() => handleShareDesigner(des)}
+                              >
+                                <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
+                              </BouncyButton>
                             </View>
-                            <ChevronRightSVG color="#8B5CF6" size={20} />
-                          </CardLink>
+                          </View>
                         );
                       })}
                     </View>
@@ -10867,111 +10855,121 @@ function App() {
                     {searchedDesigners.slice(0, discoverDesignersLimit).map((des) => {
                       const isFollowing = followedDesigners.includes(des.id);
                       return (
-                        <CardLink
+                        <View
                           key={des.id}
-                          href={`/@${des.handle || des.id}`}
-                          style={[styles.designerItemCard, isWebWide && { width: '48%' }]}
-                          onPress={() => openDesignerModal(des)}
+                          style={[{ backgroundColor: theme.surface, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border, padding: 14 }, isWebWide && { width: '48%' }]}
                         >
-                          <Image source={{ uri: des.avatar }} style={styles.designerListAvatar} />
-                          <View style={styles.designerInfoCol}>
-                            <Text style={styles.designerListName}>{des.name}</Text>
-                            <Text style={styles.designerListRole}>{des.role}</Text>
-                            <View style={styles.iconTextInlineRow}>
-                              <LocationPinSVG />
-                              <Text style={styles.designerListLoc}>{des.location}</Text>
-                            </View>
-
-                            <StopClickWrapper style={styles.designerCardActionsRow}>
-                              <BouncyButton
-                                style={[styles.smallFollowBtn, isFollowing && styles.smallFollowBtnActive]}
-                                onPress={() => toggleFollowDesigner(des.id)}
-                              >
-                                <Text style={[styles.smallFollowText, isFollowing && styles.smallFollowTextActive]}>
-                                  {isFollowing ? 'Following' : (des.followsMe ? 'Follow Back' : '+ Follow')}
-                                </Text>
-                              </BouncyButton>
-
-                              <BouncyButton
-                                style={styles.smallShareBtnIconOnly}
-                                onPress={() => handleShareDesigner(des)}
-                              >
-                                <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
-                              </BouncyButton>
-
-                              <View ref={(el) => { discoverDotsRefsMap[des.id] = el; }} style={{ zIndex: 100 }}>
-                                <BouncyButton
-                                  style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
-                                  onPress={() => {
-                                    const next = discoverDotsMenuOpenId === des.id ? null : des.id;
-                                    if (next && discoverDotsRefsMap[des.id]) {
-                                      discoverDotsRefsMap[des.id].measureInWindow((x, y, width, height) => {
-                                        const screenWidth = Platform.OS === 'web' ? window.innerWidth : Dimensions.get('window').width;
-                                        setDiscoverDotsMenuPos({ top: y + height + 8, right: Math.max(8, screenWidth - (x + width)) });
-                                      });
-                                    }
-                                    setDiscoverDotsMenuOpenId(next);
-                                  }}
-                                >
-                                  <Text style={{ color: theme.accentLight, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
-                                </BouncyButton>
-
-                                <Modal
-                                  transparent
-                                  visible={discoverDotsMenuOpenId === des.id}
-                                  animationType="none"
-                                  onRequestClose={() => setDiscoverDotsMenuOpenId(null)}
-                                >
-                                  <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-                                    <TouchableOpacity
-                                      style={{ flex: 1 }}
-                                      activeOpacity={1}
-                                      onPress={() => setDiscoverDotsMenuOpenId(null)}
-                                    />
-                                    <View style={{
-                                      position: 'absolute', top: discoverDotsMenuPos.top, right: discoverDotsMenuPos.right, width: 220,
-                                      backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
-                                      padding: 6,
-                                      shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
-                                    }}>
-                                      <BouncyButton
-                                        style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
-                                        onPress={() => {
-                                          setDiscoverDotsMenuOpenId(null);
-                                          handleReportContent('user', des.id, des.name);
-                                        }}
-                                      >
-                                        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
-                                      </BouncyButton>
-                                      <BouncyButton
-                                        style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
-                                        onPress={() => {
-                                          setDiscoverDotsMenuOpenId(null);
-                                          mutedIds.has(des.id)
-                                            ? handleUnmuteDesigner(des.id, des.name)
-                                            : handleMuteDesigner(des.id, des.name);
-                                        }}
-                                      >
-                                        <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
-                                          {mutedIds.has(des.id) ? 'Unmute Posts' : 'Mute Posts'}
-                                        </Text>
-                                      </BouncyButton>
-                                      <BouncyButton
-                                        style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
-                                        onPress={() => {
-                                          setDiscoverDotsMenuOpenId(null);
-                                          handleBlockUser(des.id, des.name);
-                                        }}
-                                      >
-                                        <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
-                                      </BouncyButton>
-                                    </View>
-                                  </View>
-                                </Modal>
+                          <CardLink
+                            href={`/@${des.handle || des.id}`}
+                            style={{ flexDirection: 'row', alignItems: 'center' }}
+                            onPress={() => openDesignerModal(des)}
+                          >
+                            <Image source={{ uri: des.avatar }} style={styles.designerListAvatar} />
+                            <View style={styles.designerInfoCol}>
+                              <Text style={styles.designerListName}>{des.name}</Text>
+                              <Text style={styles.designerListRole}>{des.role}</Text>
+                              <View style={styles.iconTextInlineRow}>
+                                <LocationPinSVG />
+                                <Text style={styles.designerListLoc}>{des.location}</Text>
                               </View>
-                            </StopClickWrapper>
+                            </View>
+                          </CardLink>
+
+                          {/* True siblings of the CardLink above, not nested
+                              inside it - same reasoning as the Like/Pin
+                              buttons on portfolio cards and the Related
+                              Designers card above. marginLeft approximates
+                              the avatar's width+gap (48+12) to keep this
+                              visually aligned under the name/role text. */}
+                          <View style={[styles.designerCardActionsRow, { marginLeft: 60 }]}>
+                            <BouncyButton
+                              style={[styles.smallFollowBtn, isFollowing && styles.smallFollowBtnActive]}
+                              onPress={() => toggleFollowDesigner(des.id)}
+                            >
+                              <Text style={[styles.smallFollowText, isFollowing && styles.smallFollowTextActive]}>
+                                {isFollowing ? 'Following' : (des.followsMe ? 'Follow Back' : '+ Follow')}
+                              </Text>
+                            </BouncyButton>
+
+                            <BouncyButton
+                              style={styles.smallShareBtnIconOnly}
+                              onPress={() => handleShareDesigner(des)}
+                            >
+                              <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
+                            </BouncyButton>
+
+                            <View ref={(el) => { discoverDotsRefsMap[des.id] = el; }} style={{ zIndex: 100 }}>
+                              <BouncyButton
+                                style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                                onPress={() => {
+                                  const next = discoverDotsMenuOpenId === des.id ? null : des.id;
+                                  if (next && discoverDotsRefsMap[des.id]) {
+                                    discoverDotsRefsMap[des.id].measureInWindow((x, y, width, height) => {
+                                      const screenWidth = Platform.OS === 'web' ? window.innerWidth : Dimensions.get('window').width;
+                                      setDiscoverDotsMenuPos({ top: y + height + 8, right: Math.max(8, screenWidth - (x + width)) });
+                                    });
+                                  }
+                                  setDiscoverDotsMenuOpenId(next);
+                                }}
+                              >
+                                <Text style={{ color: theme.accentLight, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
+                              </BouncyButton>
+
+                              <Modal
+                                transparent
+                                visible={discoverDotsMenuOpenId === des.id}
+                                animationType="none"
+                                onRequestClose={() => setDiscoverDotsMenuOpenId(null)}
+                              >
+                                <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                                  <TouchableOpacity
+                                    style={{ flex: 1 }}
+                                    activeOpacity={1}
+                                    onPress={() => setDiscoverDotsMenuOpenId(null)}
+                                  />
+                                  <View style={{
+                                    position: 'absolute', top: discoverDotsMenuPos.top, right: discoverDotsMenuPos.right, width: 220,
+                                    backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                                    padding: 6,
+                                    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                                  }}>
+                                    <BouncyButton
+                                      style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                                      onPress={() => {
+                                        setDiscoverDotsMenuOpenId(null);
+                                        handleReportContent('user', des.id, des.name);
+                                      }}
+                                    >
+                                      <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
+                                    </BouncyButton>
+                                    <BouncyButton
+                                      style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                                      onPress={() => {
+                                        setDiscoverDotsMenuOpenId(null);
+                                        mutedIds.has(des.id)
+                                          ? handleUnmuteDesigner(des.id, des.name)
+                                          : handleMuteDesigner(des.id, des.name);
+                                      }}
+                                    >
+                                      <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
+                                        {mutedIds.has(des.id) ? 'Unmute Posts' : 'Mute Posts'}
+                                      </Text>
+                                    </BouncyButton>
+                                    <BouncyButton
+                                      style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                                      onPress={() => {
+                                        setDiscoverDotsMenuOpenId(null);
+                                        handleBlockUser(des.id, des.name);
+                                      }}
+                                    >
+                                      <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
+                                    </BouncyButton>
+                                  </View>
+                                </View>
+                              </Modal>
+                            </View>
                           </View>
-                        </CardLink>
+                        </View>
                       );
                     })}
                   </View>
