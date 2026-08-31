@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 479;
+const BUILD_NUMBER = 480;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -3075,10 +3075,11 @@ function AuthScreen({ onCancel } = {}) {
         </View>
       </Modal>
 
+      {authTermsPreviewVisible && (
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'fade'}
         transparent={true}
-        visible={authTermsPreviewVisible}
+        visible={true}
         onRequestClose={() => setAuthTermsPreviewVisible(false)}
       >
         <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }, Platform.OS === 'web' && { position: 'relative', zIndex: 99999 }]}
@@ -3140,6 +3141,7 @@ function AuthScreen({ onCancel } = {}) {
           </View>
         </View>
       </Modal>
+      )}
     </View>
     </SafeAreaView>
     </KeyboardAvoidingView>
@@ -11508,10 +11510,11 @@ function App() {
       )}
 
       {/* EXTERNAL LINK LEAVING WARNING CONFIRMATION MODAL */}
+      {externalLinkModalVisible && (
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'fade'}
         transparent={true}
-        visible={externalLinkModalVisible}
+        visible={true}
         onRequestClose={() => setExternalLinkModalVisible(false)}
       >
         <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }, Platform.OS === 'web' && { position: 'relative', zIndex: 99999 }]}
@@ -11587,6 +11590,7 @@ function App() {
           </View>
         </View>
       </Modal>
+      )}
 
       {/* NOTIFICATIONS DROPDOWN - anchored under the bell icon, blurs content below header only */}
       {notificationPopupRendered && (
