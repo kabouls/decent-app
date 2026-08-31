@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 467;
+const BUILD_NUMBER = 468;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -3398,6 +3398,33 @@ const PortfolioVideoPlayer = React.memo(({ uri, width, height }) => {
   );
 });
 
+// Hides a ScrollView's native scrollbar on wide web, imperatively, via
+// direct DOM access - see the detailed comment on the main feed ScrollView
+// (search "getScrollableNode") for the full story: nativeID and className
+// were both tried first and DevTools confirmed neither actually reached
+// the real scrolling DOM node at all, meaning react-native-web's
+// ScrollView doesn't forward either prop the way plain View does.
+// getScrollableNode() is ScrollView's own official escape hatch for this.
+// Reusable since this same "width-capped column, native scrollbar looks
+// wrong on wide web" issue turned out to affect every detail-view
+// ScrollView independently (portfolio detail, designer profile), not just
+// the main feed - each has its own separate ScrollView instance needing
+// the same fix, not one shared element.
+const useHideScrollbarOnWeb = (ref, enabled) => {
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const node = ref.current?.getScrollableNode?.();
+    if (!node) return;
+    if (enabled) {
+      node.style.scrollbarWidth = 'none';
+      node.classList.add('decent-hide-scrollbar');
+    } else {
+      node.style.scrollbarWidth = '';
+      node.classList.remove('decent-hide-scrollbar');
+    }
+  }, [enabled, ref]);
+};
+
 function App() {
   const { theme, themeMode, toggleTheme } = useTheme();
   const { lightweightMode, setLightweightMode } = useLightweightMode();
@@ -4008,27 +4035,7 @@ function App() {
     });
 
   const mainScrollViewRef = useRef(null);
-  // Directly grabs the real DOM node behind the main ScrollView and applies
-  // scrollbar-hiding there, imperatively - see the comment on that
-  // ScrollView further down for why (nativeID and className both failed to
-  // reach this element via React's normal prop-to-DOM path, confirmed via
-  // DevTools). getScrollableNode() is react-native-web's own official
-  // escape hatch for exactly this situation - it bypasses React's props
-  // entirely and hands back the actual scrolling div. Re-runs whenever
-  // isWebWide changes, in case the window crosses the breakpoint after
-  // mount (toggles both ways, not just applies once).
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const node = mainScrollViewRef.current?.getScrollableNode?.();
-    if (!node) return;
-    if (isWebWide) {
-      node.style.scrollbarWidth = 'none';
-      node.classList.add('decent-hide-scrollbar');
-    } else {
-      node.style.scrollbarWidth = '';
-      node.classList.remove('decent-hide-scrollbar');
-    }
-  }, [isWebWide]);
+  useHideScrollbarOnWeb(mainScrollViewRef, isWebWide);
   // Per-tab remembered scroll position. Previously this was a single shared
   // ScrollView with no memory at all between tab switches - scrolling deep
   // into For You, then switching to Search, would leave the ScrollView at
@@ -4124,6 +4131,9 @@ function App() {
   const [showBackToTop, setShowBackToTop] = useState(false);
 
   const modalScrollViewRef = useRef(null);
+  useHideScrollbarOnWeb(modalScrollViewRef, isWebWide);
+  const designerScrollViewRef = useRef(null);
+  useHideScrollbarOnWeb(designerScrollViewRef, isWebWide);
   const [showModalBackToTop, setShowModalBackToTop] = useState(false);
 
   // Small tap-to-explain bubble under the AI-generated badge on the
@@ -14536,7 +14546,7 @@ function App() {
             </View>
             )}
 
-            <ScrollView style={styles.caseScrollView} contentContainerStyle={styles.caseContent}>
+            <ScrollView ref={designerScrollViewRef} style={styles.caseScrollView} contentContainerStyle={styles.caseContent}>
               {Platform.OS === 'web' && (
                 // position:'sticky' (not 'fixed') deliberately - this needs to
                 // stay pinned to the top of THIS card's own scroll area and
