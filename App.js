@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 462;
+const BUILD_NUMBER = 463;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1936,7 +1936,22 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
   const handleClick = (e) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
     e.preventDefault();
+    e.stopPropagation();
     onPress();
+  };
+  // onClickCapture runs in the capture phase - before this same element's
+  // own onClick (bubble phase) and before the browser processes any
+  // default action at all. Added as an earlier, more forceful backstop
+  // after real evidence (address bar actually changing, tab spinner, brief
+  // blank load) showed the plain onClick+preventDefault above wasn't
+  // reliably stopping real navigation for these BouncyButton-wrapped
+  // anchors specifically. Calling preventDefault here, directly on the
+  // real DOM node (not a wrapping View, which is what silently failed to
+  // forward onClickCapture in an earlier fix attempt elsewhere), is as
+  // early an intervention point as the DOM offers.
+  const handleClickCapture = (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+    e.preventDefault();
   };
   // A plain <a> with no special display trick - deliberately NOT
   // display:'contents'. That property is what was causing the current-tab
@@ -1969,7 +1984,7 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
   const flatStyle = StyleSheet.flatten(style) || {};
   return React.createElement(
     'a',
-    { href, onClick: handleClick, style: { textDecoration: 'none', color: 'inherit', display: 'block', ...flatStyle } },
+    { href, onClick: handleClick, onClickCapture: handleClickCapture, style: { textDecoration: 'none', color: 'inherit', display: 'block', ...flatStyle } },
     <BouncyButton style={style} activeOpacity={activeOpacity} onPress={() => {}}>{children}</BouncyButton>
   );
 };
