@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 480;
+const BUILD_NUMBER = 481;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -13164,10 +13164,11 @@ function App() {
       </Modal>
 
       {/* TERMS OF SERVICE - WHITE THEME FOR READABILITY */}
+      {termsModalVisible && (
       <Modal
         animationType="none"
         transparent={true}
-        visible={termsModalVisible}
+        visible={true}
         onRequestClose={() => setTermsModalVisible(false)}
       >
         <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
@@ -13315,6 +13316,7 @@ function App() {
           </Animated.View>
         </View>
       </Modal>
+      )}
 
 
       {/* FEEDBACK & SUPPORT CUSTOM DARK OVERLAY MODAL WITH FORM & NOTIFY SWITCH */}
