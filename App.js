@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 481;
+const BUILD_NUMBER = 483;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1578,6 +1578,7 @@ const mapPortfolioRow = (p, { liked = false, visitsFallback = 120 } = {}) => ({
   ownerId: p.user_id || null,
   portfolioType: p.portfolio_type || 'ui_ux',
   isAiGenerated: p.is_ai_generated,
+  aiDisclosureNote: p.ai_disclosure_note || '',
   title: p.title,
   designer: p.user_name || 'Unknown Designer',
   designerHandle: p.user_handle || '',
@@ -2111,7 +2112,7 @@ const ProjectCard = React.memo(({
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginBottom: 6 }}>
         {item.isAiGenerated === true && (
           <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: 5, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: '#E2E8F0', fontSize: 9, fontWeight: '800' }}>AI</Text>
+            <Text style={{ color: '#E2E8F0', fontSize: 9, fontWeight: '800' }}>{item.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
           </View>
         )}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 20, paddingHorizontal: 6, borderRadius: 5, borderWidth: 1, borderColor: theme.border }}>
@@ -2183,7 +2184,7 @@ const ProjectCard = React.memo(({
   );
 });
 
-const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles }) => (
+const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles, cardWidth }) => (
   <View style={styles.grid}>
     {items.map((item) => (
       <ProjectCard
@@ -2198,6 +2199,7 @@ const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerPr
         isOwnContent={!!currentUserId && item.ownerId === currentUserId}
         showPinControl={showPinControl}
         onTogglePin={onTogglePin}
+        customWidth={cardWidth}
         styles={styles}
       />
     ))}
@@ -4587,6 +4589,13 @@ function App() {
   const [fCategories, setFCategories] = useState([]);
   const [fIsNsfw, setFIsNsfw] = useState(false);
   const [fIsAiGenerated, setFIsAiGenerated] = useState(null); // null = not yet chosen (required), true = With AI, false = No AI
+  // Only meaningful when selectedPortfolioType === 'illustration' and
+  // fIsAiGenerated === true - illustration is the one type where fully
+  // AI-generated art isn't allowed at all (only AI-assisted work is), so
+  // this captures what the AI was actually used for (texture, a pose
+  // reference, etc.) rather than leaving "AI assisted" unexplained. Left
+  // empty and ignored for every other type/selection combination.
+  const [fAiDisclosureNote, setFAiDisclosureNote] = useState('');
   const [aiDisclosureDropdownOpen, setAiDisclosureDropdownOpen] = useState(false);
   const [aiDisclosureTooltipVisible, setAiDisclosureTooltipVisible] = useState(false);
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
@@ -7783,6 +7792,7 @@ function App() {
     setFCategories(Array.isArray(proj.categories) && proj.categories.length > 0 ? proj.categories : [proj.category || 'Mobile App']);
     setFIsNsfw(!!proj.isNsfw);
     setFIsAiGenerated(proj.isAiGenerated === undefined ? null : proj.isAiGenerated);
+    setFAiDisclosureNote(proj.aiDisclosureNote || '');
     setFBrief(proj.brief || '');
     setFLongDescription(proj.longDescription || '');
     setFContentBlocks(
@@ -8251,6 +8261,9 @@ function App() {
     if (!fBrief.trim()) errs.fBrief = 'Please enter a short brief or summary';
     if (fCategories.length < 3) errs.fCategories = 'Please select at least 3 categories/tags.';
     if (fIsAiGenerated === null) errs.fAiGenerated = 'Please select whether AI was used.';
+    if (selectedPortfolioType === 'illustration' && fIsAiGenerated === true && fAiDisclosureNote.trim().length < 20) {
+      errs.fAiDisclosureNote = 'Please describe how AI was used (at least 20 characters) - fully AI-generated illustration work isn\'t allowed.';
+    }
 
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -8352,6 +8365,7 @@ function App() {
           content_blocks: finalContentBlocks,
           cover_url: finalCoverUrl,
           is_ai_generated: fIsAiGenerated,
+          ai_disclosure_note: fAiDisclosureNote.trim() || null,
           figma_proto: fFigmaProto,
           component_proto: fComponentProto,
           desktop_proto: fDesktopProto,
@@ -8478,6 +8492,7 @@ function App() {
             cover_url: finalCoverUrl,
             portfolio_type: selectedPortfolioType,
             is_ai_generated: fIsAiGenerated,
+            ai_disclosure_note: fAiDisclosureNote.trim() || null,
             figma_proto: fFigmaProto,
             component_proto: fComponentProto,
             desktop_proto: fDesktopProto,
@@ -8719,6 +8734,7 @@ function App() {
     setFCategories([]);
     setFIsNsfw(false);
     setFIsAiGenerated(null);
+    setFAiDisclosureNote('');
     setCategorySearchQuery('');
     setFFigmaProto('');
     setFDesktopProto('');
@@ -10202,10 +10218,10 @@ function App() {
           )
         )}
         {!isWebWide && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           {Platform.OS === 'web' && !isWebWide && (
             <BouncyButton
-              style={[styles.headerIconBtn, hamburgerMenuVisible && { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' }]}
+              style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
               onPress={() => setHamburgerMenuVisible(true)}
             >
               <HamburgerSVG active={hamburgerMenuVisible} inactiveColor={theme.accentLight} size={headerIconSize} />
@@ -11246,6 +11262,7 @@ function App() {
                     showPinControl={profileTab === 'myWork'}
                     onTogglePin={togglePinProject}
                   styles={styles}
+                  cardWidth={Platform.OS === 'web' && !isWebWide ? '100%' : undefined}
                   />
                 ) : (
                   <TwoRowHorizontalGrid
@@ -11437,7 +11454,28 @@ function App() {
             onResponderRelease={() => {}}
           >
             <SafeAreaView style={{ flex: 1, paddingTop: 8 }}>
-              {/* Add Portfolio - pinned at the very top of the drawer per request */}
+              {/* DECENT logo + back button, added to the top of the drawer -
+                  same logo markup already used in the header, for visual
+                  consistency. Replaces the bottom collapse-arrow button
+                  removed further down - this is the new, single way to
+                  close the drawer via a dedicated button (tapping the
+                  backdrop still works too, unchanged). */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, marginBottom: 16 }}>
+                <BouncyButton
+                  style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                  onPress={() => setHamburgerMenuVisible(false)}
+                >
+                  <ChevronLeftSVG color={theme.accentLight} size={22} />
+                </BouncyButton>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
+                  <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                    <DecentLogoSVG size={15} />
+                  </View>
+                  <Text style={styles.logoText}>ECENT</Text>
+                </View>
+              </View>
+
+              {/* Add Portfolio - pinned near the top of the drawer per request */}
               <BouncyButton
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -11488,22 +11526,6 @@ function App() {
                   </BouncyButton>
                 );
               })}
-
-              {/* Collapse arrow, pinned to the bottom of the drawer via
-                  marginTop: 'auto' pushing it down within the flex:1
-                  SafeAreaView above - same ChevronLeftSVG already used for
-                  the desktop sidebar's own collapse button, for visual
-                  consistency between the two. */}
-              <BouncyButton
-                style={{
-                  marginTop: 'auto', marginHorizontal: 16, marginBottom: 12,
-                  height: 44, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
-                  alignItems: 'center', justifyContent: 'center'
-                }}
-                onPress={() => setHamburgerMenuVisible(false)}
-              >
-                <ChevronLeftSVG color={theme.accentLight} />
-              </BouncyButton>
             </SafeAreaView>
           </Animated.View>
         </View>
@@ -12848,18 +12870,21 @@ function App() {
                 <Text style={{ color: theme.text, fontWeight: '800' }}> v{APP_VERSION} (b{BUILD_NUMBER})</Text>
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
-                DECENT is an interactive UI/UX portfolio platform designed for creators, product designers, and design system architects.
+                DECENT is a portfolio-sharing platform built for designers - UI/UX, Graphic Design, and Illustration - to showcase real, interactive work in one place instead of a static gallery.
               </Text>
               <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
-                Showcase mobile design systems, responsive web prototypes, case studies, and live interactive Figma canvas viewports natively in one unified application.
+                Embed live, fully interactive Figma prototypes for UI/UX case studies. Upload showcase images with captions and cropping, or short videos, for Graphic Design and Illustration work.
               </Text>
 
               <View style={{ backgroundColor: theme.surface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: theme.border }}>
                 <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Platform Highlights</Text>
-                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Interactive Figma Prototype Viewports</Text>
-                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ 45+ UI/UX Specialized Tagging</Text>
-                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Seamless Dark Mode Design</Text>
-                <Text style={{ color: theme.textSecondary, fontSize: 13 }}>❖ Direct Follower & Notification Hub</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Live, interactive Figma prototype viewports for UI/UX</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Video and image showcase for Graphic Design & Illustration</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Real-usage-based category browsing and tagging</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Transparent AI disclosure on every portfolio</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Follows, likes, and a real notification hub</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Shareable profile & portfolio links with QR codes</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 13 }}>❖ Seamless dark mode design</Text>
               </View>
 
               <BouncyButton
@@ -13253,6 +13278,13 @@ function App() {
                 <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You confirm you have the right to share what you post - including client work, so make sure you have permission before uploading it</Text>
                 <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Content linked via Figma or "live link" fields stays governed by those external platforms' own terms</Text>
                 <Text style={{ color: '#334155', fontSize: 13 }}>• We may remove content that violates these terms</Text>
+              </View>
+
+              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>AI-Generated Content</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You must disclose whether AI was used in any portfolio you upload</Text>
+                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• For Illustration portfolios specifically, fully AI-generated art is not allowed - only AI-assisted work (e.g. AI-generated textures, pose references) is permitted, and you must describe how AI was used when disclosing it</Text>
+                <Text style={{ color: '#334155', fontSize: 13 }}>• Illustration content found to be fully AI-generated will be removed immediately if identified, and may result in account action</Text>
               </View>
 
               <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
@@ -14886,6 +14918,7 @@ function App() {
                   followedDesigners={followedDesigners}
                   currentUserId={session ? session.user.id : null}
                 styles={styles}
+                cardWidth={Platform.OS === 'web' && !isWebWide ? '100%' : undefined}
                 />
               ) : (
                 <TwoRowHorizontalGrid
@@ -14944,10 +14977,11 @@ function App() {
           three show as visibly muted "coming soon" cards with their own
           full-opacity interest button, so the disabled state doesn't
           accidentally suppress the one thing that IS actionable on them. */}
+      {portfolioTypeModalVisible && (
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'slide'}
         transparent={true}
-        visible={portfolioTypeModalVisible}
+        visible={true}
         onRequestClose={() => setPortfolioTypeModalVisible(false)}
       >
         {/* Matches the main wizard's own popup treatment exactly on
@@ -15171,6 +15205,7 @@ function App() {
           </View>
         </View>
       </Modal>
+      )}
 
       {/* Confirmation before actually registering interest - a quick
           "are you sure, not a misclick" step, matching how other
@@ -15303,10 +15338,11 @@ function App() {
       </Modal>
 
       {/* 4-STEP WIZARD MODAL FOR ADDING/EDITING PORTFOLIO PACKAGE */}
+      {addModalVisible && (
       <Modal
         animationType="none"
         transparent={true}
-        visible={addModalVisible}
+        visible={true}
         onRequestClose={handleCloseUploadWizard}
       >
         {/* transparent is now always true (was false) so a dim backdrop can
@@ -15568,7 +15604,7 @@ function App() {
                           {fIsAiGenerated === null
                             ? 'No selection'
                             : fIsAiGenerated
-                              ? 'This content is AI assisted/generated'
+                              ? (selectedPortfolioType === 'illustration' ? 'This content is AI assisted' : 'This content is AI assisted/generated')
                               : 'This content is NOT AI assisted/generated'}
                         </Text>
                         <ChevronDownSVG color={theme.textSecondary} size={14} />
@@ -15611,7 +15647,9 @@ function App() {
                               style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
                               onPress={() => { setFIsAiGenerated(true); setAiDisclosureDropdownOpen(false); }}
                             >
-                              <Text style={{ color: theme.text, fontSize: 13, fontWeight: fIsAiGenerated === true ? '700' : '500' }}>This content is AI assisted/generated</Text>
+                              <Text style={{ color: theme.text, fontSize: 13, fontWeight: fIsAiGenerated === true ? '700' : '500' }}>
+                                {selectedPortfolioType === 'illustration' ? 'This content is AI assisted' : 'This content is AI assisted/generated'}
+                              </Text>
                             </BouncyButton>
                             <BouncyButton
                               style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
@@ -15625,6 +15663,42 @@ function App() {
                       )}
                     </View>
                     {errors.fAiGenerated ? <Text style={[styles.errorText, { marginTop: 6 }]}>{errors.fAiGenerated}</Text> : null}
+
+                    {/* Illustration-only: fully AI-generated art isn't
+                        allowed at all (only AI-assisted work is) - this
+                        warning always shows once Illustration is the
+                        selected type, regardless of which AI option is
+                        picked, since it's a policy notice rather than
+                        something conditional on the choice itself. The
+                        explanation field below is the mandatory part,
+                        conditional on actually picking "AI assisted". */}
+                    {selectedPortfolioType === 'illustration' && (
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)' }}>
+                        <WarningTriangleSVG />
+                        <Text style={{ color: theme.text, fontSize: 11.5, lineHeight: 16, flex: 1 }}>
+                          Fully AI-generated illustration work is not allowed on DECENT and will be removed immediately if identified. AI assistance (e.g. texture generation, pose reference) is fine as long as it's disclosed here.
+                        </Text>
+                      </View>
+                    )}
+
+                    {selectedPortfolioType === 'illustration' && fIsAiGenerated === true && (
+                      <View style={{ marginTop: 10 }}>
+                        <Text style={styles.formGroupLabel}>How was AI used? *</Text>
+                        <FocusableTextInput
+                          style={[styles.formInput, { marginTop: 6 }, errors.fAiDisclosureNote && styles.inputErrorBorder]}
+                          placeholder="e.g. used to generate a texture reference, block in a pose, upscale details..."
+                          placeholderTextColor={theme.textSecondary}
+                          value={fAiDisclosureNote}
+                          onChangeText={setFAiDisclosureNote}
+                          multiline
+                          numberOfLines={3}
+                        />
+                        <Text style={{ color: fAiDisclosureNote.trim().length >= 20 ? theme.textSecondary : '#EF4444', fontSize: 11, marginTop: 4 }}>
+                          {fAiDisclosureNote.trim().length}/20 characters minimum
+                        </Text>
+                        {errors.fAiDisclosureNote ? <Text style={[styles.errorText, { marginTop: 4 }]}>{errors.fAiDisclosureNote}</Text> : null}
+                      </View>
+                    )}
                   </View>
 
                   <Modal
@@ -16752,6 +16826,7 @@ function App() {
           </View>
         </View>
       </Modal>
+      )}
 
       {/* TUTORIAL OVERLAY - sits alongside the wizard modal (not nested
           inside a specific step), so it can trigger for any step
@@ -17364,7 +17439,7 @@ function App() {
                                     style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
                                     onPress={handleAiIconPress}
                                   >
-                                    <Text style={{ color: '#E2E8F0', fontSize: 11, fontWeight: '800' }}>AI</Text>
+                                    <Text style={{ color: '#E2E8F0', fontSize: 11, fontWeight: '800' }}>{activeProject.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
                                   </BouncyButton>
                                   {showAiTooltip && (
                                     <Animated.View
@@ -17382,7 +17457,7 @@ function App() {
                                       }}
                                     >
                                       <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', lineHeight: 17 }}>
-                                        This content is AI generated/assisted
+                                        {activeProject.portfolioType === 'illustration' ? 'This content is AI assisted' : 'This content is AI generated/assisted'}
                                       </Text>
                                     </Animated.View>
                                   )}
@@ -17435,6 +17510,21 @@ function App() {
                               </View>
                             </View>
                           )}
+
+                          {/* Illustration-only, shown whenever a disclosure
+                              note exists - a persistent, always-visible
+                              section rather than requiring a tap on the AI
+                              badge/tooltip above (which stays as a quick,
+                              separate acknowledgment). Filled solid purple
+                              with white text per request, distinct from the
+                              theme-neutral styling every other section on
+                              this page uses. */}
+                          {activeProject.portfolioType === 'illustration' && activeProject.aiDisclosureNote ? (
+                            <View style={{ backgroundColor: '#8B5CF6', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5, marginBottom: 6 }}>HOW I USE AI</Text>
+                              <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 20 }}>{activeProject.aiDisclosureNote}</Text>
+                            </View>
+                          ) : null}
 
                           <Text style={styles.sectionHeader}>CASE STUDY OVERVIEW</Text>
                           {activeProject.contentBlocks && activeProject.contentBlocks.length > 0 ? (
@@ -17813,7 +17903,7 @@ function App() {
                             style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
                             onPress={handleAiIconPress}
                           >
-                            <Text style={{ color: '#E2E8F0', fontSize: 11, fontWeight: '800' }}>AI</Text>
+                            <Text style={{ color: '#E2E8F0', fontSize: 11, fontWeight: '800' }}>{activeProject.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
                           </BouncyButton>
                           {showAiTooltip && (
                             <Animated.View
@@ -17839,7 +17929,7 @@ function App() {
                               }}
                             >
                               <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', lineHeight: 17 }}>
-                                This content is AI generated/assisted
+                                {activeProject.portfolioType === 'illustration' ? 'This content is AI assisted' : 'This content is AI generated/assisted'}
                               </Text>
                             </Animated.View>
                           )}
@@ -18026,6 +18116,16 @@ function App() {
                       </>
                     );
                   })()}
+
+                  {/* Illustration-only, shown whenever a disclosure note
+                      exists - same as the narrow-web version above, just
+                      matching this pane's own indentation level. */}
+                  {activeProject.portfolioType === 'illustration' && activeProject.aiDisclosureNote ? (
+                    <View style={{ backgroundColor: '#8B5CF6', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5, marginBottom: 6 }}>HOW I USE AI</Text>
+                      <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 20 }}>{activeProject.aiDisclosureNote}</Text>
+                    </View>
+                  ) : null}
 
                   <Text style={styles.sectionHeader}>CASE STUDY OVERVIEW</Text>
                   {activeProject.contentBlocks && activeProject.contentBlocks.length > 0 ? (
