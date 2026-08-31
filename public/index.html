@@ -53,16 +53,25 @@
          prop meant to do this (showsVerticalScrollIndicator={false})
          wasn't actually producing this CSS in practice - confirmed via
          DevTools showing overflow-y:auto with no scrollbar-hiding rule
-         present at all - so this does it directly and reliably instead,
-         targeting the element by its nativeID (App.js sets nativeID=
-         "decent-main-scroll" on that ScrollView, wide web only). Both
-         properties needed since they're two unrelated, non-overlapping
+         present at all. A first attempt targeted this via nativeID, but
+         DevTools then showed that id attribute never actually landed on
+         the real DOM node at all - react-native-web's ScrollView evidently
+         doesn't forward nativeID to its own inner scrolling div the same
+         way a plain View forwards it to itself. Targeting by class instead
+         now (App.js passes className="decent-hide-scrollbar" to that same
+         ScrollView, wide web only) - keeping the id selector too as a
+         harmless no-op backup in case it does end up applying somewhere.
+         Both properties needed since they're two unrelated, non-overlapping
          mechanisms: ::-webkit-scrollbar for Chrome/Safari/Edge,
          scrollbar-width for Firefox. */
-      #decent-main-scroll::-webkit-scrollbar {
+      #decent-main-scroll::-webkit-scrollbar,
+      .decent-hide-scrollbar::-webkit-scrollbar,
+      .decent-hide-scrollbar *::-webkit-scrollbar {
         display: none;
       }
-      #decent-main-scroll {
+      #decent-main-scroll,
+      .decent-hide-scrollbar,
+      .decent-hide-scrollbar * {
         scrollbar-width: none;
       }
       /* Dark is the default/most common theme in the app - setting it here

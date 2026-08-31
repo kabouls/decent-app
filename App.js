@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.2.0';
-const BUILD_NUMBER = 465;
+const BUILD_NUMBER = 466;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -10416,7 +10416,7 @@ function App() {
           // Still passed for correctness/native parity even though the
           // actual hiding now happens via CSS.
           showsVerticalScrollIndicator={!(Platform.OS === 'web' && isWebWide)}
-          {...(Platform.OS === 'web' && isWebWide ? { nativeID: 'decent-main-scroll' } : {})}
+          {...(Platform.OS === 'web' && isWebWide ? { nativeID: 'decent-main-scroll', className: 'decent-hide-scrollbar' } : {})}
           contentContainerStyle={[
             styles.scrollContent,
             Platform.OS !== 'web' && !isWebWide && { paddingTop: headerBottomY + 20 },
