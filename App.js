@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 490;
+const BUILD_NUMBER = 491;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -18238,14 +18238,19 @@ function App() {
                     // "Detailed description" = the same condition already
                     // used just below to decide whether Case Study Overview
                     // shows real content blocks vs a plain brief fallback -
-                    // only in that case does the gallery become a
+                    // only in that case did the gallery become a
                     // collapsed-by-default accordion instead of the plain
-                    // always-open carousel it's always been.
+                    // always-open carousel it's always been. Illustration
+                    // now always gets the accordion treatment regardless of
+                    // that condition - a simple brief-only portfolio should
+                    // still collapse by default there, not stay permanently
+                    // open just because there's no detailed description.
                     const hasDetailedDescription = !!(activeProject.contentBlocks && activeProject.contentBlocks.length > 0);
-                    const galleryOpen = !hasDetailedDescription || galleryExpanded;
+                    const isAccordion = hasDetailedDescription || activeProject.portfolioType === 'illustration';
+                    const galleryOpen = !isAccordion || galleryExpanded;
                     return (
                       <>
-                        {hasDetailedDescription ? (
+                        {isAccordion ? (
                           <BouncyButton
                             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
                             onPress={() => setGalleryExpanded((prev) => !prev)}
