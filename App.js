@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 485;
+const BUILD_NUMBER = 486;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -4101,7 +4101,7 @@ function App() {
   // separate from gdTab above since that one includes a Case Study option
   // that doesn't apply here (case study is already the left pane on wide
   // web).
-  const [gdSplitTab, setGdSplitTab] = useState('video');
+  const [gdSplitTab, setGdSplitTab] = useState('image');
   // Fullscreen swipeable image viewer, used by the Image tab above (and
   // reachable from nowhere else - the existing single-image lightboxImageUri
   // stays untouched for avatars and other single-tap-to-enlarge spots).
@@ -7258,7 +7258,7 @@ function App() {
     // portfolio was just opened, same reset-on-open pattern as the gallery
     // accordion just above.
     setGdTab('caseStudy');
-    setGdSplitTab('video');
+    setGdSplitTab('image');
 
     // No longer optimistically bumping visitsCount here - whether this
     // view actually counts depends on the async dedup check below (same
@@ -17335,8 +17335,8 @@ function App() {
 
                   const GD_TABS = [
                     { key: 'caseStudy', label: 'Case Study' },
-                    { key: 'video', label: 'Video' },
-                    { key: 'image', label: 'Image' }
+                    { key: 'image', label: 'Image' },
+                    { key: 'video', label: 'Video' }
                   ];
 
                   return (
@@ -17725,7 +17725,7 @@ function App() {
                       <Text style={styles.sectionHeader}>MEDIA</Text>
                       <View style={{ marginBottom: 4 }}>
                         <AnimatedPillTabBar
-                          tabs={[{ key: 'video', label: 'Video' }, { key: 'image', label: 'Image' }]}
+                          tabs={[{ key: 'image', label: 'Image' }, { key: 'video', label: 'Video' }]}
                           activeKey={gdSplitTab}
                           onChange={setGdSplitTab}
                           theme={theme}
