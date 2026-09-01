@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 501;
+const BUILD_NUMBER = 502;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -2652,117 +2652,41 @@ const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenD
     );
   }
 
-  const columns = [];
-  for (let i = 0; i < items.length; i += 4) {
-    const block = items.slice(i, i + 4);
-    const col1 = [];
-    if (block[0]) col1.push(block[0]);
-    if (block[2]) col1.push(block[2]);
-    columns.push(col1);
-
-    if (block[1]) {
-      const col2 = [];
-      col2.push(block[1]);
-      if (block[3]) col2.push(block[3]);
-      columns.push(col2);
-    }
+  // Vertical, 2-per-row layout - was a horizontal-scrolling set of columns
+  // before, which only revealed 4 items initially with no clear affordance
+  // that more existed off to the side. This relies on the parent page's
+  // own vertical scroll (same as the Full Width View grid elsewhere),
+  // just fitting 2 narrower cards per row instead of 1 full-width one.
+  const rows = [];
+  for (let i = 0; i < items.length; i += 2) {
+    rows.push(items.slice(i, i + 2));
   }
 
-  // Web-only scroll arrows, same pattern already used for the category bar
-  // and media gallery - a trailing, single-item last column (e.g. 5 items
-  // makes 3 columns: 2, 2, 1) has no visual cue otherwise that there's
-  // more to scroll to, especially with no touch/swipe affordance on a
-  // desktop browser.
-  const scrollRef = useRef(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(items.length > 4);
-  const scrollXRef = useRef(0);
-  const contentWidthRef = useRef(0);
-  const containerWidthRef = useRef(0);
-  const updateScrollArrows = (x) => {
-    scrollXRef.current = x;
-    setCanScrollLeft(x > 4);
-    setCanScrollRight(x < contentWidthRef.current - containerWidthRef.current - 4);
-  };
-
   return (
-    <View style={{ position: 'relative' }}>
-    <ScrollView
-      ref={scrollRef}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={{ marginTop: 12 }}
-      contentContainerStyle={{ paddingRight: 24 }}
-      onScroll={Platform.OS === 'web' ? (e) => updateScrollArrows(e.nativeEvent.contentOffset.x) : undefined}
-      scrollEventThrottle={16}
-      onContentSizeChange={Platform.OS === 'web' ? (w) => {
-        contentWidthRef.current = w;
-        updateScrollArrows(scrollXRef.current);
-      } : undefined}
-      onLayout={Platform.OS === 'web' ? (e) => {
-        containerWidthRef.current = e.nativeEvent.layout.width;
-        updateScrollArrows(scrollXRef.current);
-      } : undefined}
-    >
-      <View style={styles.twoRowContainer}>
-        {columns.map((col, colIdx) => (
-          <View key={colIdx} style={styles.twoRowColumn}>
-            {col.map((item) => (
-              <ProjectCard
-                key={item.id}
-                item={item}
-                onPress={onPress}
-                onToggleLike={onToggleLike}
-                onOpenDesignerProfile={onOpenDesignerProfile}
-                onToggleFollow={onToggleFollow}
-                isFollowing={followedDesigners ? followedDesigners.includes(item.ownerId) : false}
-                isOwnContent={!!currentUserId && item.ownerId === currentUserId}
-                customWidth={RESPONSIVE_PROFILE_CARD_WIDTH}
-                hideBrief={true}
-                isTwoRowCard={true}
-                showPinControl={showPinControl}
-                onTogglePin={onTogglePin}
-                hideFollowButton={true}
-                styles={styles}
-              />
-            ))}
-          </View>
-        ))}
-      </View>
-    </ScrollView>
-    {Platform.OS === 'web' && canScrollLeft && (
-      <BouncyButton
-        style={{
-          position: 'absolute', left: 0, top: '50%', marginTop: -19, width: 38, height: 38,
-          alignItems: 'center', justifyContent: 'center',
-          backgroundColor: theme && theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
-          borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
-        }}
-        onPress={() => {
-          const target = Math.max(0, scrollXRef.current - (containerWidthRef.current || 200) * 0.7);
-          scrollRef.current?.scrollTo({ x: target, animated: true });
-        }}
-      >
-        <ChevronLeftSVG color={theme ? theme.accentLight : '#8B5CF6'} size={16} />
-      </BouncyButton>
-    )}
-    {Platform.OS === 'web' && canScrollRight && (
-      <BouncyButton
-        style={{
-          position: 'absolute', right: 0, top: '50%', marginTop: -19, width: 38, height: 38,
-          alignItems: 'center', justifyContent: 'center',
-          backgroundColor: theme && theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
-          borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
-        }}
-        onPress={() => {
-          const maxX = Math.max(0, contentWidthRef.current - containerWidthRef.current);
-          const target = Math.min(maxX, scrollXRef.current + (containerWidthRef.current || 200) * 0.7);
-          scrollRef.current?.scrollTo({ x: target, animated: true });
-        }}
-      >
-        <ChevronRightSVG color={theme ? theme.accentLight : '#8B5CF6'} size={16} />
-      </BouncyButton>
-    )}
+    <View style={{ marginTop: 12, gap: 16 }}>
+      {rows.map((row, rowIdx) => (
+        <View key={rowIdx} style={{ flexDirection: 'row', gap: 16 }}>
+          {row.map((item) => (
+            <ProjectCard
+              key={item.id}
+              item={item}
+              onPress={onPress}
+              onToggleLike={onToggleLike}
+              onOpenDesignerProfile={onOpenDesignerProfile}
+              onToggleFollow={onToggleFollow}
+              isFollowing={followedDesigners ? followedDesigners.includes(item.ownerId) : false}
+              isOwnContent={!!currentUserId && item.ownerId === currentUserId}
+              customWidth="48%"
+              hideBrief={true}
+              isTwoRowCard={true}
+              showPinControl={showPinControl}
+              onTogglePin={onTogglePin}
+              hideFollowButton={true}
+              styles={styles}
+            />
+          ))}
+        </View>
+      ))}
     </View>
   );
 });
@@ -6009,7 +5933,8 @@ function App() {
             email: cloudProfile.email || userEmail,
             avatar: cloudProfile.avatar_url || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
             handle: cloudProfile.handle || '',
-            links: cloudProfile.links || []
+            links: cloudProfile.links || [],
+            hasPasswordAuth: !!cloudProfile.has_password_auth
           };
           setUserProfile(parsed);
           setEditName(parsed.name);
@@ -6765,7 +6690,19 @@ function App() {
   // call works identically either way (it doesn't require the old password
   // client-side), so no functional change is needed there - only the label
   // shown to the user needs to reflect which case they're in.
-  const hasPasswordAuth = !!(session && session.user && session.user.identities && session.user.identities.some((i) => i.provider === 'email'));
+  // Supabase's own updateUser({password}) is documented to auto-link the
+  // 'email' identity for an OAuth-originated user, but this is a
+  // confirmed, longstanding Supabase Auth bug (multiple open upstream
+  // issues) - in practice the identities array often never actually
+  // reflects it, even though the password itself is genuinely set and
+  // works to log in. Relying on identities alone meant a Google user who'd
+  // already set a password kept seeing "Create Password" indefinitely.
+  // userProfile.hasPasswordAuth (see handleChangePassword, which sets a
+  // has_password_auth flag directly on the profile row after a successful
+  // update) is now the reliable source; the identities check stays too,
+  // purely as a bonus fallback for whatever fraction of cases it happens
+  // to work correctly on its own.
+  const hasPasswordAuth = !!(userProfile.hasPasswordAuth || (session && session.user && session.user.identities && session.user.identities.some((i) => i.provider === 'email')));
 
   // Nudges OAuth-only accounts (Google, and any other provider added later)
   // to set a password, since they'd otherwise have no way to sign in if
@@ -7100,16 +7037,28 @@ function App() {
     } else {
       setNewPassword('');
       setConfirmNewPassword('');
-      // updateUser succeeds server-side immediately (linking an email/
-      // password identity onto the account), but the local session state
-      // isn't automatically refreshed by that call - without this,
-      // hasPasswordAuth would keep reading the old, stale identities list,
-      // so a Google-signed-in user who'd just set their first password
-      // would still see "Create Password" instead of "Change Password"
-      // until a full logout/login refreshed the session from scratch.
+      // updateUser genuinely does set the password server-side (confirmed
+      // by many reports of successfully logging in with it afterward), but
+      // whether it actually links the 'email' identity is a real, longstanding
+      // Supabase Auth bug - not reliable enough to depend on. Tracking this
+      // ourselves instead: a flag directly on the profile row, which we
+      // fully control and which reflects an update that genuinely
+      // succeeded (this code only runs when the error check above passed).
+      const wasAlreadySet = hasPasswordAuth;
+      if (session && session.user) {
+        const { error: flagError } = await supabase
+          .from('profiles')
+          .update({ has_password_auth: true })
+          .eq('id', session.user.id);
+        if (!flagError) setUserProfile((prev) => ({ ...prev, hasPasswordAuth: true }));
+      }
+      // Still attempt the session refresh too, in case identities linking
+      // did work correctly this time - harmless either way, and covers
+      // the direct email/password signup case, which was never affected
+      // by this bug in the first place.
       const { data: refreshed } = await supabase.auth.getSession();
       if (refreshed && refreshed.session) setSession(refreshed.session);
-      showToast(hasPasswordAuth ? 'Password updated' : 'Password created');
+      showToast(wasAlreadySet ? 'Password updated' : 'Password created');
       return true;
     }
   };
@@ -9123,6 +9072,12 @@ function App() {
   const resetFormWizard = () => {
     setEditingProjectId(null);
     setFormStep(1);
+    // Wasn't reset here before - if the whole wizard was closed while the
+    // block editor overlay was still open (rather than tapping Done first
+    // to close just the editor), this stayed true, so the *next* time the
+    // wizard opened it would immediately show the block editor again
+    // instead of step 1.
+    setFullscreenDescEditorVisible(false);
     setFTitle('');
     setFBrief('');
     setFLongDescription('');
@@ -15765,21 +15720,21 @@ function App() {
                 ? "You'll be taken off the list for this feature. You can always register interest again later if you change your mind."
                 : "This ties your account to this feature so we know real demand exists before building it - not anonymous. We may reach out with a short survey (e.g. which tools you'd want supported). See Privacy Policy for details."}
             </Text>
-            <View style={[styles.confirmActionsRow, { justifyContent: 'flex-end' }]}>
+            <View style={{ gap: 10, width: '100%' }}>
               <BouncyButton
-                style={[styles.confirmCancelBtn, { flex: 0, paddingHorizontal: 20 }]}
-                onPress={() => setInterestConfirmTarget(null)}
-              >
-                <Text style={styles.confirmCancelText}>Cancel</Text>
-              </BouncyButton>
-              <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 0, paddingHorizontal: 20 }]}
+                style={[styles.confirmDeleteBtn, { width: '100%' }]}
                 onPress={handleConfirmFeatureInterest}
               >
                 <View style={styles.iconTextInlineRow}>
                   <CheckIconSVG color="#FFFFFF" />
                   <Text style={styles.confirmDeleteText}>{interestConfirmMode === 'remove' ? 'Yes, Remove Me' : "Yes, I'm Interested"}</Text>
                 </View>
+              </BouncyButton>
+              <BouncyButton
+                style={[styles.confirmCancelBtn, { width: '100%' }]}
+                onPress={() => setInterestConfirmTarget(null)}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
               </BouncyButton>
             </View>
           </View>
@@ -16613,13 +16568,11 @@ function App() {
                       )}
                     </ScrollView>
                   ) : (
-                    <AppKeyboardAwareScrollView
+                    <ScrollView
                       ref={hideScrollbarRefCallback(isWebWide)}
                       style={{ flex: 1 }}
                       contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }}
                       keyboardShouldPersistTaps="handled"
-                      enableOnAndroid={true}
-                      extraScrollHeight={30}
                     >
                         {fContentBlocks.map((block, idx) => (
                           <View
@@ -16954,7 +16907,7 @@ function App() {
                             </BouncyButton>
                           </View>
                         </View>
-                      </AppKeyboardAwareScrollView>
+                      </ScrollView>
                   )}
                 </SafeAreaView>
               </View>
@@ -18266,7 +18219,7 @@ function App() {
                               in the normal flow before, with no visual
                               container distinguishing it from surrounding
                               content at all. */}
-                          <View style={{ borderRadius: 14, padding: 14, marginBottom: 16, backgroundColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.06)' : 'rgba(139, 92, 246, 0.08)', borderWidth: 1, borderColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.18)' }}>
+                          <View style={{ borderRadius: 14, paddingVertical: 8, paddingHorizontal: 14, marginBottom: 16, backgroundColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.06)' : 'rgba(139, 92, 246, 0.08)', borderWidth: 1, borderColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.18)' }}>
                           <BouncyButton
                             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: galleryExpanded ? 12 : 0 }}
                             onPress={() => setGalleryExpanded((prev) => !prev)}
@@ -18904,7 +18857,7 @@ function App() {
                             version of this accordion above - wraps the
                             whole thing (header + content) whether
                             collapsed or expanded. */}
-                        <View style={{ borderRadius: 14, padding: 14, marginBottom: 16, backgroundColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.06)' : 'rgba(139, 92, 246, 0.08)', borderWidth: 1, borderColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.18)' }}>
+                        <View style={{ borderRadius: 14, paddingVertical: 8, paddingHorizontal: 14, marginBottom: 16, backgroundColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.06)' : 'rgba(139, 92, 246, 0.08)', borderWidth: 1, borderColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.18)' }}>
                         <BouncyButton
                           style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: galleryOpen ? 12 : 0 }}
                           onPress={() => setGalleryExpanded((prev) => !prev)}
@@ -19310,19 +19263,24 @@ function App() {
         </View>
       )}
 
-      {/* Moved to render last (after every other modal in this return) so its
-          portal mounts last on web - react-native-web stacks Modal portals
-          in mount order, not by which one opened more recently, so a
-          generic alert declared earlier in source (like this one used to
-          be) can end up buried underneath whatever page/profile modal is
-          currently open, invisible until that other modal closes. Since
-          this is used for confirmations/alerts from all over the app, it
-          needs to reliably win that race regardless of what triggered it. */}
-      {/* GENERIC APP-STYLED ALERT/CONFIRM - replaces Alert.alert everywhere in the app */}
+      {/* GENERIC APP-STYLED ALERT/CONFIRM - replaces Alert.alert everywhere in
+          the app. Was previously kept as an always-mounted <Modal
+          visible={x}>, moved to the end of this return purely in source
+          order in an earlier attempt to fix the exact bug below - that
+          doesn't actually work, since an always-mounted Modal's portal div
+          is appended once, at whatever point React first mounts it on
+          initial app load, regardless of where it sits in the JSX source.
+          Conditional mounting (matching every other fix of this same bug
+          class elsewhere in this file) is what actually guarantees this
+          wins DOM stacking order - its portal is now freshly created, and
+          thus always last, every single time it opens. Being the shared
+          alert used throughout the whole app, this one fix covers every
+          confirmation that was affected, not just one. */}
+      {!!appAlertConfig && (
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'fade'}
         transparent={true}
-        visible={!!appAlertConfig}
+        visible={true}
         onRequestClose={() => setAppAlertConfig(null)}
       >
         <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
@@ -19391,6 +19349,7 @@ function App() {
           </View>
         </View>
       </Modal>
+      )}
 
       {/* SHARE PROFILE - copyable field, copy button with checkmark transition, Close/Share buttons.
           Only mounts while actually visible (was always in the tree, with
