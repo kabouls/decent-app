@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 500;
+const BUILD_NUMBER = 501;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -5118,7 +5118,7 @@ function App() {
   // looked up by their stored push token. Returns a result object so callers
   // (like the admin test button) can show what actually happened instead of
   // assuming success.
-  const sendPushNotification = async (recipientId, title, body) => {
+  const sendPushNotification = async (recipientId, title, body, checkReceipt = false) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -5150,6 +5150,45 @@ function App() {
         console.warn('Expo push API returned an error:', ticket);
         return { ok: false, reason: ticket.message || ticket.details?.error || 'Expo push API rejected the request.' };
       }
+
+      // A successful ticket only means Expo accepted the request for
+      // processing - it does NOT mean APNs/FCM actually delivered it. The
+      // real outcome only shows up in a separate "receipt", available a
+      // few seconds later via a second API call (confirmed against
+      // Expo's own docs) - this is exactly why the test button could show
+      // "Sent" with no notification ever actually arriving: the ticket
+      // check alone can't catch delivery-level failures like missing FCM
+      // credentials or DeviceNotRegistered. Only bothering with this
+      // extra round trip when something's actually waiting to see the
+      // result (the test button) - the fire-and-forget like/follow
+      // notifications elsewhere don't need the added delay.
+      if (checkReceipt && ticket && ticket.id) {
+        await new Promise((resolve) => setTimeout(resolve, 4000));
+        try {
+          const receiptResponse = await fetch('https://exp.host/--/api/v2/push/getReceipts', {
+            method: 'POST',
+            headers: {
+              Accept: 'application/json',
+              'Accept-encoding': 'gzip, deflate',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ ids: [ticket.id] })
+          });
+          const receiptResult = await receiptResponse.json();
+          const receipt = receiptResult && receiptResult.data && receiptResult.data[ticket.id];
+          if (receipt && receipt.status === 'error') {
+            console.warn('Expo push receipt returned an error:', receipt);
+            return { ok: false, reason: `Ticket accepted, but delivery failed: ${receipt.message || receipt.details?.error || 'unknown delivery error'}` };
+          }
+          if (!receipt) {
+            return { ok: true, reason: 'Ticket accepted, but no receipt was available yet after 4s - this can happen under load (Expo allows up to 30 minutes). Not necessarily a failure.' };
+          }
+        } catch (receiptErr) {
+          console.warn('Push receipt check failed:', receiptErr);
+          return { ok: true, reason: 'Ticket accepted, but the receipt check itself failed - could not confirm real delivery status.' };
+        }
+      }
+
       return { ok: true };
     } catch (e) {
       console.warn('Push notification send failed:', e);
@@ -14810,16 +14849,24 @@ function App() {
                     <BouncyButton
                       style={styles.settingItemRow}
                       onPress={async () => {
+                        // checkReceipt adds a real ~4s wait (querying Expo's
+                        // separate delivery-receipt endpoint, not just the
+                        // initial accept-ticket) - this toast is just so the
+                        // button doesn't look unresponsive during that gap.
+                        showToast('Sending and checking delivery...');
                         const result = await sendPushNotification(
                           session.user.id,
                           'Test Notification',
-                          'If you see this as a real OS notification, push delivery works.'
+                          'If you see this as a real OS notification, push delivery works.',
+                          true
                         );
                         showAppAlert(
                           result.ok ? 'Sent' : 'Failed',
-                          result.ok
-                            ? 'Sent successfully. Background or close the app now to check if it arrives as a real OS-level notification.'
-                            : (result.reason || 'Unknown error.')
+                          result.reason
+                            ? result.reason
+                            : (result.ok
+                                ? 'Confirmed delivered by Expo. Background or close the app now to check if it arrives as a real OS-level notification.'
+                                : 'Unknown error.')
                         );
                       }}
                     >
