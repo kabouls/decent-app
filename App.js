@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 494;
+const BUILD_NUMBER = 495;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15181,26 +15181,28 @@ function App() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <CursorArrowSVG size={17} color={theme.accent} />
                 <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14.5 }}>UI/UX Design</Text>
-                {isWebWide && <FigmaLogoSVG />}
               </View>
               <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16, marginBottom: 10 }}>
                 Interactive app and web design with Figma prototypes.
               </Text>
               {isWebWide ? (
-                <BouncyButton
-                  style={{
-                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, alignSelf: 'flex-end',
-                    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
-                    backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
-                  }}
-                  onPress={() => {
-                    setSelectedPortfolioType('ui_ux');
-                    proceedToPortfolioWizard();
-                  }}
-                >
-                  <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
-                  <ChevronRightSVG color="#FFFFFF" size={15} />
-                </BouncyButton>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <FigmaLogoSVG />
+                  <BouncyButton
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+                      paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
+                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                    }}
+                    onPress={() => {
+                      setSelectedPortfolioType('ui_ux');
+                      proceedToPortfolioWizard();
+                    }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
+                    <ChevronRightSVG color="#FFFFFF" size={15} />
+                  </BouncyButton>
+                </View>
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <FigmaLogoSVG />
