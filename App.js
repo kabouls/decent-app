@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 486;
+const BUILD_NUMBER = 487;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -4060,10 +4060,6 @@ function App() {
   const bellButtonRef = useRef(null);
   const [notifDropdownPos, setNotifDropdownPos] = useState({ top: 60, left: 16, right: 16 });
   const [headerBottomY, setHeaderBottomY] = useState(70);
-  // Sticky category chip bar (For You tab, native) height - measured so the
-  // ScrollView's top padding can compensate exactly, same approach as
-  // headerBottomY above.
-  const [categoryBarHeight, setCategoryBarHeight] = useState(62);
   // Left/right scroll arrows for the category bar, web only - mouse/trackpad
   // users don't have the natural horizontal swipe a touchscreen gives, so
   // arrows fill that gap. Hidden entirely when there's nothing to scroll to
@@ -10356,9 +10352,8 @@ function App() {
           sticky behavior there. */}
       {bottomNav === 'forYou' && (
         <View
-          onLayout={(e) => setCategoryBarHeight(e.nativeEvent.layout.height)}
           style={Platform.OS !== 'web'
-            ? { position: 'absolute', top: headerBottomY, left: 0, right: 0, zIndex: 90 }
+            ? { marginTop: headerBottomY }
             : (isWebWide ? { paddingTop: utilityDropdownTop } : undefined)}
         >
               <View style={[styles.topCategoryBarWrapper, { position: 'relative' }]}>
@@ -10502,7 +10497,14 @@ function App() {
           contentContainerStyle={[
             styles.scrollContent,
             Platform.OS !== 'web' && !isWebWide && { paddingTop: headerBottomY + 20 },
-            Platform.OS !== 'web' && !isWebWide && bottomNav === 'forYou' && { paddingTop: headerBottomY + categoryBarHeight }
+            // No extra offset needed for For You specifically anymore - the
+            // category bar above is a normal in-flow element now (used to
+            // be position:'absolute', floating over scrolled content,
+            // which is what needed this compensation in the first place),
+            // so it already pushes this ScrollView itself down by its own
+            // height. Adding padding here on top of that would just create
+            // unwanted extra empty space.
+            Platform.OS !== 'web' && !isWebWide && bottomNav === 'forYou' && { paddingTop: 0 }
           ]}
           onScroll={handleScroll}
           scrollEventThrottle={16}
@@ -10513,8 +10515,8 @@ function App() {
               tintColor="#8B5CF6"
               colors={['#8B5CF6']}
               progressViewOffset={
-                Platform.OS === 'android' && !isWebWide
-                  ? headerBottomY + (bottomNav === 'forYou' ? categoryBarHeight : 0) + 10
+                Platform.OS === 'android' && !isWebWide && bottomNav !== 'forYou'
+                  ? headerBottomY + 10
                   : 0
               }
             />
@@ -15726,10 +15728,10 @@ function App() {
                           This tells viewers whether AI played a role in creating this work. If AI was used for any part of it - a few steps, most of it, or all of it - select "Yes." Accurate disclosure keeps DECENT trustworthy for everyone; misrepresenting AI involvement will be treated as a policy violation.
                         </Text>
                         <BouncyButton
-                          style={[styles.confirmCancelBtn, { flex: 0, marginTop: 16, width: '100%' }]}
+                          style={[styles.confirmDeleteBtn, { flex: 0, marginTop: 16, width: '100%' }]}
                           onPress={() => setAiDisclosureTooltipVisible(false)}
                         >
-                          <Text style={styles.confirmCancelText}>Got it</Text>
+                          <Text style={styles.confirmDeleteText}>Got it</Text>
                         </BouncyButton>
                       </View>
                     </View>
@@ -17333,10 +17335,14 @@ function App() {
                   const allImages = activeProject.images || [];
                   const hasUploadedVideo = allVideos.some((v) => v.kind === 'uploaded');
 
+                  // Case Study always shows; Image/Video only show when
+                  // that type of media actually exists - same "don't show
+                  // a tab for content that isn't there" principle already
+                  // used for the Mobile/Desktop prototype tabs above.
                   const GD_TABS = [
                     { key: 'caseStudy', label: 'Case Study' },
-                    { key: 'image', label: 'Image' },
-                    { key: 'video', label: 'Video' }
+                    ...(allImages.length > 0 ? [{ key: 'image', label: 'Image' }] : []),
+                    ...(allVideos.length > 0 ? [{ key: 'video', label: 'Video' }] : [])
                   ];
 
                   return (
@@ -17725,7 +17731,7 @@ function App() {
                       <Text style={styles.sectionHeader}>MEDIA</Text>
                       <View style={{ marginBottom: 4 }}>
                         <AnimatedPillTabBar
-                          tabs={[{ key: 'image', label: 'Image' }, { key: 'video', label: 'Video' }]}
+                          tabs={[{ key: 'image', label: 'Image' }, ...(gdAllVideos.length > 0 ? [{ key: 'video', label: 'Video' }] : [])]}
                           activeKey={gdSplitTab}
                           onChange={setGdSplitTab}
                           theme={theme}
