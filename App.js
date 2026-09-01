@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 491;
+const BUILD_NUMBER = 492;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -4147,6 +4147,7 @@ function App() {
   // captions?: string[] } | null
   const [imageViewerState, setImageViewerState] = useState(null);
   const [imageViewerOpenId, setImageViewerOpenId] = useState(0);
+  const imageViewerScrollRef = useRef(null);
   const openImageViewer = (images, index, captions) => {
     setImageViewerState({ images, index, captions: captions || [] });
     setImageViewerOpenId((id) => id + 1);
@@ -7293,10 +7294,20 @@ function App() {
     galleryScrollXRef.current = 0;
     setGalleryCanScrollLeft(false);
     setGalleryCanScrollRight((proj.images || []).length > 2);
-    // Image Gallery accordion (only relevant when the portfolio also has a
-    // detailed description/content blocks - see render site) starts
-    // collapsed for every newly opened portfolio, not just the first one.
-    setGalleryExpanded(false);
+    // Media Gallery accordion's default state now depends on the case
+    // study's own content: collapsed only when there's a detailed
+    // description AND it actually contains at least one image (checking
+    // both a top-level image block and an image nested inside a row
+    // block's columns) - since in that case the images are already
+    // visible in the main flow, making the separate gallery somewhat
+    // redundant. Otherwise (no detailed description, or one that's
+    // text-only) it starts expanded, since the gallery would otherwise be
+    // the only place to see any images at all.
+    const hasDetailedDesc = !!(proj.contentBlocks && proj.contentBlocks.length > 0);
+    const descHasImages = hasDetailedDesc && proj.contentBlocks.some((block) =>
+      block && (block.type === 'image' || (block.type === 'row' && (block.columns || []).some((col) => col && col.type === 'image')))
+    );
+    setGalleryExpanded(!(hasDetailedDesc && descHasImages));
     // New tab switcher (Case Study / Video / Image), Graphic Design and
     // Illustration only - always starts back on Case Study for whichever
     // portfolio was just opened, same reset-on-open pattern as the gallery
@@ -8491,6 +8502,9 @@ function App() {
         imagesCaptions: finalImageCaptions,
         videoLinks: validVideos,
         uploadedVideos: finalUploadedVideos,
+        isAiGenerated: fIsAiGenerated,
+        aiDisclosureNote: fAiDisclosureNote.trim() || '',
+        softwareUsed: fSoftwareUsed,
         showcaseAspectRatio: fShowcaseAspectRatio
       };
       setProjects((prev) => prev.map((p) => (p.id === editingProjectId ? updatedProject : p)));
@@ -8592,6 +8606,7 @@ function App() {
       const newProject = {
         id: insertedId,
         ownerId: session ? session.user.id : null,
+        portfolioType: selectedPortfolioType,
         title: fTitle,
         designer: fDesigner || userProfile.name,
         designerHandle: userProfile.handle || '',
@@ -8616,6 +8631,9 @@ function App() {
         imagesCaptions: finalImageCaptions,
         videoLinks: validVideos,
         uploadedVideos: finalUploadedVideos,
+        isAiGenerated: fIsAiGenerated,
+        aiDisclosureNote: fAiDisclosureNote.trim() || '',
+        softwareUsed: fSoftwareUsed,
         caseStudy: fBrief,
         showcaseAspectRatio: fShowcaseAspectRatio
       };
@@ -10076,7 +10094,18 @@ function App() {
           is not a stale/broken shared style or a modal-stacking conflict
           (both already ruled out), which points somewhere else entirely -
           see the note left for the person testing this. */}
+      {/* Converted from a plain absolutely-positioned View to a real,
+          conditionally-mounted Modal - the plain View was rendered as part
+          of the main app tree, while the portfolio detail modal (and
+          others) are genuine <Modal> portals appended to a separate DOM
+          subtree after the main app root. No zIndex value within the main
+          tree can ever beat a real portal - this is why the "Portfolio
+          Updated" success popup was rendering hidden behind the portfolio
+          detail modal after editing. Same fix pattern as the Ko-fi/TOS
+          bugs earlier: a real Modal, freshly mounted each time, always
+          wins DOM stacking order regardless of what else is open. */}
       {!!autoSuccessConfig && (
+      <Modal transparent={true} visible={true} animationType="fade" onRequestClose={() => setAutoSuccessConfig(null)}>
         <View
           pointerEvents="box-none"
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, elevation: 30 }}
@@ -10133,6 +10162,7 @@ function App() {
             </View>
           </View>
         </View>
+      </Modal>
       )}
 
       {/* FIRST-TIME APP INTRODUCTION CAROUSEL */}
@@ -11844,24 +11874,39 @@ function App() {
         </View>
       )}
 
-      {/* IMAGE LIGHTBOX - tap-to-enlarge for portfolio images */}
+      {/* IMAGE LIGHTBOX - tap-to-enlarge for portfolio images. Now
+          pinch-zoomable via ScrollView's built-in minimumZoomScale/
+          maximumZoomScale (native RN feature, no new package needed -
+          works on iOS/Android out of the box; react-native-web supports
+          trackpad pinch and ctrl+scroll on browsers that allow it too).
+          Tap-to-close is now only on the backdrop area outside the image
+          itself, not layered under the zoomable ScrollView - the two
+          don't mix well (a tap while zoomed/panning shouldn't dismiss
+          the viewer), so the X button is the reliable way to close once
+          zoomed in. */}
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'fade'}
         transparent={true}
         visible={!!lightboxImageUri}
         onRequestClose={() => setLightboxImageUri(null)}
       >
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', alignItems: 'center', justifyContent: 'center' }}
-          activeOpacity={1}
-          onPress={() => setLightboxImageUri(null)}
-        >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
           {lightboxImageUri && (
-            <Image
-              source={{ uri: lightboxImageUri }}
-              style={{ width: '100%', height: '80%' }}
-              resizeMode="contain"
-            />
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+              minimumZoomScale={1}
+              maximumZoomScale={4}
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}
+              centerContent
+            >
+              <Image
+                source={{ uri: lightboxImageUri }}
+                style={{ width: '100%', height: '80%' }}
+                resizeMode="contain"
+              />
+            </ScrollView>
           )}
           <BouncyButton
             style={{ position: 'absolute', top: 50, right: 20, width: 40, height: 40, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
@@ -11869,7 +11914,7 @@ function App() {
           >
             <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>✕</Text>
           </BouncyButton>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* FULLSCREEN SWIPEABLE IMAGE VIEWER - Graphic Design/Illustration
@@ -11889,24 +11934,52 @@ function App() {
           {imageViewerState && (
             <ScrollView
               key={imageViewerOpenId}
+              ref={imageViewerScrollRef}
               horizontal
               pagingEnabled
               showsHorizontalScrollIndicator={false}
-              contentOffset={{ x: imageViewerState.index * Dimensions.get('window').width, y: 0 }}
+              // contentOffset is a known-unreliable way to set the initial
+              // scroll position - it's applied before the ScrollView has
+              // necessarily completed its first layout pass, a long-
+              // standing issue across RN platforms (confirmed via multiple
+              // upstream RN issues), and was exactly why clicking image 2
+              // could still land on image 1: the offset it calculated
+              // (from Dimensions.get('window').width) was being set before
+              // the ScrollView's own actual width was reliably known,
+              // especially inside a Modal that had just become visible.
+              // onLayout + an imperative scrollTo (no animation) once the
+              // real width is measured is the standard, reliable fix.
+              onLayout={(e) => {
+                const w = e.nativeEvent.layout.width;
+                if (imageViewerState.index > 0 && imageViewerScrollRef.current) {
+                  imageViewerScrollRef.current.scrollTo({ x: imageViewerState.index * w, y: 0, animated: false });
+                }
+              }}
               onMomentumScrollEnd={(e) => {
                 const idx = Math.round(e.nativeEvent.contentOffset.x / Dimensions.get('window').width);
                 setImageViewerState((prev) => (prev ? { ...prev, index: idx } : prev));
               }}
             >
               {imageViewerState.images.map((uri, i) => (
-                <TouchableOpacity
-                  key={i}
-                  style={{ width: Dimensions.get('window').width, height: '100%', alignItems: 'center', justifyContent: 'center' }}
-                  activeOpacity={1}
-                  onPress={() => setImageViewerState(null)}
-                >
-                  <Image source={{ uri }} style={{ width: '100%', height: '80%' }} resizeMode="contain" />
-                </TouchableOpacity>
+                // Each page gets its own nested zoomable ScrollView -
+                // zoom and the outer horizontal paging ScrollView can't
+                // share one, they'd fight over the same gesture. Tap-to-
+                // close removed here for the same reason as the single-
+                // image lightbox above (conflicts with pan/zoom); the X
+                // button is the reliable close action once zoomed.
+                <View key={i} style={{ width: Dimensions.get('window').width, height: '100%' }}>
+                  <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+                    minimumZoomScale={1}
+                    maximumZoomScale={4}
+                    showsHorizontalScrollIndicator={false}
+                    showsVerticalScrollIndicator={false}
+                    centerContent
+                  >
+                    <Image source={{ uri }} style={{ width: '100%', height: '80%' }} resizeMode="contain" />
+                  </ScrollView>
+                </View>
               ))}
             </ScrollView>
           )}
@@ -15869,7 +15942,7 @@ function App() {
                                   }}
                                 />
                                 <BouncyButton
-                                  style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
+                                  style={{ width: 40, height: 40, borderRadius: 10, borderWidth: 1.5, borderColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
                                   onPress={() => {
                                     const trimmed = softwareCustomInput.trim();
                                     if (trimmed && !fSoftwareUsed.includes(trimmed)) {
@@ -15878,7 +15951,9 @@ function App() {
                                     setSoftwareCustomInput('');
                                   }}
                                 >
-                                  <Text style={{ color: '#FFFFFF', fontSize: 20, fontWeight: '700', lineHeight: 22 }}>+</Text>
+                                  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                    <Path d="M12 5V19M5 12H19" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round" />
+                                  </Svg>
                                 </BouncyButton>
                               </View>
                             </View>
@@ -17523,6 +17598,18 @@ function App() {
                   ];
 
                   return (
+                    <>
+                      {/* Pinned above the ScrollView entirely now (not
+                          inside it), so it stays visible above the title
+                          regardless of scroll position - matching exactly
+                          how the Mobile/Desktop prototype switcher works
+                          for UI/UX above. GD_TABS always has at least
+                          Case Study + Image (images are mandatory), so
+                          unlike that one this is never conditionally
+                          hidden - always shows. */}
+                      <View style={{ paddingHorizontal: 20, paddingTop: 16, marginBottom: 4 }}>
+                        <AnimatedPillTabBar tabs={GD_TABS} activeKey={gdTab} onChange={setGdTab} theme={theme} themeMode={themeMode} />
+                      </View>
                     <ScrollView
                       ref={modalScrollViewRef}
                       style={styles.caseScrollView}
@@ -17631,12 +17718,13 @@ function App() {
                         </View>
                       )}
 
-                      {/* Case Study / Video / Image tab switcher - now uses
-                          the same animated sliding-pill as every other tab
-                          switcher in the app. */}
-                      <View style={{ marginBottom: 16 }}>
-                        <AnimatedPillTabBar tabs={GD_TABS} activeKey={gdTab} onChange={setGdTab} theme={theme} themeMode={themeMode} />
-                      </View>
+                      {/* Case Study / Video / Image tab switcher moved to
+                          above this ScrollView entirely (see just below,
+                          before this return) - pinned above the title now,
+                          always visible regardless of scroll position,
+                          matching exactly how the Mobile/Desktop prototype
+                          switcher works for UI/UX further up in this same
+                          file. */}
 
                       {gdTab === 'caseStudy' && (
                         <>
@@ -17799,6 +17887,7 @@ function App() {
                         </View>
                       )}
                     </ScrollView>
+                    </>
                   );
                 }
 
@@ -18235,36 +18324,27 @@ function App() {
                       web, or wide web WITH a prototype) keeps this exact
                       horizontal carousel, unchanged. */}
                   {!(Platform.OS === 'web' && isWebWide && !hasPrototype && !isGdType) && (() => {
-                    // "Detailed description" = the same condition already
-                    // used just below to decide whether Case Study Overview
-                    // shows real content blocks vs a plain brief fallback -
-                    // only in that case did the gallery become a
-                    // collapsed-by-default accordion instead of the plain
-                    // always-open carousel it's always been. Illustration
-                    // now always gets the accordion treatment regardless of
-                    // that condition - a simple brief-only portfolio should
-                    // still collapse by default there, not stay permanently
-                    // open just because there's no detailed description.
-                    const hasDetailedDescription = !!(activeProject.contentBlocks && activeProject.contentBlocks.length > 0);
-                    const isAccordion = hasDetailedDescription || activeProject.portfolioType === 'illustration';
-                    const galleryOpen = !isAccordion || galleryExpanded;
+                    // Always an accordion now for every portfolio - the
+                    // open/closed default itself is computed once, when
+                    // the portfolio is opened (see openProjectModal), based
+                    // on whether the detailed description actually
+                    // contains images. galleryExpanded is the single
+                    // source of truth here; no separate "not an accordion
+                    // at all" branch anymore.
+                    const galleryOpen = galleryExpanded;
                     return (
                       <>
-                        {isAccordion ? (
-                          <BouncyButton
-                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-                            onPress={() => setGalleryExpanded((prev) => !prev)}
-                          >
-                            <Text style={styles.sectionHeader}>{isGdType ? 'MEDIA GALLERY' : 'IMAGE GALLERY'}</Text>
-                            {galleryOpen ? (
-                              <ChevronUpSVG color={theme.textSecondary} size={16} />
-                            ) : (
-                              <ChevronDownSVG color={theme.textSecondary} size={16} />
-                            )}
-                          </BouncyButton>
-                        ) : (
+                        <BouncyButton
+                          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                          onPress={() => setGalleryExpanded((prev) => !prev)}
+                        >
                           <Text style={styles.sectionHeader}>{isGdType ? 'MEDIA GALLERY' : 'IMAGE GALLERY'}</Text>
-                        )}
+                          {galleryOpen ? (
+                            <ChevronUpSVG color={theme.textSecondary} size={16} />
+                          ) : (
+                            <ChevronDownSVG color={theme.textSecondary} size={16} />
+                          )}
+                        </BouncyButton>
                         {galleryOpen && (
                   <View style={{ position: 'relative' }}>
                     <ScrollView
@@ -19153,7 +19233,7 @@ const getStyles = (theme) => StyleSheet.create({
   storyNameText: { color: theme.textSecondary, fontSize: 11, fontWeight: '600', marginTop: 4, textAlign: 'center' },
   storyNameTextActive: { color: theme.accent, fontWeight: '800' },
 
-  topCategoryBarWrapper: { marginBottom: 20, paddingTop: 20, paddingLeft: 20, paddingRight: 20 },
+  topCategoryBarWrapper: { marginBottom: 20, marginHorizontal: -20, paddingLeft: 20 },
   topCategoryScrollView: { flexDirection: 'row' },
   topCategoryChip: {
     backgroundColor: Platform.OS !== 'web' ? 'transparent' : theme.surface, paddingHorizontal: 14, paddingVertical: 8,
