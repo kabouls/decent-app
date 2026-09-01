@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 487;
+const BUILD_NUMBER = 489;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -10350,132 +10350,6 @@ function App() {
           it - matches the header/bottom bar treatment). On web this just
           sits in normal flow right above the feed, same as before; no
           sticky behavior there. */}
-      {bottomNav === 'forYou' && (
-        <View
-          style={Platform.OS !== 'web'
-            ? { marginTop: headerBottomY }
-            : (isWebWide ? { paddingTop: utilityDropdownTop } : undefined)}
-        >
-              <View style={[styles.topCategoryBarWrapper, { position: 'relative' }]}>
-                <ScrollView
-                  ref={categoryScrollRef}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.topCategoryScrollView}
-                  onScroll={Platform.OS === 'web' ? (e) => updateCategoryScrollArrows(e.nativeEvent.contentOffset.x) : undefined}
-                  scrollEventThrottle={16}
-                  onContentSizeChange={Platform.OS === 'web' ? (w) => {
-                    categoryScrollContentWidthRef.current = w;
-                    updateCategoryScrollArrows(categoryScrollXRef.current);
-                  } : undefined}
-                  onLayout={Platform.OS === 'web' ? (e) => {
-                    categoryScrollContainerWidthRef.current = e.nativeEvent.layout.width;
-                    updateCategoryScrollArrows(categoryScrollXRef.current);
-                  } : undefined}
-                >
-                  <BouncyButton
-                    style={[styles.topCategoryChip, categoryFilter === 'all' && styles.topCategoryChipActive]}
-                    onPress={() => setCategoryFilter('all')}
-                  >
-                    <CategoryChipBg active={categoryFilter === 'all'} />
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <SparkleIconSVG color={categoryFilter === 'all' ? '#FFFFFF' : theme.accent} size={13} />
-                      <Text style={[styles.topCategoryText, categoryFilter === 'all' && styles.topCategoryTextActive]}>
-                        Highlighted
-                      </Text>
-                    </View>
-                  </BouncyButton>
-
-                  <BouncyButton
-                    style={[styles.topCategoryChip, categoryFilter === 'popularity' && styles.topCategoryChipActive]}
-                    onPress={() => setCategoryFilter('popularity')}
-                  >
-                    <CategoryChipBg active={categoryFilter === 'popularity'} />
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <TrendingUpSVG color={categoryFilter === 'popularity' ? '#FFFFFF' : theme.accent} size={13} />
-                      <Text style={[styles.topCategoryText, categoryFilter === 'popularity' && styles.topCategoryTextActive]}>
-                        Popularity
-                      </Text>
-                    </View>
-                  </BouncyButton>
-
-                  <BouncyButton
-                    style={[styles.topCategoryChip, categoryFilter === 'newest' && styles.topCategoryChipActive]}
-                    onPress={() => setCategoryFilter('newest')}
-                  >
-                    <CategoryChipBg active={categoryFilter === 'newest'} />
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <ClockSVG color={categoryFilter === 'newest' ? '#FFFFFF' : theme.accent} size={13} />
-                      <Text style={[styles.topCategoryText, categoryFilter === 'newest' && styles.topCategoryTextActive]}>
-                        Newest
-                      </Text>
-                    </View>
-                  </BouncyButton>
-
-                  {popularKeywords.map((cat) => (
-                    <BouncyButton
-                      key={cat}
-                      style={[styles.topCategoryChip, categoryFilter === cat && styles.topCategoryChipActive]}
-                      onPress={() => setCategoryFilter(cat)}
-                    >
-                      <CategoryChipBg active={categoryFilter === cat} />
-                      <Text style={[styles.topCategoryText, categoryFilter === cat && styles.topCategoryTextActive]}>
-                        {cat}
-                      </Text>
-                    </BouncyButton>
-                  ))}
-
-                  <BouncyButton
-                    style={styles.grid2x2CategoryBtn}
-                    activeOpacity={0.8}
-                    onPress={() => {
-                      setAllCategoriesSearchQuery('');
-                      setAllCategoriesTab('all');
-                      setAllCategoriesModalVisible(true);
-                    }}
-                  >
-                    <Grid2x2SVG />
-                  </BouncyButton>
-                </ScrollView>
-
-                {Platform.OS === 'web' && categoryCanScrollLeft && (
-                  <BouncyButton
-                    style={{
-                      position: 'absolute', left: 0, top: 20, width: 38, height: 38,
-                      alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
-                      borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
-                    }}
-                    onPress={() => {
-                      const target = Math.max(0, categoryScrollXRef.current - (categoryScrollContainerWidthRef.current || 200) * 0.7);
-                      categoryScrollRef.current?.scrollTo({ x: target, animated: true });
-                    }}
-                  >
-                    <ChevronLeftSVG color={theme.accentLight} size={16} />
-                  </BouncyButton>
-                )}
-
-                {Platform.OS === 'web' && categoryCanScrollRight && (
-                  <BouncyButton
-                    style={{
-                      position: 'absolute', right: 0, top: 20, width: 38, height: 38,
-                      alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
-                      borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
-                    }}
-                    onPress={() => {
-                      const maxX = Math.max(0, categoryScrollContentWidthRef.current - categoryScrollContainerWidthRef.current);
-                      const target = Math.min(maxX, categoryScrollXRef.current + (categoryScrollContainerWidthRef.current || 200) * 0.7);
-                      categoryScrollRef.current?.scrollTo({ x: target, animated: true });
-                    }}
-                  >
-                    <ChevronRightSVG color={theme.accentLight} size={16} />
-                  </BouncyButton>
-                )}
-              </View>
-        </View>
-      )}
-
       <Animated.View style={[styles.mainViewContainer, { opacity: fadeAnim }]}>
         <ScrollView
           ref={mainScrollViewRef}
@@ -10496,15 +10370,11 @@ function App() {
           showsVerticalScrollIndicator={!(Platform.OS === 'web' && isWebWide)}
           contentContainerStyle={[
             styles.scrollContent,
-            Platform.OS !== 'web' && !isWebWide && { paddingTop: headerBottomY + 20 },
-            // No extra offset needed for For You specifically anymore - the
-            // category bar above is a normal in-flow element now (used to
-            // be position:'absolute', floating over scrolled content,
-            // which is what needed this compensation in the first place),
-            // so it already pushes this ScrollView itself down by its own
-            // height. Adding padding here on top of that would just create
-            // unwanted extra empty space.
-            Platform.OS !== 'web' && !isWebWide && bottomNav === 'forYou' && { paddingTop: 0 }
+            // Uniform for every tab now, including For You - the category
+            // bar is a normal scrollable item now too (inside this same
+            // content, right below), not a separate element outside the
+            // ScrollView providing its own offset anymore.
+            Platform.OS !== 'web' && !isWebWide && { paddingTop: headerBottomY + 20 }
           ]}
           onScroll={handleScroll}
           scrollEventThrottle={16}
@@ -10515,7 +10385,7 @@ function App() {
               tintColor="#8B5CF6"
               colors={['#8B5CF6']}
               progressViewOffset={
-                Platform.OS === 'android' && !isWebWide && bottomNav !== 'forYou'
+                Platform.OS === 'android' && !isWebWide
                   ? headerBottomY + 10
                   : 0
               }
@@ -10526,6 +10396,135 @@ function App() {
           {/* TAB PAGE 1: FOR YOU Feed */}
           {bottomNav === 'forYou' && (
             <View>
+
+              {/* Category chip bar - now a normal scrollable item at the
+                  top of the feed instead of a separate element sitting
+                  outside this ScrollView. It used to be position:'absolute'
+                  (floating over scrolled content), then just a static
+                  in-flow element outside the ScrollView (fixed in place,
+                  never actually moving) - neither actually scrolled away
+                  with the feed the way a normal piece of content would.
+                  Being an actual child of this ScrollView's own content is
+                  what makes it scroll normally now. */}
+              <View style={isWebWide ? { paddingTop: utilityDropdownTop } : undefined}>
+                <View style={[styles.topCategoryBarWrapper, { position: 'relative' }]}>
+                  <ScrollView
+                    ref={categoryScrollRef}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.topCategoryScrollView}
+                    onScroll={Platform.OS === 'web' ? (e) => updateCategoryScrollArrows(e.nativeEvent.contentOffset.x) : undefined}
+                    scrollEventThrottle={16}
+                    onContentSizeChange={Platform.OS === 'web' ? (w) => {
+                      categoryScrollContentWidthRef.current = w;
+                      updateCategoryScrollArrows(categoryScrollXRef.current);
+                    } : undefined}
+                    onLayout={Platform.OS === 'web' ? (e) => {
+                      categoryScrollContainerWidthRef.current = e.nativeEvent.layout.width;
+                      updateCategoryScrollArrows(categoryScrollXRef.current);
+                    } : undefined}
+                  >
+                    <BouncyButton
+                      style={[styles.topCategoryChip, categoryFilter === 'all' && styles.topCategoryChipActive]}
+                      onPress={() => setCategoryFilter('all')}
+                    >
+                      <CategoryChipBg active={categoryFilter === 'all'} />
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <SparkleIconSVG color={categoryFilter === 'all' ? '#FFFFFF' : theme.accent} size={13} />
+                        <Text style={[styles.topCategoryText, categoryFilter === 'all' && styles.topCategoryTextActive]}>
+                          Highlighted
+                        </Text>
+                      </View>
+                    </BouncyButton>
+
+                    <BouncyButton
+                      style={[styles.topCategoryChip, categoryFilter === 'popularity' && styles.topCategoryChipActive]}
+                      onPress={() => setCategoryFilter('popularity')}
+                    >
+                      <CategoryChipBg active={categoryFilter === 'popularity'} />
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <TrendingUpSVG color={categoryFilter === 'popularity' ? '#FFFFFF' : theme.accent} size={13} />
+                        <Text style={[styles.topCategoryText, categoryFilter === 'popularity' && styles.topCategoryTextActive]}>
+                          Popularity
+                        </Text>
+                      </View>
+                    </BouncyButton>
+
+                    <BouncyButton
+                      style={[styles.topCategoryChip, categoryFilter === 'newest' && styles.topCategoryChipActive]}
+                      onPress={() => setCategoryFilter('newest')}
+                    >
+                      <CategoryChipBg active={categoryFilter === 'newest'} />
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <ClockSVG color={categoryFilter === 'newest' ? '#FFFFFF' : theme.accent} size={13} />
+                        <Text style={[styles.topCategoryText, categoryFilter === 'newest' && styles.topCategoryTextActive]}>
+                          Newest
+                        </Text>
+                      </View>
+                    </BouncyButton>
+
+                    {popularKeywords.map((cat) => (
+                      <BouncyButton
+                        key={cat}
+                        style={[styles.topCategoryChip, categoryFilter === cat && styles.topCategoryChipActive]}
+                        onPress={() => setCategoryFilter(cat)}
+                      >
+                        <CategoryChipBg active={categoryFilter === cat} />
+                        <Text style={[styles.topCategoryText, categoryFilter === cat && styles.topCategoryTextActive]}>
+                          {cat}
+                        </Text>
+                      </BouncyButton>
+                    ))}
+
+                    <BouncyButton
+                      style={styles.grid2x2CategoryBtn}
+                      activeOpacity={0.8}
+                      onPress={() => {
+                        setAllCategoriesSearchQuery('');
+                        setAllCategoriesTab('all');
+                        setAllCategoriesModalVisible(true);
+                      }}
+                    >
+                      <Grid2x2SVG />
+                    </BouncyButton>
+                  </ScrollView>
+
+                  {Platform.OS === 'web' && categoryCanScrollLeft && (
+                    <BouncyButton
+                      style={{
+                        position: 'absolute', left: 0, top: 20, width: 38, height: 38,
+                        alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
+                        borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
+                      }}
+                      onPress={() => {
+                        const target = Math.max(0, categoryScrollXRef.current - (categoryScrollContainerWidthRef.current || 200) * 0.7);
+                        categoryScrollRef.current?.scrollTo({ x: target, animated: true });
+                      }}
+                    >
+                      <ChevronLeftSVG color={theme.accentLight} size={16} />
+                    </BouncyButton>
+                  )}
+
+                  {Platform.OS === 'web' && categoryCanScrollRight && (
+                    <BouncyButton
+                      style={{
+                        position: 'absolute', right: 0, top: 20, width: 38, height: 38,
+                        alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
+                        borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
+                      }}
+                      onPress={() => {
+                        const maxX = Math.max(0, categoryScrollContentWidthRef.current - categoryScrollContainerWidthRef.current);
+                        const target = Math.min(maxX, categoryScrollXRef.current + (categoryScrollContainerWidthRef.current || 200) * 0.7);
+                        categoryScrollRef.current?.scrollTo({ x: target, animated: true });
+                      }}
+                    >
+                      <ChevronRightSVG color={theme.accentLight} size={16} />
+                    </BouncyButton>
+                  )}
+                </View>
+              </View>
 
               <View style={forYouTypeFilterOpen ? { marginBottom: 10, overflow: 'visible', zIndex: 100 } : { marginBottom: 10, overflow: 'visible' }}>
                 {/* zIndex here (not just on the panel below) is what
@@ -18968,7 +18967,7 @@ const getStyles = (theme) => StyleSheet.create({
   stickyModalBackToTopBtn: {
     position: 'absolute', bottom: 90, right: 20,
     width: 44, height: 44, borderRadius: 99,
-    backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center',
     elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 6, zIndex: 99
   },
 
@@ -19014,7 +19013,7 @@ const getStyles = (theme) => StyleSheet.create({
 
   stickyBackToTopBtn: {
     position: 'absolute', bottom: 100, right: 20, width: 42, height: 42,
-    borderRadius: 99, backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center',
+    borderRadius: 99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center',
     elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 99
   },
 
