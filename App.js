@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 503;
+const BUILD_NUMBER = 504;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -1795,18 +1795,19 @@ const TrendingUpSVG = React.memo(({ color = '#C084FC', size = 13 }) => (
 ));
 
 const LayoutToggleSVG = React.memo(({ mode = 'compact', color = '#C084FC', size = 18 }) => (
+  // Represents the CURRENT mode (was previously showing what tapping would
+  // switch TO instead, which read backwards to the user).
   mode === 'compact' ? (
-    // Shows what tapping WILL switch TO: full-width rows
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Rect x="3" y="4" width="18" height="6" rx="1.5" stroke={color} strokeWidth="2" />
-      <Rect x="3" y="14" width="18" height="6" rx="1.5" stroke={color} strokeWidth="2" />
-    </Svg>
-  ) : (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Rect x="3" y="3" width="8" height="8" rx="1.5" stroke={color} strokeWidth="2" />
       <Rect x="13" y="3" width="8" height="8" rx="1.5" stroke={color} strokeWidth="2" />
       <Rect x="3" y="13" width="8" height="8" rx="1.5" stroke={color} strokeWidth="2" />
       <Rect x="13" y="13" width="8" height="8" rx="1.5" stroke={color} strokeWidth="2" />
+    </Svg>
+  ) : (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect x="3" y="4" width="18" height="6" rx="1.5" stroke={color} strokeWidth="2" />
+      <Rect x="3" y="14" width="18" height="6" rx="1.5" stroke={color} strokeWidth="2" />
     </Svg>
   )
 ));
@@ -2047,6 +2048,40 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
   );
 };
 
+// "Read more" truncation for profile bios - mobile web and app only (per
+// request; wide web has enough width that this hasn't been an issue
+// there). Starts clamped to 3 lines; onTextLayout tells us how many lines
+// the text actually rendered at, so "Read more" only appears when there's
+// real overflow to reveal, not on short bios that already fit.
+const ExpandableBioText = ({ text, style, isWebWide }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [isTruncated, setIsTruncated] = useState(false);
+
+  if (!text) return null;
+  if (isWebWide) return <Text style={style}>{text}</Text>;
+
+  return (
+    <View>
+      <Text
+        style={style}
+        numberOfLines={expanded ? undefined : 3}
+        onTextLayout={(e) => {
+          if (!expanded && e.nativeEvent.lines.length >= 3) setIsTruncated(true);
+        }}
+      >
+        {text}
+      </Text>
+      {isTruncated && (
+        <BouncyButton onPress={() => setExpanded((prev) => !prev)}>
+          <Text style={{ color: '#8B5CF6', fontSize: 13, fontWeight: '700', marginTop: 2 }}>
+            {expanded ? 'Read less' : 'Read more'}
+          </Text>
+        </BouncyButton>
+      )}
+    </View>
+  );
+};
+
 const ProjectCard = React.memo(({
   item,
   onPress,
@@ -2062,6 +2097,7 @@ const ProjectCard = React.memo(({
   showPinControl = false,
   onTogglePin,
   hideFollowButton = false,
+  showReadOnlyPin = false,
   styles
 }) => {
   const { lightweightMode } = useLightweightMode();
@@ -2151,9 +2187,12 @@ const ProjectCard = React.memo(({
       ) : (
         // Read-only indicator when viewing someone else's profile - viewers
         // can see a portfolio is pinned/featured, just can't toggle it.
-        // Previously this was invisible entirely outside your own profile,
-        // not just non-editable.
-        item.pinned && (
+        // Opt-in via showReadOnlyPin (default off) rather than showing
+        // wherever item.pinned happened to be true - pinning is a
+        // profile-specific "featured on my profile" concept, and showing
+        // it on general discovery feeds like For You (which also render
+        // via this same card component) was misleading there.
+        showReadOnlyPin && item.pinned && (
           <View
             style={{
               position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 14,
@@ -2249,7 +2288,7 @@ const ProjectCard = React.memo(({
   );
 });
 
-const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles, cardWidth }) => (
+const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles, cardWidth, showReadOnlyPin }) => (
   <View style={styles.grid}>
     {items.map((item) => (
       <ProjectCard
@@ -2264,6 +2303,7 @@ const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerPr
         isOwnContent={!!currentUserId && item.ownerId === currentUserId}
         showPinControl={showPinControl}
         onTogglePin={onTogglePin}
+        showReadOnlyPin={showReadOnlyPin}
         customWidth={cardWidth}
         styles={styles}
       />
@@ -2643,7 +2683,7 @@ const ZoomPanImage = ({ uri, containerWidth, containerHeight }) => {
   );
 };
 
-const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles, theme }) => {
+const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles, theme, isWebWide, showReadOnlyPin }) => {
   if (items.length === 0) {
     return (
       <View style={styles.emptyTabContainer}>
@@ -2652,14 +2692,19 @@ const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenD
     );
   }
 
-  // Vertical, 2-per-row layout - was a horizontal-scrolling set of columns
-  // before, which only revealed 4 items initially with no clear affordance
-  // that more existed off to the side. This relies on the parent page's
-  // own vertical scroll (same as the Full Width View grid elsewhere),
-  // just fitting 2 narrower cards per row instead of 1 full-width one.
+  // Vertical, responsive-per-row layout - was a horizontal-scrolling set
+  // of columns before, which only revealed 4 items initially with no
+  // clear affordance that more existed off to the side. This relies on
+  // the parent page's own vertical scroll (same as the Full Width View
+  // grid elsewhere). Wide web gets 4 narrower cards per row instead of 2
+  // wider ones - 2-per-row on a wide desktop screen was just stretching
+  // each card taller/wider rather than actually showing more content at
+  // once, which defeats the point of a "compact" view there specifically.
+  const perRow = isWebWide ? 4 : 2;
+  const cardWidthPct = isWebWide ? '23.5%' : '48%';
   const rows = [];
-  for (let i = 0; i < items.length; i += 2) {
-    rows.push(items.slice(i, i + 2));
+  for (let i = 0; i < items.length; i += perRow) {
+    rows.push(items.slice(i, i + perRow));
   }
 
   return (
@@ -2676,12 +2721,13 @@ const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenD
               onToggleFollow={onToggleFollow}
               isFollowing={followedDesigners ? followedDesigners.includes(item.ownerId) : false}
               isOwnContent={!!currentUserId && item.ownerId === currentUserId}
-              customWidth="48%"
+              customWidth={cardWidthPct}
               hideBrief={true}
               isTwoRowCard={true}
               showPinControl={showPinControl}
               onTogglePin={onTogglePin}
               hideFollowButton={true}
+              showReadOnlyPin={showReadOnlyPin}
               styles={styles}
             />
           ))}
@@ -4074,7 +4120,15 @@ function App() {
   // compact grid) - consolidated into one memoized value.
   const selectedDesignerProjects = useMemo(() => {
     if (!selectedDesigner) return [];
-    return projects.filter((p) => p.ownerId === selectedDesigner.id);
+    // Pinned-first, matching your own profile's own sort - was a plain
+    // filter with no sort at all before, so a pinned portfolio never
+    // actually appeared featured at the top when a guest (or anyone other
+    // than the owner) viewed that profile, even though the pin itself had
+    // saved correctly.
+    return projects
+      .filter((p) => p.ownerId === selectedDesigner.id)
+      .slice()
+      .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   }, [projects, selectedDesigner]);
   const [modalVisible, setModalVisible] = useState(false);
   const [addModalVisible, setAddModalVisible] = useState(false);
@@ -4342,10 +4396,19 @@ function App() {
         if (!prev) return prev;
         const dir = e.key === 'ArrowLeft' ? -1 : 1;
         const nextIndex = Math.min(prev.items.length - 1, Math.max(0, prev.index + dir));
-        if (nextIndex !== prev.index && imageViewerScrollRef.current) {
+        if (nextIndex === prev.index) return prev;
+        if (imageViewerScrollRef.current) {
           imageViewerScrollRef.current.scrollTo({ x: nextIndex * Dimensions.get('window').width, y: 0, animated: true });
         }
-        return prev;
+        // Directly updating index here now, rather than relying solely on
+        // onMomentumScrollEnd to sync it after the scrollTo animation -
+        // react-native-web doesn't reliably fire momentum-scroll events for
+        // a programmatic scrollTo the way native does (that event is
+        // fundamentally a touch/momentum concept), which was exactly why
+        // this could get stuck or cycle between only 2 images: the index
+        // this closure reads never actually changed, so every subsequent
+        // key press recomputed from the same stale starting point.
+        return { ...prev, index: nextIndex };
       });
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -7824,6 +7887,16 @@ function App() {
     const designerMatch = path.match(/^\/@([^/]+)$/);
     if (!designerMatch) return;
     const handleOrId = decodeURIComponent(designerMatch[1]);
+
+    // Own handle/id - route to the real Profile tab instead of opening a
+    // separate designer-profile view of yourself, which wouldn't have your
+    // own edit controls and would just be a confusing, wrong destination
+    // for your own /@handle link.
+    if (session && (handleOrId === userProfile.handle || handleOrId === session.user.id)) {
+      setBottomNav('profile');
+      return;
+    }
+
     // Skips openDesignerProfileById's own history.pushState (web) - this
     // deep link already IS the current history entry (the page just
     // loaded at this URL) - without this it'd push a redundant second
@@ -7886,7 +7959,7 @@ function App() {
     } catch (e) {
       console.warn('Deep-link handling failed:', e);
     }
-  }, [openPortfolioById, openDesignerProfileById]);
+  }, [openPortfolioById, openDesignerProfileById, session, userProfile.handle]);
 
   // Initial-load routing for all page types this app has real URLs for:
   // /for-you, /circle, /search, /profile (tabs), /p/:id (portfolio),
@@ -7981,12 +8054,16 @@ function App() {
     } else if (bottomNav === 'search') {
       path = '/search';
     } else if (bottomNav === 'profile') {
-      path = '/profile';
+      // /@handle when signed in (consistent with how every other profile
+      // URL in the app already works - see designerOnTop above), /profile
+      // reserved for the signed-out/guest case where there's no handle of
+      // your own to link to yet.
+      path = (session && userProfile.handle) ? `/@${userProfile.handle}` : '/profile';
     }
     if (window.location.pathname !== path) {
       window.history.replaceState(window.history.state, document.title, path);
     }
-  }, [bottomNav, modalVisible, activeProject, designerModalVisible, selectedDesigner, topStackedPage]);
+  }, [bottomNav, modalVisible, activeProject, designerModalVisible, selectedDesigner, topStackedPage, session, userProfile.handle]);
 
   const handleBackFromDesignerProfile = useCallback(() => {
     if (designerBackStack.length > 0) {
@@ -11069,7 +11146,7 @@ function App() {
                           )}
                         </View>
                         <Text style={[styles.storyNameText, isSelected && styles.storyNameTextActive]} numberOfLines={1}>
-                          {des.name.split(' ')[0]}
+                          @{des.handle}
                         </Text>
                       </BouncyButton>
                     );
@@ -11507,7 +11584,7 @@ function App() {
                   <Text style={styles.profileLocText}>{userProfile.location}</Text>
                 </View>
 
-                <Text style={styles.profileBio}>{userProfile.bio}</Text>
+                <ExpandableBioText text={userProfile.bio} style={styles.profileBio} isWebWide={isWebWide} />
 
                 <View style={styles.statsRow}>
                   <BouncyButton
@@ -11648,6 +11725,7 @@ function App() {
                     onTogglePin={togglePinProject}
                   styles={styles}
                   theme={theme}
+                  isWebWide={isWebWide}
                   />
                 )}
               </Animated.View>
@@ -11672,6 +11750,37 @@ function App() {
       {/* FLOATING ROUNDED RECTANGLE BOTTOM MENU BAR WITH FOLLOWING LABEL
           Native only - web uses the hamburger drawer instead (see below). */}
       {Platform.OS !== 'web' && (
+      <>
+        {/* Custom-drawn glow, positioned behind/around the bar itself
+            (rendered first, so it sits underneath in stacking order) -
+            Android's elevation is inherently uniform on all sides with no
+            directional control at all, so "stronger on left/right/bottom,
+            not top" genuinely isn't achievable through elevation/shadow
+            props alone (confirmed - there's no native lever for this).
+            The bar itself sits at bottom:14, height:64, so its own top
+            edge is 78 from the container bottom (14+64) - each glow
+            layer's own bottom+height is kept at exactly that same 78, so
+            the glow's top edge lines up flush with the bar's top edge
+            rather than poking out above it, while bottom/left/right
+            extend past the bar's edges freely. Two stacked, decreasingly-
+            opaque layers approximate a soft glow/blur falloff without an
+            actual blur (a real blurred shadow would need a gradient or
+            blur library - this achieves a similar visual with plain Views
+            instead). */}
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', bottom: 4, left: 12, right: 12, height: 74,
+            borderRadius: 32, backgroundColor: 'rgba(0,0,0,0.35)'
+          }}
+        />
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', bottom: 8, left: 16, right: 16, height: 70,
+            borderRadius: 30, backgroundColor: 'rgba(0,0,0,0.35)'
+          }}
+        />
       <View style={[styles.floatingBottomBar, { overflow: 'hidden', backgroundColor: 'transparent' }]}>
         {/* Translucent bar: BlurView is GPU-composited (not per-frame JS
             work) so it's cheap as long as it's not stacked/re-rendered
@@ -11776,6 +11885,7 @@ function App() {
           <Text style={[styles.menuLabel, bottomNav === 'profile' && styles.menuLabelActive]}>Profile</Text>
         </TouchableOpacity>
       </View>
+      </>
       )}
 
       {/* WEB-ONLY HAMBURGER NAV DRAWER - replaces the floating bottom bar
@@ -12292,8 +12402,12 @@ function App() {
             <BouncyButton
               style={{ position: 'absolute', left: 20, top: '50%', marginTop: -22, width: 44, height: 44, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
               onPress={() => {
-                const target = (imageViewerState.index - 1) * Dimensions.get('window').width;
+                const nextIndex = imageViewerState.index - 1;
+                const target = nextIndex * Dimensions.get('window').width;
                 imageViewerScrollRef.current?.scrollTo({ x: target, y: 0, animated: true });
+                // Same direct-index-update fix as the arrow-key handler
+                // above - scrollTo alone isn't enough to rely on here.
+                setImageViewerState((prev) => (prev ? { ...prev, index: nextIndex } : prev));
               }}
             >
               <ChevronLeftSVG color="#FFFFFF" size={20} />
@@ -12303,8 +12417,10 @@ function App() {
             <BouncyButton
               style={{ position: 'absolute', right: 20, top: '50%', marginTop: -22, width: 44, height: 44, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
               onPress={() => {
-                const target = (imageViewerState.index + 1) * Dimensions.get('window').width;
+                const nextIndex = imageViewerState.index + 1;
+                const target = nextIndex * Dimensions.get('window').width;
                 imageViewerScrollRef.current?.scrollTo({ x: target, y: 0, animated: true });
+                setImageViewerState((prev) => (prev ? { ...prev, index: nextIndex } : prev));
               }}
             >
               <ChevronRightSVG color="#FFFFFF" size={20} />
@@ -15226,7 +15342,7 @@ function App() {
                   <Text style={styles.profileLocText}>{selectedDesigner.location}</Text>
                 </View>
 
-                <Text style={styles.profileBio}>{selectedDesigner.bio}</Text>
+                <ExpandableBioText text={selectedDesigner.bio} style={styles.profileBio} isWebWide={isWebWide} />
 
                 <View style={styles.statsRow}>
                   <BouncyButton
@@ -15375,6 +15491,7 @@ function App() {
                   currentUserId={session ? session.user.id : null}
                 styles={styles}
                 cardWidth={Platform.OS === 'web' && !isWebWide ? '100%' : undefined}
+                showReadOnlyPin={designerProfileTab === 'myWork'}
                 />
               ) : (
                 <TwoRowHorizontalGrid
@@ -15392,6 +15509,8 @@ function App() {
                   currentUserId={session ? session.user.id : null}
                 styles={styles}
                 theme={theme}
+                isWebWide={isWebWide}
+                showReadOnlyPin={designerProfileTab === 'myWork'}
                 />
               )}
               </Animated.View>
@@ -16577,8 +16696,15 @@ function App() {
                       // "Done" button that closes this editor lives there,
                       // not inside this overlay itself) - without clearing
                       // it, the last block(s)/add-buttons could end up
-                      // sitting behind it, unreachable.
-                      contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 72 + 40 }}
+                      // sitting behind it, unreachable. Generous extra
+                      // buffer on top of that (200 total) since some
+                      // safe-area/gesture-nav variance across Android
+                      // devices means the exact bar height on screen can
+                      // differ slightly from this fixed value - erring
+                      // toward too much scroll room rather than too
+                      // little, since insufficient padding here actively
+                      // blocks reaching the add-block buttons.
+                      contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 200 }}
                       keyboardShouldPersistTaps="handled"
                     >
                         {fContentBlocks.map((block, idx) => (
@@ -18583,24 +18709,44 @@ function App() {
                       ) : (
                         (activeProject.images || []).length === 0 ? (
                           <Text style={styles.caseBodyText}>No images added to this portfolio yet.</Text>
-                        ) : (activeProject.images || []).map((imgUrl, index) => (
-                          <View key={index}>
-                            <BouncyButton activeOpacity={0.9} onPress={() => openMediaViewer((activeProject.images || []).map((uri, i) => ({ type: 'image', uri, caption: activeProject.imagesCaptions ? activeProject.imagesCaptions[i] : undefined })), index)}>
-                              <Image
-                                source={{ uri: imgUrl }}
-                                style={{
-                                  width: '100%',
-                                  aspectRatio: activeProject.showcaseAspectRatio === '9:16' ? 9 / 16 : 16 / 9,
-                                  borderRadius: 12
-                                }}
-                                resizeMode="cover"
-                              />
-                            </BouncyButton>
-                            {activeProject.imagesCaptions && activeProject.imagesCaptions[index] && activeProject.imagesCaptions[index].trim() !== '' && (
-                              <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 6 }}>{activeProject.imagesCaptions[index]}</Text>
-                            )}
-                          </View>
-                        ))
+                        ) : (
+                          // 2-column grid, wide web only - was a single
+                          // full-width column before, which meant a
+                          // portrait (9:16) showcase image could end up
+                          // taller than the entire viewport on a wide
+                          // screen. Two narrower columns halves that
+                          // height for the same image.
+                          (() => {
+                            const imgs = activeProject.images || [];
+                            const imgRows = [];
+                            for (let i = 0; i < imgs.length; i += 2) imgRows.push(imgs.slice(i, i + 2));
+                            return imgRows.map((row, rowIdx) => (
+                              <View key={rowIdx} style={{ flexDirection: 'row', gap: 16 }}>
+                                {row.map((imgUrl, colIdx) => {
+                                  const index = rowIdx * 2 + colIdx;
+                                  return (
+                                    <View key={index} style={{ flex: 1 }}>
+                                      <BouncyButton activeOpacity={0.9} onPress={() => openMediaViewer(imgs.map((uri, i) => ({ type: 'image', uri, caption: activeProject.imagesCaptions ? activeProject.imagesCaptions[i] : undefined })), index)}>
+                                        <Image
+                                          source={{ uri: imgUrl }}
+                                          style={{
+                                            width: '100%',
+                                            aspectRatio: activeProject.showcaseAspectRatio === '9:16' ? 9 / 16 : 16 / 9,
+                                            borderRadius: 12
+                                          }}
+                                          resizeMode="cover"
+                                        />
+                                      </BouncyButton>
+                                      {activeProject.imagesCaptions && activeProject.imagesCaptions[index] && activeProject.imagesCaptions[index].trim() !== '' && (
+                                        <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 6 }}>{activeProject.imagesCaptions[index]}</Text>
+                                      )}
+                                    </View>
+                                  );
+                                })}
+                              </View>
+                            ));
+                          })()
+                        )
                       )}
                     </ScrollView>
                   </View>
@@ -19838,7 +19984,7 @@ const getStyles = (theme) => StyleSheet.create({
 
 
   stickyModalBackToTopBtn: {
-    position: 'absolute', bottom: 90, right: 20,
+    position: 'absolute', bottom: 78, right: 20,
     width: 44, height: 44, borderRadius: 99,
     backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center',
     elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 6, zIndex: 99
@@ -19885,7 +20031,7 @@ const getStyles = (theme) => StyleSheet.create({
   overlayCategoryTextActive: { color: '#FFFFFF' },
 
   stickyBackToTopBtn: {
-    position: 'absolute', bottom: 100, right: 20, width: 42, height: 42,
+    position: 'absolute', bottom: 88, right: 20, width: 42, height: 42,
     borderRadius: 99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center',
     elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 99
   },
@@ -19949,7 +20095,13 @@ const getStyles = (theme) => StyleSheet.create({
     position: 'absolute', bottom: 14, left: 20, right: 20, height: 64,
     backgroundColor: theme.surface, borderRadius: 28.8, borderWidth: 1, borderColor: theme.border,
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.45, shadowRadius: 20, elevation: 12, zIndex: 100
+    // iOS shadow (directional - offset pushes it down/outward, away from
+    // the top edge) made stronger/longer per request. Android has no
+    // directional shadow at all - elevation is the only native mechanism
+    // there and it's inherently uniform on all sides, so "except top" isn't
+    // actually achievable without a separate custom-drawn shadow view
+    // behind the bar; elevation bumped up as the closest available lever.
+    shadowColor: '#000', shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.55, shadowRadius: 26, elevation: 18, zIndex: 100
   },
   uniformTabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 6 },
   menuLabel: { fontSize: 10, fontWeight: '600', color: theme.textSecondary, marginTop: 2 },
