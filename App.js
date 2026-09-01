@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 505;
+const BUILD_NUMBER = 506;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -2061,24 +2061,27 @@ const ExpandableBioText = ({ text, style, isWebWide }) => {
   if (isWebWide) return <Text style={style}>{text}</Text>;
 
   return (
-    <View>
-      <Text
-        style={style}
-        numberOfLines={expanded ? undefined : 3}
-        onTextLayout={(e) => {
-          if (!expanded && e.nativeEvent.lines.length >= 3) setIsTruncated(true);
-        }}
-      >
-        {text}
-      </Text>
+    <Text
+      style={style}
+      numberOfLines={expanded ? undefined : 3}
+      onTextLayout={(e) => {
+        if (!expanded && e.nativeEvent.lines.length >= 3) setIsTruncated(true);
+      }}
+    >
+      {text}
+      {/* Nested Text with its own onPress - inline at the end of the
+          truncated content (RN squeezes a short trailing nested Text onto
+          the same visible last line when it fits, the standard pattern
+          for this), rather than a separate block below on its own line. */}
       {isTruncated && (
-        <BouncyButton onPress={() => setExpanded((prev) => !prev)}>
-          <Text style={{ color: '#8B5CF6', fontSize: 13, fontWeight: '700', marginTop: 2 }}>
-            {expanded ? 'Read less' : 'Read more'}
-          </Text>
-        </BouncyButton>
+        <Text
+          style={{ color: '#8B5CF6', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' }}
+          onPress={() => setExpanded((prev) => !prev)}
+        >
+          {' '}{expanded ? 'Read less' : 'Read more'}
+        </Text>
       )}
-    </View>
+    </Text>
   );
 };
 
