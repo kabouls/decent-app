@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 496;
+const BUILD_NUMBER = 497;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15256,20 +15256,53 @@ function App() {
                       {type.desc}
                     </Text>
                   </View>
-                  <BouncyButton
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, alignSelf: 'flex-end',
-                      paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
-                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
-                    }}
-                    onPress={() => {
-                      setSelectedPortfolioType(type.key);
-                      proceedToPortfolioWizard();
-                    }}
-                  >
-                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
-                    <ChevronRightSVG color="#FFFFFF" size={15} />
-                  </BouncyButton>
+                  {type.key === 'illustration' ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <SoftwareIconSVG name="Procreate" size={18} />
+                        <SoftwareIconSVG name="Adobe Photoshop" size={18} />
+                        <SoftwareIconSVG name="Adobe Illustrator" size={18} />
+                        <SoftwareIconSVG name="Clip Studio Paint" size={18} />
+                        {/* Remaining preset count, computed rather than
+                            hardcoded so this stays correct if the list
+                            above ever grows/shrinks. */}
+                        <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '800' }}>
+                            +{Math.max(0, ILLUSTRATION_SOFTWARE_LIST.length - 4)}
+                          </Text>
+                        </View>
+                      </View>
+                      <BouncyButton
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+                          paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99,
+                          backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                        }}
+                        onPress={() => {
+                          setSelectedPortfolioType(type.key);
+                          proceedToPortfolioWizard();
+                        }}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
+                        <ChevronRightSVG color="#FFFFFF" size={15} />
+                      </BouncyButton>
+                    </View>
+                  ) : (
+                    <BouncyButton
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, alignSelf: 'flex-end',
+                        paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
+                        backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                      }}
+                      onPress={() => {
+                        setSelectedPortfolioType(type.key);
+                        proceedToPortfolioWizard();
+                      }}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
+                      <ChevronRightSVG color="#FFFFFF" size={15} />
+                    </BouncyButton>
+                  )}
                 </View>
               ) : (
               <View
