@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 483;
+const BUILD_NUMBER = 484;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15671,8 +15671,16 @@ function App() {
                         picked, since it's a policy notice rather than
                         something conditional on the choice itself. The
                         explanation field below is the mandatory part,
-                        conditional on actually picking "AI assisted". */}
-                    {selectedPortfolioType === 'illustration' && (
+                        conditional on actually picking "AI assisted".
+                        Both hidden while the dropdown is actually open -
+                        they sit in normal flow right after the dropdown's
+                        own wrapper, but that wrapper's absolutely
+                        positioned option panel extends past its own
+                        bounds when open and was painting directly over
+                        both, garbling the text. They reappear the instant
+                        an option is picked, since picking one already
+                        closes the dropdown too. */}
+                    {selectedPortfolioType === 'illustration' && !aiDisclosureDropdownOpen && (
                       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)' }}>
                         <WarningTriangleSVG />
                         <Text style={{ color: theme.text, fontSize: 11.5, lineHeight: 16, flex: 1 }}>
@@ -15681,7 +15689,7 @@ function App() {
                       </View>
                     )}
 
-                    {selectedPortfolioType === 'illustration' && fIsAiGenerated === true && (
+                    {selectedPortfolioType === 'illustration' && fIsAiGenerated === true && !aiDisclosureDropdownOpen && (
                       <View style={{ marginTop: 10 }}>
                         <Text style={styles.formGroupLabel}>How was AI used? *</Text>
                         <FocusableTextInput
