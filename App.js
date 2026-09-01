@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 502;
+const BUILD_NUMBER = 503;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15722,7 +15722,7 @@ function App() {
             </Text>
             <View style={{ gap: 10, width: '100%' }}>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { width: '100%' }]}
+                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%' }]}
                 onPress={handleConfirmFeatureInterest}
               >
                 <View style={styles.iconTextInlineRow}>
@@ -15731,7 +15731,7 @@ function App() {
                 </View>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmCancelBtn, { width: '100%' }]}
+                style={[styles.confirmCancelBtn, { flex: 0, width: '100%' }]}
                 onPress={() => setInterestConfirmTarget(null)}
               >
                 <Text style={styles.confirmCancelText}>Cancel</Text>
@@ -16571,7 +16571,14 @@ function App() {
                     <ScrollView
                       ref={hideScrollbarRefCallback(isWebWide)}
                       style={{ flex: 1 }}
-                      contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }}
+                      // 72 = the wizard's own sticky bottom bar height,
+                      // which visually sits on top of this overlay even
+                      // though it belongs to the screen underneath (the
+                      // "Done" button that closes this editor lives there,
+                      // not inside this overlay itself) - without clearing
+                      // it, the last block(s)/add-buttons could end up
+                      // sitting behind it, unreachable.
+                      contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 72 + 40 }}
                       keyboardShouldPersistTaps="handled"
                     >
                         {fContentBlocks.map((block, idx) => (
