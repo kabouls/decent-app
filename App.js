@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 506;
+const BUILD_NUMBER = 507;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -16716,10 +16716,15 @@ function App() {
                       // entirely while this editor is open (see
                       // stickyWizardBottomBar's own conditional further
                       // down) - Done lives in this editor's own header
-                      // instead, so there's nothing external left to clear
-                      // anymore, just normal breathing room at the end of
-                      // the scrollable content.
-                      contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }}
+                      // instead. That structural fix alone didn't fully
+                      // resolve the reported scroll limit though, so this
+                      // is back to a large, defensive paddingBottom on top
+                      // of it - erring toward too much scroll room rather
+                      // than too little, since insufficient padding here
+                      // actively blocks reaching later blocks/add-buttons,
+                      // while excess padding is harmless (just some empty
+                      // space to scroll past at the very end).
+                      contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 400 }}
                       keyboardShouldPersistTaps="handled"
                     >
                         {fContentBlocks.map((block, idx) => (
