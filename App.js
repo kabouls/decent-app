@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 495;
+const BUILD_NUMBER = 496;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -15916,7 +15916,7 @@ function App() {
                               }} />
                             )}
                             <View style={{ padding: 4, maxHeight: 260 }}>
-                              <ScrollView>
+                              <ScrollView style={{ maxHeight: 252 }} nestedScrollEnabled={true}>
                                 {ILLUSTRATION_SOFTWARE_LIST.map((sw) => {
                                   const selected = fSoftwareUsed.includes(sw.name);
                                   return (
