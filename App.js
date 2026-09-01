@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 507;
+const BUILD_NUMBER = 508;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -2055,30 +2055,62 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
 // real overflow to reveal, not on short bios that already fit.
 const ExpandableBioText = ({ text, style, isWebWide }) => {
   const [expanded, setExpanded] = useState(false);
-  const [isTruncated, setIsTruncated] = useState(false);
+  // Holds the exact text of the first 3 rendered lines (from onTextLayout,
+  // which reports each visible line's own text), once measured - null
+  // until then, and null again means "not truncated" if lines.length < 3.
+  const [truncatedLineText, setTruncatedLineText] = useState(null);
+  // Resets when the bio text itself changes - e.g. navigating from one
+  // designer's profile to another without this component fully
+  // unmounting in between, which otherwise carried over the previous
+  // bio's expanded/measured state onto the new one.
+  useEffect(() => {
+    setExpanded(false);
+    setTruncatedLineText(null);
+  }, [text]);
 
   if (!text) return null;
   if (isWebWide) return <Text style={style}>{text}</Text>;
 
+  // Two-pass: first pass renders the plain text at numberOfLines=3 (no
+  // nested "Read more" yet) purely to measure it - this exists because
+  // nesting a trailing "Read more" Text directly inside a numberOfLines-
+  // truncated Text doesn't reliably work: RN's native ellipsis truncation
+  // can cut the nested text off entirely rather than making room for it
+  // (confirmed - it disappeared entirely on some bios, not just showing
+  // without the visual polish). Once measured, the collapsed render below
+  // uses the actual measured line text (joined, no numberOfLines at all)
+  // with "Read more" appended directly onto that string - guaranteed to
+  // fit since it's built from exactly what already fit on those 3 lines.
+  if (truncatedLineText === null && !expanded) {
+    return (
+      <Text
+        style={style}
+        numberOfLines={3}
+        onTextLayout={(e) => {
+          const lines = e.nativeEvent.lines;
+          if (lines.length >= 3) {
+            setTruncatedLineText(lines.slice(0, 3).map((l) => l.text).join('').trimEnd());
+          } else {
+            setTruncatedLineText('');
+          }
+        }}
+      >
+        {text}
+      </Text>
+    );
+  }
+
+  const isTruncated = !!truncatedLineText;
+
   return (
-    <Text
-      style={style}
-      numberOfLines={expanded ? undefined : 3}
-      onTextLayout={(e) => {
-        if (!expanded && e.nativeEvent.lines.length >= 3) setIsTruncated(true);
-      }}
-    >
-      {text}
-      {/* Nested Text with its own onPress - inline at the end of the
-          truncated content (RN squeezes a short trailing nested Text onto
-          the same visible last line when it fits, the standard pattern
-          for this), rather than a separate block below on its own line. */}
+    <Text style={style}>
+      {expanded || !isTruncated ? text : `${truncatedLineText}\u2026 `}
       {isTruncated && (
         <Text
           style={{ color: '#8B5CF6', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' }}
           onPress={() => setExpanded((prev) => !prev)}
         >
-          {' '}{expanded ? 'Read less' : 'Read more'}
+          {expanded ? ' Read less' : 'Read more'}
         </Text>
       )}
     </Text>
