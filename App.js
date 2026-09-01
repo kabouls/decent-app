@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 508;
+const BUILD_NUMBER = 509;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -16744,18 +16744,20 @@ function App() {
                     <ScrollView
                       ref={hideScrollbarRefCallback(isWebWide)}
                       style={{ flex: 1 }}
-                      // The wizard's sticky bottom bar is now hidden
-                      // entirely while this editor is open (see
-                      // stickyWizardBottomBar's own conditional further
-                      // down) - Done lives in this editor's own header
-                      // instead. That structural fix alone didn't fully
-                      // resolve the reported scroll limit though, so this
-                      // is back to a large, defensive paddingBottom on top
-                      // of it - erring toward too much scroll room rather
-                      // than too little, since insufficient padding here
-                      // actively blocks reaching later blocks/add-buttons,
-                      // while excess padding is harmless (just some empty
-                      // space to scroll past at the very end).
+                      // removeClippedSubviews explicitly disabled - a
+                      // confirmed Android bug (multiple upstream RN
+                      // issues) where enabling it on a ScrollView/FlatList
+                      // makes only roughly the first half of the content
+                      // reachable via scroll, with everything past that
+                      // point permanently unreachable regardless of
+                      // padding - which matches this exact symptom
+                      // (paddingBottom:400 below had zero effect, meaning
+                      // the scrollable bounds themselves were wrong, not
+                      // just insufficiently padded). Whether or not this
+                      // was actually true here by default, explicit is
+                      // safer than relying on whatever the platform/RN-
+                      // version default happens to be.
+                      removeClippedSubviews={false}
                       contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 400 }}
                       keyboardShouldPersistTaps="handled"
                     >
