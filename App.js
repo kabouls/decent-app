@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 504;
+const BUILD_NUMBER = 505;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -16653,29 +16653,48 @@ function App() {
                     </BouncyButton>
                   </View>
 
-                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.bg, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
-                    <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.bg, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, gap: 8 }}>
+                    <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600', flex: 1 }}>
                       Build your case study from blocks
                     </Text>
 
+                    {/* Icon-only now (no "Preview" label) - Done needed the
+                        room next to it, and the eye icon alone is already
+                        a clear enough affordance here. */}
                     <BouncyButton
                       style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 5, marginLeft: 'auto',
-                        height: 32, paddingHorizontal: 12, borderRadius: 8,
+                        alignItems: 'center', justifyContent: 'center',
+                        width: 32, height: 32, borderRadius: 8,
                         borderWidth: 1, borderColor: '#8B5CF6',
                         backgroundColor: descEditorMode === 'preview' ? '#8B5CF6' : 'transparent'
                       }}
                       onPress={() => setDescEditorMode(descEditorMode === 'edit' ? 'preview' : 'edit')}
                     >
                       {descEditorMode === 'preview' ? <EyeOpenSVG color="#FFFFFF" /> : <EyeClosedSVG />}
-                      <Text style={{ color: descEditorMode === 'preview' ? '#FFFFFF' : theme.accent, fontSize: 12, fontWeight: '700' }}>
-                        Preview
-                      </Text>
                     </BouncyButton>
-                    {/* Checkmark close button removed - the main wizard's
-                        own sticky bottom button now reads "Done" and
-                        closes this editor while it's open (see its onPress
-                        further down), serving the same purpose. */}
+                    {/* Done, moved here from the main wizard's own sticky
+                        bottom bar - that bar visually sits underneath this
+                        fullscreen overlay but isn't actually covered by it
+                        (a separate, structural quirk - the overlay is a
+                        plain absolutely-positioned View here, not a real
+                        Modal, so it doesn't get its own guaranteed top
+                        stacking), so relying on it meant this editor's
+                        scrollable content had to leave a large padding gap
+                        to avoid the last block(s) sitting hidden behind
+                        that bar. Living directly in this editor's own
+                        header sidesteps the whole problem - nothing external
+                        to work around anymore, and the scroll padding
+                        below is back to a normal, small value. */}
+                    <BouncyButton
+                      style={{
+                        height: 32, paddingHorizontal: 14, borderRadius: 8,
+                        backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+                        alignItems: 'center', justifyContent: 'center'
+                      }}
+                      onPress={() => setFullscreenDescEditorVisible(false)}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Done</Text>
+                    </BouncyButton>
                   </View>
 
                   {descEditorMode === 'preview' ? (
@@ -16690,21 +16709,14 @@ function App() {
                     <ScrollView
                       ref={hideScrollbarRefCallback(isWebWide)}
                       style={{ flex: 1 }}
-                      // 72 = the wizard's own sticky bottom bar height,
-                      // which visually sits on top of this overlay even
-                      // though it belongs to the screen underneath (the
-                      // "Done" button that closes this editor lives there,
-                      // not inside this overlay itself) - without clearing
-                      // it, the last block(s)/add-buttons could end up
-                      // sitting behind it, unreachable. Generous extra
-                      // buffer on top of that (200 total) since some
-                      // safe-area/gesture-nav variance across Android
-                      // devices means the exact bar height on screen can
-                      // differ slightly from this fixed value - erring
-                      // toward too much scroll room rather than too
-                      // little, since insufficient padding here actively
-                      // blocks reaching the add-block buttons.
-                      contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 200 }}
+                      // The wizard's sticky bottom bar is now hidden
+                      // entirely while this editor is open (see
+                      // stickyWizardBottomBar's own conditional further
+                      // down) - Done lives in this editor's own header
+                      // instead, so there's nothing external left to clear
+                      // anymore, just normal breathing room at the end of
+                      // the scrollable content.
+                      contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }}
                       keyboardShouldPersistTaps="handled"
                     >
                         {fContentBlocks.map((block, idx) => (
@@ -17463,6 +17475,13 @@ function App() {
 
             </AppKeyboardAwareScrollView>
 
+            {/* Hidden entirely while the block editor overlay is open -
+                that overlay doesn't structurally cover this bar (it's a
+                plain absolutely-positioned View, not a real Modal, so
+                there's no guaranteed stacking win here), and Done now
+                lives directly in the editor's own header instead, so this
+                bar has nothing useful to show underneath it anyway. */}
+            {!fullscreenDescEditorVisible && (
             <View style={styles.stickyWizardBottomBar}>
               {formStep > 1 && (
                 <BouncyButton
@@ -17489,13 +17508,6 @@ function App() {
                 style={[styles.uniformWizardBtnPrimary, isSubmittingPortfolio && { opacity: 0.7 }]}
                 disabled={isSubmittingPortfolio}
                 onPress={() => {
-                  // While the fullscreen block editor overlay is open, this
-                  // button (visually underneath it, in the same sticky
-                  // position) closes that editor instead of advancing the
-                  // wizard - matches what used to be the checkmark button
-                  // in the editor's own header, which is removed now that
-                  // this serves the same purpose.
-                  if (fullscreenDescEditorVisible) { setFullscreenDescEditorVisible(false); return; }
                   if (formStep === 1) handleNextFromStep1();
                   else if (formStep === 2) handleNextFromStep2(false);
                   else if (formStep === 3) handleNextFromStep3();
@@ -17514,17 +17526,17 @@ function App() {
                 ) : (
                   <View style={styles.iconTextInlineRow}>
                     <Text style={styles.submitBtnText}>
-                      {fullscreenDescEditorVisible ? 'Done' :
-                       formStep === 1 ? (selectedPortfolioType === 'ui_ux' ? 'Next: Add Links' : 'Next: Media') :
+                      {formStep === 1 ? (selectedPortfolioType === 'ui_ux' ? 'Next: Add Links' : 'Next: Media') :
                        formStep === 2 ? 'Next: Media' :
                        formStep === 3 ? 'Review & Confirm' :
                        editingProjectId ? 'Update Portfolio Package' : 'Post Portfolio Package'}
                     </Text>
-                    {!fullscreenDescEditorVisible && <ChevronRightSVG color="#FFFFFF" size={18} />}
+                    <ChevronRightSVG color="#FFFFFF" size={18} />
                   </View>
                 )}
               </BouncyButton>
             </View>
+            )}
         </SafeAreaView>
 
         {/* DISCARD UPLOAD WIZARD CONFIRMATION - nested inside this same
