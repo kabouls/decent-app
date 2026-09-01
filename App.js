@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 497;
+const BUILD_NUMBER = 498;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -2482,6 +2482,97 @@ const WebImageCropModal = ({ visible, imageUri, aspect, onConfirm, onCancel, the
         </View>
       </View>
     </Modal>
+  );
+};
+
+// Wide-web-only zoom/pan for the fullscreen image viewers below (lightbox
+// + swipeable multi-image viewer) - scroll-wheel to zoom, click-and-drag
+// to pan once zoomed in, same underlying pattern as WebImageCropModal's
+// crop tool above (PanResponder for drag, onWheel for zoom, offset
+// clamped to keep the image from panning past its own edges). Native app
+// and mobile web keep the separate ScrollView-based pinch-zoom already in
+// place at each call site instead - touch pinch is the native, expected
+// gesture there, not a mouse-driven one like this.
+const ZoomPanImage = ({ uri, containerWidth, containerHeight }) => {
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [naturalSize, setNaturalSize] = useState(null);
+  const offsetRef = useRef({ x: 0, y: 0 });
+  const dragStartRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+    offsetRef.current = { x: 0, y: 0 };
+    setNaturalSize(null);
+    if (!uri) return;
+    Image.getSize(uri, (w, h) => setNaturalSize({ width: w, height: h }), () => setNaturalSize(null));
+  }, [uri]);
+
+  // "contain" placement at zoom 1 - the image's own aspect ratio fitted
+  // inside the container, same idea as resizeMode="contain" but computed
+  // manually since panning needs to know the actual displayed size.
+  const baseScale = naturalSize
+    ? Math.min(containerWidth / naturalSize.width, containerHeight / naturalSize.height)
+    : 1;
+  const displayScale = baseScale * zoom;
+  const dispW = naturalSize ? naturalSize.width * displayScale : containerWidth;
+  const dispH = naturalSize ? naturalSize.height * displayScale : containerHeight;
+
+  const clampOffset = (o, w, h) => {
+    // Only allows panning while the image is actually larger than the
+    // container in that dimension - at zoom 1 (or a narrow dimension even
+    // when zoomed) it just stays centered, nothing to pan into.
+    const maxX = Math.max(0, (w - containerWidth) / 2);
+    const maxY = Math.max(0, (h - containerHeight) / 2);
+    return { x: Math.min(maxX, Math.max(-maxX, o.x)), y: Math.min(maxY, Math.max(-maxY, o.y)) };
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => zoom > 1,
+      onMoveShouldSetPanResponder: () => zoom > 1,
+      onPanResponderGrant: () => {
+        dragStartRef.current = { ...offsetRef.current };
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const next = clampOffset(
+          { x: dragStartRef.current.x + gestureState.dx, y: dragStartRef.current.y + gestureState.dy },
+          dispW, dispH
+        );
+        offsetRef.current = next;
+        setOffset(next);
+      }
+    })
+  ).current;
+
+  const handleWheel = (e) => {
+    e.preventDefault();
+    const newZoom = Math.min(4, Math.max(1, zoom + (e.deltaY < 0 ? 0.15 : -0.15)));
+    const newScale = baseScale * newZoom;
+    const newDispW = naturalSize ? naturalSize.width * newScale : containerWidth;
+    const newDispH = naturalSize ? naturalSize.height * newScale : containerHeight;
+    const next = newZoom === 1 ? { x: 0, y: 0 } : clampOffset(offsetRef.current, newDispW, newDispH);
+    offsetRef.current = next;
+    setOffset(next);
+    setZoom(newZoom);
+  };
+
+  return (
+    <View
+      style={{ width: containerWidth, height: containerHeight, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+      onWheel={handleWheel}
+      {...panResponder.panHandlers}
+    >
+      <Image
+        source={{ uri }}
+        style={{
+          width: dispW, height: dispH,
+          transform: [{ translateX: offset.x }, { translateY: offset.y }]
+        }}
+        resizeMode="contain"
+      />
+    </View>
   );
 };
 
@@ -11887,16 +11978,18 @@ function App() {
         </View>
       )}
 
-      {/* IMAGE LIGHTBOX - tap-to-enlarge for portfolio images. Now
-          pinch-zoomable via ScrollView's built-in minimumZoomScale/
-          maximumZoomScale (native RN feature, no new package needed -
-          works on iOS/Android out of the box; react-native-web supports
-          trackpad pinch and ctrl+scroll on browsers that allow it too).
-          Tap-to-close is now only on the backdrop area outside the image
-          itself, not layered under the zoomable ScrollView - the two
-          don't mix well (a tap while zoomed/panning shouldn't dismiss
-          the viewer), so the X button is the reliable way to close once
-          zoomed in. */}
+      {/* IMAGE LIGHTBOX - tap-to-enlarge for portfolio images.
+          Wide web: scroll-wheel to zoom, click-and-drag to pan (ZoomPanImage,
+          same PanResponder + onWheel pattern as the crop tool above) - a
+          mouse-driven interaction, not a touch one.
+          Native app + mobile web: ScrollView's built-in minimumZoomScale/
+          maximumZoomScale (native RN feature, no new package needed) for
+          real pinch-to-zoom and touch-drag-to-pan, the expected gesture
+          there instead.
+          Tap-to-close is only on the backdrop area outside the image
+          itself either way - it doesn't mix well with pan/zoom (a tap
+          while zoomed/panning shouldn't dismiss the viewer), so the X
+          button is the reliable way to close once zoomed in. */}
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'fade'}
         transparent={true}
@@ -11905,21 +11998,31 @@ function App() {
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
           {lightboxImageUri && (
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-              minimumZoomScale={1}
-              maximumZoomScale={4}
-              showsHorizontalScrollIndicator={false}
-              showsVerticalScrollIndicator={false}
-              centerContent
-            >
-              <Image
-                source={{ uri: lightboxImageUri }}
-                style={{ width: '100%', height: '80%' }}
-                resizeMode="contain"
-              />
-            </ScrollView>
+            Platform.OS === 'web' && isWebWide ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <ZoomPanImage
+                  uri={lightboxImageUri}
+                  containerWidth={Dimensions.get('window').width}
+                  containerHeight={Dimensions.get('window').height * 0.8}
+                />
+              </View>
+            ) : (
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+                minimumZoomScale={1}
+                maximumZoomScale={4}
+                showsHorizontalScrollIndicator={false}
+                showsVerticalScrollIndicator={false}
+                centerContent
+              >
+                <Image
+                  source={{ uri: lightboxImageUri }}
+                  style={{ width: '100%', height: '80%' }}
+                  resizeMode="contain"
+                />
+              </ScrollView>
+            )
           )}
           <BouncyButton
             style={{ position: 'absolute', top: 50, right: 20, width: 40, height: 40, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
@@ -11974,24 +12077,36 @@ function App() {
               }}
             >
               {imageViewerState.images.map((uri, i) => (
-                // Each page gets its own nested zoomable ScrollView -
-                // zoom and the outer horizontal paging ScrollView can't
-                // share one, they'd fight over the same gesture. Tap-to-
-                // close removed here for the same reason as the single-
-                // image lightbox above (conflicts with pan/zoom); the X
-                // button is the reliable close action once zoomed.
+                // Each page gets its own independent zoom/pan area - can't
+                // share the outer horizontal paging ScrollView's own
+                // gesture, they'd fight over it. Tap-to-close removed here
+                // for the same reason as the single-image lightbox above
+                // (conflicts with pan/zoom); the X button is the reliable
+                // close action once zoomed. Wide web uses ZoomPanImage
+                // (scroll-wheel zoom, click-drag pan); native/mobile web
+                // keep the nested zoomable ScrollView (pinch/touch-drag).
                 <View key={i} style={{ width: Dimensions.get('window').width, height: '100%' }}>
-                  <ScrollView
-                    style={{ flex: 1 }}
-                    contentContainerStyle={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                    minimumZoomScale={1}
-                    maximumZoomScale={4}
-                    showsHorizontalScrollIndicator={false}
-                    showsVerticalScrollIndicator={false}
-                    centerContent
-                  >
-                    <Image source={{ uri }} style={{ width: '100%', height: '80%' }} resizeMode="contain" />
-                  </ScrollView>
+                  {Platform.OS === 'web' && isWebWide ? (
+                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                      <ZoomPanImage
+                        uri={uri}
+                        containerWidth={Dimensions.get('window').width}
+                        containerHeight={Dimensions.get('window').height * 0.8}
+                      />
+                    </View>
+                  ) : (
+                    <ScrollView
+                      style={{ flex: 1 }}
+                      contentContainerStyle={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+                      minimumZoomScale={1}
+                      maximumZoomScale={4}
+                      showsHorizontalScrollIndicator={false}
+                      showsVerticalScrollIndicator={false}
+                      centerContent
+                    >
+                      <Image source={{ uri }} style={{ width: '100%', height: '80%' }} resizeMode="contain" />
+                    </ScrollView>
+                  )}
                 </View>
               ))}
             </ScrollView>
