@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 493;
+const BUILD_NUMBER = 494;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -17826,6 +17826,73 @@ function App() {
                               <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 20 }}>{activeProject.aiDisclosureNote}</Text>
                             </View>
                           ) : null}
+
+                          {/* MEDIA GALLERY accordion - this branch (narrow/
+                              native GD/Illustration) never had this at all;
+                              it only had the Case Study/Image/Video
+                              switcher above, which already has a dedicated
+                              Image tab, but the accordion was still
+                              explicitly requested here too so people don't
+                              have to leave Case Study to see the media.
+                              Reuses the exact same galleryExpanded state
+                              and default-open logic as the shared UI/UX +
+                              wide-web path (see openProjectModal for where
+                              the default is computed), and the same
+                              scroll-arrow refs, since only one branch ever
+                              renders at a time for a given portfolio. */}
+                          <BouncyButton
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}
+                            onPress={() => setGalleryExpanded((prev) => !prev)}
+                          >
+                            <Text style={styles.sectionHeader}>MEDIA GALLERY</Text>
+                            {galleryExpanded ? (
+                              <ChevronUpSVG color={theme.textSecondary} size={16} />
+                            ) : (
+                              <ChevronDownSVG color={theme.textSecondary} size={16} />
+                            )}
+                          </BouncyButton>
+                          {galleryExpanded && (
+                            <View style={{ position: 'relative', marginBottom: 16 }}>
+                              <ScrollView
+                                ref={galleryScrollRef}
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                style={styles.galleryScroll}
+                                onScroll={Platform.OS === 'web' ? (e) => updateGalleryScrollArrows(e.nativeEvent.contentOffset.x) : undefined}
+                                scrollEventThrottle={16}
+                                onContentSizeChange={Platform.OS === 'web' ? (w) => {
+                                  galleryScrollContentWidthRef.current = w;
+                                  updateGalleryScrollArrows(galleryScrollXRef.current);
+                                } : undefined}
+                                onLayout={Platform.OS === 'web' ? (e) => {
+                                  galleryScrollContainerWidthRef.current = e.nativeEvent.layout.width;
+                                  updateGalleryScrollArrows(galleryScrollXRef.current);
+                                } : undefined}
+                              >
+                                {allImages.map((imgUrl, index) => {
+                                  const galleryHeight = 220;
+                                  const galleryWidth = activeProject.showcaseAspectRatio === '9:16'
+                                    ? galleryHeight * (9 / 16)
+                                    : galleryHeight * (16 / 9);
+                                  return (
+                                    <BouncyButton key={index} activeOpacity={0.9} onPress={() => setLightboxImageUri(imgUrl)}>
+                                      <Image source={{ uri: imgUrl }} style={[styles.galleryImage, { width: galleryWidth, height: galleryHeight }]} resizeMode="cover" />
+                                    </BouncyButton>
+                                  );
+                                })}
+                                {allVideos.map((vid, index) => {
+                                  if (vid.kind !== 'uploaded') return null;
+                                  const galleryHeight = 220;
+                                  const vidAspect = vid.width && vid.height ? vid.width / vid.height : 16 / 9;
+                                  return (
+                                    <View key={`vid-${index}`} style={{ height: galleryHeight, width: galleryHeight * vidAspect, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' }}>
+                                      <PortfolioVideoPlayer uri={vid.url} width={vid.width} height={vid.height} />
+                                    </View>
+                                  );
+                                })}
+                              </ScrollView>
+                            </View>
+                          )}
 
                           <Text style={styles.sectionHeader}>CASE STUDY OVERVIEW</Text>
                           {activeProject.contentBlocks && activeProject.contentBlocks.length > 0 ? (
