@@ -335,41 +335,54 @@ const ALL_ILLUSTRATION_CATEGORIES_MASTER = [
 // Illustration-only "software used" field - deliberately separate from the
 // category/tag system above (a few of the same names, like "Procreate",
 // happen to exist as tags too - that's fine, they're independent; someone
-// could pick the "Procreate" tag AND select Procreate here, since one is a
-// searchable category and this is just supplementary info about the
-// creative process). Each entry pairs a display name with a color used for
-// its icon below - not real software logos (avoiding any trademark
-// reproduction), just a simple colored-initial marker for quick visual
-// differentiation, the same safe pattern used for the icons throughout
-// this file already (plain geometric SVGs, not brand assets).
+// User-provided actual software logos (see README note on where these
+// came from - the user supplied their own logo files, sourcing/usage
+// rights are their call). Falls back to the colored-initial circle below
+// for anything not in this list, since custom user-typed software names
+// obviously have no matching logo asset.
 const ILLUSTRATION_SOFTWARE_LIST = [
-  { name: 'Procreate', color: '#0A84FF' },
-  { name: 'Adobe Photoshop', color: '#31A8FF' },
-  { name: 'Adobe Illustrator', color: '#FF9A00' },
-  { name: 'Adobe Fresco', color: '#FF4B77' },
-  { name: 'Clip Studio Paint', color: '#F5762E' },
-  { name: 'Krita', color: '#3BABFF' },
-  { name: 'Corel Painter', color: '#7A1FA2' },
-  { name: 'Affinity Designer', color: '#2C82E0' },
-  { name: 'Autodesk SketchBook', color: '#2AB673' },
-  { name: 'Paint Tool SAI', color: '#E85D75' },
-  { name: 'MediBang Paint', color: '#4CAF50' },
-  { name: 'ibisPaint', color: '#F06292' }
+  { name: 'Procreate', color: '#0A84FF', icon: require('./assets/software-icons/procreate.png') },
+  { name: 'Adobe Photoshop', color: '#31A8FF', icon: require('./assets/software-icons/adobe-photoshop.png') },
+  { name: 'Adobe Illustrator', color: '#FF9A00', icon: require('./assets/software-icons/adobe-illustrator.png') },
+  { name: 'Adobe Fresco', color: '#FF4B77', icon: require('./assets/software-icons/adobe-fresco.png') },
+  { name: 'Clip Studio Paint', color: '#F5762E', icon: require('./assets/software-icons/clip-studio-paint.png') },
+  { name: 'Krita', color: '#3BABFF', icon: require('./assets/software-icons/krita.png') },
+  { name: 'Corel Painter', color: '#7A1FA2', icon: require('./assets/software-icons/corel-painter.png') },
+  { name: 'Affinity Designer', color: '#2C82E0', icon: require('./assets/software-icons/affinity-designer.png') },
+  { name: 'Autodesk SketchBook', color: '#2AB673', icon: require('./assets/software-icons/autodesk-sketchbook.png') },
+  { name: 'Paint Tool SAI', color: '#E85D75', icon: require('./assets/software-icons/paint-tool-sai.png') },
+  { name: 'MediBang Paint', color: '#4CAF50', icon: require('./assets/software-icons/medibang-paint.png') },
+  { name: 'ibisPaint', color: '#F06292', icon: require('./assets/software-icons/ibispaint.png') }
 ];
 
-// Plain colored circle with the software's first letter - see the comment
-// on ILLUSTRATION_SOFTWARE_LIST above for why this isn't an attempt at the
-// real logo.
-const SoftwareIconSVG = React.memo(({ name, color, size = 18 }) => (
-  <View style={{
-    width: size, height: size, borderRadius: size / 2, backgroundColor: color,
-    alignItems: 'center', justifyContent: 'center'
-  }}>
-    <Text style={{ color: '#FFFFFF', fontSize: size * 0.55, fontWeight: '800' }}>
-      {(name || '?').trim().charAt(0).toUpperCase()}
-    </Text>
-  </View>
-));
+// Renders the real logo (rounded square) for any name found in
+// ILLUSTRATION_SOFTWARE_LIST above; falls back to a plain colored circle
+// with the first letter for anything not found there (custom, user-typed
+// software names have no matching logo asset to show). Looks up its own
+// color/icon from the list given just a name, so call sites don't each
+// need to repeat that lookup.
+const SoftwareIconSVG = React.memo(({ name, size = 18 }) => {
+  const preset = ILLUSTRATION_SOFTWARE_LIST.find((s) => s.name === name);
+  if (preset) {
+    return (
+      <Image
+        source={preset.icon}
+        style={{ width: size, height: size, borderRadius: size * 0.22 }}
+        resizeMode="contain"
+      />
+    );
+  }
+  return (
+    <View style={{
+      width: size, height: size, borderRadius: size / 2, backgroundColor: '#8B5CF6',
+      alignItems: 'center', justifyContent: 'center'
+    }}>
+      <Text style={{ color: '#FFFFFF', fontSize: size * 0.55, fontWeight: '800' }}>
+        {(name || '?').trim().charAt(0).toUpperCase()}
+      </Text>
+    </View>
+  );
+});
 
 // SVG Icons
 const MobileFilledIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
@@ -15862,11 +15875,9 @@ function App() {
 
                       {fSoftwareUsed.length > 0 && (
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                          {fSoftwareUsed.map((sw) => {
-                            const preset = ILLUSTRATION_SOFTWARE_LIST.find((s) => s.name === sw);
-                            return (
+                          {fSoftwareUsed.map((sw) => (
                               <View key={sw} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingVertical: 5, paddingHorizontal: 8 }}>
-                                <SoftwareIconSVG name={sw} color={preset ? preset.color : '#8B5CF6'} size={14} />
+                                <SoftwareIconSVG name={sw} size={14} />
                                 <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600' }}>{sw}</Text>
                                 <BouncyButton
                                   style={{ padding: 2 }}
@@ -15875,8 +15886,7 @@ function App() {
                                   <CrossIconSVG color={theme.textSecondary} size={11} />
                                 </BouncyButton>
                               </View>
-                            );
-                          })}
+                          ))}
                         </View>
                       )}
 
@@ -15915,7 +15925,7 @@ function App() {
                                         setFSoftwareUsed(selected ? fSoftwareUsed.filter((s) => s !== sw.name) : [...fSoftwareUsed, sw.name]);
                                       }}
                                     >
-                                      <SoftwareIconSVG name={sw.name} color={sw.color} size={18} />
+                                      <SoftwareIconSVG name={sw.name} size={18} />
                                       <Text style={{ color: theme.text, fontSize: 13, fontWeight: selected ? '700' : '500', flex: 1 }}>{sw.name}</Text>
                                       {selected && <CheckIconSVG color={theme.accent} />}
                                     </BouncyButton>
@@ -17683,15 +17693,12 @@ function App() {
                           look like). */}
                       {activeProject.portfolioType === 'illustration' && activeProject.softwareUsed && activeProject.softwareUsed.length > 0 && (
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 16 }}>
-                          {activeProject.softwareUsed.map((sw) => {
-                            const preset = ILLUSTRATION_SOFTWARE_LIST.find((s) => s.name === sw);
-                            return (
+                          {activeProject.softwareUsed.map((sw) => (
                               <View key={sw} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                <SoftwareIconSVG name={sw} color={preset ? preset.color : '#8B5CF6'} size={20} />
+                                <SoftwareIconSVG name={sw} size={20} />
                                 <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{sw}</Text>
                               </View>
-                            );
-                          })}
+                          ))}
                         </View>
                       )}
 
@@ -18224,15 +18231,12 @@ function App() {
                       background, distinct from the tag chips elsewhere). */}
                   {activeProject.portfolioType === 'illustration' && activeProject.softwareUsed && activeProject.softwareUsed.length > 0 && (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 16 }}>
-                      {activeProject.softwareUsed.map((sw) => {
-                        const preset = ILLUSTRATION_SOFTWARE_LIST.find((s) => s.name === sw);
-                        return (
+                      {activeProject.softwareUsed.map((sw) => (
                           <View key={sw} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <SoftwareIconSVG name={sw} color={preset ? preset.color : '#8B5CF6'} size={20} />
+                            <SoftwareIconSVG name={sw} size={20} />
                             <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{sw}</Text>
                           </View>
-                        );
-                      })}
+                      ))}
                     </View>
                   )}
 
