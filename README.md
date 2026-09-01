@@ -17,7 +17,7 @@ It's a personal passion project. Expect rough edges, and feel free to poke aroun
 
 ## Download
 
-📱 **[Download the latest APK](https://expo.dev/artifacts/eas/X-wQn-6u4iBp6Ix_6xHqOOW5XtK7peKZaJUs9tbFIcE.apk)**
+📱 **[Download the latest APK](https://expo.dev/artifacts/eas/pm0RvyhbwVp2MOVj3NWYTLg28HSpa1XCs-Licpo5KuY.apk)**
 
 This is a direct install (not on the Play Store yet), so Android will show an "unknown sources" prompt on first install — that's expected for any app installed outside the Play Store, not a warning specific to this app.
 
