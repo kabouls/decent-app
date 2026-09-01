@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 489;
+const BUILD_NUMBER = 490;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -331,6 +331,45 @@ const ALL_ILLUSTRATION_CATEGORIES_MASTER = [
   'Book Illustration',
   'Watercolor Style'
 ].sort();
+
+// Illustration-only "software used" field - deliberately separate from the
+// category/tag system above (a few of the same names, like "Procreate",
+// happen to exist as tags too - that's fine, they're independent; someone
+// could pick the "Procreate" tag AND select Procreate here, since one is a
+// searchable category and this is just supplementary info about the
+// creative process). Each entry pairs a display name with a color used for
+// its icon below - not real software logos (avoiding any trademark
+// reproduction), just a simple colored-initial marker for quick visual
+// differentiation, the same safe pattern used for the icons throughout
+// this file already (plain geometric SVGs, not brand assets).
+const ILLUSTRATION_SOFTWARE_LIST = [
+  { name: 'Procreate', color: '#0A84FF' },
+  { name: 'Adobe Photoshop', color: '#31A8FF' },
+  { name: 'Adobe Illustrator', color: '#FF9A00' },
+  { name: 'Adobe Fresco', color: '#FF4B77' },
+  { name: 'Clip Studio Paint', color: '#F5762E' },
+  { name: 'Krita', color: '#3BABFF' },
+  { name: 'Corel Painter', color: '#7A1FA2' },
+  { name: 'Affinity Designer', color: '#2C82E0' },
+  { name: 'Autodesk SketchBook', color: '#2AB673' },
+  { name: 'Paint Tool SAI', color: '#E85D75' },
+  { name: 'MediBang Paint', color: '#4CAF50' },
+  { name: 'ibisPaint', color: '#F06292' }
+];
+
+// Plain colored circle with the software's first letter - see the comment
+// on ILLUSTRATION_SOFTWARE_LIST above for why this isn't an attempt at the
+// real logo.
+const SoftwareIconSVG = React.memo(({ name, color, size = 18 }) => (
+  <View style={{
+    width: size, height: size, borderRadius: size / 2, backgroundColor: color,
+    alignItems: 'center', justifyContent: 'center'
+  }}>
+    <Text style={{ color: '#FFFFFF', fontSize: size * 0.55, fontWeight: '800' }}>
+      {(name || '?').trim().charAt(0).toUpperCase()}
+    </Text>
+  </View>
+));
 
 // SVG Icons
 const MobileFilledIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
@@ -1579,6 +1618,7 @@ const mapPortfolioRow = (p, { liked = false, visitsFallback = 120 } = {}) => ({
   portfolioType: p.portfolio_type || 'ui_ux',
   isAiGenerated: p.is_ai_generated,
   aiDisclosureNote: p.ai_disclosure_note || '',
+  softwareUsed: Array.isArray(p.software_used) ? p.software_used : [],
   title: p.title,
   designer: p.user_name || 'Unknown Designer',
   designerHandle: p.user_handle || '',
@@ -4594,6 +4634,14 @@ function App() {
   const [fAiDisclosureNote, setFAiDisclosureNote] = useState('');
   const [aiDisclosureDropdownOpen, setAiDisclosureDropdownOpen] = useState(false);
   const [aiDisclosureTooltipVisible, setAiDisclosureTooltipVisible] = useState(false);
+  // Illustration-only, optional, multi-select "software used" field - see
+  // ILLUSTRATION_SOFTWARE_LIST for the full comment on why this is
+  // deliberately separate from the category/tag system. fSoftwareUsed
+  // holds plain strings, mixing preset names and any custom ones typed in
+  // via softwareCustomInput.
+  const [fSoftwareUsed, setFSoftwareUsed] = useState([]);
+  const [softwareDropdownOpen, setSoftwareDropdownOpen] = useState(false);
+  const [softwareCustomInput, setSoftwareCustomInput] = useState('');
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [categoryPickerModalVisible, setCategoryPickerModalVisible] = useState(false);
   // Custom tags (user-typed, not in any base list) are global across every
@@ -7789,6 +7837,7 @@ function App() {
     setFIsNsfw(!!proj.isNsfw);
     setFIsAiGenerated(proj.isAiGenerated === undefined ? null : proj.isAiGenerated);
     setFAiDisclosureNote(proj.aiDisclosureNote || '');
+    setFSoftwareUsed(Array.isArray(proj.softwareUsed) ? proj.softwareUsed : []);
     setFBrief(proj.brief || '');
     setFLongDescription(proj.longDescription || '');
     setFContentBlocks(
@@ -8362,6 +8411,7 @@ function App() {
           cover_url: finalCoverUrl,
           is_ai_generated: fIsAiGenerated,
           ai_disclosure_note: fAiDisclosureNote.trim() || null,
+          software_used: fSoftwareUsed.length > 0 ? fSoftwareUsed : null,
           figma_proto: fFigmaProto,
           component_proto: fComponentProto,
           desktop_proto: fDesktopProto,
@@ -8489,6 +8539,7 @@ function App() {
             portfolio_type: selectedPortfolioType,
             is_ai_generated: fIsAiGenerated,
             ai_disclosure_note: fAiDisclosureNote.trim() || null,
+            software_used: fSoftwareUsed.length > 0 ? fSoftwareUsed : null,
             figma_proto: fFigmaProto,
             component_proto: fComponentProto,
             desktop_proto: fDesktopProto,
@@ -8731,6 +8782,8 @@ function App() {
     setFIsNsfw(false);
     setFIsAiGenerated(null);
     setFAiDisclosureNote('');
+    setFSoftwareUsed([]);
+    setSoftwareCustomInput('');
     setCategorySearchQuery('');
     setFFigmaProto('');
     setFDesktopProto('');
@@ -15710,6 +15763,131 @@ function App() {
                     )}
                   </View>
 
+                  {/* Illustration-only, optional, multi-select - separate
+                      section from AI Disclosure above (different purpose:
+                      this is just supplementary info about tools used, not
+                      a policy disclosure), but grouped together in the
+                      same Details step since both are "about this work"
+                      metadata rather than file uploads. */}
+                  {selectedPortfolioType === 'illustration' && (
+                    <View style={{ marginTop: 16 }}>
+                      <Text style={styles.formGroupLabel}>Software Used (Optional)</Text>
+                      <BouncyButton
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                          borderWidth: 1, borderColor: theme.border,
+                          borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12,
+                          backgroundColor: theme.surface, marginTop: 6
+                        }}
+                        onPress={() => setSoftwareDropdownOpen((v) => !v)}
+                      >
+                        <Text style={{ color: theme.text, fontSize: 13, fontWeight: fSoftwareUsed.length > 0 ? '700' : '500', flex: 1, marginRight: 8 }} numberOfLines={1}>
+                          {fSoftwareUsed.length === 0 ? 'No selection' : fSoftwareUsed.join(', ')}
+                        </Text>
+                        <ChevronDownSVG color={theme.textSecondary} size={14} />
+                      </BouncyButton>
+
+                      {fSoftwareUsed.length > 0 && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                          {fSoftwareUsed.map((sw) => {
+                            const preset = ILLUSTRATION_SOFTWARE_LIST.find((s) => s.name === sw);
+                            return (
+                              <View key={sw} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingVertical: 5, paddingHorizontal: 8 }}>
+                                <SoftwareIconSVG name={sw} color={preset ? preset.color : '#8B5CF6'} size={14} />
+                                <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600' }}>{sw}</Text>
+                                <BouncyButton
+                                  style={{ padding: 2 }}
+                                  onPress={() => setFSoftwareUsed(fSoftwareUsed.filter((s) => s !== sw))}
+                                >
+                                  <CrossIconSVG color={theme.textSecondary} size={11} />
+                                </BouncyButton>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+
+                      {softwareDropdownOpen && (
+                        <>
+                          <TouchableOpacity
+                            style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
+                            activeOpacity={1}
+                            onPress={() => setSoftwareDropdownOpen(false)}
+                          />
+                          <View style={{
+                            position: 'relative', marginTop: 4, zIndex: 100,
+                            borderRadius: 10, borderWidth: 1, borderColor: theme.border, overflow: 'hidden'
+                          }}>
+                            {!lightweightMode && Platform.OS !== 'web' ? (
+                              <BlurView
+                                intensity={40}
+                                tint={themeMode === 'light' ? 'light' : 'dark'}
+                                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                              />
+                            ) : (
+                              <View style={{
+                                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                                backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface
+                              }} />
+                            )}
+                            <View style={{ padding: 4, maxHeight: 260 }}>
+                              <ScrollView>
+                                {ILLUSTRATION_SOFTWARE_LIST.map((sw) => {
+                                  const selected = fSoftwareUsed.includes(sw.name);
+                                  return (
+                                    <BouncyButton
+                                      key={sw.name}
+                                      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
+                                      onPress={() => {
+                                        setFSoftwareUsed(selected ? fSoftwareUsed.filter((s) => s !== sw.name) : [...fSoftwareUsed, sw.name]);
+                                      }}
+                                    >
+                                      <SoftwareIconSVG name={sw.name} color={sw.color} size={18} />
+                                      <Text style={{ color: theme.text, fontSize: 13, fontWeight: selected ? '700' : '500', flex: 1 }}>{sw.name}</Text>
+                                      {selected && <CheckIconSVG color={theme.accent} />}
+                                    </BouncyButton>
+                                  );
+                                })}
+                              </ScrollView>
+                              {/* Custom entry - not a preset, so no icon
+                                  color to assign; SoftwareIconSVG falls back
+                                  to purple for anything not found in the
+                                  preset list, including these. */}
+                              <View style={{ flexDirection: 'row', gap: 6, padding: 6, borderTopWidth: 1, borderTopColor: theme.border, marginTop: 4 }}>
+                                <FocusableTextInput
+                                  style={[styles.formInput, { flex: 1 }]}
+                                  placeholder="Add custom software..."
+                                  placeholderTextColor={theme.textSecondary}
+                                  value={softwareCustomInput}
+                                  onChangeText={setSoftwareCustomInput}
+                                  onSubmitEditing={() => {
+                                    const trimmed = softwareCustomInput.trim();
+                                    if (trimmed && !fSoftwareUsed.includes(trimmed)) {
+                                      setFSoftwareUsed([...fSoftwareUsed, trimmed]);
+                                    }
+                                    setSoftwareCustomInput('');
+                                  }}
+                                />
+                                <BouncyButton
+                                  style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
+                                  onPress={() => {
+                                    const trimmed = softwareCustomInput.trim();
+                                    if (trimmed && !fSoftwareUsed.includes(trimmed)) {
+                                      setFSoftwareUsed([...fSoftwareUsed, trimmed]);
+                                    }
+                                    setSoftwareCustomInput('');
+                                  }}
+                                >
+                                  <Text style={{ color: '#FFFFFF', fontSize: 20, fontWeight: '700', lineHeight: 22 }}>+</Text>
+                                </BouncyButton>
+                              </View>
+                            </View>
+                          </View>
+                        </>
+                      )}
+                    </View>
+                  )}
+
                   <Modal
                     transparent
                     visible={aiDisclosureTooltipVisible}
@@ -17410,6 +17588,26 @@ function App() {
                         )}
                       </View>
 
+                      {/* Illustration-only, only when software was actually
+                          selected - a plain row of icon+name pairs, no pill/
+                          border background, so it reads as supplementary
+                          info about the work rather than another row of
+                          tags (which the category chips elsewhere already
+                          look like). */}
+                      {activeProject.portfolioType === 'illustration' && activeProject.softwareUsed && activeProject.softwareUsed.length > 0 && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 16 }}>
+                          {activeProject.softwareUsed.map((sw) => {
+                            const preset = ILLUSTRATION_SOFTWARE_LIST.find((s) => s.name === sw);
+                            return (
+                              <View key={sw} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <SoftwareIconSVG name={sw} color={preset ? preset.color : '#8B5CF6'} size={20} />
+                                <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{sw}</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+
                       {activeProject.liveLinks && activeProject.liveLinks.length > 0 && (
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
                           {activeProject.liveLinks.map((link, idx) => (
@@ -17863,6 +18061,24 @@ function App() {
                       </BouncyButton>
                     )}
                   </View>
+
+                  {/* Illustration-only, only when software was actually
+                      selected - same treatment as the narrow-web version
+                      above (plain icon+name pairs, no pill/border
+                      background, distinct from the tag chips elsewhere). */}
+                  {activeProject.portfolioType === 'illustration' && activeProject.softwareUsed && activeProject.softwareUsed.length > 0 && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 16 }}>
+                      {activeProject.softwareUsed.map((sw) => {
+                        const preset = ILLUSTRATION_SOFTWARE_LIST.find((s) => s.name === sw);
+                        return (
+                          <View key={sw} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <SoftwareIconSVG name={sw} color={preset ? preset.color : '#8B5CF6'} size={20} />
+                            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{sw}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
 
                   {/* ONLY Show Figma Design Canvas Link If Included by User */}
                   {activeProject.figmaFile && activeProject.figmaFile.trim() !== '' ? (
