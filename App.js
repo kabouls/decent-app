@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 498;
+const BUILD_NUMBER = 500;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -656,6 +656,17 @@ const CogWheelSVG = React.memo(({ active = false, inactiveColor = '#D8B4FE' }) =
 const ChevronRightSVG = React.memo(({ color = "#8B5CF6", size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M9 18l6-6-6-6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
+// Standard "expand to fullscreen" corner-arrows glyph - used as a small
+// overlay button on inline videos specifically, since wrapping a whole
+// video in a tappable area would swallow clicks meant for its own native
+// play/pause/scrub controls. A dedicated small button in the corner opens
+// the fullscreen swipeable viewer without touching inline playback at all.
+const ExpandIconSVG = React.memo(({ color = "#FFFFFF", size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
@@ -2050,6 +2061,7 @@ const ProjectCard = React.memo(({
   isTwoRowCard = false,
   showPinControl = false,
   onTogglePin,
+  hideFollowButton = false,
   styles
 }) => {
   const { lightweightMode } = useLightweightMode();
@@ -2129,7 +2141,7 @@ const ProjectCard = React.memo(({
       {showPinControl ? (
         <BouncyButton
           style={{
-            position: 'absolute', bottom: 8, right: 8, width: 28, height: 28, borderRadius: 14,
+            position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 14,
             backgroundColor: 'rgba(11, 15, 23, 0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10
           }}
           onPress={() => onTogglePin && onTogglePin(item.id)}
@@ -2144,7 +2156,7 @@ const ProjectCard = React.memo(({
         item.pinned && (
           <View
             style={{
-              position: 'absolute', bottom: 8, right: 8, width: 28, height: 28, borderRadius: 14,
+              position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 14,
               backgroundColor: 'rgba(11, 15, 23, 0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10
             }}
           >
@@ -2221,7 +2233,7 @@ const ProjectCard = React.memo(({
           <Text style={styles.cardDesignerName} numberOfLines={2}>{item.designerHandle ? formatHandleDisplay(item.designerHandle) : item.designer}</Text>
         </CardLink>
 
-        {onToggleFollow && !isOwnContent && (
+        {onToggleFollow && !isOwnContent && !hideFollowButton && (
           <BouncyButton
             style={[styles.cardFollowBtnRight, isFollowing && styles.cardFollowBtnRightActive]}
             onPress={() => onToggleFollow(item.ownerId)}
@@ -2493,15 +2505,41 @@ const WebImageCropModal = ({ visible, imageUri, aspect, onConfirm, onCancel, the
 // and mobile web keep the separate ScrollView-based pinch-zoom already in
 // place at each call site instead - touch pinch is the native, expected
 // gesture there, not a mouse-driven one like this.
+// Universal zoom/pan for the fullscreen image viewers below (lightbox +
+// swipeable multi-image viewer) - works everywhere (native app, mobile
+// web, wide web) via one PanResponder-based implementation, replacing the
+// separate ScrollView minimumZoomScale/maximumZoomScale approach used
+// before. That approach is iOS-only - confirmed against React Native's
+// own docs and a long-standing upstream issue - Android has never
+// supported pinch-zoom through that prop at all, which is exactly why
+// zoom/pan didn't work on the app. Same underlying PanResponder pattern
+// as WebImageCropModal's crop tool above (this file's own proven,
+// already-working example of manual pinch/pan via touches, not a new
+// library), extended here to also handle two-finger pinch distance for
+// touch zoom, and scroll-wheel for mouse zoom on web specifically.
 const ZoomPanImage = ({ uri, containerWidth, containerHeight }) => {
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [naturalSize, setNaturalSize] = useState(null);
+  // Refs mirror the state above and are what the PanResponder callbacks
+  // actually read - PanResponder.create() only runs once (captured by
+  // useRef below), so any state variable it closed over would stay frozen
+  // at whatever it was on that first render. Refs don't have this problem
+  // since reading .current always gets the latest value regardless of
+  // which render captured the callback - this was exactly the desktop
+  // "can't pan" bug: onStartShouldSetPanResponder checked the closed-over
+  // zoom variable, permanently frozen at 1 (its initial value), so it
+  // always evaluated 1 > 1 = false no matter how far you'd actually
+  // zoomed in.
+  const zoomRef = useRef(1);
   const offsetRef = useRef({ x: 0, y: 0 });
   const dragStartRef = useRef({ x: 0, y: 0 });
+  const pinchStartDistRef = useRef(0);
+  const pinchStartZoomRef = useRef(1);
 
   useEffect(() => {
     setZoom(1);
+    zoomRef.current = 1;
     setOffset({ x: 0, y: 0 });
     offsetRef.current = { x: 0, y: 0 };
     setNaturalSize(null);
@@ -2528,40 +2566,69 @@ const ZoomPanImage = ({ uri, containerWidth, containerHeight }) => {
     return { x: Math.min(maxX, Math.max(-maxX, o.x)), y: Math.min(maxY, Math.max(-maxY, o.y)) };
   };
 
+  const applyZoom = (newZoom) => {
+    const clamped = Math.min(4, Math.max(1, newZoom));
+    const newScale = baseScale * clamped;
+    const newDispW = naturalSize ? naturalSize.width * newScale : containerWidth;
+    const newDispH = naturalSize ? naturalSize.height * newScale : containerHeight;
+    const next = clamped === 1 ? { x: 0, y: 0 } : clampOffset(offsetRef.current, newDispW, newDispH);
+    offsetRef.current = next;
+    setOffset(next);
+    zoomRef.current = clamped;
+    setZoom(clamped);
+  };
+
+  const touchDistance = (touches) => {
+    const [a, b] = touches;
+    return Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
+  };
+
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => zoom > 1,
-      onMoveShouldSetPanResponder: () => zoom > 1,
-      onPanResponderGrant: () => {
+      onStartShouldSetPanResponder: (evt) => zoomRef.current > 1 || evt.nativeEvent.touches.length === 2,
+      onMoveShouldSetPanResponder: (evt) => zoomRef.current > 1 || evt.nativeEvent.touches.length === 2,
+      onPanResponderGrant: (evt) => {
         dragStartRef.current = { ...offsetRef.current };
+        if (evt.nativeEvent.touches.length === 2) {
+          pinchStartDistRef.current = touchDistance(evt.nativeEvent.touches);
+          pinchStartZoomRef.current = zoomRef.current;
+        }
       },
-      onPanResponderMove: (_, gestureState) => {
+      onPanResponderMove: (evt, gestureState) => {
+        const touches = evt.nativeEvent.touches;
+        if (touches.length === 2) {
+          // Pinch: scale factor is just how much farther apart the two
+          // fingers are now vs. when the gesture started.
+          if (pinchStartDistRef.current > 0) {
+            const dist = touchDistance(touches);
+            applyZoom(pinchStartZoomRef.current * (dist / pinchStartDistRef.current));
+          }
+          return;
+        }
+        // Single-finger drag - only actually pans anything once zoomed
+        // in (see clampOffset above; at zoom 1 max pan is 0 either way).
         const next = clampOffset(
           { x: dragStartRef.current.x + gestureState.dx, y: dragStartRef.current.y + gestureState.dy },
           dispW, dispH
         );
         offsetRef.current = next;
         setOffset(next);
+      },
+      onPanResponderRelease: () => {
+        pinchStartDistRef.current = 0;
       }
     })
   ).current;
 
   const handleWheel = (e) => {
     e.preventDefault();
-    const newZoom = Math.min(4, Math.max(1, zoom + (e.deltaY < 0 ? 0.15 : -0.15)));
-    const newScale = baseScale * newZoom;
-    const newDispW = naturalSize ? naturalSize.width * newScale : containerWidth;
-    const newDispH = naturalSize ? naturalSize.height * newScale : containerHeight;
-    const next = newZoom === 1 ? { x: 0, y: 0 } : clampOffset(offsetRef.current, newDispW, newDispH);
-    offsetRef.current = next;
-    setOffset(next);
-    setZoom(newZoom);
+    applyZoom(zoomRef.current + (e.deltaY < 0 ? 0.15 : -0.15));
   };
 
   return (
     <View
       style={{ width: containerWidth, height: containerHeight, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
-      onWheel={handleWheel}
+      onWheel={Platform.OS === 'web' ? handleWheel : undefined}
       {...panResponder.panHandlers}
     >
       <Image
@@ -2576,7 +2643,7 @@ const ZoomPanImage = ({ uri, containerWidth, containerHeight }) => {
   );
 };
 
-const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles }) => {
+const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles, theme }) => {
   if (items.length === 0) {
     return (
       <View style={styles.emptyTabContainer}>
@@ -2601,8 +2668,42 @@ const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenD
     }
   }
 
+  // Web-only scroll arrows, same pattern already used for the category bar
+  // and media gallery - a trailing, single-item last column (e.g. 5 items
+  // makes 3 columns: 2, 2, 1) has no visual cue otherwise that there's
+  // more to scroll to, especially with no touch/swipe affordance on a
+  // desktop browser.
+  const scrollRef = useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(items.length > 4);
+  const scrollXRef = useRef(0);
+  const contentWidthRef = useRef(0);
+  const containerWidthRef = useRef(0);
+  const updateScrollArrows = (x) => {
+    scrollXRef.current = x;
+    setCanScrollLeft(x > 4);
+    setCanScrollRight(x < contentWidthRef.current - containerWidthRef.current - 4);
+  };
+
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
+    <View style={{ position: 'relative' }}>
+    <ScrollView
+      ref={scrollRef}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={{ marginTop: 12 }}
+      contentContainerStyle={{ paddingRight: 24 }}
+      onScroll={Platform.OS === 'web' ? (e) => updateScrollArrows(e.nativeEvent.contentOffset.x) : undefined}
+      scrollEventThrottle={16}
+      onContentSizeChange={Platform.OS === 'web' ? (w) => {
+        contentWidthRef.current = w;
+        updateScrollArrows(scrollXRef.current);
+      } : undefined}
+      onLayout={Platform.OS === 'web' ? (e) => {
+        containerWidthRef.current = e.nativeEvent.layout.width;
+        updateScrollArrows(scrollXRef.current);
+      } : undefined}
+    >
       <View style={styles.twoRowContainer}>
         {columns.map((col, colIdx) => (
           <View key={colIdx} style={styles.twoRowColumn}>
@@ -2621,6 +2722,7 @@ const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenD
                 isTwoRowCard={true}
                 showPinControl={showPinControl}
                 onTogglePin={onTogglePin}
+                hideFollowButton={true}
                 styles={styles}
               />
             ))}
@@ -2628,6 +2730,40 @@ const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenD
         ))}
       </View>
     </ScrollView>
+    {Platform.OS === 'web' && canScrollLeft && (
+      <BouncyButton
+        style={{
+          position: 'absolute', left: 0, top: '50%', marginTop: -19, width: 38, height: 38,
+          alignItems: 'center', justifyContent: 'center',
+          backgroundColor: theme && theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
+          borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
+        }}
+        onPress={() => {
+          const target = Math.max(0, scrollXRef.current - (containerWidthRef.current || 200) * 0.7);
+          scrollRef.current?.scrollTo({ x: target, animated: true });
+        }}
+      >
+        <ChevronLeftSVG color={theme ? theme.accentLight : '#8B5CF6'} size={16} />
+      </BouncyButton>
+    )}
+    {Platform.OS === 'web' && canScrollRight && (
+      <BouncyButton
+        style={{
+          position: 'absolute', right: 0, top: '50%', marginTop: -19, width: 38, height: 38,
+          alignItems: 'center', justifyContent: 'center',
+          backgroundColor: theme && theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
+          borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
+        }}
+        onPress={() => {
+          const maxX = Math.max(0, contentWidthRef.current - containerWidthRef.current);
+          const target = Math.min(maxX, scrollXRef.current + (containerWidthRef.current || 200) * 0.7);
+          scrollRef.current?.scrollTo({ x: target, animated: true });
+        }}
+      >
+        <ChevronRightSVG color={theme ? theme.accentLight : '#8B5CF6'} size={16} />
+      </BouncyButton>
+    )}
+    </View>
   );
 });
 
@@ -4032,6 +4168,11 @@ function App() {
     ).start();
   }, []);
   const [isSubmittingPortfolio, setIsSubmittingPortfolio] = useState(false);
+  // Tracks completed vs. total showcase image uploads during final submit,
+  // so a large batch (compression + upload both happen here, not at
+  // picker-selection time) shows real progress instead of a generic
+  // spinner that can feel stuck for 30+ seconds with 10 images queued.
+  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [discardConfirmModalVisible, setDiscardConfirmModalVisible] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState(null);
 
@@ -4232,6 +4373,11 @@ function App() {
   // otherwise it stays the plain always-visible horizontal scroll it's
   // always been, unaffected by this flag.
   const [galleryExpanded, setGalleryExpanded] = useState(false);
+  // "How I Use AI" accordion (illustration-only) - defaults open, unlike
+  // the media gallery above, since this is short, important disclosure
+  // text rather than potentially-lengthy media, and shouldn't need an
+  // extra tap to be seen at all.
+  const [aiUseExpanded, setAiUseExpanded] = useState(true);
   // Case Study / Video / Image tab switcher - Graphic Design and
   // Illustration portfolio types only. Reset to 'caseStudy' on every new
   // portfolio open (see openProjectModal).
@@ -4247,15 +4393,40 @@ function App() {
   // stays untouched for avatars and other single-tap-to-enlarge spots).
   // openId increments on every open so the ScrollView below can be keyed to
   // force a fresh mount + correct initial scroll position even when
-  // reopening on the same index. { images: string[], index: number,
-  // captions?: string[] } | null
+  // reopening on the same index. { items: { type: 'image'|'video', uri,
+  // width?, height?, caption? }[], index: number } | null - generalized
+  // from an images-only shape to a mixed-media one, so the same viewer can
+  // hold images and videos as swipeable pages together (Media Gallery
+  // accordion) or a single type only (Image tab / Video tab, each opened
+  // with just that type's own items).
   const [imageViewerState, setImageViewerState] = useState(null);
   const [imageViewerOpenId, setImageViewerOpenId] = useState(0);
   const imageViewerScrollRef = useRef(null);
-  const openImageViewer = (images, index, captions) => {
-    setImageViewerState({ images, index, captions: captions || [] });
+  const openMediaViewer = (items, index) => {
+    setImageViewerState({ items, index });
     setImageViewerOpenId((id) => id + 1);
   };
+  // Web only (both narrow and wide - a browser tab always has a keyboard
+  // regardless of viewport width, even if touch/swipe also works there).
+  // Left/Right arrow keys navigate exactly like swiping or tapping the
+  // arrow buttons below - all three call the same scrollTo.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !imageViewerState) return;
+    const handleKeyDown = (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      setImageViewerState((prev) => {
+        if (!prev) return prev;
+        const dir = e.key === 'ArrowLeft' ? -1 : 1;
+        const nextIndex = Math.min(prev.items.length - 1, Math.max(0, prev.index + dir));
+        if (nextIndex !== prev.index && imageViewerScrollRef.current) {
+          imageViewerScrollRef.current.scrollTo({ x: nextIndex * Dimensions.get('window').width, y: 0, animated: true });
+        }
+        return prev;
+      });
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [imageViewerState]);
   const galleryScrollContentWidthRef = useRef(0);
   const galleryScrollContainerWidthRef = useRef(0);
   const galleryScrollXRef = useRef(0);
@@ -6890,6 +7061,15 @@ function App() {
     } else {
       setNewPassword('');
       setConfirmNewPassword('');
+      // updateUser succeeds server-side immediately (linking an email/
+      // password identity onto the account), but the local session state
+      // isn't automatically refreshed by that call - without this,
+      // hasPasswordAuth would keep reading the old, stale identities list,
+      // so a Google-signed-in user who'd just set their first password
+      // would still see "Create Password" instead of "Change Password"
+      // until a full logout/login refreshed the session from scratch.
+      const { data: refreshed } = await supabase.auth.getSession();
+      if (refreshed && refreshed.session) setSession(refreshed.session);
       showToast(hasPasswordAuth ? 'Password updated' : 'Password created');
       return true;
     }
@@ -7412,6 +7592,7 @@ function App() {
       block && (block.type === 'image' || (block.type === 'row' && (block.columns || []).some((col) => col && col.type === 'image')))
     );
     setGalleryExpanded(!(hasDetailedDesc && descHasImages));
+    setAiUseExpanded(true);
     // New tab switcher (Case Study / Video / Image), Graphic Design and
     // Illustration only - always starts back on Case Study for whichever
     // portfolio was just opened, same reset-on-open pattern as the gallery
@@ -8460,11 +8641,12 @@ function App() {
   const performPortfolioSubmit = async () => {
     const validVideos = fVideoLinks.filter((v) => v.trim() !== '');
     const validShowcaseImgs = fShowcaseImages.filter((img) => img.uri.trim() !== '');
-    // Graphic Design only, per the feature's scope - other portfolio types
-    // never show the upload UI in the first place, but this guards the
-    // actual DB write too in case selectedPortfolioType changes mid-edit.
+    // Graphic Design and Illustration, per the feature's scope - other
+    // portfolio types never show the upload UI in the first place, but
+    // this guards the actual DB write too in case selectedPortfolioType
+    // changes mid-edit.
     const uploadUploadedVideos = async () =>
-      selectedPortfolioType === 'graphic_design'
+      (selectedPortfolioType === 'graphic_design' || selectedPortfolioType === 'illustration')
         ? (await Promise.all(
             fUploadedVideos.map(async (v) => {
               const url = (v.uri.startsWith('file://') || v.uri.startsWith('content://') || v.uri.startsWith('blob:') || v.uri.startsWith('data:'))
@@ -8501,14 +8683,17 @@ function App() {
         finalCoverUrl = await uploadImageChecked(fCover, 'covers');
       }
 
+      setUploadProgress({ done: 0, total: validShowcaseImgs.length });
       const uploadedShowcase = await Promise.all(
-        validShowcaseImgs.map(async (img) => ({
-          url: (img.uri.startsWith('file://') || img.uri.startsWith('content://') || img.uri.startsWith('ph://') || img.uri.startsWith('blob:') || img.uri.startsWith('data:'))
+        validShowcaseImgs.map(async (img) => {
+          const url = (img.uri.startsWith('file://') || img.uri.startsWith('content://') || img.uri.startsWith('ph://') || img.uri.startsWith('blob:') || img.uri.startsWith('data:'))
             ? await uploadImageChecked(img.uri, 'showcase')
-            : img.uri,
-          caption: img.caption || ''
-        }))
+            : img.uri;
+          setUploadProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+          return { url, caption: img.caption || '' };
+        })
       );
+      setUploadProgress({ done: 0, total: 0 });
       const finalImages = uploadedShowcase.length > 0 ? uploadedShowcase.map((u) => u.url) : [finalCoverUrl];
       const finalImageCaptions = uploadedShowcase.length > 0 ? uploadedShowcase.map((u) => u.caption) : [''];
       const finalUploadedVideos = await uploadUploadedVideos();
@@ -8626,14 +8811,17 @@ function App() {
       }
 
       // 2. Upload Showcase Images to Supabase Storage
+      setUploadProgress({ done: 0, total: validShowcaseImgs.length });
       const uploadedShowcase = await Promise.all(
-        validShowcaseImgs.map(async (img) => ({
-          url: (img.uri.startsWith('file://') || img.uri.startsWith('content://') || img.uri.startsWith('ph://') || img.uri.startsWith('blob:') || img.uri.startsWith('data:'))
+        validShowcaseImgs.map(async (img) => {
+          const url = (img.uri.startsWith('file://') || img.uri.startsWith('content://') || img.uri.startsWith('ph://') || img.uri.startsWith('blob:') || img.uri.startsWith('data:'))
             ? await uploadImageChecked(img.uri, 'showcase')
-            : img.uri,
-          caption: img.caption || ''
-        }))
+            : img.uri;
+          setUploadProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+          return { url, caption: img.caption || '' };
+        })
       );
+      setUploadProgress({ done: 0, total: 0 });
 
       const finalImages = uploadedShowcase.length > 0 ? uploadedShowcase.map((u) => u.url) : [finalCoverUrl];
       const finalImageCaptions = uploadedShowcase.length > 0 ? uploadedShowcase.map((u) => u.caption) : [''];
@@ -8755,6 +8943,7 @@ function App() {
   // no way out - surfaces a clear error and re-enables the button instead.
   const handleFinalPostPackage = async () => {
     setIsSubmittingPortfolio(true);
+    setUploadProgress({ done: 0, total: 0 });
     let timedOut = false;
     const timeoutId = setTimeout(() => {
       timedOut = true;
@@ -11464,6 +11653,7 @@ function App() {
                     showPinControl={profileTab === 'myWork'}
                     onTogglePin={togglePinProject}
                   styles={styles}
+                  theme={theme}
                   />
                 )}
               </Animated.View>
@@ -11998,31 +12188,13 @@ function App() {
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
           {lightboxImageUri && (
-            Platform.OS === 'web' && isWebWide ? (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <ZoomPanImage
-                  uri={lightboxImageUri}
-                  containerWidth={Dimensions.get('window').width}
-                  containerHeight={Dimensions.get('window').height * 0.8}
-                />
-              </View>
-            ) : (
-              <ScrollView
-                style={{ flex: 1 }}
-                contentContainerStyle={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                minimumZoomScale={1}
-                maximumZoomScale={4}
-                showsHorizontalScrollIndicator={false}
-                showsVerticalScrollIndicator={false}
-                centerContent
-              >
-                <Image
-                  source={{ uri: lightboxImageUri }}
-                  style={{ width: '100%', height: '80%' }}
-                  resizeMode="contain"
-                />
-              </ScrollView>
-            )
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <ZoomPanImage
+                uri={lightboxImageUri}
+                containerWidth={Dimensions.get('window').width}
+                containerHeight={Dimensions.get('window').height * 0.8}
+              />
+            </View>
           )}
           <BouncyButton
             style={{ position: 'absolute', top: 50, right: 20, width: 40, height: 40, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
@@ -12033,13 +12205,15 @@ function App() {
         </View>
       </Modal>
 
-      {/* FULLSCREEN SWIPEABLE IMAGE VIEWER - Graphic Design/Illustration
-          Image tab. Separate from the single-image lightbox above (which
-          stays as-is for avatars and other single-tap spots) since this one
-          needs an array + index and swipe-between-images, not just a single
-          uri. Keyed on imageViewerOpenId so the ScrollView remounts fresh on
-          every open, guaranteeing correct initial scroll position even when
-          reopening on the same index a second time. */}
+      {/* FULLSCREEN SWIPEABLE MEDIA VIEWER - Media Gallery accordion (mixed
+          images + videos together) and the Image/Video tabs (each opened
+          with just that type's own items - see openMediaViewer call
+          sites). Separate from the single-image lightbox above (which
+          stays as-is for avatars and other single-tap spots) since this
+          one needs an array + index and swipe-between-items, not just a
+          single uri. Keyed on imageViewerOpenId so the ScrollView remounts
+          fresh on every open, guaranteeing correct initial scroll position
+          even when reopening on the same index a second time. */}
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'fade'}
         transparent={true}
@@ -12076,36 +12250,32 @@ function App() {
                 setImageViewerState((prev) => (prev ? { ...prev, index: idx } : prev));
               }}
             >
-              {imageViewerState.images.map((uri, i) => (
-                // Each page gets its own independent zoom/pan area - can't
-                // share the outer horizontal paging ScrollView's own
-                // gesture, they'd fight over it. Tap-to-close removed here
-                // for the same reason as the single-image lightbox above
-                // (conflicts with pan/zoom); the X button is the reliable
-                // close action once zoomed. Wide web uses ZoomPanImage
-                // (scroll-wheel zoom, click-drag pan); native/mobile web
-                // keep the nested zoomable ScrollView (pinch/touch-drag).
+              {imageViewerState.items.map((item, i) => (
+                // Each image page gets its own independent zoom/pan area -
+                // can't share the outer horizontal paging ScrollView's own
+                // gesture, they'd fight over it (ZoomPanImage's own
+                // PanResponder only claims the responder once actually
+                // zoomed in or mid-pinch, so a plain single-finger swipe at
+                // zoom 1 passes through to this outer paging ScrollView
+                // normally - swipe between images when not zoomed, pan
+                // within the current one once zoomed, on every platform).
+                // Tap-to-close removed here for the same reason as the
+                // single-image lightbox above (conflicts with pan/zoom);
+                // the X button is the reliable close action once zoomed.
+                // Video pages just play normally, no zoom/pan needed.
                 <View key={i} style={{ width: Dimensions.get('window').width, height: '100%' }}>
-                  {Platform.OS === 'web' && isWebWide ? (
+                  {item.type === 'video' ? (
+                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
+                      <PortfolioVideoPlayer uri={item.uri} width={item.width} height={item.height} />
+                    </View>
+                  ) : (
                     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                       <ZoomPanImage
-                        uri={uri}
+                        uri={item.uri}
                         containerWidth={Dimensions.get('window').width}
                         containerHeight={Dimensions.get('window').height * 0.8}
                       />
                     </View>
-                  ) : (
-                    <ScrollView
-                      style={{ flex: 1 }}
-                      contentContainerStyle={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                      minimumZoomScale={1}
-                      maximumZoomScale={4}
-                      showsHorizontalScrollIndicator={false}
-                      showsVerticalScrollIndicator={false}
-                      centerContent
-                    >
-                      <Image source={{ uri }} style={{ width: '100%', height: '80%' }} resizeMode="contain" />
-                    </ScrollView>
                   )}
                 </View>
               ))}
@@ -12117,17 +12287,46 @@ function App() {
           >
             <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>✕</Text>
           </BouncyButton>
-          {imageViewerState && imageViewerState.captions && imageViewerState.captions[imageViewerState.index] && imageViewerState.captions[imageViewerState.index].trim() !== '' && (
-            <View style={{ position: 'absolute', bottom: imageViewerState.images.length > 1 ? 80 : 40, left: 24, right: 24, alignItems: 'center' }}>
+          {/* Onscreen arrow buttons, web only (both narrow and wide) -
+              mobile app relies on swipe alone, matching the native gesture
+              people already expect there; a browser tab gets these plus
+              the arrow-key listener above, since a mouse/trackpad is the
+              primary input either way. Hidden at the very first/last item
+              rather than disabled, so there's nothing to visually explain -
+              simply not there when there's nowhere left to go. */}
+          {Platform.OS === 'web' && imageViewerState && imageViewerState.index > 0 && (
+            <BouncyButton
+              style={{ position: 'absolute', left: 20, top: '50%', marginTop: -22, width: 44, height: 44, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+              onPress={() => {
+                const target = (imageViewerState.index - 1) * Dimensions.get('window').width;
+                imageViewerScrollRef.current?.scrollTo({ x: target, y: 0, animated: true });
+              }}
+            >
+              <ChevronLeftSVG color="#FFFFFF" size={20} />
+            </BouncyButton>
+          )}
+          {Platform.OS === 'web' && imageViewerState && imageViewerState.index < imageViewerState.items.length - 1 && (
+            <BouncyButton
+              style={{ position: 'absolute', right: 20, top: '50%', marginTop: -22, width: 44, height: 44, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+              onPress={() => {
+                const target = (imageViewerState.index + 1) * Dimensions.get('window').width;
+                imageViewerScrollRef.current?.scrollTo({ x: target, y: 0, animated: true });
+              }}
+            >
+              <ChevronRightSVG color="#FFFFFF" size={20} />
+            </BouncyButton>
+          )}
+          {imageViewerState && imageViewerState.items[imageViewerState.index] && imageViewerState.items[imageViewerState.index].caption && imageViewerState.items[imageViewerState.index].caption.trim() !== '' && (
+            <View style={{ position: 'absolute', bottom: imageViewerState.items.length > 1 ? 80 : 40, left: 24, right: 24, alignItems: 'center' }}>
               <Text style={{ color: '#FFFFFF', fontSize: 14, textAlign: 'center' }}>
-                {imageViewerState.captions[imageViewerState.index]}
+                {imageViewerState.items[imageViewerState.index].caption}
               </Text>
             </View>
           )}
-          {imageViewerState && imageViewerState.images.length > 1 && (
+          {imageViewerState && imageViewerState.items.length > 1 && (
             <View style={{ position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}>
               <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
-                {imageViewerState.index + 1} / {imageViewerState.images.length}
+                {imageViewerState.index + 1} / {imageViewerState.items.length}
               </Text>
             </View>
           )}
@@ -15190,6 +15389,7 @@ function App() {
                   followedDesigners={followedDesigners}
                   currentUserId={session ? session.user.id : null}
                 styles={styles}
+                theme={theme}
                 />
               )}
               </Animated.View>
@@ -15500,10 +15700,11 @@ function App() {
       {/* Confirmation before actually registering interest - a quick
           "are you sure, not a misclick" step, matching how other
           one-way/committing actions in this app confirm first. */}
+      {!!interestConfirmTarget && (
       <Modal
         animationType="fade"
         transparent={true}
-        visible={!!interestConfirmTarget}
+        visible={true}
         onRequestClose={() => setInterestConfirmTarget(null)}
       >
         <View style={styles.overlayModalBg}>
@@ -15537,6 +15738,7 @@ function App() {
           </View>
         </View>
       </Modal>
+      )}
 
       {/* PORTFOLIO REPORT MODAL - 2 one-tap preselected reasons plus a
           freeform "something else" option with its own text input, instead
@@ -16349,19 +16551,10 @@ function App() {
                         Preview
                       </Text>
                     </BouncyButton>
-
-                    <BouncyButton
-                      style={{
-                        alignItems: 'center', justifyContent: 'center',
-                        height: 32, width: 32, borderRadius: 8, marginLeft: 8,
-                        backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
-                      }}
-                      onPress={() => setFullscreenDescEditorVisible(false)}
-                    >
-                      <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                        <Path d="M20 6L9 17l-5-5" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                      </Svg>
-                    </BouncyButton>
+                    {/* Checkmark close button removed - the main wizard's
+                        own sticky bottom button now reads "Done" and
+                        closes this editor while it's open (see its onPress
+                        further down), serving the same purpose. */}
                   </View>
 
                   {descEditorMode === 'preview' ? (
@@ -16379,7 +16572,7 @@ function App() {
                       contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }}
                       keyboardShouldPersistTaps="handled"
                       enableOnAndroid={true}
-                      extraScrollHeight={140}
+                      extraScrollHeight={30}
                     >
                         {fContentBlocks.map((block, idx) => (
                           <View
@@ -16992,7 +17185,7 @@ function App() {
                     <Text style={styles.errorText}>{errors.showcaseImages}</Text>
                   ) : null}
 
-                  {selectedPortfolioType === 'graphic_design' && (
+                  {(selectedPortfolioType === 'graphic_design' || selectedPortfolioType === 'illustration') && (
                     <View style={{ marginTop: 20 }}>
                       <Text style={styles.formGroupLabel}>
                         Upload Videos (Optional - up to 3, max {MAX_UPLOADED_VIDEO_DURATION_SEC}s each)
@@ -17124,7 +17317,7 @@ function App() {
                         <VideoFilledIconSVG size={13} />
                         <Text style={styles.reviewStat}>Video Demos: <Text style={{ fontWeight: '800', color: theme.text }}>{fVideoLinks.filter(v => v.trim()).length}</Text> Attached</Text>
                       </View>
-                      {selectedPortfolioType === 'graphic_design' && (
+                      {(selectedPortfolioType === 'graphic_design' || selectedPortfolioType === 'illustration') && (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                           <VideoFilledIconSVG size={13} />
                           <Text style={styles.reviewStat}>Uploaded Videos: <Text style={{ fontWeight: '800', color: theme.text }}>{fUploadedVideos.length}</Text> Attached</Text>
@@ -17163,6 +17356,13 @@ function App() {
                 style={[styles.uniformWizardBtnPrimary, isSubmittingPortfolio && { opacity: 0.7 }]}
                 disabled={isSubmittingPortfolio}
                 onPress={() => {
+                  // While the fullscreen block editor overlay is open, this
+                  // button (visually underneath it, in the same sticky
+                  // position) closes that editor instead of advancing the
+                  // wizard - matches what used to be the checkmark button
+                  // in the editor's own header, which is removed now that
+                  // this serves the same purpose.
+                  if (fullscreenDescEditorVisible) { setFullscreenDescEditorVisible(false); return; }
                   if (formStep === 1) handleNextFromStep1();
                   else if (formStep === 2) handleNextFromStep2(false);
                   else if (formStep === 3) handleNextFromStep3();
@@ -17173,18 +17373,21 @@ function App() {
                   <View style={styles.iconTextInlineRow}>
                     <ActivityIndicator size="small" color="#FFFFFF" />
                     <Text style={styles.submitBtnText}>
-                      {editingProjectId ? 'Updating...' : 'Uploading...'}
+                      {uploadProgress.total > 0
+                        ? `Processing images (${uploadProgress.done}/${uploadProgress.total})...`
+                        : (editingProjectId ? 'Updating...' : 'Uploading...')}
                     </Text>
                   </View>
                 ) : (
                   <View style={styles.iconTextInlineRow}>
                     <Text style={styles.submitBtnText}>
-                      {formStep === 1 ? (selectedPortfolioType === 'ui_ux' ? 'Next: Add Links' : 'Next: Media') :
+                      {fullscreenDescEditorVisible ? 'Done' :
+                       formStep === 1 ? (selectedPortfolioType === 'ui_ux' ? 'Next: Add Links' : 'Next: Media') :
                        formStep === 2 ? 'Next: Media' :
                        formStep === 3 ? 'Review & Confirm' :
                        editingProjectId ? 'Update Portfolio Package' : 'Post Portfolio Package'}
                     </Text>
-                    <ChevronRightSVG color="#FFFFFF" size={18} />
+                    {!fullscreenDescEditorVisible && <ChevronRightSVG color="#FFFFFF" size={18} />}
                   </View>
                 )}
               </BouncyButton>
@@ -17970,17 +18173,29 @@ function App() {
                           )}
 
                           {/* Illustration-only, shown whenever a disclosure
-                              note exists - a persistent, always-visible
-                              section rather than requiring a tap on the AI
-                              badge/tooltip above (which stays as a quick,
-                              separate acknowledgment). Filled solid purple
-                              with white text per request, distinct from the
-                              theme-neutral styling every other section on
-                              this page uses. */}
+                              note exists. Now a collapsible accordion,
+                              matching the Media Gallery accordion's own
+                              rounded-rectangle shape/padding exactly -
+                              still filled solid purple with white text
+                              inside though, unchanged from before, since
+                              only the container needed to match, not the
+                              content styling. */}
                           {activeProject.portfolioType === 'illustration' && activeProject.aiDisclosureNote ? (
-                            <View style={{ backgroundColor: '#8B5CF6', borderRadius: 12, padding: 14, marginBottom: 16 }}>
-                              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5, marginBottom: 6 }}>HOW I USE AI</Text>
-                              <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 20 }}>{activeProject.aiDisclosureNote}</Text>
+                            <View style={{ backgroundColor: '#8B5CF6', borderRadius: 14, padding: 14, marginBottom: 16 }}>
+                              <BouncyButton
+                                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: aiUseExpanded ? 6 : 0 }}
+                                onPress={() => setAiUseExpanded((prev) => !prev)}
+                              >
+                                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>HOW I USE AI</Text>
+                                {aiUseExpanded ? (
+                                  <ChevronUpSVG color="#FFFFFF" size={16} />
+                                ) : (
+                                  <ChevronDownSVG color="#FFFFFF" size={16} />
+                                )}
+                              </BouncyButton>
+                              {aiUseExpanded && (
+                                <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 20 }}>{activeProject.aiDisclosureNote}</Text>
+                              )}
                             </View>
                           ) : null}
 
@@ -17997,8 +18212,16 @@ function App() {
                               the default is computed), and the same
                               scroll-arrow refs, since only one branch ever
                               renders at a time for a given portfolio. */}
+                          {/* Rounded rectangle container with a subtle
+                              theme-accent tint, wrapping the whole
+                              accordion (header + content) whether
+                              collapsed or expanded - was just plain text
+                              in the normal flow before, with no visual
+                              container distinguishing it from surrounding
+                              content at all. */}
+                          <View style={{ borderRadius: 14, padding: 14, marginBottom: 16, backgroundColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.06)' : 'rgba(139, 92, 246, 0.08)', borderWidth: 1, borderColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.18)' }}>
                           <BouncyButton
-                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: galleryExpanded ? 12 : 0 }}
                             onPress={() => setGalleryExpanded((prev) => !prev)}
                           >
                             <Text style={styles.sectionHeader}>MEDIA GALLERY</Text>
@@ -18009,7 +18232,7 @@ function App() {
                             )}
                           </BouncyButton>
                           {galleryExpanded && (
-                            <View style={{ position: 'relative', marginBottom: 16 }}>
+                            <View style={{ position: 'relative' }}>
                               <ScrollView
                                 ref={galleryScrollRef}
                                 horizontal
@@ -18026,30 +18249,60 @@ function App() {
                                   updateGalleryScrollArrows(galleryScrollXRef.current);
                                 } : undefined}
                               >
-                                {allImages.map((imgUrl, index) => {
-                                  const galleryHeight = 220;
-                                  const galleryWidth = activeProject.showcaseAspectRatio === '9:16'
-                                    ? galleryHeight * (9 / 16)
-                                    : galleryHeight * (16 / 9);
+                                {/* Combined items list, images first then
+                                    videos (matching this strip's own visual
+                                    order) - openMediaViewer needs a single
+                                    array + the tapped item's position
+                                    within it, not each type's own separate
+                                    index, so swiping/arrow-navigating from
+                                    here moves through everything in this
+                                    gallery together. */}
+                                {(() => {
+                                  const uploadedVids = allVideos.filter((v) => v.kind === 'uploaded');
+                                  const mediaItems = [
+                                    ...allImages.map((uri, idx) => ({ type: 'image', uri, caption: activeProject.imagesCaptions ? activeProject.imagesCaptions[idx] : undefined })),
+                                    ...uploadedVids.map((v) => ({ type: 'video', uri: v.url, width: v.width, height: v.height, caption: v.caption }))
+                                  ];
                                   return (
-                                    <BouncyButton key={index} activeOpacity={0.9} onPress={() => setLightboxImageUri(imgUrl)}>
-                                      <Image source={{ uri: imgUrl }} style={[styles.galleryImage, { width: galleryWidth, height: galleryHeight }]} resizeMode="cover" />
-                                    </BouncyButton>
+                                    <>
+                                      {allImages.map((imgUrl, index) => {
+                                        const galleryHeight = 220;
+                                        const galleryWidth = activeProject.showcaseAspectRatio === '9:16'
+                                          ? galleryHeight * (9 / 16)
+                                          : galleryHeight * (16 / 9);
+                                        return (
+                                          <BouncyButton key={index} activeOpacity={0.9} onPress={() => openMediaViewer(mediaItems, index)}>
+                                            <Image source={{ uri: imgUrl }} style={[styles.galleryImage, { width: galleryWidth, height: galleryHeight }]} resizeMode="cover" />
+                                          </BouncyButton>
+                                        );
+                                      })}
+                                      {uploadedVids.map((vid, index) => {
+                                        const galleryHeight = 220;
+                                        const vidAspect = vid.width && vid.height ? vid.width / vid.height : 16 / 9;
+                                        return (
+                                          <View key={`vid-${index}`} style={{ position: 'relative', height: galleryHeight, width: galleryHeight * vidAspect, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' }}>
+                                            <PortfolioVideoPlayer uri={vid.url} width={vid.width} height={vid.height} />
+                                            {/* Overlay button, not a wrap-the-
+                                                whole-video button - the video's
+                                                own native play/pause/scrub
+                                                controls need to keep working
+                                                for inline playback. */}
+                                            <BouncyButton
+                                              style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                              onPress={() => openMediaViewer(mediaItems, allImages.length + index)}
+                                            >
+                                              <ExpandIconSVG size={15} />
+                                            </BouncyButton>
+                                          </View>
+                                        );
+                                      })}
+                                    </>
                                   );
-                                })}
-                                {allVideos.map((vid, index) => {
-                                  if (vid.kind !== 'uploaded') return null;
-                                  const galleryHeight = 220;
-                                  const vidAspect = vid.width && vid.height ? vid.width / vid.height : 16 / 9;
-                                  return (
-                                    <View key={`vid-${index}`} style={{ height: galleryHeight, width: galleryHeight * vidAspect, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' }}>
-                                      <PortfolioVideoPlayer uri={vid.url} width={vid.width} height={vid.height} />
-                                    </View>
-                                  );
-                                })}
+                                })()}
                               </ScrollView>
                             </View>
                           )}
+                          </View>
 
                           <Text style={styles.sectionHeader}>CASE STUDY OVERVIEW</Text>
                           {activeProject.contentBlocks && activeProject.contentBlocks.length > 0 ? (
@@ -18064,20 +18317,36 @@ function App() {
                         <View style={{ gap: 16 }}>
                           {allVideos.length === 0 ? (
                             <Text style={styles.caseBodyText}>No videos added to this portfolio yet.</Text>
-                          ) : allVideos.map((v, idx) => (
-                            v.kind === 'uploaded' ? (
-                              <View key={idx}>
-                                <PortfolioVideoPlayer uri={v.url} width={v.width} height={v.height} />
-                                {v.caption && v.caption.trim() !== '' && (
-                                  <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 6 }}>{v.caption}</Text>
-                                )}
-                              </View>
-                            ) : (
-                              <BouncyButton key={idx} style={styles.linkChip} onPress={() => openExternalLinkWithWarning(v.url)}>
-                                <Text style={styles.linkChipText}>▶ Watch Video Demo ↗</Text>
-                              </BouncyButton>
-                            )
-                          ))}
+                          ) : (() => {
+                            const uploadedVids = allVideos.filter((v) => v.kind === 'uploaded');
+                            const videoItems = uploadedVids.map((v) => ({ type: 'video', uri: v.url, width: v.width, height: v.height, caption: v.caption }));
+                            let uploadedIdx = -1;
+                            return allVideos.map((v, idx) => {
+                              if (v.kind === 'uploaded') uploadedIdx += 1;
+                              const thisUploadedIdx = uploadedIdx;
+                              return v.kind === 'uploaded' ? (
+                                <View key={idx} style={{ position: 'relative' }}>
+                                  <PortfolioVideoPlayer uri={v.url} width={v.width} height={v.height} />
+                                  {/* Overlay button, not a wrap-the-whole-
+                                      video button - the native play/pause/
+                                      scrub controls need to keep working. */}
+                                  <BouncyButton
+                                    style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                    onPress={() => openMediaViewer(videoItems, thisUploadedIdx)}
+                                  >
+                                    <ExpandIconSVG size={15} />
+                                  </BouncyButton>
+                                  {v.caption && v.caption.trim() !== '' && (
+                                    <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 6 }}>{v.caption}</Text>
+                                  )}
+                                </View>
+                              ) : (
+                                <BouncyButton key={idx} style={styles.linkChip} onPress={() => openExternalLinkWithWarning(v.url)}>
+                                  <Text style={styles.linkChipText}>▶ Watch Video Demo ↗</Text>
+                                </BouncyButton>
+                              );
+                            });
+                          })()}
                           {hasUploadedVideo && (
                             <Text style={{ color: theme.textTertiary, fontSize: 11 }}>
                               Video compressed to save space - quality may differ slightly from the original upload.
@@ -18092,7 +18361,7 @@ function App() {
                             <Text style={styles.caseBodyText}>No images added to this portfolio yet.</Text>
                           ) : allImages.map((imgUrl, index) => (
                             <View key={index}>
-                              <BouncyButton activeOpacity={0.9} onPress={() => openImageViewer(allImages, index, activeProject.imagesCaptions)}>
+                              <BouncyButton activeOpacity={0.9} onPress={() => openMediaViewer(allImages.map((uri, i) => ({ type: 'image', uri, caption: activeProject.imagesCaptions ? activeProject.imagesCaptions[i] : undefined })), index)}>
                                 <Image
                                   source={{ uri: imgUrl }}
                                   style={{
@@ -18210,7 +18479,11 @@ function App() {
                     contentContainerStyle={{ padding: 16, gap: 16, width: '100%' }}
                   >
                     {(activeProject.images || []).map((imgUrl, index) => (
-                      <BouncyButton key={index} activeOpacity={0.9} onPress={() => setLightboxImageUri(imgUrl)}>
+                      <BouncyButton
+                        key={index}
+                        activeOpacity={0.9}
+                        onPress={() => openMediaViewer((activeProject.images || []).map((uri, i) => ({ type: 'image', uri, caption: activeProject.imagesCaptions ? activeProject.imagesCaptions[i] : undefined })), index)}
+                      >
                         <Image
                           source={{ uri: imgUrl }}
                           style={{
@@ -18238,50 +18511,74 @@ function App() {
                 const gdVideoImagePane = (
                   <View style={{ flex: 1 }}>
                     <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
-                      <Text style={styles.sectionHeader}>MEDIA</Text>
-                      <View style={{ marginBottom: 4 }}>
-                        <AnimatedPillTabBar
-                          tabs={[{ key: 'image', label: 'Image' }, ...(gdAllVideos.length > 0 ? [{ key: 'video', label: 'Video' }] : [])]}
-                          activeKey={gdSplitTab}
-                          onChange={setGdSplitTab}
-                          theme={theme}
-                          themeMode={themeMode}
-                        />
-                      </View>
+                      {/* When only one media type exists (just images, no
+                          videos - by far the common case, since images are
+                          mandatory and videos are optional), there's
+                          nothing to switch between, so the tab bar is
+                          hidden entirely and the header names the one type
+                          that's actually there instead of the generic
+                          "Media" label. gdSplitTab stays at its 'image'
+                          default either way, so the content below doesn't
+                          need any separate change. */}
+                      <Text style={styles.sectionHeader}>{gdAllVideos.length > 0 ? 'MEDIA' : 'IMAGE'}</Text>
+                      {gdAllVideos.length > 0 && (
+                        <View style={{ marginBottom: 4 }}>
+                          <AnimatedPillTabBar
+                            tabs={[{ key: 'image', label: 'Image' }, { key: 'video', label: 'Video' }]}
+                            activeKey={gdSplitTab}
+                            onChange={setGdSplitTab}
+                            theme={theme}
+                            themeMode={themeMode}
+                          />
+                        </View>
+                      )}
                     </View>
                     <ScrollView ref={hideScrollbarRefCallback(isWebWide)} style={{ flex: 1, width: '100%' }} contentContainerStyle={{ padding: 16, gap: 16, width: '100%' }}>
                       {gdSplitTab === 'video' ? (
                         gdAllVideos.length === 0 ? (
                           <Text style={styles.caseBodyText}>No videos added to this portfolio yet.</Text>
-                        ) : (
-                          <>
-                            {gdAllVideos.map((v, idx) => (
-                              v.kind === 'uploaded' ? (
-                                <View key={idx}>
-                                  <PortfolioVideoPlayer uri={v.url} width={v.width} height={v.height} />
-                                  {v.caption && v.caption.trim() !== '' && (
-                                    <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 6 }}>{v.caption}</Text>
-                                  )}
-                                </View>
-                              ) : (
-                                <BouncyButton key={idx} style={styles.linkChip} onPress={() => openExternalLinkWithWarning(v.url)}>
-                                  <Text style={styles.linkChipText}>▶ Watch Video Demo ↗</Text>
-                                </BouncyButton>
-                              )
-                            ))}
-                            {gdHasUploadedVideo && (
-                              <Text style={{ color: theme.textTertiary, fontSize: 11 }}>
-                                Video compressed to save space - quality may differ slightly from the original upload.
-                              </Text>
-                            )}
-                          </>
-                        )
+                        ) : (() => {
+                          const uploadedVids = gdAllVideos.filter((v) => v.kind === 'uploaded');
+                          const videoItems = uploadedVids.map((v) => ({ type: 'video', uri: v.url, width: v.width, height: v.height, caption: v.caption }));
+                          let uploadedIdx = -1;
+                          return (
+                            <>
+                              {gdAllVideos.map((v, idx) => {
+                                if (v.kind === 'uploaded') uploadedIdx += 1;
+                                const thisUploadedIdx = uploadedIdx;
+                                return v.kind === 'uploaded' ? (
+                                  <View key={idx} style={{ position: 'relative' }}>
+                                    <PortfolioVideoPlayer uri={v.url} width={v.width} height={v.height} />
+                                    <BouncyButton
+                                      style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                      onPress={() => openMediaViewer(videoItems, thisUploadedIdx)}
+                                    >
+                                      <ExpandIconSVG size={15} />
+                                    </BouncyButton>
+                                    {v.caption && v.caption.trim() !== '' && (
+                                      <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 6 }}>{v.caption}</Text>
+                                    )}
+                                  </View>
+                                ) : (
+                                  <BouncyButton key={idx} style={styles.linkChip} onPress={() => openExternalLinkWithWarning(v.url)}>
+                                    <Text style={styles.linkChipText}>▶ Watch Video Demo ↗</Text>
+                                  </BouncyButton>
+                                );
+                              })}
+                              {gdHasUploadedVideo && (
+                                <Text style={{ color: theme.textTertiary, fontSize: 11 }}>
+                                  Video compressed to save space - quality may differ slightly from the original upload.
+                                </Text>
+                              )}
+                            </>
+                          );
+                        })()
                       ) : (
                         (activeProject.images || []).length === 0 ? (
                           <Text style={styles.caseBodyText}>No images added to this portfolio yet.</Text>
                         ) : (activeProject.images || []).map((imgUrl, index) => (
                           <View key={index}>
-                            <BouncyButton activeOpacity={0.9} onPress={() => openImageViewer(activeProject.images, index, activeProject.imagesCaptions)}>
+                            <BouncyButton activeOpacity={0.9} onPress={() => openMediaViewer((activeProject.images || []).map((uri, i) => ({ type: 'image', uri, caption: activeProject.imagesCaptions ? activeProject.imagesCaptions[i] : undefined })), index)}>
                               <Image
                                 source={{ uri: imgUrl }}
                                 style={{
@@ -18555,8 +18852,14 @@ function App() {
                     const galleryOpen = galleryExpanded;
                     return (
                       <>
+                        {/* Same rounded rectangle container with a subtle
+                            theme-accent tint as the narrow-web-only
+                            version of this accordion above - wraps the
+                            whole thing (header + content) whether
+                            collapsed or expanded. */}
+                        <View style={{ borderRadius: 14, padding: 14, marginBottom: 16, backgroundColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.06)' : 'rgba(139, 92, 246, 0.08)', borderWidth: 1, borderColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.18)' }}>
                         <BouncyButton
-                          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: galleryOpen ? 12 : 0 }}
                           onPress={() => setGalleryExpanded((prev) => !prev)}
                         >
                           <Text style={styles.sectionHeader}>{isGdType ? 'MEDIA GALLERY' : 'IMAGE GALLERY'}</Text>
@@ -18584,34 +18887,55 @@ function App() {
                         updateGalleryScrollArrows(galleryScrollXRef.current);
                       } : undefined}
                     >
-                      {activeProject.images.map((imgUrl, index) => {
-                        const galleryHeight = 220;
-                        const galleryWidth = activeProject.showcaseAspectRatio === '9:16'
-                          ? galleryHeight * (9 / 16)
-                          : galleryHeight * (16 / 9);
+                      {/* Combined items list, images first then videos
+                          (matching this strip's own visual order) - see the
+                          identical pattern/comment at the other Media
+                          Gallery accordion instance earlier in this file. */}
+                      {(() => {
+                        const uploadedVids = isGdType ? (activeProject.uploadedVideos || []) : [];
+                        const mediaItems = [
+                          ...activeProject.images.map((uri, idx) => ({ type: 'image', uri, caption: activeProject.imagesCaptions ? activeProject.imagesCaptions[idx] : undefined })),
+                          ...uploadedVids.map((v) => ({ type: 'video', uri: v.url, width: v.width, height: v.height, caption: v.caption }))
+                        ];
                         return (
-                          <BouncyButton key={index} activeOpacity={0.9} onPress={() => setLightboxImageUri(imgUrl)}>
-                            <Image source={{ uri: imgUrl }} style={[styles.galleryImage, { width: galleryWidth, height: galleryHeight }]} resizeMode="cover" />
-                          </BouncyButton>
+                          <>
+                            {activeProject.images.map((imgUrl, index) => {
+                              const galleryHeight = 220;
+                              const galleryWidth = activeProject.showcaseAspectRatio === '9:16'
+                                ? galleryHeight * (9 / 16)
+                                : galleryHeight * (16 / 9);
+                              return (
+                                <BouncyButton key={index} activeOpacity={0.9} onPress={() => openMediaViewer(mediaItems, index)}>
+                                  <Image source={{ uri: imgUrl }} style={[styles.galleryImage, { width: galleryWidth, height: galleryHeight }]} resizeMode="cover" />
+                                </BouncyButton>
+                              );
+                            })}
+                            {/* Media Gallery (Graphic Design/Illustration only)
+                                also includes uploaded videos in this same
+                                horizontal strip, alongside images - external
+                                video LINKS aren't included here (no thumbnail/
+                                dimensions to show in a strip like this), those
+                                stay in the right-panel Video tab only. Each
+                                video keeps its own real aspect ratio rather
+                                than the showcase setting used for images. */}
+                            {uploadedVids.map((vid, index) => {
+                              const galleryHeight = 220;
+                              const vidAspect = vid.width && vid.height ? vid.width / vid.height : 16 / 9;
+                              return (
+                                <View key={`vid-${index}`} style={{ position: 'relative', height: galleryHeight, width: galleryHeight * vidAspect, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' }}>
+                                  <PortfolioVideoPlayer uri={vid.url} width={vid.width} height={vid.height} />
+                                  <BouncyButton
+                                    style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                    onPress={() => openMediaViewer(mediaItems, activeProject.images.length + index)}
+                                  >
+                                    <ExpandIconSVG size={15} />
+                                  </BouncyButton>
+                                </View>
+                              );
+                            })}
+                          </>
                         );
-                      })}
-                      {/* Media Gallery (Graphic Design/Illustration only) also
-                          includes uploaded videos in this same horizontal
-                          strip, alongside images - external video LINKS
-                          aren't included here (no thumbnail/dimensions to show
-                          in a strip like this), those stay in the right-panel
-                          Video tab only. Each video keeps its own real aspect
-                          ratio rather than the showcase setting used for
-                          images. */}
-                      {isGdType && (activeProject.uploadedVideos || []).map((vid, index) => {
-                        const galleryHeight = 220;
-                        const vidAspect = vid.width && vid.height ? vid.width / vid.height : 16 / 9;
-                        return (
-                          <View key={`vid-${index}`} style={{ height: galleryHeight, width: galleryHeight * vidAspect, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' }}>
-                            <PortfolioVideoPlayer uri={vid.url} width={vid.width} height={vid.height} />
-                          </View>
-                        );
-                      })}
+                      })()}
                     </ScrollView>
 
                     {Platform.OS === 'web' && galleryCanScrollLeft && (
@@ -18650,17 +18974,31 @@ function App() {
                     )}
                   </View>
                         )}
+                        </View>
                       </>
                     );
                   })()}
 
                   {/* Illustration-only, shown whenever a disclosure note
-                      exists - same as the narrow-web version above, just
-                      matching this pane's own indentation level. */}
+                      exists - same collapsible accordion as the narrow-web
+                      version above, just matching this pane's own
+                      indentation level. */}
                   {activeProject.portfolioType === 'illustration' && activeProject.aiDisclosureNote ? (
-                    <View style={{ backgroundColor: '#8B5CF6', borderRadius: 12, padding: 14, marginBottom: 16 }}>
-                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5, marginBottom: 6 }}>HOW I USE AI</Text>
-                      <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 20 }}>{activeProject.aiDisclosureNote}</Text>
+                    <View style={{ backgroundColor: '#8B5CF6', borderRadius: 14, padding: 14, marginBottom: 16 }}>
+                      <BouncyButton
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: aiUseExpanded ? 6 : 0 }}
+                        onPress={() => setAiUseExpanded((prev) => !prev)}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>HOW I USE AI</Text>
+                        {aiUseExpanded ? (
+                          <ChevronUpSVG color="#FFFFFF" size={16} />
+                        ) : (
+                          <ChevronDownSVG color="#FFFFFF" size={16} />
+                        )}
+                      </BouncyButton>
+                      {aiUseExpanded && (
+                        <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 20 }}>{activeProject.aiDisclosureNote}</Text>
+                      )}
                     </View>
                   ) : null}
 
