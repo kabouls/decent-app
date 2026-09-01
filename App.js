@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 484;
+const BUILD_NUMBER = 485;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -17028,14 +17028,38 @@ function App() {
                 )
               )}
 
-              {/* Wide web only now - narrow web's version of this moved to
-                  a close (X) button on the right, past the Share icon,
-                  instead of a back chevron on the left (see further down,
-                  next to Share). */}
+              {/* Wide web only now - dots + Share moved here from the right
+                  side (where they used to sit, opposite the old chevron),
+                  swapped to dots-then-share order per request. The close
+                  button that replaces the chevron is further right, in the
+                  block that used to hold dots+share (see below) - same
+                  circle-stroke style already used on narrow web, not a new
+                  style. */}
               {Platform.OS === 'web' && isWebWide && (
-                <BouncyButton style={[{ padding: 4, marginRight: 8 }, { width: 68, alignItems: 'flex-start' }]} onPress={handleBackFromPortfolioDetail}>
-                  <ChevronLeftSVG color={theme.accentLight} size={20} />
-                </BouncyButton>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, width: 68 }}>
+                  <View ref={portfolioDotsWrapRef} style={{ zIndex: 100 }}>
+                    <BouncyButton
+                      style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                      onPress={() => {
+                        const next = !portfolioOptionsMenuVisible;
+                        if (next && portfolioDotsWrapRef.current) {
+                          portfolioDotsWrapRef.current.measureInWindow((x, y, width, height) => {
+                            setPortfolioMenuPos({ top: y + height + 8, left: x });
+                          });
+                        }
+                        setPortfolioOptionsMenuVisible(next);
+                      }}
+                    >
+                      <Text style={{ color: theme.textSecondary, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
+                    </BouncyButton>
+                  </View>
+                  <BouncyButton
+                    style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                    onPress={() => handleSharePortfolio(activeProject)}
+                  >
+                    <ShareIconSVG color={theme.accentLight} />
+                  </BouncyButton>
+                </View>
               )}
 
               <Text
@@ -17096,32 +17120,11 @@ function App() {
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: isWebWide ? 4 : 14, ...(isWebWide ? { width: 68, justifyContent: 'flex-end' } : {}) }}>
                 {isWebWide ? (
-                  <>
-                    <BouncyButton
-                      style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
-                      onPress={() => handleSharePortfolio(activeProject)}
-                    >
-                      <ShareIconSVG color={theme.accentLight} />
-                    </BouncyButton>
-
-                    <View ref={portfolioDotsWrapRef} style={{ zIndex: 100 }}>
-                      <BouncyButton
-                        style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
-                        onPress={() => {
-                          const next = !portfolioOptionsMenuVisible;
-                          if (next && portfolioDotsWrapRef.current) {
-                            portfolioDotsWrapRef.current.measureInWindow((x, y, width, height) => {
-                              const screenWidth = Platform.OS === 'web' ? window.innerWidth : Dimensions.get('window').width;
-                              setPortfolioMenuPos({ top: y + height + 8, right: Math.max(8, screenWidth - (x + width)) });
-                            });
-                          }
-                          setPortfolioOptionsMenuVisible(next);
-                        }}
-                      >
-                        <Text style={{ color: theme.textSecondary, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
-                      </BouncyButton>
-                    </View>
-                  </>
+                  // Replaces the old chevron - same circle-stroke close
+                  // button style already used on narrow web, not a new one.
+                  <BouncyButton style={styles.closeBtn} onPress={handleBackFromPortfolioDetail}>
+                    <Text style={styles.closeBtnText}>✕</Text>
+                  </BouncyButton>
                 ) : (
                   <>
                     <BouncyButton
@@ -17156,8 +17159,7 @@ function App() {
                       onPress={() => setPortfolioOptionsMenuVisible(false)}
                     />
                     <View style={{
-                      position: 'absolute', top: portfolioMenuPos.top,
-                      ...(isWebWide ? { right: portfolioMenuPos.right } : { left: portfolioMenuPos.left }),
+                      position: 'absolute', top: portfolioMenuPos.top, left: portfolioMenuPos.left,
                       width: 220,
                       backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
                       padding: 6,
