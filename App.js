@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 492;
+const BUILD_NUMBER = 493;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -10575,7 +10575,7 @@ function App() {
                   {Platform.OS === 'web' && categoryCanScrollLeft && (
                     <BouncyButton
                       style={{
-                        position: 'absolute', left: 0, top: 20, width: 38, height: 38,
+                        position: 'absolute', left: 0, top: '50%', marginTop: -19, width: 38, height: 38,
                         alignItems: 'center', justifyContent: 'center',
                         backgroundColor: theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
                         borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
@@ -10592,7 +10592,7 @@ function App() {
                   {Platform.OS === 'web' && categoryCanScrollRight && (
                     <BouncyButton
                       style={{
-                        position: 'absolute', right: 0, top: 20, width: 38, height: 38,
+                        position: 'absolute', right: 0, top: '50%', marginTop: -19, width: 38, height: 38,
                         alignItems: 'center', justifyContent: 'center',
                         backgroundColor: theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
                         borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
