@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 523;
+const BUILD_NUMBER = 524;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -4925,6 +4925,21 @@ function App() {
   // empty instead of the cards actually stretching to fill it.
   const forYouCardWidthPx = forYouGridWidth > 0
     ? (forYouGridWidth - FOR_YOU_GRID_GAP * (forYouColumnCount - 1)) / forYouColumnCount
+    : FOR_YOU_TARGET_CARD_WIDTH;
+
+  // b524: same responsive-column approach as For You above, reused for
+  // the Profile tab's own portfolio grid (both "My Portfolios" full-
+  // width mode and "Liked Portfolios") so cards end up the identical
+  // size/row-count as For You on wide web instead of the old 2-huge-
+  // cards-per-row layout. Shares FOR_YOU_TARGET_CARD_WIDTH/
+  // FOR_YOU_GRID_GAP rather than its own constants specifically so
+  // "same exact size" stays true even if those numbers are tuned later.
+  const [profileGridWidth, setProfileGridWidth] = useState(0);
+  const profileColumnCount = profileGridWidth > 0
+    ? Math.max(2, Math.floor((profileGridWidth + FOR_YOU_GRID_GAP) / (FOR_YOU_TARGET_CARD_WIDTH + FOR_YOU_GRID_GAP)))
+    : 2;
+  const profileCardWidthPx = profileGridWidth > 0
+    ? (profileGridWidth - FOR_YOU_GRID_GAP * (profileColumnCount - 1)) / profileColumnCount
     : FOR_YOU_TARGET_CARD_WIDTH;
 
   const [profileTab, setProfileTab] = useState('myWork');
@@ -11963,6 +11978,15 @@ function App() {
                     onChange={setMyProfileTypeFilter}
                     theme={theme}
                   />
+                  {/* b524: Compact View doesn't make sense once wide web
+                      always shows the properly-sized responsive grid
+                      below (matches For You) - hidden here rather than
+                      just defaulting the state, so a person who set
+                      compact on narrow web/app before resizing up to
+                      wide web isn't stuck fighting a control that no
+                      longer has any effect (see the forced-ProjectGrid
+                      condition below too). */}
+                  {!isWebWide && (
                   <BouncyButton
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
                     onPress={() => setPortfolioLayoutMode(portfolioLayoutMode === 'compact' ? 'full' : 'compact')}
@@ -11972,12 +11996,14 @@ function App() {
                     </Text>
                     <LayoutToggleSVG mode={portfolioLayoutMode} size={15} />
                   </BouncyButton>
+                  )}
                 </View>
               )}
               </View>
 
               <Animated.View style={{ opacity: profileTabContentAnim }}>
-                {profileTab === 'likedWork' || (profileTab === 'myWork' && portfolioLayoutMode === 'full') ? (
+                {profileTab === 'likedWork' || (profileTab === 'myWork' && portfolioLayoutMode === 'full') || isWebWide ? (
+                  <View onLayout={isWebWide ? (e) => setProfileGridWidth(e.nativeEvent.layout.width) : undefined}>
                   <ProjectGrid
                     items={profileTab === 'myWork' ? myUploadedProjectsFiltered : myLikedProjects}
                     onPress={openProjectModal}
@@ -11988,9 +12014,16 @@ function App() {
                     currentUserId={session ? session.user.id : null}
                     showPinControl={profileTab === 'myWork'}
                     onTogglePin={togglePinProject}
-                  styles={styles}
+                  // b524: same shared-width responsive column sizing as
+                  // For You (see profileColumnCount/profileCardWidthPx),
+                  // instead of the old undefined-cardWidth fallback that
+                  // rendered oversized 2-per-row cards on wide web.
+                  styles={isWebWide
+                    ? { ...styles, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: FOR_YOU_GRID_GAP }, card: { ...styles.card, width: profileCardWidthPx } }
+                    : styles}
                   cardWidth={Platform.OS === 'web' && !isWebWide ? '100%' : undefined}
                   />
+                  </View>
                 ) : (
                   <TwoRowHorizontalGrid
                     items={profileTab === 'myWork' ? myUploadedProjectsFiltered : myLikedProjects}
