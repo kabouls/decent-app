@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 535;
+const BUILD_NUMBER = 536;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -3955,8 +3955,17 @@ function App() {
   // Matches the fixed-position bell/gear cluster below (top:16, sized by
   // headerIconBtnSize) so the dropdown sits directly under the icons
   // instead of at a guessed fixed offset - stays correct as the icon size
-  // itself scales down per breakpoint.
-  const utilityDropdownTop = 16 + headerIconBtnSize + 8;
+  // itself scales down per breakpoint. b536: on wide web the icons now
+  // sit inside a shared pill (b531) with paddingVertical:6 top and
+  // bottom around them - this formula predates that and was only
+  // accounting for the icon buttons' own height (hardcoded 36px via
+  // styles.headerIconBtn, not actually headerIconBtnSize - a pre-existing
+  // minor mismatch that stayed small enough to not matter until the pill's
+  // 12px of combined padding made it visible), so the dropdown was
+  // opening about 12px too high, overlapping the pill's own lower edge.
+  // Added the pill's real padding for isWebWide specifically - narrow
+  // web has no pill wrapper, so its formula is untouched.
+  const utilityDropdownTop = isWebWide ? (16 + 6 + 36 + 6 + 8) : (16 + headerIconBtnSize + 8);
   // The outer page canvas color (visible in the gutter beside the centered
   // content column on tablet/desktop, and around the auth screen).
   // Previously a separately-hardcoded value ('#E2E0EC'/'#000000') that was
@@ -11128,19 +11137,21 @@ function App() {
         <View style={[
           styles.headerRightActionsRow,
           Platform.OS === 'web' && { position: 'fixed', top: 16, right: 16, zIndex: 1000 },
-          // b531/b534: shared pill-shaped background housing both icons
-          // together, wide web only - narrow web/app keep the two plain
-          // individual circular buttons as before. Already position:
-          // fixed + zIndex:1000 above for web generally (unchanged),
-          // which is what keeps this visible above scrolled content -
-          // the pill wrapping is purely visual on top of that existing
-          // always-on-top behavior, not a fix to it. Background switched
-          // from theme.surface to theme.bg (b534) - surface read as a
-          // visibly distinct block against the page; bg matches the
-          // page itself so the pill blends in rather than standing out
-          // as its own panel.
+          // b531/b534/b536: shared pill-shaped background housing both
+          // icons together, wide web only - narrow web/app keep the two
+          // plain individual circular buttons as before. Already
+          // position:fixed + zIndex:1000 above for web generally
+          // (unchanged), which is what keeps this visible above scrolled
+          // content - the pill wrapping is purely visual on top of that
+          // existing always-on-top behavior, not a fix to it. Background
+          // switched from theme.surface to theme.bg (b534) - surface
+          // read as a visibly distinct block against the page; bg
+          // matches the page itself so the pill blends in rather than
+          // standing out as its own panel. Border removed (b536) - with
+          // bg already matching the page, the border was the only thing
+          // still visibly outlining the pill as its own shape.
           isWebWide && {
-            backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border,
+            backgroundColor: theme.bg,
             borderRadius: 99, paddingHorizontal: 8, paddingVertical: 6
           }
         ]}>
