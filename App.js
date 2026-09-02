@@ -20,7 +20,10 @@ import {
   StatusBar,
   Linking,
   ActivityIndicator,
-  Alert,
+  // b551: Alert removed - RN's native Alert.alert() was fully replaced
+  // by the app's own custom alert/confirm system (showAppAlert +
+  // customConfirmCard) at some earlier point; this import was the only
+  // remaining trace of that, zero actual usages left.
   TextInput,
   Animated,
   PanResponder,
@@ -40,7 +43,7 @@ import {
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { WebView as NativeWebView } from 'react-native-webview';
 import { KeyboardAwareScrollView as NativeKeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import Svg, { Rect, Path, Circle, G, Defs, LinearGradient, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Rect, Path, Circle, G, Defs, LinearGradient, Stop } from 'react-native-svg';
 import qrcodeGenerator from 'qrcode-generator';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -133,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 548;
+const BUILD_NUMBER = 551;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -3498,7 +3501,7 @@ function AuthScreen({ onCancel } = {}) {
             <Text style={[styles.confirmTitle, { marginTop: 10 }]}>{alertConfig?.title}</Text>
             {alertConfig?.message ? <Text style={styles.confirmSubText}>{alertConfig.message}</Text> : null}
             <BouncyButton
-              style={[styles.confirmDeleteBtn, { width: '100%', marginTop: 8, backgroundColor: '#8B5CF6' }]}
+              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 8, backgroundColor: '#8B5CF6' }]}
               onPress={() => setAlertConfig(null)}
               activeOpacity={0.7}
             >
@@ -3580,7 +3583,7 @@ function AuthScreen({ onCancel } = {}) {
               </Text>
             </ScrollView>
             <BouncyButton
-              style={[styles.confirmDeleteBtn, { width: '100%' }]}
+              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%' }]}
               onPress={() => setAuthTermsPreviewVisible(false)}
             >
               <Text style={styles.confirmDeleteText}>Close</Text>
@@ -4979,6 +4982,57 @@ function App() {
   const designerCardWidthPx = designerGridWidth > 0
     ? (designerGridWidth - FOR_YOU_GRID_GAP * (designerColumnCount - 1)) / designerColumnCount
     : FOR_YOU_TARGET_CARD_WIDTH;
+
+  // b549: same pattern again, now for the Circle (Following feed) grid,
+  // which never got this treatment at all before - its ProjectGrid had
+  // no isWebWide styles override, so it silently used the base 2-column
+  // styles.card everywhere including wide web. This is the 4th
+  // near-identical copy of this exact block (For You/Profile/Designer
+  // Profile/now Circle) - worth actually consolidating into one shared
+  // hook at some point, flagged rather than done here to avoid touching
+  // three already-working call sites in the same pass as this fix.
+  const [circleGridWidth, setCircleGridWidth] = useState(0);
+  const circleColumnCount = circleGridWidth > 0
+    ? Math.max(2, Math.floor((circleGridWidth + FOR_YOU_GRID_GAP) / (FOR_YOU_TARGET_CARD_WIDTH + FOR_YOU_GRID_GAP)))
+    : 2;
+  const circleCardWidthPx = circleGridWidth > 0
+    ? (circleGridWidth - FOR_YOU_GRID_GAP * (circleColumnCount - 1)) / circleColumnCount
+    : FOR_YOU_TARGET_CARD_WIDTH;
+  const circleGridWidthTimerRef = useRef(null);
+  useEffect(() => () => {
+    if (circleGridWidthTimerRef.current) clearTimeout(circleGridWidthTimerRef.current);
+  }, []);
+
+  // b549: same pattern once more, for the Search page. One shared width
+  // per content type (not per-section) since the sections sharing each
+  // one are mutually exclusive - exactMatch's single-item grid and
+  // relatedProjects's grid are never both the only thing visible at
+  // once in a way that would make them compete, and Discover Designers
+  // (empty query) vs Related Designers (query entered) are strictly
+  // either/or, never both mounted simultaneously.
+  const [searchGridWidth, setSearchGridWidth] = useState(0);
+  const searchColumnCount = searchGridWidth > 0
+    ? Math.max(2, Math.floor((searchGridWidth + FOR_YOU_GRID_GAP) / (FOR_YOU_TARGET_CARD_WIDTH + FOR_YOU_GRID_GAP)))
+    : 2;
+  const searchCardWidthPx = searchGridWidth > 0
+    ? (searchGridWidth - FOR_YOU_GRID_GAP * (searchColumnCount - 1)) / searchColumnCount
+    : FOR_YOU_TARGET_CARD_WIDTH;
+  const searchGridWidthTimerRef = useRef(null);
+  // Designer cards (avatar + text + buttons, no thumbnail) read better
+  // narrower than portfolio cards - own target width, same gap/formula.
+  const SEARCH_DESIGNER_TARGET_CARD_WIDTH = 320;
+  const [searchDesignersGridWidth, setSearchDesignersGridWidth] = useState(0);
+  const searchDesignersColumnCount = searchDesignersGridWidth > 0
+    ? Math.max(2, Math.floor((searchDesignersGridWidth + FOR_YOU_GRID_GAP) / (SEARCH_DESIGNER_TARGET_CARD_WIDTH + FOR_YOU_GRID_GAP)))
+    : 2;
+  const searchDesignersCardWidthPx = searchDesignersGridWidth > 0
+    ? (searchDesignersGridWidth - FOR_YOU_GRID_GAP * (searchDesignersColumnCount - 1)) / searchDesignersColumnCount
+    : SEARCH_DESIGNER_TARGET_CARD_WIDTH;
+  const searchDesignersGridWidthTimerRef = useRef(null);
+  useEffect(() => () => {
+    if (searchGridWidthTimerRef.current) clearTimeout(searchGridWidthTimerRef.current);
+    if (searchDesignersGridWidthTimerRef.current) clearTimeout(searchDesignersGridWidthTimerRef.current);
+  }, []);
 
   const [profileTab, setProfileTab] = useState('myWork');
   const [profileTabBarWidth, setProfileTabBarWidth] = useState(0);
@@ -10674,8 +10728,8 @@ function App() {
             section itself) so only the grid actually gets wider, not
             everything on the page. Every other screen rendered through
             this same wrapper is completely unaffected. */}
-        <View style={{ flex: 1, alignItems: (isWebWide && !((modalVisible && activeProject) || bottomNav === 'forYou' || bottomNav === 'profile')) ? 'center' : 'stretch' }}>
-      <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', ...((isWebWide && ((modalVisible && activeProject) || bottomNav === 'forYou' || bottomNav === 'profile')) ? {} : { maxWidth: mainContentMaxWidth }), backgroundColor: webCanvasColor } : { flex: 1 }}>
+        <View style={{ flex: 1, alignItems: (isWebWide && !((modalVisible && activeProject) || bottomNav === 'forYou' || bottomNav === 'profile' || bottomNav === 'followed' || bottomNav === 'search')) ? 'center' : 'stretch' }}>
+      <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', ...((isWebWide && ((modalVisible && activeProject) || bottomNav === 'forYou' || bottomNav === 'profile' || bottomNav === 'followed' || bottomNav === 'search')) ? {} : { maxWidth: mainContentMaxWidth }), backgroundColor: webCanvasColor } : { flex: 1 }}>
       <StatusBar barStyle={themeMode === 'light' ? 'dark-content' : 'light-content'} backgroundColor={theme.bg} translucent={false} />
 
       {isOffline && (
@@ -11754,6 +11808,10 @@ function App() {
               )}
 
               {followedProjects.length > 0 ? (
+                <View
+                  style={isWebWide ? { width: '100%' } : undefined}
+                  onLayout={isWebWide ? debouncedLayoutWidthSetter(circleGridWidthTimerRef, setCircleGridWidth) : undefined}
+                >
                 <ProjectGrid
                   items={followedProjects}
                   onPress={openProjectModal}
@@ -11762,8 +11820,17 @@ function App() {
                   onToggleFollow={toggleFollowDesigner}
                   followedDesigners={followedDesigners}
                   currentUserId={session ? session.user.id : null}
-                styles={styles}
+                // b549: same responsive-column sizing as For You/Profile/
+                // Designer Profile (see circleColumnCount/
+                // circleCardWidthPx above) - this grid had no wide-web
+                // override before, so it silently fell back to the base
+                // 2-column styles.card everywhere.
+                styles={isWebWide
+                  ? { ...styles, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: FOR_YOU_GRID_GAP, justifyContent: 'flex-start' }, card: { ...styles.card, width: circleCardWidthPx } }
+                  : styles}
+                cardWidth={Platform.OS === 'web' && !isWebWide ? '100%' : undefined}
                 />
+                </View>
               ) : (
                 <View style={styles.emptyFollowedBox}>
                   <Text style={styles.emptyFollowedTitle}>
@@ -11841,6 +11908,10 @@ function App() {
                         <ChevronRightSVG color="#8B5CF6" size={20} />
                       </BouncyButton>
                     ) : (
+                      <View
+                        style={isWebWide ? { width: '100%' } : undefined}
+                        onLayout={isWebWide ? debouncedLayoutWidthSetter(searchGridWidthTimerRef, setSearchGridWidth) : undefined}
+                      >
                       <ProjectGrid
                         items={[exactMatch.item]}
                         onPress={openProjectModal}
@@ -11849,8 +11920,15 @@ function App() {
                         onToggleFollow={toggleFollowDesigner}
                         followedDesigners={followedDesigners}
                         currentUserId={session ? session.user.id : null}
-                      styles={styles}
+                      // b549: same responsive-column sizing as the other
+                      // grids in the app (see searchColumnCount/
+                      // searchCardWidthPx above).
+                      styles={isWebWide
+                        ? { ...styles, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: FOR_YOU_GRID_GAP, justifyContent: 'flex-start' }, card: { ...styles.card, width: searchCardWidthPx } }
+                        : styles}
+                      cardWidth={Platform.OS === 'web' && !isWebWide ? '100%' : undefined}
                       />
+                      </View>
                     )
                   ) : (
                     <Text style={styles.emptySearchText}>No exact match for "{searchQuery}".</Text>
@@ -11877,6 +11955,10 @@ function App() {
                   <Text style={[styles.sectionHeader, { marginTop: 12 }]}>YOU MIGHT ALSO LOOK FOR...</Text>
 
                   {(searchFilterTab === 'all' || searchFilterTab === 'portfolios') && relatedProjects.length > 0 && (
+                    <View
+                      style={isWebWide ? { width: '100%' } : undefined}
+                      onLayout={isWebWide ? debouncedLayoutWidthSetter(searchGridWidthTimerRef, setSearchGridWidth) : undefined}
+                    >
                     <ProjectGrid
                       items={relatedProjects}
                       onPress={openProjectModal}
@@ -11885,16 +11967,29 @@ function App() {
                       onToggleFollow={toggleFollowDesigner}
                       followedDesigners={followedDesigners}
                       currentUserId={session ? session.user.id : null}
-                    styles={styles}
+                    styles={isWebWide
+                      ? { ...styles, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: FOR_YOU_GRID_GAP, justifyContent: 'flex-start' }, card: { ...styles.card, width: searchCardWidthPx } }
+                      : styles}
+                    cardWidth={Platform.OS === 'web' && !isWebWide ? '100%' : undefined}
                     />
+                    </View>
                   )}
 
                   {(searchFilterTab === 'all' || searchFilterTab === 'designers') && (
-                    <View style={[styles.designersList, { marginTop: 20 }]}>
+                    <View
+                      style={[styles.designersList, { marginTop: 20 }, isWebWide && { flexDirection: 'row', flexWrap: 'wrap' }]}
+                      onLayout={isWebWide ? debouncedLayoutWidthSetter(searchDesignersGridWidthTimerRef, setSearchDesignersGridWidth) : undefined}
+                    >
                       {relatedDesigners.map((des) => {
                         const isFollowing = followedDesigners.includes(des.id);
                         return (
-                          <View key={des.id} style={{ backgroundColor: theme.surface, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border, padding: 14 }}>
+                          <View
+                            key={des.id}
+                            style={[
+                              { backgroundColor: theme.surface, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border, padding: 14 },
+                              isWebWide && { width: searchDesignersCardWidthPx }
+                            ]}
+                          >
                             <CardLink
                               href={`/@${des.handle || des.id}`}
                               style={{ flexDirection: 'row', alignItems: 'center' }}
@@ -11988,13 +12083,16 @@ function App() {
                   >
                     DISCOVER DESIGNERS ({searchedDesigners.length})
                   </Text>
-                  <View style={[styles.designersList, isWebWide && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
+                  <View
+                    style={[styles.designersList, isWebWide && { flexDirection: 'row', flexWrap: 'wrap' }]}
+                    onLayout={isWebWide ? debouncedLayoutWidthSetter(searchDesignersGridWidthTimerRef, setSearchDesignersGridWidth) : undefined}
+                  >
                     {searchedDesigners.slice(0, discoverDesignersLimit).map((des) => {
                       const isFollowing = followedDesigners.includes(des.id);
                       return (
                         <View
                           key={des.id}
-                          style={[{ backgroundColor: theme.surface, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border, padding: 14 }, isWebWide && { width: '48%' }]}
+                          style={[{ backgroundColor: theme.surface, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border, padding: 14 }, isWebWide && { width: searchDesignersCardWidthPx }]}
                         >
                           <CardLink
                             href={`/@${des.handle || des.id}`}
@@ -14670,7 +14768,7 @@ function App() {
                   </View>
 
                   <BouncyButton
-                    style={[styles.confirmDeleteBtn, { width: '100%', marginTop: 10 }]}
+                    style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 10 }]}
                     onPress={handleSubmitFeedback}
                   >
                     <Text style={styles.confirmDeleteText}>Submit Feedback</Text>
@@ -14732,7 +14830,7 @@ function App() {
                   )}
 
                   <BouncyButton
-                    style={[styles.confirmDeleteBtn, { width: '100%', marginTop: 10 }]}
+                    style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 10 }]}
                     onPress={handleSubmitFeatureRequest}
                   >
                     <Text style={styles.confirmDeleteText}>Submit Feature Request</Text>
@@ -14790,7 +14888,7 @@ function App() {
               Thank you for helping improve DECENT! Our support team (iputra07@gmail.com) has received your submission.
             </Text>
             <BouncyButton
-              style={[styles.confirmDeleteBtn, { width: '100%', marginTop: 8 }]}
+              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 8 }]}
               onPress={() => setFeedbackSuccessModalVisible(false)}
             >
               <Text style={styles.confirmDeleteText}>Continue</Text>
@@ -15035,7 +15133,7 @@ function App() {
               Your generosity keeps DECENT independent and growing. We greatly appreciate your support!
             </Text>
             <BouncyButton
-              style={[styles.confirmDeleteBtn, { width: '100%', marginTop: 8 }]}
+              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 8 }]}
               onPress={handleCloseDonateSuccess}
             >
               <Text style={styles.confirmDeleteText}>Continue</Text>
@@ -18530,7 +18628,7 @@ function App() {
             </View>
 
             <BouncyButton
-              style={[styles.confirmDeleteBtn, { width: '100%' }]}
+              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%' }]}
               onPress={() => setFormattingGuideVisible(false)}
             >
               <Text style={styles.confirmDeleteText}>Got It</Text>
@@ -20968,6 +21066,15 @@ const getStyles = (theme) => StyleSheet.create({
   confirmActionsRow: { flexDirection: 'row', gap: 10, width: '100%' },
   confirmCancelBtn: { flex: 1, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   confirmCancelText: { color: theme.textSecondary, fontSize: 13, fontWeight: '700' },
+  // b550: this flex:1 is meant for confirmActionsRow's two-button ROW
+  // layout, where it splits width evenly with a sibling. Every
+  // standalone usage elsewhere (a single full-width button, no sibling)
+  // MUST override this to flex:0 - flex:1's shorthand sets
+  // flex-basis:0%, which (per spec, since it isn't 'auto') overrides
+  // this style's own explicit height:44 in a column-direction parent,
+  // collapsing the button down to just its text's natural height with
+  // no real vertical padding. Confirmed bug, not just theoretical -
+  // found across 7 standalone usages in this file.
   confirmDeleteBtn: { flex: 1, backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#8B5CF6', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   confirmDeleteText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 
@@ -21048,8 +21155,10 @@ const getStyles = (theme) => StyleSheet.create({
   profileTabBtnText: { fontSize: 12, color: theme.textSecondary, fontWeight: '700' },
   profileTabBtnTextActive: { color: '#FFFFFF' },
 
-  twoRowContainer: { flexDirection: 'row', gap: 16 },
-  twoRowColumn: { gap: 16 },
+  // b551: twoRowContainer/twoRowColumn removed - zero references anywhere
+  // else in the file (checked). TwoRowHorizontalGrid, the only component
+  // these names could plausibly have been for, uses its own inline
+  // styles instead - these were dead from some earlier iteration.
   emptyTabContainer: { paddingVertical: 24, alignItems: 'center' },
 
   floatingBottomBar: {
