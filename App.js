@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 545;
+const BUILD_NUMBER = 546;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -20495,7 +20495,12 @@ function App() {
                   onChange={setQrPreviewMode}
                   containerStyle={{ width: '100%', marginBottom: 10, padding: 3 }}
                   tabs={[
-                    { key: 'plain', label: 'Plain QR', flex: false },
+                    // b546: flex:false removed from 'plain' - was content-
+                    // hugging while 'decent' defaulted to flex:1, giving
+                    // an uneven split (matches AnimatedPillTabs' own
+                    // tab.flex === false check). Both now default to
+                    // flex:1, splitting the switcher evenly 50/50.
+                    { key: 'plain', label: 'Plain QR' },
                     { key: 'decent', label: 'DECENT Style' }
                   ]}
                 />
