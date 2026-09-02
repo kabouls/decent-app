@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 537;
+const BUILD_NUMBER = 538;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -6775,6 +6775,7 @@ function App() {
   // from this on demand, rather than syncing a second piece of state
   // that could drift from it.
   const [shareTypeFilters, setShareTypeFilters] = useState(new Set());
+  const [shareTypeDropdownOpen, setShareTypeDropdownOpen] = useState(false);
   const getShareModalUrlWithFilter = () => {
     if (shareType !== 'profile' || shareTypeFilters.size === 0) return shareModalUrl;
     return `${shareModalUrl}?type=${[...shareTypeFilters].join(',')}`;
@@ -6796,6 +6797,7 @@ function App() {
     // case for someone else's profile QR the way there is for your own).
     setShareIsOwnProfile(!!(session && designer.id === session.user.id));
     setShareTypeFilters(new Set());
+    setShareTypeDropdownOpen(false);
     setShareCopied(false);
     setShareModalVisible(true);
   };
@@ -6811,6 +6813,7 @@ function App() {
     setShareType('portfolio');
     setShareIsOwnProfile(false);
     setShareTypeFilters(new Set());
+    setShareTypeDropdownOpen(false);
     setShareCopied(false);
     setShareModalVisible(true);
   };
@@ -20217,50 +20220,111 @@ function App() {
             onStartShouldSetResponder={() => Platform.OS === 'web'}
             onResponderRelease={() => {}}
           >
-            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>{shareType === 'portfolio' ? 'Share Portfolio' : 'Share Profile'}</Text>
-            <Text style={[styles.confirmSubText, { marginBottom: 16 }]}>
-              {shareType === 'portfolio' ? 'Anyone with this link can view this portfolio.' : 'Anyone with this link can view this profile.'}
-            </Text>
+            <Text style={[styles.confirmTitle, { marginBottom: 16 }, isWebWide && { fontSize: 20 }]}>{shareType === 'portfolio' ? 'Share Portfolio' : 'Share Profile'}</Text>
 
-            {/* b533: multi-select portfolio-type filter for a shared
-                profile link - only when sharing your OWN profile and you
-                actually have more than one type (nothing to filter
-                otherwise). Not persisted anywhere - purely computed into
-                the ?type= query param on the link/QR below, live as
-                selections change. */}
+            {/* b533/b538: multi-select portfolio-type filter for a
+                shared profile link - only when sharing your OWN profile
+                and you actually have more than one type (nothing to
+                filter otherwise). Not persisted anywhere - purely
+                computed into the ?type= query param on the link/QR
+                below, live as selections change. b538: rebuilt as a
+                single dropdown (was a row of standalone checkbox chips)
+                - the dropdown has no separate label above it; the first
+                row inside the panel itself carries that context instead,
+                styled distinctly and non-interactive. "All Portfolios"
+                and an empty selection are treated as exactly the same
+                state throughout (both mean "no filter, don't touch the
+                link") - selecting "All Portfolios" just clears
+                shareTypeFilters back to empty, it isn't tracked as its
+                own separate value. Absolute-positioned panel (not
+                inline push-down) so opening it doesn't shove the QR/link
+                content below down the page - same technique as
+                ProfileTypeFilterBar elsewhere in this file. */}
             {shareType === 'profile' && shareIsOwnProfile && myUploadedProjectTypes.length > 1 && (
-              <View style={{ width: '100%', marginBottom: 16 }}>
-                <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8 }}>
-                  Share only specific portfolio types (optional)
-                </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {myUploadedProjectTypes.map((t) => {
-                    const selected = shareTypeFilters.has(t.key);
-                    return (
-                      <BouncyButton
-                        key={t.key}
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 6,
-                          paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99,
-                          borderWidth: 1, borderColor: selected ? theme.accent : theme.border,
-                          backgroundColor: selected ? (themeMode === 'light' ? 'rgba(109,40,217,0.1)' : 'rgba(139,92,246,0.15)') : 'transparent'
-                        }}
-                        onPress={() => {
-                          setShareTypeFilters((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(t.key)) next.delete(t.key); else next.add(t.key);
-                            return next;
-                          });
-                        }}
-                      >
-                        {selected && <CheckIconSVG color={theme.accent} size={13} />}
-                        <Text style={{ color: selected ? theme.accent : theme.textSecondary, fontSize: 12, fontWeight: '700' }}>
-                          {t.label}
+              <View style={{
+                width: '100%', marginBottom: 16,
+                alignItems: 'flex-start',
+                ...(shareTypeDropdownOpen ? { zIndex: 100 } : {})
+              }}>
+                <BouncyButton
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    paddingVertical: 8, paddingHorizontal: 12, borderRadius: 99,
+                    borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bg
+                  }}
+                  onPress={() => setShareTypeDropdownOpen((v) => !v)}
+                >
+                  <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>
+                    {shareTypeFilters.size === 0
+                      ? 'All Portfolios'
+                      : myUploadedProjectTypes.filter((t) => shareTypeFilters.has(t.key)).map((t) => t.label).join(', ')}
+                  </Text>
+                  <ChevronDownSVG color={theme.textSecondary} size={13} />
+                </BouncyButton>
+
+                {shareTypeDropdownOpen && (
+                  <>
+                    <TouchableOpacity
+                      style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
+                      activeOpacity={1}
+                      onPress={() => setShareTypeDropdownOpen(false)}
+                    />
+                    <View style={{
+                      position: 'absolute', top: 40, left: 0, width: 260, zIndex: 100,
+                      backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                      padding: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                    }}>
+                      {/* Non-selectable title row - stands in for the
+                          label that used to sit above the whole control. */}
+                      <View style={{ paddingHorizontal: 10, paddingTop: 8, paddingBottom: 10 }}>
+                        <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700' }}>
+                          Share only specific portfolio types (optional)
                         </Text>
+                      </View>
+                      <View style={{ height: 1, backgroundColor: theme.border, marginBottom: 4 }} />
+
+                      <BouncyButton
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
+                        onPress={() => setShareTypeFilters(new Set())}
+                      >
+                        <View style={{
+                          width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
+                          borderWidth: 1.5, borderColor: shareTypeFilters.size === 0 ? theme.accent : theme.border,
+                          backgroundColor: shareTypeFilters.size === 0 ? theme.accent : 'transparent'
+                        }}>
+                          {shareTypeFilters.size === 0 && <CheckIconSVG color="#FFFFFF" />}
+                        </View>
+                        <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>All Portfolios</Text>
                       </BouncyButton>
-                    );
-                  })}
-                </View>
+
+                      {myUploadedProjectTypes.map((t) => {
+                        const selected = shareTypeFilters.has(t.key);
+                        return (
+                          <BouncyButton
+                            key={t.key}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
+                            onPress={() => {
+                              setShareTypeFilters((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(t.key)) next.delete(t.key); else next.add(t.key);
+                                return next;
+                              });
+                            }}
+                          >
+                            <View style={{
+                              width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
+                              borderWidth: 1.5, borderColor: selected ? theme.accent : theme.border,
+                              backgroundColor: selected ? theme.accent : 'transparent'
+                            }}>
+                              {selected && <CheckIconSVG color="#FFFFFF" />}
+                            </View>
+                            <Text style={{ color: theme.text, fontSize: 13 }}>{t.label}</Text>
+                          </BouncyButton>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
               </View>
             )}
 
@@ -20303,10 +20367,6 @@ function App() {
                     />
                   )}
                 </View>
-
-                <Text style={{ color: theme.textSecondary, fontSize: 11, textAlign: 'center', marginTop: 8, maxWidth: 220 }}>
-                  Tip: add this to your resume or business card so people can pull up your portfolio instantly.
-                </Text>
 
                 <BouncyButton
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 16, marginTop: 10, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
