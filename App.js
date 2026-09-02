@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 551;
+const BUILD_NUMBER = 552;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -8359,6 +8359,28 @@ function App() {
     const tabRoutes = { '/for-you': 'forYou', '/circle': 'followed', '/search': 'search', '/profile': 'profile' };
     if (tabRoutes[path]) {
       setBottomNav(tabRoutes[path]);
+      return;
+    }
+
+    // b552: two directly-loadable URLs, needed for Play Store submission -
+    // Google requires a privacy policy link that's a real hosted page (an
+    // in-app-only modal isn't enough) and, for apps with account creation,
+    // "a web link resource where users can request app account deletion".
+    // Both reuse the exact modals already built for these in Settings -
+    // this only adds a direct route to them, not new UI.
+    if (path === '/privacy') {
+      setPrivacyModalVisible(true);
+      return;
+    }
+    if (path === '/delete-account') {
+      // Same guest-prompt pattern every other auth-gated action in the
+      // app already uses (e.g. toggleFollowDesigner) - if there's no
+      // session, this shows the sign-in prompt instead of silently
+      // failing. Deletion itself always requires knowing which account
+      // to delete, so there's no way around signing in first regardless
+      // of how this URL is reached.
+      if (!requireAuth()) return;
+      handleDeleteAccount();
       return;
     }
 
