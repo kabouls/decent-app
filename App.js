@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 517;
+const BUILD_NUMBER = 518;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -9392,6 +9392,19 @@ function App() {
   // ScrollView further down. Remove alongside it once a real fix lands.
   const [blockEditorDebugContentHeight, setBlockEditorDebugContentHeight] = useState(0);
   const [blockEditorDebugContainerHeight, setBlockEditorDebugContainerHeight] = useState(0);
+  // TEMPORARY diagnostic (b518) - added alongside the two above once
+  // they turned out identical before/after the b517 Modal fix, proving
+  // that fix wasn't actually the bottleneck. This third number settles
+  // which of two very different bugs this is: if maxScrollYReached ends
+  // up close to (contentHeight - containerHeight), the ScrollView is
+  // scrolling its full real distance and the "missing" content is
+  // simply below that point (a padding/content-height problem to solve
+  // with layout, not a scroll-capping bug). If maxScrollYReached stops
+  // noticeably short of that number, the scroll itself is being capped
+  // by something real (points back to a genuine Android ScrollView
+  // bug/interference, same family as the removeClippedSubviews issue
+  // already ruled out).
+  const [blockEditorDebugMaxScrollY, setBlockEditorDebugMaxScrollY] = useState(0);
   const [interestConfirmMode, setInterestConfirmMode] = useState('add'); // 'add' | 'remove' - which action interestConfirmTarget is for
   const [portfolioReportModalVisible, setPortfolioReportModalVisible] = useState(false);
   const [portfolioReportSelectedReason, setPortfolioReportSelectedReason] = useState(null); // 'ai_undisclosed' | 'nsfw_misuse' | 'other' | null
@@ -16888,7 +16901,7 @@ function App() {
                       overlap/hide anything and survives a screenshot. */}
                   {descEditorMode === 'edit' && (
                     <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '700', paddingHorizontal: 16, paddingBottom: 4 }}>
-                      DBG content:{Math.round(blockEditorDebugContentHeight)}px container:{Math.round(blockEditorDebugContainerHeight)}px
+                      DBG content:{Math.round(blockEditorDebugContentHeight)}px container:{Math.round(blockEditorDebugContainerHeight)}px maxScrollY:{Math.round(blockEditorDebugMaxScrollY)}px
                     </Text>
                   )}
 
@@ -16941,6 +16954,18 @@ function App() {
                       // with this in.
                       onContentSizeChange={(w, h) => setBlockEditorDebugContentHeight(h)}
                       onLayout={(e) => setBlockEditorDebugContainerHeight(e.nativeEvent.layout.height)}
+                      // TEMPORARY diagnostic (b518) - tracks the
+                      // farthest contentOffset.y actually reached, so
+                      // it survives even if the user scrolls back up
+                      // before screenshotting. Compare against
+                      // content-container above once you're at max
+                      // scroll - see the state declaration for what
+                      // each outcome means.
+                      onScroll={(e) => {
+                        const y = e.nativeEvent.contentOffset.y;
+                        setBlockEditorDebugMaxScrollY((prev) => Math.max(prev, y));
+                      }}
+                      scrollEventThrottle={16}
                     >
                         {fContentBlocks.map((block, idx) => (
                           <View
