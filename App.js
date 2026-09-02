@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 531;
+const BUILD_NUMBER = 532;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -11759,7 +11759,15 @@ function App() {
                   <Text style={styles.sectionHeader}>POPULAR KEYWORDS</Text>
                   {popularKeywords.length > 0 ? (
                     <View style={styles.keywordsRow}>
-                      {popularKeywords.map((kw) => (
+                      {/* b532: capped to top 6 here specifically - this
+                          list is a "few good starting points" UI, not
+                          meant to be exhaustive. popularKeywords itself
+                          stays a bigger pool (30, since b523) because the
+                          category filter bar elsewhere reuses the same
+                          array and needs enough candidates to dynamically
+                          fill wide-web width - slicing here, not at the
+                          source, keeps that intact. */}
+                      {popularKeywords.slice(0, 6).map((kw) => (
                         <BouncyButton
                           key={kw}
                           style={styles.keywordChip}
