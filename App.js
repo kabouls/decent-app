@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 525;
+const BUILD_NUMBER = 529;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -2102,7 +2102,7 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
 // there). Starts clamped to 3 lines; onTextLayout tells us how many lines
 // the text actually rendered at, so "Read more" only appears when there's
 // real overflow to reveal, not on short bios that already fit.
-const ExpandableBioText = ({ text, style, isWebWide }) => {
+const ExpandableBioText = ({ text, style, isWebWide, bgColor }) => {
   const [expanded, setExpanded] = useState(false);
   // Holds the exact text of the first maxLines rendered lines (from
   // onTextLayout, which reports each visible line's own text), once
@@ -2148,9 +2148,25 @@ const ExpandableBioText = ({ text, style, isWebWide }) => {
   // node's scrollHeight to its clientHeight after layout. That's a
   // standard, reliable technique that doesn't depend on onTextLayout
   // firing at all, so it can't get stuck the same way.
+  //
+  // b527: "Read more" trails the last visible line instead of dropping
+  // to its own line below. CSS line-clamp truncates purely by visual
+  // line count with no way to reserve room for trailing content inside
+  // the clamp itself (the same fundamental problem the native path's
+  // own comment above already describes for numberOfLines - nesting a
+  // trailing element inside clamped/truncated text isn't reliable on
+  // either platform). Rather than attempt pixel-perfect text truncation
+  // to fit an exact "...Read more" string (fragile - would need to
+  // remeasure on every font/width change), this overlays "Read more" at
+  // the bottom-right corner of the clamped block with a solid
+  // background matching the surrounding card (bgColor prop) plus a
+  // short fade-in gradient ahead of it, so it reads as continuing the
+  // truncated line rather than sitting in its own row below - the same
+  // pattern most sites use for inline "show more" on clamped text.
+  const lineHeight = (style && style.lineHeight) || ((style && style.fontSize) || 14) * 1.4;
   if (Platform.OS === 'web') {
     return (
-      <View>
+      <View style={{ position: 'relative' }}>
         <Text
           ref={webTextRef}
           style={[style, !expanded && {
@@ -2170,12 +2186,28 @@ const ExpandableBioText = ({ text, style, isWebWide }) => {
         >
           {text}
         </Text>
-        {webIsTruncated && (
+        {webIsTruncated && !expanded && (
+          <View style={{ position: 'absolute', right: 0, bottom: 0, height: lineHeight, flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{
+              width: 28, height: lineHeight,
+              backgroundImage: bgColor ? `linear-gradient(to right, transparent, ${bgColor})` : undefined
+            }} />
+            <View style={{ backgroundColor: bgColor || 'transparent', height: lineHeight, justifyContent: 'center' }}>
+              <Text
+                style={{ color: '#8B5CF6', fontSize: (style && style.fontSize) || 13, fontWeight: '700' }}
+                onPress={() => setExpanded(true)}
+              >
+                Read more
+              </Text>
+            </View>
+          </View>
+        )}
+        {expanded && webIsTruncated && (
           <Text
-            style={{ color: '#8B5CF6', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' }}
-            onPress={() => setExpanded((prev) => !prev)}
+            style={{ color: '#8B5CF6', fontSize: (style && style.fontSize) || 13, fontWeight: '700', marginTop: 2 }}
+            onPress={() => setExpanded(false)}
           >
-            {expanded ? 'Read less' : 'Read more'}
+            Read less
           </Text>
         )}
       </View>
@@ -2447,28 +2479,42 @@ const ProjectCard = React.memo(({
   );
 });
 
-const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles, cardWidth, showReadOnlyPin }) => (
-  <View style={styles.grid}>
-    {items.map((item) => (
-      <ProjectCard
-        key={item.id}
-        item={item}
-        onPress={onPress}
-        onToggleLike={onToggleLike}
-        onOpenDesignerProfile={onOpenDesignerProfile}
-        onToggleFollow={onToggleFollow}
-        isFollowing={followedDesigners ? followedDesigners.includes(item.ownerId) : false}
-        followsMe={!!item.followsMe}
-        isOwnContent={!!currentUserId && item.ownerId === currentUserId}
-        showPinControl={showPinControl}
-        onTogglePin={onTogglePin}
-        showReadOnlyPin={showReadOnlyPin}
-        customWidth={cardWidth}
-        styles={styles}
-      />
-    ))}
-  </View>
-));
+const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles, cardWidth, showReadOnlyPin, emptyMessage }) => {
+  // b527: was previously silently rendering nothing at all for an empty
+  // items array - matches TwoRowHorizontalGrid's own empty state below,
+  // just with an emptyMessage prop so each call site can give
+  // context-appropriate wording (own vs. someone else's profile,
+  // portfolios vs. liked) instead of one generic string everywhere.
+  if (items.length === 0) {
+    return (
+      <View style={styles.emptyTabContainer}>
+        <Text style={styles.emptySearchText}>{emptyMessage || 'No portfolios found in this section.'}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.grid}>
+      {items.map((item) => (
+        <ProjectCard
+          key={item.id}
+          item={item}
+          onPress={onPress}
+          onToggleLike={onToggleLike}
+          onOpenDesignerProfile={onOpenDesignerProfile}
+          onToggleFollow={onToggleFollow}
+          isFollowing={followedDesigners ? followedDesigners.includes(item.ownerId) : false}
+          followsMe={!!item.followsMe}
+          isOwnContent={!!currentUserId && item.ownerId === currentUserId}
+          showPinControl={showPinControl}
+          onTogglePin={onTogglePin}
+          showReadOnlyPin={showReadOnlyPin}
+          customWidth={cardWidth}
+          styles={styles}
+        />
+      ))}
+    </View>
+  );
+});
 
 // Wraps any content with a swipe-left-to-dismiss gesture. Built with core
 // React Native (PanResponder + Animated) so it doesn't need any new native
@@ -2842,11 +2888,11 @@ const ZoomPanImage = ({ uri, containerWidth, containerHeight }) => {
   );
 };
 
-const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles, theme, isWebWide, showReadOnlyPin }) => {
+const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles, theme, isWebWide, showReadOnlyPin, emptyMessage }) => {
   if (items.length === 0) {
     return (
       <View style={styles.emptyTabContainer}>
-        <Text style={styles.emptySearchText}>No portfolios found in this section.</Text>
+        <Text style={styles.emptySearchText}>{emptyMessage || 'No portfolios found in this section.'}</Text>
       </View>
     );
   }
@@ -4863,6 +4909,36 @@ function App() {
   // automatically on any width change (window resize, sidebar collapse/
   // expand) since onLayout fires again whenever the container's own size
   // changes.
+  // b528: debounced onLayout width setter, used by the three responsive
+  // grids below (For You, Profile, Designer Profile). Root-caused: the
+  // sidebar's collapse/expand animates its width via Animated.timing
+  // over 220ms with useNativeDriver:false, meaning the grid's container
+  // genuinely resizes continuously frame-by-frame during that
+  // transition - onLayout fires on every intermediate frame, and as the
+  // width crosses the column-count breakpoint repeatedly mid-animation,
+  // forYouColumnCount (etc) flip-flops between two values, visibly
+  // reflowing whichever cards sit right at the row boundary between
+  // those two column counts (the reported "cards 4/5/6 flickering" -
+  // those are exactly the cards whose row differs between e.g. 3 and 4
+  // columns). Debouncing so the width only actually commits ~150ms
+  // after the last onLayout event settles this: during the animation,
+  // onLayout keeps firing faster than 150ms apart, continually
+  // resetting the timer, so nothing commits until the transition is
+  // actually done and the width stops changing.
+  const debouncedLayoutWidthSetter = (timerRef, setter) => (e) => {
+    const w = e.nativeEvent.layout.width;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setter(w), 150);
+  };
+  const forYouGridWidthTimerRef = useRef(null);
+  const profileGridWidthTimerRef = useRef(null);
+  const designerGridWidthTimerRef = useRef(null);
+  useEffect(() => () => {
+    if (forYouGridWidthTimerRef.current) clearTimeout(forYouGridWidthTimerRef.current);
+    if (profileGridWidthTimerRef.current) clearTimeout(profileGridWidthTimerRef.current);
+    if (designerGridWidthTimerRef.current) clearTimeout(designerGridWidthTimerRef.current);
+  }, []);
+
   const [forYouGridWidth, setForYouGridWidth] = useState(0);
   const FOR_YOU_TARGET_CARD_WIDTH = 360;
   const FOR_YOU_GRID_GAP = 20;
@@ -4890,6 +4966,19 @@ function App() {
     : 2;
   const profileCardWidthPx = profileGridWidth > 0
     ? (profileGridWidth - FOR_YOU_GRID_GAP * (profileColumnCount - 1)) / profileColumnCount
+    : FOR_YOU_TARGET_CARD_WIDTH;
+
+  // b526: identical mirror of profileGridWidth/etc above, for the
+  // "viewing someone else's designer profile" modal specifically -
+  // separate state rather than reusing profileGridWidth so the two
+  // screens can never cross-talk even though they're not normally
+  // shown at once.
+  const [designerGridWidth, setDesignerGridWidth] = useState(0);
+  const designerColumnCount = designerGridWidth > 0
+    ? Math.max(2, Math.floor((designerGridWidth + FOR_YOU_GRID_GAP) / (FOR_YOU_TARGET_CARD_WIDTH + FOR_YOU_GRID_GAP)))
+    : 2;
+  const designerCardWidthPx = designerGridWidth > 0
+    ? (designerGridWidth - FOR_YOU_GRID_GAP * (designerColumnCount - 1)) / designerColumnCount
     : FOR_YOU_TARGET_CARD_WIDTH;
 
   const [profileTab, setProfileTab] = useState('myWork');
@@ -11371,7 +11460,7 @@ function App() {
               </View>
               </View>
 
-              <View onLayout={isWebWide ? (e) => setForYouGridWidth(e.nativeEvent.layout.width) : undefined}>
+              <View onLayout={isWebWide ? debouncedLayoutWidthSetter(forYouGridWidthTimerRef, setForYouGridWidth) : undefined}>
               <ProjectGrid
                 items={forYouCategoryFilteredProjects}
                 onPress={openProjectModal}
@@ -11860,11 +11949,12 @@ function App() {
               </View>
             ) : (
             <View>
-              {/* Profile card + tabs + filter bar stay at the same
-                  narrower column width as before (matches every other
-                  screen) even though the outer page container is now
-                  full-width on wide web for this tab - only the grid
-                  below (outside this wrapper) is meant to stretch. */}
+              {/* Profile card + tabs stay at the same narrower column
+                  width as before (matches every other screen) even
+                  though the outer page container is now full-width on
+                  wide web for this tab. The filter row + grid (b526,
+                  outside this wrapper) intentionally don't - they align
+                  to the same full-width edge as the grid itself. */}
               <View style={isWebWide ? { width: '100%', maxWidth: mainContentMaxWidth, alignSelf: 'center' } : undefined}>
               <View style={styles.profileCard}>
                 <BouncyButton
@@ -11891,7 +11981,7 @@ function App() {
                   <Text style={styles.profileLocText}>{userProfile.location}</Text>
                 </View>
 
-                <ExpandableBioText text={userProfile.bio} style={styles.profileBio} isWebWide={isWebWide} />
+                <ExpandableBioText text={userProfile.bio} style={styles.profileBio} isWebWide={isWebWide} bgColor={theme.surface} />
 
                 <View style={styles.statsRow}>
                   <BouncyButton
@@ -11983,7 +12073,9 @@ function App() {
                   </Text>
                 </BouncyButton>
               </View>
+              </View>
 
+              <Animated.View style={{ opacity: profileTabContentAnim }}>
               {profileTab === 'myWork' && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: myUploadedProjectTypes.length > 1 ? 'space-between' : 'flex-end', marginBottom: 10, zIndex: 100 }}>
                   <ProfileTypeFilterBar
@@ -12013,11 +12105,11 @@ function App() {
                   )}
                 </View>
               )}
-              </View>
-
-              <Animated.View style={{ opacity: profileTabContentAnim }}>
                 {profileTab === 'likedWork' || (profileTab === 'myWork' && portfolioLayoutMode === 'full') || isWebWide ? (
-                  <View onLayout={isWebWide ? (e) => setProfileGridWidth(e.nativeEvent.layout.width) : undefined}>
+                  <View
+                    style={isWebWide ? { width: '100%' } : undefined}
+                    onLayout={isWebWide ? debouncedLayoutWidthSetter(profileGridWidthTimerRef, setProfileGridWidth) : undefined}
+                  >
                   <ProjectGrid
                     items={profileTab === 'myWork' ? myUploadedProjectsFiltered : myLikedProjects}
                     onPress={openProjectModal}
@@ -12028,12 +12120,20 @@ function App() {
                     currentUserId={session ? session.user.id : null}
                     showPinControl={profileTab === 'myWork'}
                     onTogglePin={togglePinProject}
-                  // b524: same shared-width responsive column sizing as
-                  // For You (see profileColumnCount/profileCardWidthPx),
+                  emptyMessage={profileTab === 'myWork' ? "You haven't added any portfolios yet." : "You haven't liked any portfolios yet."}
+                  // b524/b526: same shared-width responsive column sizing
+                  // as For You (see profileColumnCount/profileCardWidthPx),
                   // instead of the old undefined-cardWidth fallback that
                   // rendered oversized 2-per-row cards on wide web.
+                  // justifyContent explicitly 'flex-start' (b526 - was
+                  // relying on the flexbox default, which wasn't actually
+                  // guaranteeing top-left placement for a small number of
+                  // results) so a single result pins top-left, not
+                  // centered, and the wrapping View above explicitly gets
+                  // width:'100%' rather than trusting it to stretch, for
+                  // the same reason.
                   styles={isWebWide
-                    ? { ...styles, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: FOR_YOU_GRID_GAP }, card: { ...styles.card, width: profileCardWidthPx } }
+                    ? { ...styles, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: FOR_YOU_GRID_GAP, justifyContent: 'flex-start' }, card: { ...styles.card, width: profileCardWidthPx } }
                     : styles}
                   cardWidth={Platform.OS === 'web' && !isWebWide ? '100%' : undefined}
                   />
@@ -12052,6 +12152,7 @@ function App() {
                   styles={styles}
                   theme={theme}
                   isWebWide={isWebWide}
+                  emptyMessage={profileTab === 'myWork' ? "You haven't added any portfolios yet." : "You haven't liked any portfolios yet."}
                   />
                 )}
               </Animated.View>
@@ -12075,19 +12176,23 @@ function App() {
 
       {/* BOTTOM FEED SCRIM - replaces the old nav-bar-glow approach
           (b513). Instead of glowing the bar itself, this fades the feed
-          content underneath it: smooth black gradient from ~50% opacity
-          at the very bottom of the screen down to fully transparent,
-          so scrolled content doesn't end abruptly right at the
-          translucent bar's edge. Height is 75% of the bar's own height
-          (BOTTOM_NAV_BAR_HEIGHT above), which keeps the fade contained
-          near the bottom of the screen rather than washing out content
-          further up the feed. Positioned/sized exactly like the sticky
-          back-to-top button and the bar itself (siblings at this same
-          level, absolute to the screen) - not part of the ScrollView, so
-          it doesn't scroll with the content, just sits over it. Rendered
-          before the bar below so the bar's own blur/elevation stacks on
-          top of it. Native only - web uses the hamburger drawer instead
-          of this floating bar, so there's nothing to fade into there. */}
+          content underneath it: smooth gradient from ~50% opacity at
+          the very bottom of the screen down to fully transparent, so
+          scrolled content doesn't end abruptly right at the translucent
+          bar's edge. Color follows the theme (b529) - black made sense
+          against the dark theme's own dark background, but read as a
+          harsh dark smear on light theme where the background is
+          actually light; white matches the same way black did on dark.
+          Height is 75% of the bar's own height (BOTTOM_NAV_BAR_HEIGHT
+          above), which keeps the fade contained near the bottom of the
+          screen rather than washing out content further up the feed.
+          Positioned/sized exactly like the sticky back-to-top button and
+          the bar itself (siblings at this same level, absolute to the
+          screen) - not part of the ScrollView, so it doesn't scroll with
+          the content, just sits over it. Rendered before the bar below
+          so the bar's own blur/elevation stacks on top of it. Native
+          only - web uses the hamburger drawer instead of this floating
+          bar, so there's nothing to fade into there. */}
       {Platform.OS !== 'web' && (
         <Svg
           width={Dimensions.get('window').width}
@@ -12097,8 +12202,8 @@ function App() {
         >
           <Defs>
             <LinearGradient id="feedBottomScrim" x1="0" y1="1" x2="0" y2="0">
-              <Stop offset="0%" stopColor="#000000" stopOpacity={0.5} />
-              <Stop offset="100%" stopColor="#000000" stopOpacity={0} />
+              <Stop offset="0%" stopColor={themeMode === 'light' ? '#FFFFFF' : '#000000'} stopOpacity={0.5} />
+              <Stop offset="100%" stopColor={themeMode === 'light' ? '#FFFFFF' : '#000000'} stopOpacity={0} />
             </LinearGradient>
           </Defs>
           <Rect x={0} y={0} width={Dimensions.get('window').width} height={BOTTOM_NAV_BAR_HEIGHT * 0.75} fill="url(#feedBottomScrim)" />
@@ -15442,7 +15547,7 @@ function App() {
       {selectedDesigner && (() => {
         const designerProfileContent = (
           <View style={{ flex: 1, width: '100%', backgroundColor: theme.bg }}>
-          <SafeAreaView style={[styles.modalContainer, Platform.OS === 'web' && { maxWidth: mainContentMaxWidth }]}>
+          <SafeAreaView style={[styles.modalContainer, Platform.OS === 'web' && !isWebWide && { maxWidth: mainContentMaxWidth }, Platform.OS === 'web' && isWebWide && { maxWidth: undefined, alignSelf: 'stretch' }]}>
             {Platform.OS !== 'web' && (
             <View style={[styles.modalTopBar, { backgroundColor: 'transparent', overflow: 'hidden' }]}>
               {lightweightMode ? (
@@ -15651,6 +15756,12 @@ function App() {
                   </View>
                 </View>
               )}
+              {/* b526: same treatment as own-profile (b522/b524) - profile
+                  card + tabs + filter row stay at the narrower column
+                  width even though the modal itself is now full-width on
+                  wide web; only the grid further down (outside this
+                  wrapper) actually stretches. */}
+              <View style={isWebWide ? { width: '100%', maxWidth: mainContentMaxWidth, alignSelf: 'center' } : undefined}>
               <View style={styles.profileCard}>
                 {Platform.OS !== 'web' && (
                 <View style={{ position: 'absolute', top: 12, right: 12, flexDirection: 'row', gap: 4, zIndex: 10 }}>
@@ -15676,7 +15787,7 @@ function App() {
                   <Text style={styles.profileLocText}>{selectedDesigner.location}</Text>
                 </View>
 
-                <ExpandableBioText text={selectedDesigner.bio} style={styles.profileBio} isWebWide={isWebWide} />
+                <ExpandableBioText text={selectedDesigner.bio} style={styles.profileBio} isWebWide={isWebWide} bgColor={theme.surface} />
 
                 <View style={styles.statsRow}>
                   <BouncyButton
@@ -15778,6 +15889,7 @@ function App() {
                   </Text>
                 </BouncyButton>
               </View>
+              </View>
 
               <Animated.View style={{ opacity: designerProfileTabContentAnim }}>
               {designerProfileTab === 'myWork' && (
@@ -15788,6 +15900,12 @@ function App() {
                     onChange={setDesignerTypeFilter}
                     theme={theme}
                   />
+                  {/* b526: same reasoning as b524 on own profile - Compact
+                      View has no effect once wide web always shows the
+                      properly-sized grid (see the forced-ProjectGrid
+                      condition below), so hidden here rather than left
+                      showing a control that does nothing. */}
+                  {!isWebWide && (
                   <BouncyButton
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
                     onPress={() => setPortfolioLayoutMode(portfolioLayoutMode === 'compact' ? 'full' : 'compact')}
@@ -15797,6 +15915,7 @@ function App() {
                     </Text>
                     <LayoutToggleSVG mode={portfolioLayoutMode} size={15} />
                   </BouncyButton>
+                  )}
                 </View>
               )}
 
@@ -15806,7 +15925,11 @@ function App() {
                 </View>
               )}
 
-              {designerProfileTab === 'likedWork' || (designerProfileTab === 'myWork' && portfolioLayoutMode === 'full') ? (
+              {designerProfileTab === 'likedWork' || (designerProfileTab === 'myWork' && portfolioLayoutMode === 'full') || isWebWide ? (
+                <View
+                  style={isWebWide ? { width: '100%' } : undefined}
+                  onLayout={isWebWide ? debouncedLayoutWidthSetter(designerGridWidthTimerRef, setDesignerGridWidth) : undefined}
+                >
                 <ProjectGrid
                   items={designerProfileTab === 'myWork' ? selectedDesignerProjectsFiltered : designerLikedProjects}
                   onPress={(item) => {
@@ -15823,10 +15946,23 @@ function App() {
                   onToggleFollow={toggleFollowDesigner}
                   followedDesigners={followedDesigners}
                   currentUserId={session ? session.user.id : null}
-                styles={styles}
+                emptyMessage={designerProfileTab === 'myWork'
+                  ? `${selectedDesigner.name} hasn't added any portfolios yet.`
+                  : `${selectedDesigner.name} hasn't liked any portfolios yet.`}
+                // b526: same responsive-column sizing as own profile
+                // (b524) - shares FOR_YOU_TARGET_CARD_WIDTH/
+                // FOR_YOU_GRID_GAP via designerColumnCount/
+                // designerCardWidthPx so "exactly the same style" holds.
+                // justifyContent explicitly 'flex-start' (not left as a
+                // default to trust) so a single result pins top-left
+                // instead of appearing centered.
+                styles={isWebWide
+                  ? { ...styles, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: FOR_YOU_GRID_GAP, justifyContent: 'flex-start' }, card: { ...styles.card, width: designerCardWidthPx } }
+                  : styles}
                 cardWidth={Platform.OS === 'web' && !isWebWide ? '100%' : undefined}
                 showReadOnlyPin={designerProfileTab === 'myWork'}
                 />
+                </View>
               ) : (
                 <TwoRowHorizontalGrid
                   items={
@@ -15845,6 +15981,9 @@ function App() {
                 theme={theme}
                 isWebWide={isWebWide}
                 showReadOnlyPin={designerProfileTab === 'myWork'}
+                emptyMessage={designerProfileTab === 'myWork'
+                  ? `${selectedDesigner.name} hasn't added any portfolios yet.`
+                  : `${selectedDesigner.name} hasn't liked any portfolios yet.`}
                 />
               )}
               </Animated.View>
