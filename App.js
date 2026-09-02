@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 515;
+const BUILD_NUMBER = 516;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -15985,15 +15985,15 @@ function App() {
                 ? "You'll be taken off the list for this feature. You can always register interest again later if you change your mind."
                 : "This ties your account to this feature so we know real demand exists before building it - not anonymous. We may reach out with a short survey (e.g. which tools you'd want supported). See Privacy Policy for details."}
             </Text>
-            <View style={styles.confirmActionsRow}>
+            <View style={[styles.confirmActionsRow, { justifyContent: 'flex-end' }]}>
               <BouncyButton
-                style={styles.confirmCancelBtn}
+                style={[styles.confirmCancelBtn, { flex: 0, paddingHorizontal: 20 }]}
                 onPress={() => setInterestConfirmTarget(null)}
               >
                 <Text style={styles.confirmCancelText}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
-                style={styles.confirmDeleteBtn}
+                style={[styles.confirmDeleteBtn, { flex: 0, paddingHorizontal: 20 }]}
                 onPress={handleConfirmFeatureInterest}
               >
                 <View style={styles.iconTextInlineRow}>
