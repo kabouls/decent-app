@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 522;
+const BUILD_NUMBER = 523;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -4491,6 +4491,7 @@ function App() {
   const [categoryCanScrollRight, setCategoryCanScrollRight] = useState(false);
   const categoryScrollContentWidthRef = useRef(0);
   const categoryScrollContainerWidthRef = useRef(0);
+  const [categoryContainerWidthState, setCategoryContainerWidthState] = useState(0);
   const categoryScrollXRef = useRef(0);
   const updateCategoryScrollArrows = (scrollX) => {
     categoryScrollXRef.current = scrollX;
@@ -4499,6 +4500,56 @@ function App() {
     setCategoryCanScrollLeft(scrollX > 4);
     setCategoryCanScrollRight(scrollX < contentW - containerW - 4);
   };
+  // b523: dynamic category-chip fit for wide web - instead of a fixed
+  // chip count, measure how many of [Highlighted, Popularity, Newest,
+  // ...popularKeywords] actually fit the real available width and only
+  // render that many before the grid-icon button, so wide web (which
+  // has room the old fixed-10 count was leaving empty) fills it and
+  // narrower/native (which scrolls horizontally instead, no truncation
+  // needed) is untouched. null = still measuring/not yet computed, in
+  // which case the render falls back to showing everything (safe -
+  // matches the always-scrollable behavior this is replacing).
+  const [categoryFitCount, setCategoryFitCount] = useState(null);
+  const categoryChipLayoutsRef = useRef({});
+  // Reserve room for the grid-icon "show all" button itself plus its
+  // margin, so the last fitting chip doesn't render flush against it.
+  const CATEGORY_GRID_ICON_RESERVED_WIDTH = 50;
+  const computeCategoryFitCount = () => {
+    if (!(Platform.OS === 'web' && isWebWide)) return;
+    const containerWidth = categoryScrollContainerWidthRef.current;
+    if (!containerWidth) return;
+    const allKeys = ['all', 'popularity', 'newest', ...popularKeywords];
+    // Bail until every currently-rendered chip has reported its own
+    // layout - computing against a partial set would under-count.
+    for (const k of allKeys) {
+      if (!categoryChipLayoutsRef.current[k]) return;
+    }
+    let fit = allKeys.length;
+    for (let i = 0; i < allKeys.length; i++) {
+      const layout = categoryChipLayoutsRef.current[allKeys[i]];
+      if (layout.x + layout.width > containerWidth - CATEGORY_GRID_ICON_RESERVED_WIDTH) {
+        fit = i;
+        break;
+      }
+    }
+    const keywordFit = Math.max(0, fit - 3);
+    setCategoryFitCount((prev) => (prev === keywordFit ? prev : keywordFit));
+  };
+  const handleCategoryChipLayout = (key, e) => {
+    categoryChipLayoutsRef.current[key] = { x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width };
+    computeCategoryFitCount();
+  };
+  // Container width changing (window resize) or the keyword pool
+  // itself changing both invalidate any previous fit count - clear the
+  // measured layouts and go back to "measuring" (renders everything
+  // again briefly) so it recomputes against the new width/data.
+  // categoryContainerWidthState (set alongside the ref in the
+  // ScrollView's onLayout below) is what actually makes this effect
+  // re-run on resize - a ref mutation alone wouldn't trigger it.
+  useEffect(() => {
+    categoryChipLayoutsRef.current = {};
+    setCategoryFitCount(null);
+  }, [popularKeywords, categoryContainerWidthState]);
 
   // Same left/right arrow treatment for the portfolio detail page's
   // horizontal showcase image gallery, web only.
@@ -5847,9 +5898,15 @@ function App() {
         });
       });
 
+      // b523: was slice(0,10), which is where the hardcoded "always
+      // exactly 10 chips" the person is asking to fix came from. Widened
+      // to a bigger candidate pool (30) so wide web has enough real
+      // categories to actually fill whatever width it has - the render
+      // side below now decides how many of these actually fit and show,
+      // not this fetch.
       const ranked = Object.entries(counts)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
+        .slice(0, 30)
         .map(([cat]) => cat);
 
       setPopularKeywords(ranked);
@@ -11058,13 +11115,16 @@ function App() {
                       updateCategoryScrollArrows(categoryScrollXRef.current);
                     } : undefined}
                     onLayout={Platform.OS === 'web' ? (e) => {
-                      categoryScrollContainerWidthRef.current = e.nativeEvent.layout.width;
+                      const w = e.nativeEvent.layout.width;
+                      categoryScrollContainerWidthRef.current = w;
                       updateCategoryScrollArrows(categoryScrollXRef.current);
+                      setCategoryContainerWidthState((prev) => (prev === w ? prev : w));
                     } : undefined}
                   >
                     <BouncyButton
                       style={[styles.topCategoryChip, categoryFilter === 'all' && styles.topCategoryChipActive]}
                       onPress={() => setCategoryFilter('all')}
+                      onLayout={(e) => handleCategoryChipLayout('all', e)}
                     >
                       <CategoryChipBg active={categoryFilter === 'all'} />
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -11078,6 +11138,7 @@ function App() {
                     <BouncyButton
                       style={[styles.topCategoryChip, categoryFilter === 'popularity' && styles.topCategoryChipActive]}
                       onPress={() => setCategoryFilter('popularity')}
+                      onLayout={(e) => handleCategoryChipLayout('popularity', e)}
                     >
                       <CategoryChipBg active={categoryFilter === 'popularity'} />
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -11091,6 +11152,7 @@ function App() {
                     <BouncyButton
                       style={[styles.topCategoryChip, categoryFilter === 'newest' && styles.topCategoryChipActive]}
                       onPress={() => setCategoryFilter('newest')}
+                      onLayout={(e) => handleCategoryChipLayout('newest', e)}
                     >
                       <CategoryChipBg active={categoryFilter === 'newest'} />
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -11101,11 +11163,23 @@ function App() {
                       </View>
                     </BouncyButton>
 
-                    {popularKeywords.map((cat) => (
+                    {/* b523: on wide web, once categoryFitCount has
+                        settled (not null), only render that many
+                        keyword chips - the rest are still one tap away
+                        via the grid-icon "all categories" modal right
+                        after. While null (still measuring, or on
+                        narrower web/native where this doesn't apply at
+                        all) this renders the full list exactly like
+                        before, scrollable as always. */}
+                    {(Platform.OS === 'web' && isWebWide && categoryFitCount !== null
+                      ? popularKeywords.slice(0, categoryFitCount)
+                      : popularKeywords
+                    ).map((cat) => (
                       <BouncyButton
                         key={cat}
                         style={[styles.topCategoryChip, categoryFilter === cat && styles.topCategoryChipActive]}
                         onPress={() => setCategoryFilter(cat)}
+                        onLayout={(e) => handleCategoryChipLayout(cat, e)}
                       >
                         <CategoryChipBg active={categoryFilter === cat} />
                         <Text style={[styles.topCategoryText, categoryFilter === cat && styles.topCategoryTextActive]}>
