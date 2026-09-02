@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 543;
+const BUILD_NUMBER = 544;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -20280,7 +20280,26 @@ function App() {
         visible={true}
         onRequestClose={() => setShareModalVisible(false)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }, Platform.OS === 'web' && { position: 'relative', zIndex: 500 }]}
+        {/* b544: was styles.overlayModalBg directly (a plain flex:1,
+            justifyContent:'center' View, shared by every confirm dialog
+            in the app - not touching that shared style itself). With the
+            QR now filling the card's full width instead of a fixed size,
+            the card can end up taller than the screen on some devices/
+            zoom levels, and a plain centered View has no way to reveal
+            content that overflows past the viewport - it just clips.
+            Swapped to a ScrollView for this one modal specifically, with
+            contentContainerStyle carrying the same justifyContent/
+            alignItems/padding values overlayModalBg used to apply
+            directly, so short content still centers exactly as before,
+            and tall content scrolls instead of getting cut off. */}
+        <ScrollView
+          style={[
+            { flex: 1, backgroundColor: Platform.OS === 'web' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(11, 15, 23, 0.85)' },
+            Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' },
+            Platform.OS === 'web' && { position: 'relative', zIndex: 500 }
+          ]}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}
+          keyboardShouldPersistTaps="handled"
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setShareModalVisible(false)}
         >
@@ -20429,7 +20448,20 @@ function App() {
             )}
 
             {shareType === 'profile' && shareIsOwnProfile && shareModalUrl ? (
-              <View style={{ alignItems: 'center', marginBottom: 16 }}>
+              <View style={{ alignItems: 'center', marginBottom: 16, width: '100%' }}>
+                {/* b544: added width:'100%' here - this wrapper sits
+                    directly inside customConfirmCard, which has its own
+                    alignItems:'center'. That makes every direct child
+                    shrink-wrap to its own content width by default unless
+                    it's given an explicit width - so this wrapper (with
+                    none before) was shrinking to fit whatever its
+                    content's natural size was, and the QR box/tab
+                    switcher's own width:'100%' (b541) had nothing stable
+                    to actually resolve 100% against, undermining that fix
+                    - which is exactly why they still looked narrower than
+                    the link field and buttons below (those sit as direct
+                    children of the card, not inside this wrapper, so they
+                    were never affected). */}
                 {/* b541: was a fixed 180/240 width, sized to a fixed QR
                     box - both now fill the modal's real available width
                     instead (tab switcher via width:'100%', QR box via
@@ -20526,7 +20558,7 @@ function App() {
               </BouncyButton>
             </View>
           </View>
-        </View>
+        </ScrollView>
       </Modal>
       )}
 
