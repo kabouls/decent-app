@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 538;
+const BUILD_NUMBER = 539;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -6693,13 +6693,21 @@ function App() {
         return;
       }
       if (proj.ownerId && proj.ownerId !== session.user.id) {
+        // b539: no client-side sendPushNotification call here anymore -
+        // a Supabase Database Webhook on this insert now triggers the
+        // send-push Edge Function server-side instead, which is what
+        // actually fixes push reliability (sending was previously
+        // fire-and-forget from the ACTING user's own device, with no
+        // retry - completely unrelated to whether the RECIPIENT's app
+        // was open or closed, but easy to misdiagnose as that). This
+        // insert itself is unchanged and still required - it's the
+        // trigger the webhook fires on.
         await supabase.from('notifications').insert({
           recipient_id: proj.ownerId,
           actor_id: session.user.id,
           type: 'like',
           portfolio_id: id
         });
-        sendPushNotification(proj.ownerId, 'New Like', `${userProfile.name || 'Someone'} liked "${proj.title}"`);
       }
     }
   }, [session, userProfile.name]);
@@ -6738,12 +6746,14 @@ function App() {
           showToast(`Follow failed: ${error.message}`);
           setFollowedDesigners((prev) => prev.filter((id) => id !== designerId));
         } else {
+          // b539: see the matching comment at the like-notification insert
+          // above - same reasoning, sendPushNotification() call removed,
+          // the Database Webhook on this insert handles it server-side now.
           await supabase.from('notifications').insert({
             recipient_id: designerId,
             actor_id: session.user.id,
             type: 'follow'
           });
-          sendPushNotification(designerId, 'New Follower', `${userProfile.name || 'Someone'} started following you`);
           setMyFollowStats((prev) => ({ ...prev, followingCount: prev.followingCount + 1 }));
           setLiveDesigners((prev) =>
             prev.map((d) => (d.id === designerId ? { ...d, followersCount: (d.followersCount || 0) + 1 } : d))
@@ -7148,13 +7158,16 @@ function App() {
 
       const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       if (!last || new Date(last.created_at).getTime() < sevenDaysAgo) {
+        // b539: see the matching comment at the like-notification insert
+        // in toggleLike - same reasoning, sendPushNotification() call
+        // removed, the Database Webhook on this insert handles it
+        // server-side now.
         const { error } = await supabase.from('notifications').insert({
           recipient_id: session.user.id,
           type: 'create_password'
         });
         if (!error) {
           fetchNotifications();
-          sendPushNotification(session.user.id, 'Secure your account', 'Add a password so you can still sign in if Google ever isn\'t available.');
         }
       }
     })();
