@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 547;
+const BUILD_NUMBER = 548;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -8319,24 +8319,32 @@ function App() {
     if (!designerMatch) return;
     const handleOrId = decodeURIComponent(designerMatch[1]);
 
+    // b548: moved above the own-handle check below (was after it) -
+    // that branch returns early, so this never even ran for your own
+    // filtered link before. Parsed once here now, used by whichever
+    // branch actually applies.
+    const requestedTypes = queryParams && typeof queryParams.type === 'string'
+      ? queryParams.type.split(',').map((t) => t.trim()).filter((t) => PORTFOLIO_TYPE_OPTIONS.some((o) => o.key === t))
+      : [];
+
     // Own handle/id - route to the real Profile tab instead of opening a
     // separate designer-profile view of yourself, which wouldn't have your
     // own edit controls and would just be a confusing, wrong destination
     // for your own /@handle link.
     if (session && (handleOrId === userProfile.handle || handleOrId === session.user.id)) {
+      // b548: own-profile equivalent of the pendingSharedTypeFilterRef
+      // stash below - see pendingOwnTypeFilterRef's own comment for why
+      // this couldn't just reuse that one (different reset effect,
+      // different state to intersect against).
+      pendingOwnTypeFilterRef.current = requestedTypes.length > 0 ? new Set(requestedTypes) : null;
       setBottomNav('profile');
       return;
     }
 
-    // b533: ?type=ui_ux,illustration from a filtered share link - stashed
-    // for the designerTypeFilter reset effect to pick up once this
-    // designer's portfolios have loaded (see that effect for why there,
-    // not here - this profile hasn't been fetched yet at this point).
-    // Validated against real type keys now so an already-invalid/garbage
-    // param can't reach that effect at all.
-    const requestedTypes = queryParams && typeof queryParams.type === 'string'
-      ? queryParams.type.split(',').map((t) => t.trim()).filter((t) => PORTFOLIO_TYPE_OPTIONS.some((o) => o.key === t))
-      : [];
+    // b533: stashed for the designerTypeFilter reset effect to pick up
+    // once this designer's portfolios have loaded (see that effect for
+    // why there, not here - this profile hasn't been fetched yet at
+    // this point).
     pendingSharedTypeFilterRef.current = requestedTypes.length > 0 ? new Set(requestedTypes) : null;
 
     // Skips openDesignerProfileById's own history.pushState (web) - this
@@ -10137,8 +10145,30 @@ function App() {
   }, [myUploadedProjects]);
   const myUploadedProjectTypeKeys = useMemo(() => myUploadedProjectTypes.map((t) => t.key).join(','), [myUploadedProjectTypes]);
   const [myProfileTypeFilter, setMyProfileTypeFilter] = useState(new Set());
+  // b548: own-profile equivalent of pendingSharedTypeFilterRef below -
+  // same bug, same fix. Visiting your OWN filtered share link
+  // (/@yourhandle?type=ui_ux) was routing straight to the Profile tab
+  // via a branch in handleIncomingRoute that returned before the ?type=
+  // parsing code even ran, so the filter was silently dropped every
+  // time. Even fixing that alone wouldn't have been enough on its own -
+  // this reset effect right here already overwrites myProfileTypeFilter
+  // back to "everything" the moment myUploadedProjectTypeKeys resolves
+  // (which happens shortly after login/mount, i.e. almost immediately
+  // after handleIncomingRoute would have run) - so the same pending-ref
+  // pattern is needed here too, not just fixing the early return.
+  const pendingOwnTypeFilterRef = useRef(null);
   useEffect(() => {
-    setMyProfileTypeFilter(new Set(myUploadedProjectTypeKeys ? myUploadedProjectTypeKeys.split(',') : []));
+    const allKeys = new Set(myUploadedProjectTypeKeys ? myUploadedProjectTypeKeys.split(',') : []);
+    const pending = pendingOwnTypeFilterRef.current;
+    pendingOwnTypeFilterRef.current = null;
+    if (pending) {
+      const intersected = new Set([...pending].filter((k) => allKeys.has(k)));
+      if (intersected.size > 0) {
+        setMyProfileTypeFilter(intersected);
+        return;
+      }
+    }
+    setMyProfileTypeFilter(allKeys);
   }, [myUploadedProjectTypeKeys]);
   const myUploadedProjectsFiltered = useMemo(() => {
     if (myUploadedProjectTypes.length <= 1) return myUploadedProjects;
