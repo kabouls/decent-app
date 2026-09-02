@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 509;
+const BUILD_NUMBER = 511;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -2055,10 +2055,15 @@ const CardLink = ({ href, onPress, style, activeOpacity, children }) => {
 // real overflow to reveal, not on short bios that already fit.
 const ExpandableBioText = ({ text, style, isWebWide }) => {
   const [expanded, setExpanded] = useState(false);
-  // Holds the exact text of the first 3 rendered lines (from onTextLayout,
-  // which reports each visible line's own text), once measured - null
-  // until then, and null again means "not truncated" if lines.length < 3.
+  // Holds the exact text of the first maxLines rendered lines (from
+  // onTextLayout, which reports each visible line's own text), once
+  // measured - null until then, and '' means "not truncated" once known.
   const [truncatedLineText, setTruncatedLineText] = useState(null);
+  // Wide web gets 2 lines before truncating (more horizontal room per
+  // line there makes 3 lines' worth of text considerably longer than on
+  // mobile, so 2 keeps the collapsed height comparable), narrow/app keeps
+  // the original 3.
+  const maxLines = isWebWide ? 2 : 3;
   // Resets when the bio text itself changes - e.g. navigating from one
   // designer's profile to another without this component fully
   // unmounting in between, which otherwise carried over the previous
@@ -2069,27 +2074,28 @@ const ExpandableBioText = ({ text, style, isWebWide }) => {
   }, [text]);
 
   if (!text) return null;
-  if (isWebWide) return <Text style={style}>{text}</Text>;
 
-  // Two-pass: first pass renders the plain text at numberOfLines=3 (no
-  // nested "Read more" yet) purely to measure it - this exists because
-  // nesting a trailing "Read more" Text directly inside a numberOfLines-
-  // truncated Text doesn't reliably work: RN's native ellipsis truncation
-  // can cut the nested text off entirely rather than making room for it
-  // (confirmed - it disappeared entirely on some bios, not just showing
-  // without the visual polish). Once measured, the collapsed render below
-  // uses the actual measured line text (joined, no numberOfLines at all)
-  // with "Read more" appended directly onto that string - guaranteed to
-  // fit since it's built from exactly what already fit on those 3 lines.
+  // Two-pass: first pass renders the plain text at numberOfLines=maxLines
+  // (no nested "Read more" yet) purely to measure it - this exists
+  // because nesting a trailing "Read more" Text directly inside a
+  // numberOfLines-truncated Text doesn't reliably work: RN's native
+  // ellipsis truncation can cut the nested text off entirely rather than
+  // making room for it (confirmed - it disappeared entirely on some
+  // bios, not just showing without the visual polish). Once measured, the
+  // collapsed render below uses the actual measured line text (joined, no
+  // numberOfLines at all) with "Read more" appended directly onto that
+  // string - guaranteed to fit since it's built from exactly what already
+  // fit on those lines. onTextLayout is supported on react-native-web too
+  // (not native-only), so this same approach covers wide web as well.
   if (truncatedLineText === null && !expanded) {
     return (
       <Text
         style={style}
-        numberOfLines={3}
+        numberOfLines={maxLines}
         onTextLayout={(e) => {
           const lines = e.nativeEvent.lines;
-          if (lines.length >= 3) {
-            setTruncatedLineText(lines.slice(0, 3).map((l) => l.text).join('').trimEnd());
+          if (lines.length >= maxLines) {
+            setTruncatedLineText(lines.slice(0, maxLines).map((l) => l.text).join('').trimEnd());
           } else {
             setTruncatedLineText('');
           }
@@ -4731,6 +4737,26 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [discoverSectionY, setDiscoverSectionY] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState('all');
+  // Measured width of For You's own grid container - drives the
+  // responsive column count below (wide web only; mobile/narrow web stays
+  // single-column as before). Fixed target card width + this measured
+  // width determines how many columns actually fit, recomputing
+  // automatically on any width change (window resize, sidebar collapse/
+  // expand) since onLayout fires again whenever the container's own size
+  // changes.
+  const [forYouGridWidth, setForYouGridWidth] = useState(0);
+  const FOR_YOU_TARGET_CARD_WIDTH = 360;
+  const FOR_YOU_GRID_GAP = 20;
+  const forYouColumnCount = forYouGridWidth > 0
+    ? Math.max(2, Math.floor((forYouGridWidth + FOR_YOU_GRID_GAP) / (FOR_YOU_TARGET_CARD_WIDTH + FOR_YOU_GRID_GAP)))
+    : 2;
+  // Exact per-card width so `forYouColumnCount` columns evenly fill the
+  // full measured width with no leftover gap on the right - simply using
+  // FOR_YOU_TARGET_CARD_WIDTH as-is would leave the last bit of the row
+  // empty instead of the cards actually stretching to fill it.
+  const forYouCardWidthPx = forYouGridWidth > 0
+    ? (forYouGridWidth - FOR_YOU_GRID_GAP * (forYouColumnCount - 1)) / forYouColumnCount
+    : FOR_YOU_TARGET_CARD_WIDTH;
 
   const [profileTab, setProfileTab] = useState('myWork');
   const [profileTabBarWidth, setProfileTabBarWidth] = useState(0);
@@ -10195,8 +10221,8 @@ function App() {
             width. Every other screen rendered through this same wrapper
             is completely unaffected - the condition only flips when this
             one modal is showing. */}
-        <View style={{ flex: 1, alignItems: (isWebWide && !(modalVisible && activeProject)) ? 'center' : 'stretch' }}>
-      <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', ...((isWebWide && modalVisible && activeProject) ? {} : { maxWidth: mainContentMaxWidth }), backgroundColor: webCanvasColor } : { flex: 1 }}>
+        <View style={{ flex: 1, alignItems: (isWebWide && !((modalVisible && activeProject) || bottomNav === 'forYou')) ? 'center' : 'stretch' }}>
+      <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', ...((isWebWide && ((modalVisible && activeProject) || bottomNav === 'forYou')) ? {} : { maxWidth: mainContentMaxWidth }), backgroundColor: webCanvasColor } : { flex: 1 }}>
       <StatusBar barStyle={themeMode === 'light' ? 'dark-content' : 'light-content'} backgroundColor={theme.bg} translucent={false} />
 
       {isOffline && (
@@ -11112,6 +11138,7 @@ function App() {
               </View>
               </View>
 
+              <View onLayout={isWebWide ? (e) => setForYouGridWidth(e.nativeEvent.layout.width) : undefined}>
               <ProjectGrid
                 items={forYouCategoryFilteredProjects}
                 onPress={openProjectModal}
@@ -11121,16 +11148,22 @@ function App() {
                 followedDesigners={followedDesigners}
                 currentUserId={session ? session.user.id : null}
                 // For You specifically: mobile web stays single-column,
-                // tablet/desktop web default to the shared 2-column grid.
-                // Scoped to this one instance rather than changing
-                // styles.grid/card themselves, since those are shared by
-                // Profile, Designer Profile, and Liked Portfolios too -
-                // this request was about For You only, those should keep
-                // their existing 2-column-on-all-web-widths behavior.
+                // tablet stays the shared default. Wide web now fills the
+                // available width with as many fixed-ish-width columns as
+                // fit (see forYouColumnCount/forYouCardWidthPx above),
+                // rather than being capped at 2 columns regardless of how
+                // wide the screen actually is - matches how Behance/
+                // Dribbble's own feeds behave. Scoped to this one instance
+                // rather than changing styles.grid/card themselves, since
+                // those are shared by Profile, Designer Profile, and Liked
+                // Portfolios too - this request was about For You only.
                 styles={Platform.OS === 'web' && !isWebWide
                   ? { ...styles, grid: { gap: 20 }, card: { ...styles.card, width: '100%' } }
+                  : isWebWide
+                  ? { ...styles, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: FOR_YOU_GRID_GAP }, card: { ...styles.card, width: forYouCardWidthPx } }
                   : styles}
               />
+              </View>
 
               {loadingMore && (
                 <View style={{ marginTop: 16, marginBottom: 24, alignSelf: 'center' }}>
@@ -11797,23 +11830,33 @@ function App() {
             layer's own bottom+height is kept at exactly that same 78, so
             the glow's top edge lines up flush with the bar's top edge
             rather than poking out above it, while bottom/left/right
-            extend past the bar's edges freely. Two stacked, decreasingly-
-            opaque layers approximate a soft glow/blur falloff without an
-            actual blur (a real blurred shadow would need a gradient or
-            blur library - this achieves a similar visual with plain Views
-            instead). */}
+            extend past the bar's edges freely - a smaller bottom value
+            paired with a taller height keeps that same 78 total while
+            reaching further down/out. Three stacked, decreasingly-opaque,
+            increasingly-spread layers approximate a soft glow/blur
+            falloff without an actual blur (a real blurred shadow would
+            need a gradient or blur library - this achieves a similar
+            visual with plain Views instead), stronger and further-
+            reaching than the first version of this. */}
         <View
           pointerEvents="none"
           style={{
-            position: 'absolute', bottom: 4, left: 12, right: 12, height: 74,
-            borderRadius: 32, backgroundColor: 'rgba(0,0,0,0.35)'
+            position: 'absolute', bottom: 0, left: 6, right: 6, height: 78,
+            borderRadius: 34, backgroundColor: 'rgba(0,0,0,0.5)'
           }}
         />
         <View
           pointerEvents="none"
           style={{
-            position: 'absolute', bottom: 8, left: 16, right: 16, height: 70,
-            borderRadius: 30, backgroundColor: 'rgba(0,0,0,0.35)'
+            position: 'absolute', bottom: -10, left: 0, right: 0, height: 88,
+            borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.38)'
+          }}
+        />
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', bottom: -20, left: -6, right: -6, height: 98,
+            borderRadius: 40, backgroundColor: 'rgba(0,0,0,0.25)'
           }}
         />
       <View style={[styles.floatingBottomBar, { overflow: 'hidden', backgroundColor: 'transparent' }]}>
@@ -16192,14 +16235,14 @@ function App() {
 
                   <View style={{
                     marginTop: 12, backgroundColor: theme.surface, borderRadius: 12,
-                    borderWidth: 1, borderColor: fIsNsfw ? '#EF4444' : theme.border, padding: 10
+                    borderWidth: 1, borderColor: fIsNsfw ? '#F59E0B' : theme.border, padding: 10
                   }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <Text style={[styles.settingItemTitle, { flex: 1, fontSize: 13 }]}>Mark as NSFW</Text>
                       <Switch
                         value={fIsNsfw}
                         onValueChange={setFIsNsfw}
-                        trackColor={{ false: theme.border, true: '#EF4444' }}
+                        trackColor={{ false: theme.border, true: '#F59E0B' }}
                         thumbColor="#FFFFFF"
                       />
                     </View>
