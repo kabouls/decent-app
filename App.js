@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 519;
+const BUILD_NUMBER = 520;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -1605,6 +1605,11 @@ const makeBlockId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8
 // block (2 columns) still counts as 1 toward this, same as a plain
 // text/image block, since it's 1 entry in the top-level blocks array.
 const MAX_CONTENT_BLOCKS = 10;
+// Per-block character cap for text blocks (standalone and inside a row's
+// columns alike) - enforced both in the update functions below (so paste
+// can't bypass it) and via maxLength on the TextInputs themselves (so
+// typing stops right at the limit instead of accepting then truncating).
+const MAX_TEXT_BLOCK_CHARS = 500;
 
 const MARKDOWN_TOOLBAR_BUTTONS = [
   { label: 'H1', markup: '# ', mode: 'prefix' },
@@ -8627,7 +8632,8 @@ function App() {
   };
 
   const updateTextBlockMarkdown = (blockId, markdown) => {
-    setFContentBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, markdown } : b)));
+    const capped = markdown.length > MAX_TEXT_BLOCK_CHARS ? markdown.slice(0, MAX_TEXT_BLOCK_CHARS) : markdown;
+    setFContentBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, markdown: capped } : b)));
   };
 
   const setTextBlockAlign = (blockId, align) => {
@@ -8738,11 +8744,12 @@ function App() {
   const toggleAspectMode = (currentMode) => (currentMode === 'wide' ? 'square' : 'wide');
 
   const updateRowColumnMarkdown = (rowId, colIdx, markdown) => {
+    const capped = markdown.length > MAX_TEXT_BLOCK_CHARS ? markdown.slice(0, MAX_TEXT_BLOCK_CHARS) : markdown;
     setFContentBlocks((prev) =>
       prev.map((b) => {
         if (b.id !== rowId) return b;
         const columns = [...b.columns];
-        columns[colIdx] = { ...columns[colIdx], markdown };
+        columns[colIdx] = { ...columns[colIdx], markdown: capped };
         return { ...b, columns };
       })
     );
@@ -16975,6 +16982,7 @@ function App() {
                                   placeholderTextColor="#94A3B8"
                                   value={block.markdown}
                                   onChangeText={(t) => updateTextBlockMarkdown(block.id, t)}
+                                  maxLength={MAX_TEXT_BLOCK_CHARS}
                                   onSelectionChange={(e) => {
                                     const selection = e.nativeEvent.selection;
                                     setBlockSelections((prev) => ({ ...prev, [block.id]: selection }));
@@ -16982,6 +16990,12 @@ function App() {
                                   dataDetectorTypes="none"
                                   autoCorrect={false}
                                 />
+                                <Text style={{
+                                  color: (block.markdown || '').length >= MAX_TEXT_BLOCK_CHARS ? '#F87171' : theme.textSecondary,
+                                  fontSize: 10, fontWeight: '600', textAlign: 'right', marginTop: 4
+                                }}>
+                                  {(block.markdown || '').length}/{MAX_TEXT_BLOCK_CHARS}
+                                </Text>
                                 <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
                                   {MARKDOWN_TOOLBAR_BUTTONS.map((btn) => (
                                     <BouncyButton
@@ -17114,6 +17128,7 @@ function App() {
                                             placeholderTextColor="#94A3B8"
                                             value={col.markdown}
                                             onChangeText={(t) => updateRowColumnMarkdown(block.id, colIdx, t)}
+                                            maxLength={MAX_TEXT_BLOCK_CHARS}
                                             onSelectionChange={(e) => {
                                               const selection = e.nativeEvent.selection;
                                               setBlockSelections((prev) => ({ ...prev, [`${block.id}:${colIdx}`]: selection }));
@@ -17121,6 +17136,12 @@ function App() {
                                             dataDetectorTypes="none"
                                             autoCorrect={false}
                                           />
+                                          <Text style={{
+                                            color: (col.markdown || '').length >= MAX_TEXT_BLOCK_CHARS ? '#F87171' : theme.textSecondary,
+                                            fontSize: 9, fontWeight: '600', textAlign: 'right', marginTop: 3
+                                          }}>
+                                            {(col.markdown || '').length}/{MAX_TEXT_BLOCK_CHARS}
+                                          </Text>
                                           <View style={{ flexDirection: 'row', marginTop: 6 }}>
                                             {MARKDOWN_TOOLBAR_BUTTONS.map((btn) => (
                                               <BouncyButton
