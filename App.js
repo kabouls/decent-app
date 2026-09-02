@@ -133,7 +133,10 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 512;
+const BUILD_NUMBER = 515;
+// Keep in sync with styles.floatingBottomBar.height - used to size the
+// bottom feed scrim gradient relative to the actual bar height.
+const BOTTOM_NAV_BAR_HEIGHT = 64;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -2059,6 +2062,10 @@ const ExpandableBioText = ({ text, style, isWebWide }) => {
   // onTextLayout, which reports each visible line's own text), once
   // measured - null until then, and '' means "not truncated" once known.
   const [truncatedLineText, setTruncatedLineText] = useState(null);
+  // Web-only: whether the CSS-clamped render actually clipped anything -
+  // see the web branch below for why this doesn't reuse onTextLayout.
+  const [webIsTruncated, setWebIsTruncated] = useState(false);
+  const webTextRef = useRef(null);
   // Wide web gets 2 lines before truncating (more horizontal room per
   // line there makes 3 lines' worth of text considerably longer than on
   // mobile, so 2 keeps the collapsed height comparable), narrow/app keeps
@@ -2071,10 +2078,65 @@ const ExpandableBioText = ({ text, style, isWebWide }) => {
   useEffect(() => {
     setExpanded(false);
     setTruncatedLineText(null);
+    setWebIsTruncated(false);
   }, [text]);
 
   if (!text) return null;
 
+  // --- WEB PATH ---------------------------------------------------------
+  // Root-caused (b513): onTextLayout is a real native event on iOS/
+  // Android and always fires there, which is why this worked fine on
+  // app - but on react-native-web it doesn't reliably fire for
+  // numberOfLines-truncated multi-line Text, so the two-pass logic below
+  // (written assuming onTextLayout covers web too - see the old comment
+  // that used to be here) got stuck forever on its first, measurement-
+  // only pass: plain text, RN Web's own default ellipsis, no "Read more"
+  // ever appended. That's the exact bug reported (missing on website,
+  // fine on app) and the literal "..." instead of this component's own
+  // "…" in the screenshot that gave it away.
+  //
+  // Web instead uses CSS line-clamping for the collapsed view
+  // (-webkit-box + WebkitLineClamp - despite the vendor prefix, this is
+  // supported in all current browsers including Firefox), and detects
+  // whether anything was actually clipped by comparing the rendered DOM
+  // node's scrollHeight to its clientHeight after layout. That's a
+  // standard, reliable technique that doesn't depend on onTextLayout
+  // firing at all, so it can't get stuck the same way.
+  if (Platform.OS === 'web') {
+    return (
+      <View>
+        <Text
+          ref={webTextRef}
+          style={[style, !expanded && {
+            display: '-webkit-box',
+            WebkitLineClamp: maxLines,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden'
+          }]}
+          onLayout={() => {
+            if (expanded) return;
+            const node = webTextRef.current;
+            const el = node && typeof node.scrollHeight === 'number' ? node : (node && node._node);
+            if (el && typeof el.scrollHeight === 'number') {
+              setWebIsTruncated(el.scrollHeight - el.clientHeight > 1);
+            }
+          }}
+        >
+          {text}
+        </Text>
+        {webIsTruncated && (
+          <Text
+            style={{ color: '#8B5CF6', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' }}
+            onPress={() => setExpanded((prev) => !prev)}
+          >
+            {expanded ? 'Read less' : 'Read more'}
+          </Text>
+        )}
+      </View>
+    );
+  }
+
+  // --- NATIVE PATH (app) - unchanged, confirmed working -----------------
   // Two-pass: first pass renders the plain text at numberOfLines=maxLines+1
   // (no nested "Read more" yet) purely to measure it - maxLines+1, not
   // maxLines, is what actually lets this tell "fits in exactly maxLines
@@ -2094,8 +2156,9 @@ const ExpandableBioText = ({ text, style, isWebWide }) => {
   // collapsed render below uses the actual measured line text (joined, no
   // numberOfLines at all) with "Read more" appended directly onto that
   // string - guaranteed to fit since it's built from exactly what already
-  // fit on those lines. onTextLayout is supported on react-native-web too
-  // (not native-only), so this same approach covers wide web as well.
+  // fit on those lines. This path only runs on native now (see the web
+  // branch above) - onTextLayout doesn't reliably fire on react-native-
+  // web for this case, which was the b513 bug.
   if (truncatedLineText === null && !expanded) {
     return (
       <Text
@@ -9288,6 +9351,10 @@ function App() {
   }, [selectedPortfolioType, customCategoriesList]);
   const [myFeatureInterests, setMyFeatureInterests] = useState(new Set());
   const [interestConfirmTarget, setInterestConfirmTarget] = useState(null); // feature_name string, or null if no confirm popup showing
+  // TEMPORARY diagnostic (b513) - block editor scroll bug, see the
+  // ScrollView further down. Remove alongside it once a real fix lands.
+  const [blockEditorDebugContentHeight, setBlockEditorDebugContentHeight] = useState(0);
+  const [blockEditorDebugContainerHeight, setBlockEditorDebugContainerHeight] = useState(0);
   const [interestConfirmMode, setInterestConfirmMode] = useState('add'); // 'add' | 'remove' - which action interestConfirmTarget is for
   const [portfolioReportModalVisible, setPortfolioReportModalVisible] = useState(false);
   const [portfolioReportSelectedReason, setPortfolioReportSelectedReason] = useState(null); // 'ai_undisclosed' | 'nsfw_misuse' | 'other' | null
@@ -11824,44 +11891,42 @@ function App() {
         </BouncyButton>
       )}
 
+      {/* BOTTOM FEED SCRIM - replaces the old nav-bar-glow approach
+          (b513). Instead of glowing the bar itself, this fades the feed
+          content underneath it: smooth black gradient from ~50% opacity
+          at the very bottom of the screen down to fully transparent,
+          so scrolled content doesn't end abruptly right at the
+          translucent bar's edge. Height is 75% of the bar's own height
+          (BOTTOM_NAV_BAR_HEIGHT above), which keeps the fade contained
+          near the bottom of the screen rather than washing out content
+          further up the feed. Positioned/sized exactly like the sticky
+          back-to-top button and the bar itself (siblings at this same
+          level, absolute to the screen) - not part of the ScrollView, so
+          it doesn't scroll with the content, just sits over it. Rendered
+          before the bar below so the bar's own blur/elevation stacks on
+          top of it. Native only - web uses the hamburger drawer instead
+          of this floating bar, so there's nothing to fade into there. */}
+      {Platform.OS !== 'web' && (
+        <Svg
+          width={Dimensions.get('window').width}
+          height={BOTTOM_NAV_BAR_HEIGHT * 0.75}
+          style={{ position: 'absolute', bottom: 0, left: 0 }}
+          pointerEvents="none"
+        >
+          <Defs>
+            <LinearGradient id="feedBottomScrim" x1="0" y1="1" x2="0" y2="0">
+              <Stop offset="0%" stopColor="#000000" stopOpacity={0.5} />
+              <Stop offset="100%" stopColor="#000000" stopOpacity={0} />
+            </LinearGradient>
+          </Defs>
+          <Rect x={0} y={0} width={Dimensions.get('window').width} height={BOTTOM_NAV_BAR_HEIGHT * 0.75} fill="url(#feedBottomScrim)" />
+        </Svg>
+      )}
+
       {/* FLOATING ROUNDED RECTANGLE BOTTOM MENU BAR WITH FOLLOWING LABEL
           Native only - web uses the hamburger drawer instead (see below). */}
       {Platform.OS !== 'web' && (
       <>
-        {/* Custom-drawn glow, positioned behind/around the bar itself
-            (rendered first, so it sits underneath in stacking order) -
-            Android's elevation is inherently uniform on all sides with no
-            directional control at all, so "stronger on left/right/bottom,
-            not top" genuinely isn't achievable through elevation/shadow
-            props alone (confirmed - there's no native lever for this).
-            True SVG radial gradient rather than stacked flat-opacity
-            Views (an earlier version of this) - each discrete View layer
-            had a hard edge at its own boundary, which read as visible
-            banding rather than a smooth glow/blur falloff. A gradient
-            fill has no such edges at all, fading continuously to fully
-            transparent. cx/cy/r as percentages are relative to the Rect's
-            own bounding box (RN-SVG's default gradientUnits) - cy well
-            below 50% is what keeps the strongest part of the glow low,
-            near the bar itself, softening notably by the time it would
-            reach the bar's own top edge. The stops themselves (0/45/75/
-            100%) are what actually determine the fade shape/rate; radius
-            alone doesn't. */}
-        <Svg
-          width={Dimensions.get('window').width}
-          height={130}
-          style={{ position: 'absolute', bottom: -30, left: 0 }}
-          pointerEvents="none"
-        >
-          <Defs>
-            <RadialGradient id="navBarGlow" cx="50%" cy="30%" r="75%">
-              <Stop offset="0%" stopColor="#000000" stopOpacity={0.55} />
-              <Stop offset="45%" stopColor="#000000" stopOpacity={0.4} />
-              <Stop offset="75%" stopColor="#000000" stopOpacity={0.15} />
-              <Stop offset="100%" stopColor="#000000" stopOpacity={0} />
-            </RadialGradient>
-          </Defs>
-          <Rect x={4} y={0} width={Dimensions.get('window').width - 8} height={130} fill="url(#navBarGlow)" />
-        </Svg>
       <View style={[styles.floatingBottomBar, { overflow: 'hidden', backgroundColor: 'transparent' }]}>
         {/* Translucent bar: BlurView is GPU-composited (not per-frame JS
             work) so it's cheap as long as it's not stacked/re-rendered
@@ -15920,21 +15985,21 @@ function App() {
                 ? "You'll be taken off the list for this feature. You can always register interest again later if you change your mind."
                 : "This ties your account to this feature so we know real demand exists before building it - not anonymous. We may reach out with a short survey (e.g. which tools you'd want supported). See Privacy Policy for details."}
             </Text>
-            <View style={{ gap: 10, width: '100%' }}>
+            <View style={styles.confirmActionsRow}>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%' }]}
+                style={styles.confirmCancelBtn}
+                onPress={() => setInterestConfirmTarget(null)}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={styles.confirmDeleteBtn}
                 onPress={handleConfirmFeatureInterest}
               >
                 <View style={styles.iconTextInlineRow}>
                   <CheckIconSVG color="#FFFFFF" />
                   <Text style={styles.confirmDeleteText}>{interestConfirmMode === 'remove' ? 'Yes, Remove Me' : "Yes, I'm Interested"}</Text>
                 </View>
-              </BouncyButton>
-              <BouncyButton
-                style={[styles.confirmCancelBtn, { flex: 0, width: '100%' }]}
-                onPress={() => setInterestConfirmTarget(null)}
-              >
-                <Text style={styles.confirmCancelText}>Cancel</Text>
               </BouncyButton>
             </View>
           </View>
@@ -16778,6 +16843,17 @@ function App() {
                     </BouncyButton>
                   </View>
 
+                  {/* TEMPORARY diagnostic (b513) - remove this whole
+                      Text alongside the debug props on the edit-mode
+                      ScrollView below once a real fix lands. Shown as a
+                      normal in-flow row (not absolute) so it can't
+                      overlap/hide anything and survives a screenshot. */}
+                  {descEditorMode === 'edit' && (
+                    <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '700', paddingHorizontal: 16, paddingBottom: 4 }}>
+                      DBG content:{Math.round(blockEditorDebugContentHeight)}px container:{Math.round(blockEditorDebugContainerHeight)}px
+                    </Text>
+                  )}
+
                   {descEditorMode === 'preview' ? (
                     <ScrollView ref={hideScrollbarRefCallback(isWebWide)} style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
                       {fContentBlocks.length > 0 ? (
@@ -16806,6 +16882,27 @@ function App() {
                       removeClippedSubviews={false}
                       contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 400 }}
                       keyboardShouldPersistTaps="handled"
+                      // TEMPORARY diagnostic (b513) - re-added per the
+                      // prior session's handout, which pulled this before
+                      // getting a real readout. Two independently
+                      // measured numbers, shown on-screen so they survive
+                      // a screenshot: actual scrollable content height
+                      // (onContentSizeChange) vs. the ScrollView's own
+                      // visible/laid-out height (onLayout). If content
+                      // height is much larger than container height,
+                      // that's a real overflow the padding fix should be
+                      // covering - point back at contentContainerStyle. If
+                      // the two are close/equal despite more blocks being
+                      // added, the ScrollView itself isn't measuring its
+                      // available space correctly (likely the fullscreen
+                      // absolutely-positioned overlay wrapper above not
+                      // giving SafeAreaView a real height on Android) -
+                      // point at the wrapper/layout chain instead, not the
+                      // ScrollView props. Remove this whole block (and the
+                      // Text below) once a real fix lands - do not ship
+                      // with this in.
+                      onContentSizeChange={(w, h) => setBlockEditorDebugContentHeight(h)}
+                      onLayout={(e) => setBlockEditorDebugContainerHeight(e.nativeEvent.layout.height)}
                     >
                         {fContentBlocks.map((block, idx) => (
                           <View
