@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 524;
+const BUILD_NUMBER = 525;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -4500,56 +4500,6 @@ function App() {
     setCategoryCanScrollLeft(scrollX > 4);
     setCategoryCanScrollRight(scrollX < contentW - containerW - 4);
   };
-  // b523: dynamic category-chip fit for wide web - instead of a fixed
-  // chip count, measure how many of [Highlighted, Popularity, Newest,
-  // ...popularKeywords] actually fit the real available width and only
-  // render that many before the grid-icon button, so wide web (which
-  // has room the old fixed-10 count was leaving empty) fills it and
-  // narrower/native (which scrolls horizontally instead, no truncation
-  // needed) is untouched. null = still measuring/not yet computed, in
-  // which case the render falls back to showing everything (safe -
-  // matches the always-scrollable behavior this is replacing).
-  const [categoryFitCount, setCategoryFitCount] = useState(null);
-  const categoryChipLayoutsRef = useRef({});
-  // Reserve room for the grid-icon "show all" button itself plus its
-  // margin, so the last fitting chip doesn't render flush against it.
-  const CATEGORY_GRID_ICON_RESERVED_WIDTH = 50;
-  const computeCategoryFitCount = () => {
-    if (!(Platform.OS === 'web' && isWebWide)) return;
-    const containerWidth = categoryScrollContainerWidthRef.current;
-    if (!containerWidth) return;
-    const allKeys = ['all', 'popularity', 'newest', ...popularKeywords];
-    // Bail until every currently-rendered chip has reported its own
-    // layout - computing against a partial set would under-count.
-    for (const k of allKeys) {
-      if (!categoryChipLayoutsRef.current[k]) return;
-    }
-    let fit = allKeys.length;
-    for (let i = 0; i < allKeys.length; i++) {
-      const layout = categoryChipLayoutsRef.current[allKeys[i]];
-      if (layout.x + layout.width > containerWidth - CATEGORY_GRID_ICON_RESERVED_WIDTH) {
-        fit = i;
-        break;
-      }
-    }
-    const keywordFit = Math.max(0, fit - 3);
-    setCategoryFitCount((prev) => (prev === keywordFit ? prev : keywordFit));
-  };
-  const handleCategoryChipLayout = (key, e) => {
-    categoryChipLayoutsRef.current[key] = { x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width };
-    computeCategoryFitCount();
-  };
-  // Container width changing (window resize) or the keyword pool
-  // itself changing both invalidate any previous fit count - clear the
-  // measured layouts and go back to "measuring" (renders everything
-  // again briefly) so it recomputes against the new width/data.
-  // categoryContainerWidthState (set alongside the ref in the
-  // ScrollView's onLayout below) is what actually makes this effect
-  // re-run on resize - a ref mutation alone wouldn't trigger it.
-  useEffect(() => {
-    categoryChipLayoutsRef.current = {};
-    setCategoryFitCount(null);
-  }, [popularKeywords, categoryContainerWidthState]);
 
   // Same left/right arrow treatment for the portfolio detail page's
   // horizontal showcase image gallery, web only.
@@ -5895,6 +5845,70 @@ function App() {
   const [discoverDesignersLimit, setDiscoverDesignersLimit] = useState(DISCOVER_PAGE_SIZE);
 
   const [popularKeywords, setPopularKeywords] = useState([]);
+  // b523: dynamic category-chip fit for wide web - instead of a fixed
+  // chip count, measure how many of [Highlighted, Popularity, Newest,
+  // ...popularKeywords] actually fit the real available width and only
+  // render that many before the grid-icon button, so wide web (which
+  // has room the old fixed-10 count was leaving empty) fills it and
+  // narrower/native (which scrolls horizontally instead, no truncation
+  // needed) is untouched. null = still measuring/not yet computed, in
+  // which case the render falls back to showing everything (safe -
+  // matches the always-scrollable behavior this is replacing).
+  //
+  // b524 fix: this whole block originally sat right after
+  // updateCategoryScrollArrows, far above where popularKeywords itself
+  // is declared (here). The useEffect below reads popularKeywords in
+  // its dependency array, and dependency arrays are evaluated
+  // synchronously at the exact point useEffect() is called during
+  // render - so with the block up there, that array literal ran before
+  // this const's own declaration line had executed, hitting the const's
+  // temporal dead zone and throwing "can't access lexical declaration
+  // 'popularKeywords' before initialization" - a page-wide crash on
+  // load, not something scoped to opening the category bar. Moved the
+  // whole block down here, after the declaration it depends on, which
+  // is the actual fix (not just for this variable - the general rule:
+  // anything read in a useEffect dependency array must be declared
+  // earlier in the same component than the useEffect call itself, even
+  // if the effect body/callback wouldn't run until later). This is the
+  // same TDZ bug class already called out in recurring bug list #4.
+  const [categoryFitCount, setCategoryFitCount] = useState(null);
+  const categoryChipLayoutsRef = useRef({});
+  // Reserve room for the grid-icon "show all" button itself plus its
+  // margin, so the last fitting chip doesn't render flush against it.
+  const CATEGORY_GRID_ICON_RESERVED_WIDTH = 50;
+  const computeCategoryFitCount = () => {
+    if (!(Platform.OS === 'web' && isWebWide)) return;
+    const containerWidth = categoryScrollContainerWidthRef.current;
+    if (!containerWidth) return;
+    const allKeys = ['all', 'popularity', 'newest', ...popularKeywords];
+    // Bail until every currently-rendered chip has reported its own
+    // layout - computing against a partial set would under-count.
+    for (const k of allKeys) {
+      if (!categoryChipLayoutsRef.current[k]) return;
+    }
+    let fit = allKeys.length;
+    for (let i = 0; i < allKeys.length; i++) {
+      const layout = categoryChipLayoutsRef.current[allKeys[i]];
+      if (layout.x + layout.width > containerWidth - CATEGORY_GRID_ICON_RESERVED_WIDTH) {
+        fit = i;
+        break;
+      }
+    }
+    const keywordFit = Math.max(0, fit - 3);
+    setCategoryFitCount((prev) => (prev === keywordFit ? prev : keywordFit));
+  };
+  const handleCategoryChipLayout = (key, e) => {
+    categoryChipLayoutsRef.current[key] = { x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width };
+    computeCategoryFitCount();
+  };
+  // Container width changing (window resize) or the keyword pool
+  // itself changing both invalidate any previous fit count - clear the
+  // measured layouts and go back to "measuring" (renders everything
+  // again briefly) so it recomputes against the new width/data.
+  useEffect(() => {
+    categoryChipLayoutsRef.current = {};
+    setCategoryFitCount(null);
+  }, [popularKeywords, categoryContainerWidthState]);
 
   useEffect(() => {
     (async () => {
