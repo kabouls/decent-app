@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 540;
+const BUILD_NUMBER = 542;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -2377,33 +2377,67 @@ const ProjectCard = React.memo(({
     </View>
 
     <View style={[styles.cardBody, isTwoRowCard && styles.cardBodyCompact]}>
-      <CardLink href={`/p/${item.id}`} style={{ width: '100%' }} activeOpacity={0.88} onPress={() => onPress(item)}>
-      {/* Portfolio type moved here from the thumbnail badge, now paired
-          with its name rather than just an icon, and given a bordered
-          rectangular tag treatment (not the fully-rounded pill style used
-          for the category tags on the detail page). AI badge sits to its
-          left when present - moved down from the thumbnail image itself,
-          which no longer shows it there. */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginBottom: 6 }}>
-        {item.isAiGenerated === true && (
-          <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: 5, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: '#E2E8F0', fontSize: 9, fontWeight: '800' }}>{item.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
-          </View>
-        )}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 20, paddingHorizontal: 6, borderRadius: 5, borderWidth: 1, borderColor: theme.border }}>
-          {item.portfolioType === 'graphic_design' ? (
-            <PaletteSVG size={12} color={theme.textSecondary} />
-          ) : item.portfolioType === 'illustration' ? (
-            <PaintBrushSVG size={12} color={theme.textSecondary} />
-          ) : (
-            <CursorArrowSVG size={12} color={theme.textSecondary} />
+      {/* b542: redesigned card layout - designer row moved from below the
+          title to above it, paired on the same row with the AI/category
+          badges that used to sit alone above the title. Divider that used
+          to separate the title block from the designer row (styles.
+          designerRowWithFollow's own borderTopWidth) is gone - see that
+          style's own comment for why removing it there was enough on its
+          own (this row no longer uses that style at all). Left cluster
+          (avatar + handle + follow status) and right cluster (AI +
+          category tag) both built to the same 20px row height so neither
+          side pushes the row taller than the other. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <CardLink
+          href={`/@${item.designerHandle || item.ownerId}`}
+          style={styles.designerRowLeftCol}
+          activeOpacity={0.7}
+          onPress={() => onOpenDesignerProfile && onOpenDesignerProfile(item.ownerId)}
+        >
+          <Image source={{ uri: item.designerAvatar }} style={styles.designerAvatar} />
+          <Text style={styles.cardDesignerName} numberOfLines={1}>{item.designerHandle ? formatHandleDisplay(item.designerHandle) : item.designer}</Text>
+        </CardLink>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {onToggleFollow && !isOwnContent && !hideFollowButton && (
+            <BouncyButton
+              style={[styles.cardFollowBtnRight, isFollowing && styles.cardFollowBtnRightActive]}
+              onPress={() => onToggleFollow(item.ownerId)}
+            >
+              <Text style={[styles.cardFollowBtnText, isFollowing && styles.cardFollowBtnTextActive]}>
+                {isFollowing ? 'Followed' : (followsMe ? 'Follow Back' : 'Follow')}
+              </Text>
+            </BouncyButton>
           )}
-          <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '700' }}>
-            {item.portfolioType === 'graphic_design' ? 'Graphic Design' : item.portfolioType === 'illustration' ? 'Illustration' : 'UI/UX Design'}
-          </Text>
+
+          {/* AI/category tag - unchanged content and styling from before,
+              just relocated onto this shared row instead of its own row
+              above the title. Wrapped in its own CardLink so tapping the
+              tag area still opens the portfolio, same as tapping the
+              title/thumbnail does. */}
+          <CardLink href={`/p/${item.id}`} activeOpacity={0.88} onPress={() => onPress(item)}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              {item.isAiGenerated === true && (
+                <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: 5, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#E2E8F0', fontSize: 9, fontWeight: '800' }}>{item.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
+                </View>
+              )}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 20, paddingHorizontal: 6, borderRadius: 5, borderWidth: 1, borderColor: theme.border }}>
+                {item.portfolioType === 'graphic_design' ? (
+                  <PaletteSVG size={12} color={theme.textSecondary} />
+                ) : item.portfolioType === 'illustration' ? (
+                  <PaintBrushSVG size={12} color={theme.textSecondary} />
+                ) : (
+                  <CursorArrowSVG size={12} color={theme.textSecondary} />
+                )}
+                <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '700' }}>
+                  {item.portfolioType === 'graphic_design' ? 'Graphic Design' : item.portfolioType === 'illustration' ? 'Illustration' : 'UI/UX Design'}
+                </Text>
+              </View>
+            </View>
+          </CardLink>
         </View>
       </View>
-      </CardLink>
 
       {/* The Like button is a true DOM SIBLING of this CardLink, not nested
           inside it - three earlier attempts at stopping a nested click from
@@ -2430,29 +2464,6 @@ const ProjectCard = React.memo(({
             countStyle={{ color: '#94A3B8', fontSize: 10, fontWeight: '700', marginTop: 1 }}
           />
         ) : null}
-      </View>
-
-      <View style={styles.designerRowWithFollow}>
-        <CardLink
-          href={`/@${item.designerHandle || item.ownerId}`}
-          style={styles.designerRowLeftCol}
-          activeOpacity={0.7}
-          onPress={() => onOpenDesignerProfile && onOpenDesignerProfile(item.ownerId)}
-        >
-          <Image source={{ uri: item.designerAvatar }} style={styles.designerAvatar} />
-          <Text style={styles.cardDesignerName} numberOfLines={2}>{item.designerHandle ? formatHandleDisplay(item.designerHandle) : item.designer}</Text>
-        </CardLink>
-
-        {onToggleFollow && !isOwnContent && !hideFollowButton && (
-          <BouncyButton
-            style={[styles.cardFollowBtnRight, isFollowing && styles.cardFollowBtnRightActive]}
-            onPress={() => onToggleFollow(item.ownerId)}
-          >
-            <Text style={[styles.cardFollowBtnText, isFollowing && styles.cardFollowBtnTextActive]}>
-              {isFollowing ? 'Following' : (followsMe ? 'Follow Back' : '+ Follow')}
-            </Text>
-          </BouncyButton>
-        )}
       </View>
     </View>
   </View>
@@ -6735,55 +6746,78 @@ function App() {
     if (!requireAuth()) return;
     const wasFollowing = followedDesignersRef.current.includes(designerId);
 
+    // b542: unfollowing now asks for confirmation first - added here,
+    // the one shared function every "Follow"/"Followed" control in the
+    // app calls (ProjectCard, the designer profile page, etc.), so every
+    // caller gets this automatically rather than needing its own confirm
+    // logic. Following itself is unchanged - still immediate, no
+    // confirmation, only the destructive direction gets one.
     if (wasFollowing) {
-      setFollowedDesigners(followedDesignersRef.current.filter((id) => id !== designerId));
-      if (selectedFollowedDesignerRef.current === designerId) {
-        setSelectedFollowedDesigner(null);
-      }
-      if (session) {
-        const { error } = await supabase.from('follows').delete().eq('follower_id', session.user.id).eq('following_id', designerId);
-        if (error) {
-          console.warn('Failed to unfollow (reverting UI):', error);
-          showToast(`Unfollow failed: ${error.message}`);
-          setFollowedDesigners((prev) => (prev.includes(designerId) ? prev : [...prev, designerId]));
-        } else {
-          setMyFollowStats((prev) => ({ ...prev, followingCount: Math.max(0, prev.followingCount - 1) }));
-          setLiveDesigners((prev) =>
-            prev.map((d) => (d.id === designerId ? { ...d, followersCount: Math.max(0, (d.followersCount || 0) - 1) } : d))
-          );
-          if (selectedDesignerRef.current && selectedDesignerRef.current.id === designerId) {
-            setSelectedDesigner((prev) => ({ ...prev, followersCount: Math.max(0, (prev.followersCount || 0) - 1) }));
-          }
-        }
-      }
-    } else {
-      setFollowedDesigners([...followedDesignersRef.current, designerId]);
-      if (session && designerId !== session.user.id) {
-        const { error } = await supabase.from('follows').insert({ follower_id: session.user.id, following_id: designerId });
-        if (error) {
-          console.warn('Failed to follow (reverting UI):', error);
-          showToast(`Follow failed: ${error.message}`);
-          setFollowedDesigners((prev) => prev.filter((id) => id !== designerId));
-        } else {
-          // b539: see the matching comment at the like-notification insert
-          // above - same reasoning, sendPushNotification() call removed,
-          // the Database Webhook on this insert handles it server-side now.
-          await supabase.from('notifications').insert({
-            recipient_id: designerId,
-            actor_id: session.user.id,
-            type: 'follow'
-          });
-          setMyFollowStats((prev) => ({ ...prev, followingCount: prev.followingCount + 1 }));
-          setLiveDesigners((prev) =>
-            prev.map((d) => (d.id === designerId ? { ...d, followersCount: (d.followersCount || 0) + 1 } : d))
-          );
-          if (selectedDesignerRef.current && selectedDesignerRef.current.id === designerId) {
-            setSelectedDesigner((prev) => ({ ...prev, followersCount: (prev.followersCount || 0) + 1 }));
-          }
+      showAppAlert(
+        'Unfollow this designer?',
+        "You'll stop seeing their portfolios in Circle. You can always follow them again later.",
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Unfollow', style: 'destructive', onPress: () => performUnfollow(designerId) }
+        ]
+      );
+      return;
+    }
+
+    setFollowedDesigners([...followedDesignersRef.current, designerId]);
+    if (session && designerId !== session.user.id) {
+      const { error } = await supabase.from('follows').insert({ follower_id: session.user.id, following_id: designerId });
+      if (error) {
+        console.warn('Failed to follow (reverting UI):', error);
+        showToast(`Follow failed: ${error.message}`);
+        setFollowedDesigners((prev) => prev.filter((id) => id !== designerId));
+      } else {
+        // b539: see the matching comment at the like-notification insert
+        // above - same reasoning, sendPushNotification() call removed,
+        // the Database Webhook on this insert handles it server-side now.
+        await supabase.from('notifications').insert({
+          recipient_id: designerId,
+          actor_id: session.user.id,
+          type: 'follow'
+        });
+        setMyFollowStats((prev) => ({ ...prev, followingCount: prev.followingCount + 1 }));
+        setLiveDesigners((prev) =>
+          prev.map((d) => (d.id === designerId ? { ...d, followersCount: (d.followersCount || 0) + 1 } : d))
+        );
+        if (selectedDesignerRef.current && selectedDesignerRef.current.id === designerId) {
+          setSelectedDesigner((prev) => ({ ...prev, followersCount: (prev.followersCount || 0) + 1 }));
         }
       }
     }
   }, [session, userProfile.name]);
+
+  // b542: the actual unfollow logic, unchanged from before - just
+  // extracted out of toggleFollowDesigner so the confirm dialog's
+  // "Unfollow" button has a plain function to call once confirmed,
+  // instead of the confirmation living inline in the middle of the
+  // unfollow branch.
+  const performUnfollow = useCallback(async (designerId) => {
+    setFollowedDesigners(followedDesignersRef.current.filter((id) => id !== designerId));
+    if (selectedFollowedDesignerRef.current === designerId) {
+      setSelectedFollowedDesigner(null);
+    }
+    if (session) {
+      const { error } = await supabase.from('follows').delete().eq('follower_id', session.user.id).eq('following_id', designerId);
+      if (error) {
+        console.warn('Failed to unfollow (reverting UI):', error);
+        showToast(`Unfollow failed: ${error.message}`);
+        setFollowedDesigners((prev) => (prev.includes(designerId) ? prev : [...prev, designerId]));
+      } else {
+        setMyFollowStats((prev) => ({ ...prev, followingCount: Math.max(0, prev.followingCount - 1) }));
+        setLiveDesigners((prev) =>
+          prev.map((d) => (d.id === designerId ? { ...d, followersCount: Math.max(0, (d.followersCount || 0) - 1) } : d))
+        );
+        if (selectedDesignerRef.current && selectedDesignerRef.current.id === designerId) {
+          setSelectedDesigner((prev) => ({ ...prev, followersCount: Math.max(0, (prev.followersCount || 0) - 1) }));
+        }
+      }
+    }
+  }, [session]);
 
   const [shareModalVisible, setShareModalVisible] = useState(false);
   // Ref to the actual on-screen styled QR's <Svg> - used by
@@ -6805,6 +6839,12 @@ function App() {
   // that could drift from it.
   const [shareTypeFilters, setShareTypeFilters] = useState(new Set());
   const [shareTypeDropdownOpen, setShareTypeDropdownOpen] = useState(false);
+  // b541: measured width of the QR box (now width:'100%' + aspectRatio:1
+  // instead of a fixed 180/240) - drives CircularQRCode's/the plain QR
+  // Image's actual pixel size so they scale to fill whatever width the
+  // modal ends up giving them. Sensible default matches the old fixed
+  // size until the real onLayout measurement comes in on first render.
+  const [qrBoxWidth, setQrBoxWidth] = useState(180);
   const getShareModalUrlWithFilter = () => {
     if (shareType !== 'profile' || shareTypeFilters.size === 0) return shareModalUrl;
     return `${shareModalUrl}?type=${[...shareTypeFilters].join(',')}`;
@@ -15898,20 +15938,39 @@ function App() {
                   on wide web instead of stretching full-bleed. */}
               {sharedTypeFilterBannerVisible && (
                 <View style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 10,
                   backgroundColor: themeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)',
                   borderWidth: 1, borderColor: theme.accent, borderRadius: 12,
                   padding: 12, marginBottom: 12
                 }}>
-                  <Text style={{ flex: 1, color: theme.text, fontSize: 12.5, lineHeight: 18 }}>
-                    You're only seeing {selectedDesigner ? selectedDesigner.name : 'this designer'}'s{' '}
-                    {sharedTypeFilterBannerLabels.join(', ')} portfolio.
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Text style={{ flex: 1, color: theme.text, fontSize: 12.5, lineHeight: 18 }}>
+                      You're only seeing {selectedDesigner ? selectedDesigner.name : 'this designer'}'s{' '}
+                      {sharedTypeFilterBannerLabels.join(', ')} portfolio.
+                    </Text>
+                    <BouncyButton
+                      style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}
+                      onPress={() => setSharedTypeFilterBannerVisible(false)}
+                    >
+                      <Text style={{ color: theme.accent, fontSize: 16, fontWeight: '700' }}>×</Text>
+                    </BouncyButton>
+                  </View>
+                  {/* b541: quick escape hatch back to the full profile -
+                      sets designerTypeFilter to every available type at
+                      once (same end state as ticking "All Portfolios" in
+                      the filter dropdown further down) rather than a
+                      separate "unfiltered" mode, so there's only one
+                      filter mechanism to reason about. */}
                   <BouncyButton
-                    style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}
-                    onPress={() => setSharedTypeFilterBannerVisible(false)}
+                    style={{
+                      alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 12, paddingVertical: 6,
+                      borderRadius: 99, borderWidth: 1, borderColor: theme.accent
+                    }}
+                    onPress={() => {
+                      setDesignerTypeFilter(new Set(selectedDesignerProjectTypes.map((t) => t.key)));
+                      setSharedTypeFilterBannerVisible(false);
+                    }}
                   >
-                    <Text style={{ color: theme.accent, fontSize: 16, fontWeight: '700' }}>×</Text>
+                    <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>See all portfolio type</Text>
                   </BouncyButton>
                 </View>
               )}
@@ -20275,9 +20334,18 @@ function App() {
             {shareType === 'profile' && shareIsOwnProfile && myUploadedProjectTypes.length > 1 && (
               <View style={{
                 width: '100%', marginBottom: 16,
-                alignItems: 'flex-start',
+                alignItems: 'center',
                 ...(shareTypeDropdownOpen ? { zIndex: 100 } : {})
               }}>
+                {/* b541: inner content-hugging wrapper so the trigger
+                    button and its dropdown panel move together as one
+                    centered unit - the panel is position:absolute,left:0
+                    relative to ITS OWN parent, so without this extra
+                    layer, centering the outer (full-width) wrapper would
+                    leave the panel anchored to the far-left edge of the
+                    modal while only the trigger button visually centered,
+                    detaching the two from each other. */}
+                <View style={{ position: 'relative' }}>
                 <BouncyButton
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -20357,37 +20425,48 @@ function App() {
                     </View>
                   </>
                 )}
+                </View>
               </View>
             )}
 
             {shareType === 'profile' && shareIsOwnProfile && shareModalUrl ? (
               <View style={{ alignItems: 'center', marginBottom: 16 }}>
-                {/* Tab switcher sized to match the QR box below it (160
-                    content + 10*2 padding = 180) rather than stretching
-                    full-width, so it visually reads as "controls for this
-                    specific box" rather than a page-wide toggle. Switching
-                    tabs swaps the actual live preview, not just which file
-                    downloads - both branches source from the exact same
-                    URL/component used by the download handlers below, so
-                    preview and downloaded file can never drift apart. */}
+                {/* b541: was a fixed 180/240 width, sized to a fixed QR
+                    box - both now fill the modal's real available width
+                    instead (tab switcher via width:'100%', QR box via
+                    width:'100%' + aspectRatio:1 to stay square whatever
+                    that width ends up being). qrBoxWidth is measured via
+                    onLayout on the actual white QR box below and drives
+                    CircularQRCode's size prop, since that component takes
+                    a real pixel number (an SVG width/height), not a
+                    percentage - the plain-QR <Image> further down doesn't
+                    have this problem, percentage sizing works fine there.
+                    Switching tabs swaps the actual live preview, not just
+                    which file downloads - both branches source from the
+                    exact same URL/component used by the download handlers
+                    below, so preview and downloaded file can never drift
+                    apart. */}
                 <AnimatedPillTabs
                   theme={theme}
                   themeMode={themeMode}
                   activeKey={qrPreviewMode}
                   onChange={setQrPreviewMode}
-                  containerStyle={{ width: isWebWide ? 240 : 180, marginBottom: 10, padding: 3 }}
+                  containerStyle={{ width: '100%', marginBottom: 10, padding: 3 }}
                   tabs={[
                     { key: 'plain', label: 'Plain QR', flex: false },
                     { key: 'decent', label: 'DECENT Style' }
                   ]}
                 />
 
-                <View style={{ width: isWebWide ? 240 : 180, height: isWebWide ? 240 : 180, alignItems: 'center', justifyContent: 'center', padding: 10, backgroundColor: '#FFFFFF', borderRadius: 12 }}>
+                <View
+                  style={{ width: '100%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', padding: 10, backgroundColor: '#FFFFFF', borderRadius: 12 }}
+                  onLayout={(e) => setQrBoxWidth(e.nativeEvent.layout.width)}
+                >
                   {qrPreviewMode === 'decent' ? (
                     <CircularQRCode
                       ref={styledQrExportRef}
                       value={getShareModalUrlWithFilter()}
-                      size={isWebWide ? 220 : 160}
+                      size={Math.max(0, qrBoxWidth - 20)}
                       color="#8B5CF6"
                       backgroundColor="#FFFFFF"
                       showLogo
@@ -20395,7 +20474,7 @@ function App() {
                   ) : (
                     <Image
                       source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(getShareModalUrlWithFilter())}` }}
-                      style={{ width: isWebWide ? 220 : 160, height: isWebWide ? 220 : 160 }}
+                      style={{ width: Math.max(0, qrBoxWidth - 20), height: Math.max(0, qrBoxWidth - 20) }}
                     />
                   )}
                 </View>
@@ -20870,9 +20949,14 @@ const getStyles = (theme) => StyleSheet.create({
   cardTitle: { fontSize: 16, fontWeight: '700', color: theme.text, flex: 1, marginRight: 8 },
   likeButtonRightAligned: { padding: 4, alignSelf: 'flex-start' },
   
-  designerRowWithFollow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 12 },
+  // b542: designerRowWithFollow removed - was the divider-row style for
+  // the old below-title designer row layout, no longer used anywhere
+  // now that the redesigned card moved that content above the title
+  // (see ProjectCard) without the divider.
   designerRowLeftCol: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 },
-  designerAvatar: { width: 24, height: 24, borderRadius: 12, backgroundColor: theme.border },
+  // b542: 20px, was 24 - matches the 20px-tall category tag on the
+  // right side of the same row now (see ProjectCard's new top row).
+  designerAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: theme.border },
   cardDesignerName: { color: theme.accent, fontSize: 12, fontWeight: '600', flex: 1, flexWrap: 'wrap' },
   cardFollowBtnRight: { backgroundColor: '#8B5CF6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
   cardFollowBtnRightActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#8B5CF6' },
