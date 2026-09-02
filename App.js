@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 539;
+const BUILD_NUMBER = 540;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -5344,6 +5344,25 @@ function App() {
       if (finalStatus !== 'granted') {
         console.warn('Push notification permission not granted');
         return;
+      }
+
+      // b540: explicit high-importance channel, Android only (this API is
+      // a no-op on iOS, which has no channel concept). Without this,
+      // Android notifications relied entirely on whatever default channel
+      // Expo auto-creates - which isn't guaranteed to be HIGH importance,
+      // and a user can later disable/downgrade a channel in system
+      // settings with no way for the app to detect that happened. Not a
+      // fix for that (nothing in app code can override a user's own
+      // system settings), but it does guarantee the app itself is asking
+      // for the strongest possible presentation (heads-up banner + sound)
+      // rather than leaving it to an unspecified default.
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'DECENT notifications',
+          importance: Notifications.AndroidImportance.HIGH,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#8B5CF6'
+        });
       }
 
       const projectId = Constants?.expoConfig?.extra?.eas?.projectId;
