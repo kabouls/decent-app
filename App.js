@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 542;
+const BUILD_NUMBER = 543;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -2377,28 +2377,27 @@ const ProjectCard = React.memo(({
     </View>
 
     <View style={[styles.cardBody, isTwoRowCard && styles.cardBodyCompact]}>
-      {/* b542: redesigned card layout - designer row moved from below the
-          title to above it, paired on the same row with the AI/category
-          badges that used to sit alone above the title. Divider that used
-          to separate the title block from the designer row (styles.
-          designerRowWithFollow's own borderTopWidth) is gone - see that
-          style's own comment for why removing it there was enough on its
-          own (this row no longer uses that style at all). Left cluster
-          (avatar + handle + follow status) and right cluster (AI +
-          category tag) both built to the same 20px row height so neither
-          side pushes the row taller than the other. */}
+      {/* b542/b543: designer row moved above the title, paired with the
+          AI/category badges on the right. b543: follow status button
+          moved from that right-side cluster to sit directly next to the
+          handle instead - CardLink now wraps only avatar+handle (with
+          flexShrink so a long handle truncates via numberOfLines rather
+          than pushing the follow button out of view), and the outer
+          wrapper (styles.designerRowLeftCol, repurposed from the CardLink
+          itself) carries the flex:1 that pushes the AI/tag cluster to the
+          far right edge. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <CardLink
-          href={`/@${item.designerHandle || item.ownerId}`}
-          style={styles.designerRowLeftCol}
-          activeOpacity={0.7}
-          onPress={() => onOpenDesignerProfile && onOpenDesignerProfile(item.ownerId)}
-        >
-          <Image source={{ uri: item.designerAvatar }} style={styles.designerAvatar} />
-          <Text style={styles.cardDesignerName} numberOfLines={1}>{item.designerHandle ? formatHandleDisplay(item.designerHandle) : item.designer}</Text>
-        </CardLink>
+        <View style={styles.designerRowLeftCol}>
+          <CardLink
+            href={`/@${item.designerHandle || item.ownerId}`}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 }}
+            activeOpacity={0.7}
+            onPress={() => onOpenDesignerProfile && onOpenDesignerProfile(item.ownerId)}
+          >
+            <Image source={{ uri: item.designerAvatar }} style={styles.designerAvatar} />
+            <Text style={styles.cardDesignerName} numberOfLines={1}>{item.designerHandle ? formatHandleDisplay(item.designerHandle) : item.designer}</Text>
+          </CardLink>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {onToggleFollow && !isOwnContent && !hideFollowButton && (
             <BouncyButton
               style={[styles.cardFollowBtnRight, isFollowing && styles.cardFollowBtnRightActive]}
@@ -2409,34 +2408,34 @@ const ProjectCard = React.memo(({
               </Text>
             </BouncyButton>
           )}
-
-          {/* AI/category tag - unchanged content and styling from before,
-              just relocated onto this shared row instead of its own row
-              above the title. Wrapped in its own CardLink so tapping the
-              tag area still opens the portfolio, same as tapping the
-              title/thumbnail does. */}
-          <CardLink href={`/p/${item.id}`} activeOpacity={0.88} onPress={() => onPress(item)}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              {item.isAiGenerated === true && (
-                <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: 5, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ color: '#E2E8F0', fontSize: 9, fontWeight: '800' }}>{item.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
-                </View>
-              )}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 20, paddingHorizontal: 6, borderRadius: 5, borderWidth: 1, borderColor: theme.border }}>
-                {item.portfolioType === 'graphic_design' ? (
-                  <PaletteSVG size={12} color={theme.textSecondary} />
-                ) : item.portfolioType === 'illustration' ? (
-                  <PaintBrushSVG size={12} color={theme.textSecondary} />
-                ) : (
-                  <CursorArrowSVG size={12} color={theme.textSecondary} />
-                )}
-                <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '700' }}>
-                  {item.portfolioType === 'graphic_design' ? 'Graphic Design' : item.portfolioType === 'illustration' ? 'Illustration' : 'UI/UX Design'}
-                </Text>
-              </View>
-            </View>
-          </CardLink>
         </View>
+
+        {/* AI/category tag - unchanged content and styling from before,
+            just relocated onto this shared row instead of its own row
+            above the title. Wrapped in its own CardLink so tapping the
+            tag area still opens the portfolio, same as tapping the
+            title/thumbnail does. */}
+        <CardLink href={`/p/${item.id}`} activeOpacity={0.88} onPress={() => onPress(item)}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {item.isAiGenerated === true && (
+              <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: 5, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: '#E2E8F0', fontSize: 9, fontWeight: '800' }}>{item.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
+              </View>
+            )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 20, paddingHorizontal: 6, borderRadius: 5, borderWidth: 1, borderColor: theme.border }}>
+              {item.portfolioType === 'graphic_design' ? (
+                <PaletteSVG size={12} color={theme.textSecondary} />
+              ) : item.portfolioType === 'illustration' ? (
+                <PaintBrushSVG size={12} color={theme.textSecondary} />
+              ) : (
+                <CursorArrowSVG size={12} color={theme.textSecondary} />
+              )}
+              <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '700' }}>
+                {item.portfolioType === 'graphic_design' ? 'Graphic Design' : item.portfolioType === 'illustration' ? 'Illustration' : 'UI/UX Design'}
+              </Text>
+            </View>
+          </View>
+        </CardLink>
       </View>
 
       {/* The Like button is a true DOM SIBLING of this CardLink, not nested
@@ -20957,7 +20956,7 @@ const getStyles = (theme) => StyleSheet.create({
   // b542: 20px, was 24 - matches the 20px-tall category tag on the
   // right side of the same row now (see ProjectCard's new top row).
   designerAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: theme.border },
-  cardDesignerName: { color: theme.accent, fontSize: 12, fontWeight: '600', flex: 1, flexWrap: 'wrap' },
+  cardDesignerName: { color: theme.accent, fontSize: 12, fontWeight: '600', flexShrink: 1 },
   cardFollowBtnRight: { backgroundColor: '#8B5CF6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
   cardFollowBtnRightActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#8B5CF6' },
   cardFollowBtnText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
