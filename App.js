@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 544;
+const BUILD_NUMBER = 545;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -11208,6 +11208,16 @@ function App() {
         </View>
         )}
 
+        {/* b545: hidden on wide web specifically while the portfolio
+            detail split view is open (modalVisible && activeProject -
+            same condition already used elsewhere to detect this exact
+            screen, e.g. the full-width bypass a few hundred lines up).
+            That screen has its own top bar (menu/share icons on the
+            left, a close control on the right) and this persistent
+            fixed pill was sitting on top of it, covering the close
+            button. Not needed there anyway - narrower/native screens
+            keep it since they don't have this particular overlap. */}
+        {!(isWebWide && modalVisible && activeProject) && (
         <View style={[
           styles.headerRightActionsRow,
           Platform.OS === 'web' && { position: 'fixed', top: 16, right: 16, zIndex: 1000 },
@@ -11304,6 +11314,7 @@ function App() {
             </Animated.View>
           </BouncyButton>
         </View>
+        )}
       </View>
 
       {/* Category chip bar, extracted out of the ScrollView so it can float
