@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 536;
+const BUILD_NUMBER = 537;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -16432,13 +16432,27 @@ function App() {
             </Text>
             <View style={[styles.confirmActionsRow, { justifyContent: 'flex-end' }]}>
               <BouncyButton
-                style={[styles.confirmCancelBtn, { flex: 0, flexShrink: 0, paddingHorizontal: 20 }]}
+                // b537: minWidth added as a deterministic guarantee - the
+                // b535 flexShrink:0 fix alone wasn't enough specifically
+                // for THIS button. Structural difference from the "Yes"
+                // button next to it: that one wraps its icon+text in a
+                // View (styles.iconTextInlineRow), giving the browser a
+                // clear content box to measure; this one was a bare
+                // <Text> with nothing wrapping it, which on web doesn't
+                // reliably report its own intrinsic width into the
+                // flex-shrink calculation - so even with flexShrink:0 set
+                // on the button, its flex-basis was effectively computing
+                // as ~0 and it collapsed to a bare circle with the text
+                // rendered outside/invisible. minWidth sidesteps that
+                // measurement question entirely rather than depending on
+                // it working correctly.
+                style={[styles.confirmCancelBtn, { flex: 0, flexShrink: 0, minWidth: 90, paddingHorizontal: 20 }]}
                 onPress={() => setInterestConfirmTarget(null)}
               >
                 <Text style={styles.confirmCancelText} numberOfLines={1}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 0, flexShrink: 0, paddingHorizontal: 20 }]}
+                style={[styles.confirmDeleteBtn, { flex: 0, flexShrink: 0, minWidth: 160, paddingHorizontal: 20 }]}
                 onPress={handleConfirmFeatureInterest}
               >
                 <View style={styles.iconTextInlineRow}>
