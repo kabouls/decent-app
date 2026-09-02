@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 529;
+const BUILD_NUMBER = 530;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -15547,7 +15547,13 @@ function App() {
       {selectedDesigner && (() => {
         const designerProfileContent = (
           <View style={{ flex: 1, width: '100%', backgroundColor: theme.bg }}>
-          <SafeAreaView style={[styles.modalContainer, Platform.OS === 'web' && !isWebWide && { maxWidth: mainContentMaxWidth }, Platform.OS === 'web' && isWebWide && { maxWidth: undefined, alignSelf: 'stretch' }]}>
+          {/* b530: was maxWidth:undefined, relying on undefined to cancel
+              modalContainer's own hardcoded maxWidth:480 during style-
+              array merging - doesn't reliably override a previous real
+              value the way an actual value does, which is why this still
+              rendered narrow on wide web despite the b526 fix attempt.
+              '100%' is unambiguous and actually wins the merge. */}
+          <SafeAreaView style={[styles.modalContainer, Platform.OS === 'web' && !isWebWide && { maxWidth: mainContentMaxWidth }, Platform.OS === 'web' && isWebWide && { maxWidth: '100%', alignSelf: 'stretch' }]}>
             {Platform.OS !== 'web' && (
             <View style={[styles.modalTopBar, { backgroundColor: 'transparent', overflow: 'hidden' }]}>
               {lightweightMode ? (
@@ -18286,10 +18292,15 @@ function App() {
           {/* modalContainer's own base style hardcodes maxWidth:480 and
               alignSelf:'center' for every modal that uses it - correct
               default for most modals, but this screen's split layout is
-              meant to use the full window width on wide web. Cancelling
+              meant to use the full window width on wide web. Overriding
               both, only here, only when wide - every other modal sharing
-              modalContainer is untouched. */}
-          <SafeAreaView style={[styles.modalContainer, Platform.OS === 'web' && !isWebWide && { maxWidth: mainContentMaxWidth }, Platform.OS === 'web' && isWebWide && { maxWidth: undefined, alignSelf: 'stretch' }]}>
+              modalContainer is untouched. b530: this used to override
+              maxWidth with an explicit undefined, which doesn't reliably
+              win a style-array merge against a previous real value the
+              way an actual value does (found while fixing the identical
+              pattern on the Designer Profile screen, which WAS visibly
+              still narrow) - '100%' instead, unambiguous. */}
+          <SafeAreaView style={[styles.modalContainer, Platform.OS === 'web' && !isWebWide && { maxWidth: mainContentMaxWidth }, Platform.OS === 'web' && isWebWide && { maxWidth: '100%', alignSelf: 'stretch' }]}>
             {/* Explicit width matching the split layout below it, same
                 reasoning as that fix - modalTopBar is a shared style used
                 by 15+ other modals, so this override is scoped to just
