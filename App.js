@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 534;
+const BUILD_NUMBER = 535;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -16421,18 +16421,18 @@ function App() {
             </Text>
             <View style={[styles.confirmActionsRow, { justifyContent: 'flex-end' }]}>
               <BouncyButton
-                style={[styles.confirmCancelBtn, { flex: 0, paddingHorizontal: 20 }]}
+                style={[styles.confirmCancelBtn, { flex: 0, flexShrink: 0, paddingHorizontal: 20 }]}
                 onPress={() => setInterestConfirmTarget(null)}
               >
-                <Text style={styles.confirmCancelText}>Cancel</Text>
+                <Text style={styles.confirmCancelText} numberOfLines={1}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 0, paddingHorizontal: 20 }]}
+                style={[styles.confirmDeleteBtn, { flex: 0, flexShrink: 0, paddingHorizontal: 20 }]}
                 onPress={handleConfirmFeatureInterest}
               >
                 <View style={styles.iconTextInlineRow}>
                   <CheckIconSVG color="#FFFFFF" />
-                  <Text style={styles.confirmDeleteText}>{interestConfirmMode === 'remove' ? 'Yes, Remove Me' : "Yes, I'm Interested"}</Text>
+                  <Text style={styles.confirmDeleteText} numberOfLines={1}>{interestConfirmMode === 'remove' ? 'Yes, Remove Me' : "Yes, I'm Interested"}</Text>
                 </View>
               </BouncyButton>
             </View>
