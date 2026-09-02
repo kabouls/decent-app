@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 518;
+const BUILD_NUMBER = 519;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -1601,6 +1601,10 @@ const BouncyButton = React.memo(({ style, onPressIn, onPressOut, children, ...re
 // (plain string) is kept as a legacy fallback/backup column - never overwritten
 // by this wiring, only read from when content_blocks is empty.
 const makeBlockId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+// Anti-spam cap on the case study block editor - a top-level "row"
+// block (2 columns) still counts as 1 toward this, same as a plain
+// text/image block, since it's 1 entry in the top-level blocks array.
+const MAX_CONTENT_BLOCKS = 10;
 
 const MARKDOWN_TOOLBAR_BUTTONS = [
   { label: 'H1', markup: '# ', mode: 'prefix' },
@@ -8592,15 +8596,18 @@ function App() {
   };
 
   const addTextBlock = () => {
+    if (fContentBlocks.length >= MAX_CONTENT_BLOCKS) return;
     setFContentBlocks((prev) => [...prev, { id: makeBlockId(), type: 'text', markdown: '' }]);
   };
 
   const addImageBlock = async () => {
+    if (fContentBlocks.length >= MAX_CONTENT_BLOCKS) return;
     const uri = await pickBlockImageUri([16, 9]);
     if (uri) setFContentBlocks((prev) => [...prev, { id: makeBlockId(), type: 'image', uri }]);
   };
 
   const addRowBlock = () => {
+    if (fContentBlocks.length >= MAX_CONTENT_BLOCKS) return;
     setFContentBlocks((prev) => [...prev, { id: makeBlockId(), type: 'row', columns: [null, null] }]);
   };
 
@@ -9388,23 +9395,6 @@ function App() {
   }, [selectedPortfolioType, customCategoriesList]);
   const [myFeatureInterests, setMyFeatureInterests] = useState(new Set());
   const [interestConfirmTarget, setInterestConfirmTarget] = useState(null); // feature_name string, or null if no confirm popup showing
-  // TEMPORARY diagnostic (b513) - block editor scroll bug, see the
-  // ScrollView further down. Remove alongside it once a real fix lands.
-  const [blockEditorDebugContentHeight, setBlockEditorDebugContentHeight] = useState(0);
-  const [blockEditorDebugContainerHeight, setBlockEditorDebugContainerHeight] = useState(0);
-  // TEMPORARY diagnostic (b518) - added alongside the two above once
-  // they turned out identical before/after the b517 Modal fix, proving
-  // that fix wasn't actually the bottleneck. This third number settles
-  // which of two very different bugs this is: if maxScrollYReached ends
-  // up close to (contentHeight - containerHeight), the ScrollView is
-  // scrolling its full real distance and the "missing" content is
-  // simply below that point (a padding/content-height problem to solve
-  // with layout, not a scroll-capping bug). If maxScrollYReached stops
-  // noticeably short of that number, the scroll itself is being capped
-  // by something real (points back to a genuine Android ScrollView
-  // bug/interference, same family as the removeClippedSubviews issue
-  // already ruled out).
-  const [blockEditorDebugMaxScrollY, setBlockEditorDebugMaxScrollY] = useState(0);
   const [interestConfirmMode, setInterestConfirmMode] = useState('add'); // 'add' | 'remove' - which action interestConfirmTarget is for
   const [portfolioReportModalVisible, setPortfolioReportModalVisible] = useState(false);
   const [portfolioReportSelectedReason, setPortfolioReportSelectedReason] = useState(null); // 'ai_undisclosed' | 'nsfw_misuse' | 'other' | null
@@ -16894,17 +16884,6 @@ function App() {
                     </BouncyButton>
                   </View>
 
-                  {/* TEMPORARY diagnostic (b513) - remove this whole
-                      Text alongside the debug props on the edit-mode
-                      ScrollView below once a real fix lands. Shown as a
-                      normal in-flow row (not absolute) so it can't
-                      overlap/hide anything and survives a screenshot. */}
-                  {descEditorMode === 'edit' && (
-                    <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '700', paddingHorizontal: 16, paddingBottom: 4 }}>
-                      DBG content:{Math.round(blockEditorDebugContentHeight)}px container:{Math.round(blockEditorDebugContainerHeight)}px maxScrollY:{Math.round(blockEditorDebugMaxScrollY)}px
-                    </Text>
-                  )}
-
                   {descEditorMode === 'preview' ? (
                     <ScrollView ref={hideScrollbarRefCallback(isWebWide)} style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
                       {fContentBlocks.length > 0 ? (
@@ -16923,49 +16902,25 @@ function App() {
                       // makes only roughly the first half of the content
                       // reachable via scroll, with everything past that
                       // point permanently unreachable regardless of
-                      // padding - which matches this exact symptom
-                      // (paddingBottom:400 below had zero effect, meaning
-                      // the scrollable bounds themselves were wrong, not
-                      // just insufficiently padded). Whether or not this
-                      // was actually true here by default, explicit is
-                      // safer than relying on whatever the platform/RN-
-                      // version default happens to be.
+                      // padding. Not actually the root cause of the b512-
+                      // b517 scroll bug in the end (that was the fullscreen
+                      // overlay needing to be a real Modal on native - see
+                      // FullscreenEditorOverlay), but left disabled anyway
+                      // since it's a real, confirmed-elsewhere Android bug
+                      // and there's no upside to relying on the platform
+                      // default here.
                       removeClippedSubviews={false}
-                      contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 400 }}
+                      // paddingBottom brought down from 400 to 120 (b519)
+                      // now that the real scroll bug is fixed and
+                      // confirmed (maxScrollY matched content-container
+                      // almost exactly - see the b518 diagnostic). 400 was
+                      // a defensive workaround from when the actual cause
+                      // was still unknown; 120 is just enough that the
+                      // last block/Add-buttons row isn't flush against
+                      // the screen edge, without leaving a huge stretch of
+                      // empty scroll that buries real content above.
+                      contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 120 }}
                       keyboardShouldPersistTaps="handled"
-                      // TEMPORARY diagnostic (b513) - re-added per the
-                      // prior session's handout, which pulled this before
-                      // getting a real readout. Two independently
-                      // measured numbers, shown on-screen so they survive
-                      // a screenshot: actual scrollable content height
-                      // (onContentSizeChange) vs. the ScrollView's own
-                      // visible/laid-out height (onLayout). If content
-                      // height is much larger than container height,
-                      // that's a real overflow the padding fix should be
-                      // covering - point back at contentContainerStyle. If
-                      // the two are close/equal despite more blocks being
-                      // added, the ScrollView itself isn't measuring its
-                      // available space correctly (likely the fullscreen
-                      // absolutely-positioned overlay wrapper above not
-                      // giving SafeAreaView a real height on Android) -
-                      // point at the wrapper/layout chain instead, not the
-                      // ScrollView props. Remove this whole block (and the
-                      // Text below) once a real fix lands - do not ship
-                      // with this in.
-                      onContentSizeChange={(w, h) => setBlockEditorDebugContentHeight(h)}
-                      onLayout={(e) => setBlockEditorDebugContainerHeight(e.nativeEvent.layout.height)}
-                      // TEMPORARY diagnostic (b518) - tracks the
-                      // farthest contentOffset.y actually reached, so
-                      // it survives even if the user scrolls back up
-                      // before screenshotting. Compare against
-                      // content-container above once you're at max
-                      // scroll - see the state declaration for what
-                      // each outcome means.
-                      onScroll={(e) => {
-                        const y = e.nativeEvent.contentOffset.y;
-                        setBlockEditorDebugMaxScrollY((prev) => Math.max(prev, y));
-                      }}
-                      scrollEventThrottle={16}
                     >
                         {fContentBlocks.map((block, idx) => (
                           <View
@@ -17261,6 +17216,11 @@ function App() {
                           backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
                           borderRadius: 12, padding: 12
                         }}>
+                          {fContentBlocks.length >= MAX_CONTENT_BLOCKS ? (
+                            <Text style={{ color: theme.textSecondary, fontSize: 12, textAlign: 'center', paddingVertical: 8 }}>
+                              Maximum of {MAX_CONTENT_BLOCKS} blocks reached. Remove one to add another.
+                            </Text>
+                          ) : (
                           <View style={{ flexDirection: 'row', justifyContent: 'space-evenly', gap: 12 }}>
                             <BouncyButton
                               style={{
@@ -17299,6 +17259,7 @@ function App() {
                               <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '600', marginTop: 6, textAlign: 'center' }}>Add 2 Row</Text>
                             </BouncyButton>
                           </View>
+                          )}
                         </View>
                       </ScrollView>
                   )}
