@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 520;
+const BUILD_NUMBER = 522;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -9960,6 +9960,7 @@ function App() {
             onChangeText={setEditName}
             placeholder="Your full name"
             placeholderTextColor="#94A3B8"
+            maxLength={60}
           />
 
           <Text style={styles.formGroupLabel}>Unique ID / Handle *</Text>
@@ -9990,6 +9991,7 @@ function App() {
             onChangeText={setEditRole}
             placeholder="e.g. UI/UX Designer"
             placeholderTextColor="#94A3B8"
+            maxLength={60}
           />
 
           <Text style={styles.formGroupLabel}>Location / City</Text>
@@ -9999,6 +10001,7 @@ function App() {
             onChangeText={setEditLocation}
             placeholder="e.g. Jakarta, Indonesia"
             placeholderTextColor="#94A3B8"
+            maxLength={80}
           />
 
           <Text style={styles.formGroupLabel}>Short Bio</Text>
@@ -10337,15 +10340,19 @@ function App() {
           </Animated.View>
         )}
         {/* alignItems:'center' + maxWidth below cap every screen at a
-            readable column width - right for the feed, search, profile,
-            etc. Bypassed specifically while the portfolio detail split
-            view is open on wide web, since that screen is meant to use
-            the full window width edge to edge, not the shared column
-            width. Every other screen rendered through this same wrapper
-            is completely unaffected - the condition only flips when this
-            one modal is showing. */}
-        <View style={{ flex: 1, alignItems: (isWebWide && !((modalVisible && activeProject) || bottomNav === 'forYou')) ? 'center' : 'stretch' }}>
-      <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', ...((isWebWide && ((modalVisible && activeProject) || bottomNav === 'forYou')) ? {} : { maxWidth: mainContentMaxWidth }), backgroundColor: webCanvasColor } : { flex: 1 }}>
+            readable column width - right for search, etc. Bypassed for
+            the portfolio detail split view on wide web (that screen
+            uses the full window edge to edge) and for the For You feed
+            (needs the room for its responsive multi-column grid). Also
+            bypassed for the Profile tab (b522) so its own portfolio
+            grid can go full width the same way For You does - but the
+            profile card/tabs/filter row inside it are individually
+            re-wrapped back to mainContentMaxWidth (see the profile tab
+            section itself) so only the grid actually gets wider, not
+            everything on the page. Every other screen rendered through
+            this same wrapper is completely unaffected. */}
+        <View style={{ flex: 1, alignItems: (isWebWide && !((modalVisible && activeProject) || bottomNav === 'forYou' || bottomNav === 'profile')) ? 'center' : 'stretch' }}>
+      <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', ...((isWebWide && ((modalVisible && activeProject) || bottomNav === 'forYou' || bottomNav === 'profile')) ? {} : { maxWidth: mainContentMaxWidth }), backgroundColor: webCanvasColor } : { flex: 1 }}>
       <StatusBar barStyle={themeMode === 'light' ? 'dark-content' : 'light-content'} backgroundColor={theme.bg} translucent={false} />
 
       {isOffline && (
@@ -11750,6 +11757,12 @@ function App() {
               </View>
             ) : (
             <View>
+              {/* Profile card + tabs + filter bar stay at the same
+                  narrower column width as before (matches every other
+                  screen) even though the outer page container is now
+                  full-width on wide web for this tab - only the grid
+                  below (outside this wrapper) is meant to stretch. */}
+              <View style={isWebWide ? { width: '100%', maxWidth: mainContentMaxWidth, alignSelf: 'center' } : undefined}>
               <View style={styles.profileCard}>
                 <BouncyButton
                   style={{ position: 'absolute', top: 16, right: 16, width: 36, height: 36, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}
@@ -11887,6 +11900,7 @@ function App() {
                   </BouncyButton>
                 </View>
               )}
+              </View>
 
               <Animated.View style={{ opacity: profileTabContentAnim }}>
                 {profileTab === 'likedWork' || (profileTab === 'myWork' && portfolioLayoutMode === 'full') ? (
@@ -12870,6 +12884,7 @@ function App() {
                   onChangeText={setEditName}
                   placeholder="Full Name"
                   placeholderTextColor="#94A3B8"
+                  maxLength={60}
                 />
                 {editName.length > 0 && (
                   <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditName('')}>
@@ -12921,6 +12936,7 @@ function App() {
                   onChangeText={setEditRole}
                   placeholder="Specialties / Role"
                   placeholderTextColor="#94A3B8"
+                  maxLength={60}
                 />
                 {editRole.length > 0 && (
                   <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditRole('')}>
@@ -12938,6 +12954,7 @@ function App() {
                   onChangeText={setEditLocation}
                   placeholder="South Jakarta, Jakarta, Indonesia"
                   placeholderTextColor="#94A3B8"
+                  maxLength={80}
                 />
                 {editLocation.length > 0 && (
                   <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditLocation('')}>
@@ -14211,6 +14228,7 @@ function App() {
                     placeholderTextColor="#94A3B8"
                     value={feedbackMessage}
                     onChangeText={setFeedbackMessage}
+                    maxLength={1000}
                   />
 
                   <View style={styles.feedbackNotifyToggleRow}>
@@ -14250,6 +14268,7 @@ function App() {
                     placeholderTextColor="#94A3B8"
                     value={featureRequestTitle}
                     onChangeText={setFeatureRequestTitle}
+                    maxLength={80}
                   />
 
                   <Text style={styles.formGroupLabel}>Description *</Text>
@@ -14260,6 +14279,7 @@ function App() {
                     placeholderTextColor="#94A3B8"
                     value={featureRequestDescription}
                     onChangeText={setFeatureRequestDescription}
+                    maxLength={1000}
                   />
 
                   <BouncyButton
@@ -16119,6 +16139,7 @@ function App() {
                     value={portfolioReportOtherText}
                     onChangeText={setPortfolioReportOtherText}
                     multiline
+                    maxLength={300}
                   />
                 )}
               </BouncyButton>
@@ -16506,6 +16527,7 @@ function App() {
                           onChangeText={setFAiDisclosureNote}
                           multiline
                           numberOfLines={3}
+                          maxLength={200}
                         />
                         <Text style={{ color: fAiDisclosureNote.trim().length >= 20 ? theme.textSecondary : '#EF4444', fontSize: 11, marginTop: 4 }}>
                           {fAiDisclosureNote.trim().length}/20 characters minimum
@@ -16609,6 +16631,7 @@ function App() {
                                   placeholderTextColor={theme.textSecondary}
                                   value={softwareCustomInput}
                                   onChangeText={setSoftwareCustomInput}
+                                  maxLength={40}
                                   onSubmitEditing={() => {
                                     const trimmed = softwareCustomInput.trim();
                                     if (trimmed && !fSoftwareUsed.includes(trimmed)) {
@@ -16715,6 +16738,7 @@ function App() {
                             placeholderTextColor="#94A3B8"
                             value={categorySearchQuery}
                             onChangeText={setCategorySearchQuery}
+                            maxLength={40}
                           />
                           <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 4 }}>
                             Selected: {fCategories.length}/10 (minimum 3 required)
@@ -16789,6 +16813,7 @@ function App() {
                     placeholderTextColor="#94A3B8"
                     value={fBrief}
                     onChangeText={(t) => { setFBrief(t); setErrors({ ...errors, fBrief: null }); }}
+                    maxLength={300}
                   />
                   {errors.fBrief ? <Text style={styles.errorText}>{errors.fBrief}</Text> : null}
 
@@ -17404,6 +17429,7 @@ function App() {
                               updated[idx] = { ...updated[idx], label: t };
                               setFLiveLinks(updated);
                             }}
+                            maxLength={60}
                           />
                           <Text style={styles.formGroupLabel}>Link URL</Text>
                           <View style={{ position: 'relative' }}>
@@ -17540,6 +17566,7 @@ function App() {
                           placeholderTextColor="#64748B"
                           value={img.caption}
                           onChangeText={(t) => handleShowcaseCaptionChange(index, t)}
+                          maxLength={150}
                         />
                       </View>
                     ))}
@@ -17618,6 +17645,7 @@ function App() {
                                 placeholderTextColor="#64748B"
                                 value={vid.caption}
                                 onChangeText={(t) => setFUploadedVideos((prev) => prev.map((v, i) => (i === slotIdx ? { ...v, caption: t } : v)))}
+                                maxLength={150}
                               />
                             </View>
                           );
