@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 533;
+const BUILD_NUMBER = 534;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -11037,7 +11037,20 @@ function App() {
           positioned. */}
       <View
         style={isWebWide
-          ? { position: 'relative' }
+          // b534: position:'relative' alone doesn't establish a
+          // stacking context strong enough for the descendant pill's
+          // zIndex:1000 to actually win against SIBLING stacking
+          // contexts elsewhere on the page (the scrolling feed/category
+          // bar content) - only within contexts already nested under
+          // this same ancestor. Confirmed exact same bug class already
+          // documented/fixed elsewhere in this file (modalBody, the AI
+          // Disclosure dropdown) - the fix is always elevating the
+          // ANCESTOR's own zIndex, not just the floating descendant's.
+          // This is what was actually causing the bell/gear pill to get
+          // visually covered while scrolling AND to stop receiving
+          // clicks (both symptoms of the same missing stacking context,
+          // not two separate bugs).
+          ? { position: 'relative', zIndex: 1000 }
           : [
               styles.header,
               Platform.OS !== 'web' && {
@@ -11115,15 +11128,19 @@ function App() {
         <View style={[
           styles.headerRightActionsRow,
           Platform.OS === 'web' && { position: 'fixed', top: 16, right: 16, zIndex: 1000 },
-          // b531: shared pill-shaped background housing both icons
+          // b531/b534: shared pill-shaped background housing both icons
           // together, wide web only - narrow web/app keep the two plain
           // individual circular buttons as before. Already position:
           // fixed + zIndex:1000 above for web generally (unchanged),
           // which is what keeps this visible above scrolled content -
           // the pill wrapping is purely visual on top of that existing
-          // always-on-top behavior, not a fix to it.
+          // always-on-top behavior, not a fix to it. Background switched
+          // from theme.surface to theme.bg (b534) - surface read as a
+          // visibly distinct block against the page; bg matches the
+          // page itself so the pill blends in rather than standing out
+          // as its own panel.
           isWebWide && {
-            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+            backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border,
             borderRadius: 99, paddingHorizontal: 8, paddingVertical: 6
           }
         ]}>
