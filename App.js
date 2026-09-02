@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 532;
+const BUILD_NUMBER = 533;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -6758,6 +6758,18 @@ function App() {
   const [shareIsOwnProfile, setShareIsOwnProfile] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [qrPreviewMode, setQrPreviewMode] = useState('decent'); // 'decent' | 'plain' - which QR is shown/downloaded in the Share Profile modal
+  // b533: which portfolio types to pre-filter a shared profile link to -
+  // empty Set means "share the whole profile, no filter" (the default).
+  // Only ever shown/editable when sharing your OWN profile with more
+  // than one portfolio type - see the checkbox section in the modal
+  // itself. Plain function below (not useMemo) computes the actual URL
+  // from this on demand, rather than syncing a second piece of state
+  // that could drift from it.
+  const [shareTypeFilters, setShareTypeFilters] = useState(new Set());
+  const getShareModalUrlWithFilter = () => {
+    if (shareType !== 'profile' || shareTypeFilters.size === 0) return shareModalUrl;
+    return `${shareModalUrl}?type=${[...shareTypeFilters].join(',')}`;
+  };
 
   const handleShareDesigner = (designer) => {
     // Was copying the designer's own linked-elsewhere URL (their Figma/
@@ -6774,6 +6786,7 @@ function App() {
     // scan-and-follow, which isn't the intent (there's no comparable use
     // case for someone else's profile QR the way there is for your own).
     setShareIsOwnProfile(!!(session && designer.id === session.user.id));
+    setShareTypeFilters(new Set());
     setShareCopied(false);
     setShareModalVisible(true);
   };
@@ -6788,12 +6801,13 @@ function App() {
     setShareModalUrl(shareUrl);
     setShareType('portfolio');
     setShareIsOwnProfile(false);
+    setShareTypeFilters(new Set());
     setShareCopied(false);
     setShareModalVisible(true);
   };
 
   const handleCopyShareLink = async () => {
-    await Clipboard.setStringAsync(shareModalUrl);
+    await Clipboard.setStringAsync(getShareModalUrlWithFilter());
     setShareCopied(true);
     setTimeout(() => setShareCopied(false), 1500);
   };
@@ -6803,7 +6817,7 @@ function App() {
     // separate, deliberately unstyled URL rather than the accent-purple
     // one used elsewhere, for anyone who wants a plain version (printing,
     // accessibility, just personal preference).
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(shareModalUrl)}`;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(getShareModalUrlWithFilter())}`;
     if (Platform.OS === 'web') {
       try {
         const response = await fetch(qrUrl);
@@ -6940,7 +6954,7 @@ function App() {
   const handleDownloadStyledQr = async () => {
     if (Platform.OS === 'web') {
       try {
-        const canvas = renderStyledQrToCanvas(shareModalUrl, 800);
+        const canvas = renderStyledQrToCanvas(getShareModalUrlWithFilter(), 800);
         if (!canvas) throw new Error('QR render failed');
         canvas.toBlob((blob) => {
           if (!blob) {
@@ -8204,7 +8218,7 @@ function App() {
     openProjectModal(mapPortfolioRow(p, { liked: !!likeRow, visitsFallback: 0 }));
   }, [session, openProjectModal]);
 
-  const handleIncomingRoute = useCallback(async (path) => {
+  const handleIncomingRoute = useCallback(async (path, queryParams) => {
     const tabRoutes = { '/for-you': 'forYou', '/circle': 'followed', '/search': 'search', '/profile': 'profile' };
     if (tabRoutes[path]) {
       setBottomNav(tabRoutes[path]);
@@ -8230,6 +8244,17 @@ function App() {
       setBottomNav('profile');
       return;
     }
+
+    // b533: ?type=ui_ux,illustration from a filtered share link - stashed
+    // for the designerTypeFilter reset effect to pick up once this
+    // designer's portfolios have loaded (see that effect for why there,
+    // not here - this profile hasn't been fetched yet at this point).
+    // Validated against real type keys now so an already-invalid/garbage
+    // param can't reach that effect at all.
+    const requestedTypes = queryParams && typeof queryParams.type === 'string'
+      ? queryParams.type.split(',').map((t) => t.trim()).filter((t) => PORTFOLIO_TYPE_OPTIONS.some((o) => o.key === t))
+      : [];
+    pendingSharedTypeFilterRef.current = requestedTypes.length > 0 ? new Set(requestedTypes) : null;
 
     // Skips openDesignerProfileById's own history.pushState (web) - this
     // deep link already IS the current history entry (the page just
@@ -8319,7 +8344,7 @@ function App() {
     if (!authChecked) return;
     if (initialRouteHandledRef.current) return;
     initialRouteHandledRef.current = true;
-    handleIncomingRoute(window.location.pathname);
+    handleIncomingRoute(window.location.pathname, Object.fromEntries(new URLSearchParams(window.location.search)));
   }, [handleIncomingRoute, authChecked]);
 
   // Same routing, for native - Android App Links (configured in app.json's
@@ -8335,13 +8360,13 @@ function App() {
 
     ExpoLinking.getInitialURL().then((url) => {
       if (!url) return;
-      const { path } = ExpoLinking.parse(url);
-      if (path) handleIncomingRoute(`/${path}`);
+      const { path, queryParams } = ExpoLinking.parse(url);
+      if (path) handleIncomingRoute(`/${path}`, queryParams);
     });
 
     const subscription = ExpoLinking.addEventListener('url', ({ url }) => {
-      const { path } = ExpoLinking.parse(url);
-      if (path) handleIncomingRoute(`/${path}`);
+      const { path, queryParams } = ExpoLinking.parse(url);
+      if (path) handleIncomingRoute(`/${path}`, queryParams);
     });
 
     return () => subscription.remove();
@@ -10043,8 +10068,38 @@ function App() {
   }, [selectedDesignerProjects]);
   const selectedDesignerProjectTypeKeys = useMemo(() => selectedDesignerProjectTypes.map((t) => t.key).join(','), [selectedDesignerProjectTypes]);
   const [designerTypeFilter, setDesignerTypeFilter] = useState(new Set());
+  // b533: shared-link type pre-filtering. handleIncomingRoute stashes a
+  // Set of requested type keys here (from a ?type=ui_ux,illustration
+  // query param) BEFORE opening the designer profile - this effect,
+  // which already resets the filter to "everything" whenever a new
+  // designer's profile loads, is the one place that reset actually
+  // happens, so it's also the right place to apply the requested filter
+  // instead, once, right as that reset would otherwise fire. A ref
+  // (not state) since it's only ever written once (route handling) and
+  // read+cleared once (here) - no need for it to trigger a render itself.
+  const pendingSharedTypeFilterRef = useRef(null);
+  const [sharedTypeFilterBannerVisible, setSharedTypeFilterBannerVisible] = useState(false);
+  const [sharedTypeFilterBannerLabels, setSharedTypeFilterBannerLabels] = useState([]);
   useEffect(() => {
-    setDesignerTypeFilter(new Set(selectedDesignerProjectTypeKeys ? selectedDesignerProjectTypeKeys.split(',') : []));
+    const allKeys = new Set(selectedDesignerProjectTypeKeys ? selectedDesignerProjectTypeKeys.split(',') : []);
+    const pending = pendingSharedTypeFilterRef.current;
+    pendingSharedTypeFilterRef.current = null;
+    if (pending && selectedDesigner) {
+      // Intersected against what this designer actually has, not applied
+      // blindly - a shared link naming a type this person has since
+      // removed (or never had) shouldn't silently produce an empty grid.
+      const intersected = new Set([...pending].filter((k) => allKeys.has(k)));
+      if (intersected.size > 0) {
+        setDesignerTypeFilter(intersected);
+        setSharedTypeFilterBannerLabels(
+          PORTFOLIO_TYPE_OPTIONS.filter((t) => intersected.has(t.key)).map((t) => t.label)
+        );
+        setSharedTypeFilterBannerVisible(true);
+        return;
+      }
+    }
+    setDesignerTypeFilter(allKeys);
+    setSharedTypeFilterBannerVisible(false);
   }, [selectedDesignerProjectTypeKeys, selectedDesigner]);
   const selectedDesignerProjectsFiltered = useMemo(() => {
     if (selectedDesignerProjectTypes.length <= 1) return selectedDesignerProjects;
@@ -15767,6 +15822,36 @@ function App() {
                   wide web; only the grid further down (outside this
                   wrapper) actually stretches. */}
               <View style={isWebWide ? { width: '100%', maxWidth: mainContentMaxWidth, alignSelf: 'center' } : undefined}>
+              {/* b533: dismissible reminder banner - only shown when this
+                  profile was reached via a filtered share link (see the
+                  designerTypeFilter reset effect, which sets these two
+                  pieces of state once it consumes the pending filter).
+                  Dismissing just hides the banner - the filter itself
+                  stays applied; the person uses the existing type-filter
+                  checkboxes further down if they want to see everything
+                  else, no separate "view all" control needed. Placed
+                  inside the constrained-width wrapper above (not before
+                  it) so it matches the profile card's own column width
+                  on wide web instead of stretching full-bleed. */}
+              {sharedTypeFilterBannerVisible && (
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10,
+                  backgroundColor: themeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)',
+                  borderWidth: 1, borderColor: theme.accent, borderRadius: 12,
+                  padding: 12, marginBottom: 12
+                }}>
+                  <Text style={{ flex: 1, color: theme.text, fontSize: 12.5, lineHeight: 18 }}>
+                    You're only seeing {selectedDesigner ? selectedDesigner.name : 'this designer'}'s{' '}
+                    {sharedTypeFilterBannerLabels.join(', ')} portfolio.
+                  </Text>
+                  <BouncyButton
+                    style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}
+                    onPress={() => setSharedTypeFilterBannerVisible(false)}
+                  >
+                    <Text style={{ color: theme.accent, fontSize: 16, fontWeight: '700' }}>×</Text>
+                  </BouncyButton>
+                </View>
+              )}
               <View style={styles.profileCard}>
                 {Platform.OS !== 'web' && (
                 <View style={{ position: 'absolute', top: 12, right: 12, flexDirection: 'row', gap: 4, zIndex: 10 }}>
@@ -20095,6 +20180,48 @@ function App() {
               {shareType === 'portfolio' ? 'Anyone with this link can view this portfolio.' : 'Anyone with this link can view this profile.'}
             </Text>
 
+            {/* b533: multi-select portfolio-type filter for a shared
+                profile link - only when sharing your OWN profile and you
+                actually have more than one type (nothing to filter
+                otherwise). Not persisted anywhere - purely computed into
+                the ?type= query param on the link/QR below, live as
+                selections change. */}
+            {shareType === 'profile' && shareIsOwnProfile && myUploadedProjectTypes.length > 1 && (
+              <View style={{ width: '100%', marginBottom: 16 }}>
+                <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 8 }}>
+                  Share only specific portfolio types (optional)
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {myUploadedProjectTypes.map((t) => {
+                    const selected = shareTypeFilters.has(t.key);
+                    return (
+                      <BouncyButton
+                        key={t.key}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 6,
+                          paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99,
+                          borderWidth: 1, borderColor: selected ? theme.accent : theme.border,
+                          backgroundColor: selected ? (themeMode === 'light' ? 'rgba(109,40,217,0.1)' : 'rgba(139,92,246,0.15)') : 'transparent'
+                        }}
+                        onPress={() => {
+                          setShareTypeFilters((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(t.key)) next.delete(t.key); else next.add(t.key);
+                            return next;
+                          });
+                        }}
+                      >
+                        {selected && <CheckIconSVG color={theme.accent} size={13} />}
+                        <Text style={{ color: selected ? theme.accent : theme.textSecondary, fontSize: 12, fontWeight: '700' }}>
+                          {t.label}
+                        </Text>
+                      </BouncyButton>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
             {shareType === 'profile' && shareIsOwnProfile && shareModalUrl ? (
               <View style={{ alignItems: 'center', marginBottom: 16 }}>
                 {/* Tab switcher sized to match the QR box below it (160
@@ -20121,7 +20248,7 @@ function App() {
                   {qrPreviewMode === 'decent' ? (
                     <CircularQRCode
                       ref={styledQrExportRef}
-                      value={shareModalUrl}
+                      value={getShareModalUrlWithFilter()}
                       size={isWebWide ? 220 : 160}
                       color="#8B5CF6"
                       backgroundColor="#FFFFFF"
@@ -20129,7 +20256,7 @@ function App() {
                     />
                   ) : (
                     <Image
-                      source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(shareModalUrl)}` }}
+                      source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(getShareModalUrlWithFilter())}` }}
                       style={{ width: isWebWide ? 220 : 160, height: isWebWide ? 220 : 160 }}
                     />
                   )}
@@ -20159,7 +20286,7 @@ function App() {
               activeOpacity={0.7}
             >
               <Text style={{ flex: 1, color: theme.textSecondary, fontSize: 13 }} numberOfLines={1}>
-                {shareModalUrl}
+                {getShareModalUrlWithFilter()}
               </Text>
               <View style={{
                 width: 44, height: 44, alignItems: 'center', justifyContent: 'center',
@@ -20180,7 +20307,7 @@ function App() {
                 style={[styles.confirmDeleteBtn, { flex: 1 }]}
                 onPress={() => {
                   setShareModalVisible(false);
-                  Share.share({ message: shareModalUrl });
+                  Share.share({ message: getShareModalUrlWithFilter() });
                 }}
               >
                 <Text style={styles.confirmDeleteText}>Share</Text>
