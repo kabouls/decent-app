@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 552;
+const BUILD_NUMBER = 554;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -2272,6 +2272,12 @@ const ProjectCard = React.memo(({
   onTogglePin,
   hideFollowButton = false,
   showReadOnlyPin = false,
+  // b553: needed specifically for the compact-view tag/avatar treatment
+  // below - isTwoRowCard alone isn't enough to know "mobile web or app"
+  // since TwoRowHorizontalGrid (the only caller of isTwoRowCard) also
+  // renders on wide web (4-per-row there, per its own comment), just
+  // with different per-row counts, not different card content.
+  isWebWide = false,
   styles
 }) => {
   const { lightweightMode } = useLightweightMode();
@@ -2397,10 +2403,21 @@ const ProjectCard = React.memo(({
             activeOpacity={0.7}
             onPress={() => onOpenDesignerProfile && onOpenDesignerProfile(item.ownerId)}
           >
-            <Image source={{ uri: item.designerAvatar }} style={styles.designerAvatar} />
+            {/* b553: avatar dropped in compact view specifically on
+                mobile web/app (not wide web, where Compact View still
+                shows it) - just @handle there, more room for the tag
+                on a narrower card. */}
+            {!(isTwoRowCard && !isWebWide) && (
+              <Image source={{ uri: item.designerAvatar }} style={styles.designerAvatar} />
+            )}
             <Text style={styles.cardDesignerName} numberOfLines={1}>{item.designerHandle ? formatHandleDisplay(item.designerHandle) : item.designer}</Text>
           </CardLink>
 
+          {/* b553: hidden on mobile web + native app (not wide web) -
+              every caller now passes onToggleFollow={isWebWide ?
+              toggleFollowDesigner : undefined} instead of adding a new
+              prop here, so this same "no onToggleFollow = no button"
+              check already handles it without touching this component. */}
           {onToggleFollow && !isOwnContent && !hideFollowButton && (
             <BouncyButton
               style={[styles.cardFollowBtnRight, isFollowing && styles.cardFollowBtnRightActive]}
@@ -2417,7 +2434,9 @@ const ProjectCard = React.memo(({
             just relocated onto this shared row instead of its own row
             above the title. Wrapped in its own CardLink so tapping the
             tag area still opens the portfolio, same as tapping the
-            title/thumbnail does. */}
+            title/thumbnail does. b553: label text dropped in compact
+            view on mobile web/app specifically - icon only, same reason
+            as the avatar above (narrower card, more room needed). */}
         <CardLink href={`/p/${item.id}`} activeOpacity={0.88} onPress={() => onPress(item)}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             {item.isAiGenerated === true && (
@@ -2433,9 +2452,11 @@ const ProjectCard = React.memo(({
               ) : (
                 <CursorArrowSVG size={12} color={theme.textSecondary} />
               )}
-              <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '700' }}>
-                {item.portfolioType === 'graphic_design' ? 'Graphic Design' : item.portfolioType === 'illustration' ? 'Illustration' : 'UI/UX Design'}
-              </Text>
+              {!(isTwoRowCard && !isWebWide) && (
+                <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '700' }}>
+                  {item.portfolioType === 'graphic_design' ? 'Graphic Design' : item.portfolioType === 'illustration' ? 'Illustration' : 'UI/UX Design'}
+                </Text>
+              )}
             </View>
           </View>
         </CardLink>
@@ -2926,6 +2947,7 @@ const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenD
               onTogglePin={onTogglePin}
               hideFollowButton={true}
               showReadOnlyPin={showReadOnlyPin}
+              isWebWide={isWebWide}
               styles={styles}
             />
           ))}
@@ -4030,6 +4052,35 @@ function App() {
   const [iosAlreadyAsked, setIosAlreadyAsked] = useState(true); // safe default until checked
   const iosEngagementCountRef = useRef(0);
   const IOS_ENGAGEMENT_THRESHOLD = 17; // within the requested 15-20 range
+
+  // b554: "Open in App" top banner - Android mobile web only, groundwork
+  // for a future Play Store link (GITHUB_URL is a placeholder destination
+  // until that listing exists - swap that one constant later and this
+  // whole banner picks it up automatically). Deliberately NOT persisted
+  // anywhere (plain useState, no AsyncStorage) - dismissing just hides it
+  // for the current page load, a hard refresh brings it back. This is a
+  // different, separate element from the existing showAndroidPromo modal
+  // above (permanent-dismiss, full-screen, triggered differently) - not
+  // reusing that one since the two are meant to behave differently on
+  // purpose.
+  const [showOpenInAppBanner, setShowOpenInAppBanner] = useState(true);
+  const handleOpenInAppTap = () => {
+    if (typeof window === 'undefined') return;
+    const target = `decent://${window.location.pathname.replace(/^\//, '')}${window.location.search}`;
+    const startedAt = Date.now();
+    window.location.href = target;
+    // If the custom scheme above actually opened the native app, the
+    // browser tab typically backgrounds/pauses right away and this
+    // never meaningfully fires. Still here after ~2s strongly suggests
+    // nothing claimed the decent:// scheme - reasonable signal the app
+    // isn't installed, so fall back to the (temporary, pre-Play-Store)
+    // GitHub destination instead of leaving the tap feeling like it did
+    // nothing.
+    setTimeout(() => {
+      if (Date.now() - startedAt < 1500) return;
+      openExternalLinkWithWarning(GITHUB_URL);
+    }, 2000);
+  };
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof navigator === 'undefined') return;
@@ -8331,6 +8382,17 @@ function App() {
     // Not in the currently-loaded feed (e.g. opened from a notification for
     // a portfolio outside whatever's paginated in right now) - fetch it
     // directly instead.
+    // b553: this direct-by-ID path had NO NSFW filtering at all, on any
+    // platform - a real gap, since every other portfolio-display path in
+    // the app (the main feed queries below, and everything derived from
+    // them) already excludes it. On native this now matches Option A
+    // (never show NSFW in the app, full stop) - an NSFW portfolio's
+    // direct link now just resolves to "not found" rather than the
+    // generic error further down revealing why. Web is untouched -
+    // direct links to NSFW content continue working there, matching
+    // web's intended full access.
+    let portfolioQuery = supabase.from('portfolios').select('*, portfolio_images(image_url, caption)').eq('id', portfolioId);
+    if (Platform.OS !== 'web') portfolioQuery = portfolioQuery.or('is_nsfw.eq.false,is_nsfw.is.null');
     const [{ data: p, error }, { data: likeRow }] = await Promise.all([
       // Missing the portfolio_images join here specifically was the actual
       // cause of "edited images don't persist after reload" - this is the
@@ -8342,7 +8404,7 @@ function App() {
       // database) - this separate fetch path just never asked for the
       // images at all, silently falling back to a single cover image via
       // getShowcaseImagesFromRow's fallback branch.
-      supabase.from('portfolios').select('*, portfolio_images(image_url, caption)').eq('id', portfolioId).single(),
+      portfolioQuery.single(),
       session
         ? supabase.from('likes').select('id').eq('user_id', session.user.id).eq('portfolio_id', portfolioId).maybeSingle()
         : Promise.resolve({ data: null })
@@ -8522,14 +8584,36 @@ function App() {
   // wasn't running, launched directly via the link); the 'url' event
   // covers the app already being open/backgrounded when the link is
   // tapped.
+  //
+  // b554: root-caused a real bug here - opening a /p/:id link while
+  // logged in would show the right portfolio very briefly, then flip
+  // back to the user's own profile, and repeated attempts while logged
+  // out would show it "over and over" seemingly tied to how many times
+  // it was tried. Cause: this whole effect's dependency was
+  // [handleIncomingRoute], and handleIncomingRoute has session in ITS
+  // OWN dependency array - so every session state transition (which
+  // happens async on cold launch while Supabase restores a saved
+  // session, and can fire more than once) gave handleIncomingRoute a new
+  // identity, re-running this effect. ExpoLinking.getInitialURL() is
+  // well-documented to return the SAME launch URL every single time it's
+  // called for the life of the JS instance - it is NOT a one-time-
+  // consumable value. So every session transition during that volatile
+  // post-launch window re-read the identical original URL and re-ran
+  // handleIncomingRoute with it again, racing against whatever else that
+  // same session transition was triggering elsewhere - explains both the
+  // repeated re-opens and the "briefly right, then wrong" flip (a race,
+  // not a deterministic bug, so it wouldn't reproduce identically every
+  // time).
+  //
+  // Fixed by splitting: the getInitialURL() read now happens in its own
+  // effect, gated by a ref so it only actually runs once per app launch
+  // no matter how many times handleIncomingRoute's identity changes
+  // afterward. The 'url' event listener (for links tapped while the app
+  // is already running - a genuinely NEW incoming link each time, not a
+  // stale replay) stays subscribed with whatever the current
+  // handleIncomingRoute closure is, unchanged from before.
   useEffect(() => {
     if (Platform.OS === 'web') return;
-
-    ExpoLinking.getInitialURL().then((url) => {
-      if (!url) return;
-      const { path, queryParams } = ExpoLinking.parse(url);
-      if (path) handleIncomingRoute(`/${path}`, queryParams);
-    });
 
     const subscription = ExpoLinking.addEventListener('url', ({ url }) => {
       const { path, queryParams } = ExpoLinking.parse(url);
@@ -8537,6 +8621,17 @@ function App() {
     });
 
     return () => subscription.remove();
+  }, [handleIncomingRoute]);
+
+  const initialUrlConsumedRef = useRef(false);
+  useEffect(() => {
+    if (Platform.OS === 'web' || initialUrlConsumedRef.current) return;
+    initialUrlConsumedRef.current = true;
+    ExpoLinking.getInitialURL().then((url) => {
+      if (!url) return;
+      const { path, queryParams } = ExpoLinking.parse(url);
+      if (path) handleIncomingRoute(`/${path}`, queryParams);
+    });
   }, [handleIncomingRoute]);
 
   // Skips this effect's very first run on mount - without this, it fires
@@ -10072,7 +10167,13 @@ function App() {
             .from('portfolios')
             .select('*, portfolio_images(image_url, caption)')
             .or(`title.ilike.%${q}%,user_name.ilike.%${q}%,brief.ilike.%${q}%,user_handle.ilike.%${q}%`);
-          if (safeSearchEnabled) q1 = q1.or('is_nsfw.eq.false,is_nsfw.is.null');
+          // b553: NSFW exclusion now unconditional on native (Option A) -
+          // was only gated by the Safe Search toggle, meaning turning
+          // that off inside the app would surface it, defeating the
+          // point of the app never showing NSFW at all. Web keeps the
+          // toggle's original behavior unchanged - full access is the
+          // intended web experience.
+          if (safeSearchEnabled || Platform.OS !== 'web') q1 = q1.or('is_nsfw.eq.false,is_nsfw.is.null');
           return q1.limit(30);
         })(),
         supabase
@@ -10502,6 +10603,46 @@ function App() {
 
   return (
     <SafeAreaView style={[styles.container, Platform.OS === 'web' && { backgroundColor: webCanvasColor }]}>
+      {/* b554: "Open in App" banner - Android mobile web only (isWebWide
+          false rules out desktop web, mobileOS === 'android' rules out
+          iOS/desktop). Sits here, as the very first thing in the whole
+          app's render tree, specifically so it renders in normal
+          document flow above literally everything else (the sidebar,
+          the header, its own fixed-position bell/gear pill) without
+          needing position:fixed or any zIndex at all - both of those
+          have been genuine, repeated sources of bugs elsewhere in this
+          file (the header pill's own stacking-context issue, b534).
+          Normal flow sidesteps that whole category of risk here. */}
+      {Platform.OS === 'web' && !isWebWide && mobileOS === 'android' && showOpenInAppBanner && (
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+          backgroundColor: theme.surface, borderBottomWidth: 1, borderBottomColor: theme.border,
+          paddingVertical: 10, paddingHorizontal: 14, gap: 10
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>D</Text>
+            </View>
+            <Text style={{ color: theme.text, fontSize: 12.5, fontWeight: '600', flex: 1 }} numberOfLines={2}>
+              Open this in the DECENT app
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <BouncyButton
+              style={{ backgroundColor: '#8B5CF6', borderRadius: 99, paddingVertical: 7, paddingHorizontal: 14 }}
+              onPress={handleOpenInAppTap}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>Open</Text>
+            </BouncyButton>
+            <BouncyButton
+              style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
+              onPress={() => setShowOpenInAppBanner(false)}
+            >
+              <CrossIconSVG color={theme.textSecondary} size={16} />
+            </BouncyButton>
+          </View>
+        </View>
+      )}
       <View style={{ flex: 1, flexDirection: isWebWide ? 'row' : 'column' }}>
         {isWebWide && (
           <Animated.View
@@ -11731,7 +11872,7 @@ function App() {
                 onPress={openProjectModal}
                 onToggleLike={toggleLike}
                 onOpenDesignerProfile={openDesignerProfileById}
-                onToggleFollow={toggleFollowDesigner}
+                onToggleFollow={isWebWide ? toggleFollowDesigner : undefined}
                 followedDesigners={followedDesigners}
                 currentUserId={session ? session.user.id : null}
                 // For You specifically: mobile web stays single-column,
@@ -11839,7 +11980,7 @@ function App() {
                   onPress={openProjectModal}
                   onToggleLike={toggleLike}
                   onOpenDesignerProfile={openDesignerProfileById}
-                  onToggleFollow={toggleFollowDesigner}
+                  onToggleFollow={isWebWide ? toggleFollowDesigner : undefined}
                   followedDesigners={followedDesigners}
                   currentUserId={session ? session.user.id : null}
                 // b549: same responsive-column sizing as For You/Profile/
@@ -11939,7 +12080,7 @@ function App() {
                         onPress={openProjectModal}
                         onToggleLike={toggleLike}
                         onOpenDesignerProfile={openDesignerProfileById}
-                        onToggleFollow={toggleFollowDesigner}
+                        onToggleFollow={isWebWide ? toggleFollowDesigner : undefined}
                         followedDesigners={followedDesigners}
                         currentUserId={session ? session.user.id : null}
                       // b549: same responsive-column sizing as the other
@@ -11986,7 +12127,7 @@ function App() {
                       onPress={openProjectModal}
                       onToggleLike={toggleLike}
                       onOpenDesignerProfile={openDesignerProfileById}
-                      onToggleFollow={toggleFollowDesigner}
+                      onToggleFollow={isWebWide ? toggleFollowDesigner : undefined}
                       followedDesigners={followedDesigners}
                       currentUserId={session ? session.user.id : null}
                     styles={isWebWide
@@ -12432,7 +12573,7 @@ function App() {
                     onPress={openProjectModal}
                     onToggleLike={toggleLike}
                     onOpenDesignerProfile={openDesignerProfileById}
-                    onToggleFollow={toggleFollowDesigner}
+                    onToggleFollow={isWebWide ? toggleFollowDesigner : undefined}
                     followedDesigners={followedDesigners}
                     currentUserId={session ? session.user.id : null}
                     showPinControl={profileTab === 'myWork'}
@@ -12461,7 +12602,7 @@ function App() {
                     onPress={openProjectModal}
                     onToggleLike={toggleLike}
                     onOpenDesignerProfile={openDesignerProfileById}
-                    onToggleFollow={toggleFollowDesigner}
+                    onToggleFollow={isWebWide ? toggleFollowDesigner : undefined}
                     followedDesigners={followedDesigners}
                     currentUserId={session ? session.user.id : null}
                     showPinControl={profileTab === 'myWork'}
@@ -15387,6 +15528,14 @@ function App() {
                       />
                     </View>
 
+                    {/* b553: hidden on native - the toggle now has zero
+                        effect there (NSFW exclusion is unconditional in
+                        the app, Option A), so showing a switch that
+                        claims to control this would be actively
+                        misleading. Web keeps it - full access with an
+                        honest, working toggle is the intended web
+                        behavior. */}
+                    {Platform.OS === 'web' && (
                     <View style={styles.settingToggleRow}>
                       <View style={{ flex: 1, marginRight: 10 }}>
                         <Text style={styles.settingItemTitle}>Safe Search</Text>
@@ -15401,6 +15550,7 @@ function App() {
                         thumbColor="#FFFFFF"
                       />
                     </View>
+                    )}
 
                     <View style={styles.settingToggleRow}>
                       <View style={{ flex: 1, marginRight: 10 }}>
@@ -16315,7 +16465,7 @@ function App() {
                   }}
                   onToggleLike={toggleLike}
                   onOpenDesignerProfile={openDesignerProfileById}
-                  onToggleFollow={toggleFollowDesigner}
+                  onToggleFollow={isWebWide ? toggleFollowDesigner : undefined}
                   followedDesigners={followedDesigners}
                   currentUserId={session ? session.user.id : null}
                 emptyMessage={designerProfileTab === 'myWork'
@@ -16346,7 +16496,7 @@ function App() {
                     openProjectModal(item);
                   }}
                   onOpenDesignerProfile={openDesignerProfileById}
-                  onToggleFollow={toggleFollowDesigner}
+                  onToggleFollow={isWebWide ? toggleFollowDesigner : undefined}
                   followedDesigners={followedDesigners}
                   currentUserId={session ? session.user.id : null}
                 styles={styles}
