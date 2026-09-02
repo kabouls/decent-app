@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 516;
+const BUILD_NUMBER = 517;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -1529,6 +1529,43 @@ const LightweightModeProvider = ({ children }) => {
 const isValidHandleFormat = (h) => /^[A-Za-z0-9._-]{3,20}$/.test(h);
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
+
+// Platform-aware fullscreen overlay wrapper - used by the block editor's
+// "Detailed Description" fullscreen view. Root-caused (b517): on web it
+// stays a plain absolutely-positioned View nested inside the wizard's
+// own Modal (so on wide web it's confined to the wizard's centered
+// card, not the full viewport - matches the discard-confirmation
+// technique used elsewhere in this wizard). On native it's a real
+// <Modal> instead - even though position:absolute + top/left/right/
+// bottom:0 visually fills the screen, it does NOT remove the view from
+// its ancestor ScrollView's native touch/gesture responder chain on
+// Android. The wizard step content sits in its own outer ScrollView,
+// and that outer ScrollView was still intercepting scroll gestures
+// meant for this overlay's own inner block-editor ScrollView - matching
+// the reported symptom exactly (only the header bar appeared to move on
+// scroll, because the OUTER ScrollView was what was actually moving,
+// with the block content underneath staying essentially static since
+// its own ScrollView rarely got the gesture). A real Modal renders
+// through its own separate native surface (a distinct Android Window /
+// iOS UIViewController), fully detached from any ancestor's gesture
+// responder chain, which rules this out entirely. Native has no
+// "wide web centered card" constraint to preserve, so there's no
+// downside to using a real Modal there specifically.
+const FullscreenEditorOverlay = ({ visible, onRequestClose, children }) => {
+  if (!visible) return null;
+  if (Platform.OS === 'web') {
+    return (
+      <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 8000, elevation: 28 }}>
+        {children}
+      </View>
+    );
+  }
+  return (
+    <Modal visible={true} animationType="slide" transparent={false} onRequestClose={onRequestClose}>
+      {children}
+    </Modal>
+  );
+};
 
 // Drop-in replacement for TouchableOpacity that adds a subtle, brief
 // press-in/press-out scale bounce. Forwards every prop through so it's a
@@ -16784,13 +16821,14 @@ function App() {
                 </View>
               )}
 
-              {/* Nested inside the wizard's own Modal (not a separate
-                  <Modal>) so it stays within the same popup bounds - on web
-                  wide that's the wizard's centered card, not the full
-                  viewport. Matches the same technique used for the discard
-                  confirmation elsewhere in this wizard. */}
-              {fullscreenDescEditorVisible && (
-              <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 8000, elevation: 28 }}>
+              {/* Platform-aware wrapper - see FullscreenEditorOverlay
+                  definition (b517) for why native uses a real Modal
+                  here now, while web keeps the original plain-View
+                  technique nested inside the wizard's own Modal. */}
+              <FullscreenEditorOverlay
+                visible={fullscreenDescEditorVisible}
+                onRequestClose={() => setFullscreenDescEditorVisible(false)}
+              >
                 <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
                   <View style={[styles.modalTopBar, { justifyContent: 'space-between' }]}>
                     <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Detailed Description</Text>
@@ -17240,8 +17278,7 @@ function App() {
                       </ScrollView>
                   )}
                 </SafeAreaView>
-              </View>
-              )}
+              </FullscreenEditorOverlay>
 
               {formStep === 2 && (
                 <View>
