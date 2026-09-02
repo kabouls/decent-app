@@ -40,7 +40,7 @@ import {
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { WebView as NativeWebView } from 'react-native-webview';
 import { KeyboardAwareScrollView as NativeKeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import Svg, { Rect, Path, Circle, G, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Rect, Path, Circle, G, Defs, LinearGradient, RadialGradient, Stop } from 'react-native-svg';
 import qrcodeGenerator from 'qrcode-generator';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 511;
+const BUILD_NUMBER = 512;
 // Portfolio types gated behind this flag are fully built and functional -
 // wizard, wording, everything - but the type-selector card shows "Coming
 // Soon" + the existing Interest-tracking button instead of "Continue",
@@ -2075,9 +2075,18 @@ const ExpandableBioText = ({ text, style, isWebWide }) => {
 
   if (!text) return null;
 
-  // Two-pass: first pass renders the plain text at numberOfLines=maxLines
-  // (no nested "Read more" yet) purely to measure it - this exists
-  // because nesting a trailing "Read more" Text directly inside a
+  // Two-pass: first pass renders the plain text at numberOfLines=maxLines+1
+  // (no nested "Read more" yet) purely to measure it - maxLines+1, not
+  // maxLines, is what actually lets this tell "fits in exactly maxLines
+  // lines" apart from "genuinely overflows maxLines lines": constraining
+  // the measurement to maxLines itself would always report exactly
+  // maxLines lines for anything that long OR longer, with no way to tell
+  // those two cases apart (which was the bug - text that fit perfectly in
+  // 3 lines still showed "Read more"/"Read less" it didn't need, because
+  // 3 lines measured looked identical to "truncated at 3"). Allowing one
+  // extra line reveals whether a 4th line was actually needed - if not,
+  // lines.length comes back <= maxLines and nothing was cut off. This is
+  // also why nesting a trailing "Read more" Text directly inside a
   // numberOfLines-truncated Text doesn't reliably work: RN's native
   // ellipsis truncation can cut the nested text off entirely rather than
   // making room for it (confirmed - it disappeared entirely on some
@@ -2091,10 +2100,10 @@ const ExpandableBioText = ({ text, style, isWebWide }) => {
     return (
       <Text
         style={style}
-        numberOfLines={maxLines}
+        numberOfLines={maxLines + 1}
         onTextLayout={(e) => {
           const lines = e.nativeEvent.lines;
-          if (lines.length >= maxLines) {
+          if (lines.length > maxLines) {
             setTruncatedLineText(lines.slice(0, maxLines).map((l) => l.text).join('').trimEnd());
           } else {
             setTruncatedLineText('');
@@ -11825,40 +11834,34 @@ function App() {
             directional control at all, so "stronger on left/right/bottom,
             not top" genuinely isn't achievable through elevation/shadow
             props alone (confirmed - there's no native lever for this).
-            The bar itself sits at bottom:14, height:64, so its own top
-            edge is 78 from the container bottom (14+64) - each glow
-            layer's own bottom+height is kept at exactly that same 78, so
-            the glow's top edge lines up flush with the bar's top edge
-            rather than poking out above it, while bottom/left/right
-            extend past the bar's edges freely - a smaller bottom value
-            paired with a taller height keeps that same 78 total while
-            reaching further down/out. Three stacked, decreasingly-opaque,
-            increasingly-spread layers approximate a soft glow/blur
-            falloff without an actual blur (a real blurred shadow would
-            need a gradient or blur library - this achieves a similar
-            visual with plain Views instead), stronger and further-
-            reaching than the first version of this. */}
-        <View
+            True SVG radial gradient rather than stacked flat-opacity
+            Views (an earlier version of this) - each discrete View layer
+            had a hard edge at its own boundary, which read as visible
+            banding rather than a smooth glow/blur falloff. A gradient
+            fill has no such edges at all, fading continuously to fully
+            transparent. cx/cy/r as percentages are relative to the Rect's
+            own bounding box (RN-SVG's default gradientUnits) - cy well
+            below 50% is what keeps the strongest part of the glow low,
+            near the bar itself, softening notably by the time it would
+            reach the bar's own top edge. The stops themselves (0/45/75/
+            100%) are what actually determine the fade shape/rate; radius
+            alone doesn't. */}
+        <Svg
+          width={Dimensions.get('window').width}
+          height={130}
+          style={{ position: 'absolute', bottom: -30, left: 0 }}
           pointerEvents="none"
-          style={{
-            position: 'absolute', bottom: 0, left: 6, right: 6, height: 78,
-            borderRadius: 34, backgroundColor: 'rgba(0,0,0,0.5)'
-          }}
-        />
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute', bottom: -10, left: 0, right: 0, height: 88,
-            borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.38)'
-          }}
-        />
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute', bottom: -20, left: -6, right: -6, height: 98,
-            borderRadius: 40, backgroundColor: 'rgba(0,0,0,0.25)'
-          }}
-        />
+        >
+          <Defs>
+            <RadialGradient id="navBarGlow" cx="50%" cy="30%" r="75%">
+              <Stop offset="0%" stopColor="#000000" stopOpacity={0.55} />
+              <Stop offset="45%" stopColor="#000000" stopOpacity={0.4} />
+              <Stop offset="75%" stopColor="#000000" stopOpacity={0.15} />
+              <Stop offset="100%" stopColor="#000000" stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          <Rect x={4} y={0} width={Dimensions.get('window').width - 8} height={130} fill="url(#navBarGlow)" />
+        </Svg>
       <View style={[styles.floatingBottomBar, { overflow: 'hidden', backgroundColor: 'transparent' }]}>
         {/* Translucent bar: BlurView is GPU-composited (not per-frame JS
             work) so it's cheap as long as it's not stacked/re-rendered
