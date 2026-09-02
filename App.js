@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 546;
+const BUILD_NUMBER = 547;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -20363,21 +20363,21 @@ function App() {
             {shareType === 'profile' && shareIsOwnProfile && myUploadedProjectTypes.length > 1 && (
               <View style={{
                 width: '100%', marginBottom: 16,
-                alignItems: 'center',
                 ...(shareTypeDropdownOpen ? { zIndex: 100 } : {})
               }}>
-                {/* b541: inner content-hugging wrapper so the trigger
-                    button and its dropdown panel move together as one
-                    centered unit - the panel is position:absolute,left:0
-                    relative to ITS OWN parent, so without this extra
-                    layer, centering the outer (full-width) wrapper would
-                    leave the panel anchored to the far-left edge of the
-                    modal while only the trigger button visually centered,
-                    detaching the two from each other. */}
-                <View style={{ position: 'relative' }}>
+                {/* b547: trigger + panel now full width, matching the QR/
+                    link/buttons below instead of centered content-hugging
+                    (b541's inner wrapper was there to keep the panel
+                    attached to the trigger when centered - now both are
+                    just width:'100%', so that concern doesn't apply, but
+                    kept the wrapper itself since the panel's position:
+                    absolute,left:0/right:0 still needs a real parent to
+                    anchor against). Text left, chevron right via
+                    justifyContent:'space-between' on the trigger. */}
+                <View style={{ position: 'relative', width: '100%' }}>
                 <BouncyButton
                   style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%',
                     paddingVertical: 8, paddingHorizontal: 12, borderRadius: 99,
                     borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bg
                   }}
@@ -20399,7 +20399,7 @@ function App() {
                       onPress={() => setShareTypeDropdownOpen(false)}
                     />
                     <View style={{
-                      position: 'absolute', top: 40, left: 0, width: 260, zIndex: 100,
+                      position: 'absolute', top: 40, left: 0, right: 0, zIndex: 100,
                       backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
                       padding: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                     }}>
