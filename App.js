@@ -133,7 +133,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 530;
+const BUILD_NUMBER = 531;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -2149,24 +2149,20 @@ const ExpandableBioText = ({ text, style, isWebWide, bgColor }) => {
   // standard, reliable technique that doesn't depend on onTextLayout
   // firing at all, so it can't get stuck the same way.
   //
-  // b527: "Read more" trails the last visible line instead of dropping
-  // to its own line below. CSS line-clamp truncates purely by visual
-  // line count with no way to reserve room for trailing content inside
-  // the clamp itself (the same fundamental problem the native path's
-  // own comment above already describes for numberOfLines - nesting a
-  // trailing element inside clamped/truncated text isn't reliable on
-  // either platform). Rather than attempt pixel-perfect text truncation
-  // to fit an exact "...Read more" string (fragile - would need to
-  // remeasure on every font/width change), this overlays "Read more" at
-  // the bottom-right corner of the clamped block with a solid
-  // background matching the surrounding card (bgColor prop) plus a
-  // short fade-in gradient ahead of it, so it reads as continuing the
-  // truncated line rather than sitting in its own row below - the same
-  // pattern most sites use for inline "show more" on clamped text.
-  const lineHeight = (style && style.lineHeight) || ((style && style.fontSize) || 14) * 1.4;
+  // b531: "Read more"/"Read less" switched from a trailing overlay to
+  // simply centered below the text. Root cause of the misalignment
+  // (b527's approach): the trailing overlay was positioned via right:0
+  // - the outer box's actual right edge - but style.profileBio is
+  // center-aligned text, so the last visible line's real end sits
+  // somewhere near the middle of that line, not at the box's right
+  // edge, leaving a visible gap between the truncated text and the
+  // "Read more" chip. Precisely trailing centered text would need
+  // measuring that specific line's actual rendered width, which isn't
+  // reliably available here - centered avoids that fragility entirely
+  // and matches the bio block's own alignment.
   if (Platform.OS === 'web') {
     return (
-      <View style={{ position: 'relative' }}>
+      <View>
         <Text
           ref={webTextRef}
           style={[style, !expanded && {
@@ -2186,28 +2182,12 @@ const ExpandableBioText = ({ text, style, isWebWide, bgColor }) => {
         >
           {text}
         </Text>
-        {webIsTruncated && !expanded && (
-          <View style={{ position: 'absolute', right: 0, bottom: 0, height: lineHeight, flexDirection: 'row', alignItems: 'center' }}>
-            <View style={{
-              width: 28, height: lineHeight,
-              backgroundImage: bgColor ? `linear-gradient(to right, transparent, ${bgColor})` : undefined
-            }} />
-            <View style={{ backgroundColor: bgColor || 'transparent', height: lineHeight, justifyContent: 'center' }}>
-              <Text
-                style={{ color: '#8B5CF6', fontSize: (style && style.fontSize) || 13, fontWeight: '700' }}
-                onPress={() => setExpanded(true)}
-              >
-                Read more
-              </Text>
-            </View>
-          </View>
-        )}
-        {expanded && webIsTruncated && (
+        {webIsTruncated && (
           <Text
-            style={{ color: '#8B5CF6', fontSize: (style && style.fontSize) || 13, fontWeight: '700', marginTop: 2 }}
-            onPress={() => setExpanded(false)}
+            style={{ color: '#8B5CF6', fontSize: (style && style.fontSize) || 13, fontWeight: '700', textAlign: 'center', marginTop: 4 }}
+            onPress={() => setExpanded((prev) => !prev)}
           >
-            Read less
+            {expanded ? 'Read less' : 'Read more'}
           </Text>
         )}
       </View>
@@ -11079,7 +11059,18 @@ function App() {
 
         <View style={[
           styles.headerRightActionsRow,
-          Platform.OS === 'web' && { position: 'fixed', top: 16, right: 16, zIndex: 1000 }
+          Platform.OS === 'web' && { position: 'fixed', top: 16, right: 16, zIndex: 1000 },
+          // b531: shared pill-shaped background housing both icons
+          // together, wide web only - narrow web/app keep the two plain
+          // individual circular buttons as before. Already position:
+          // fixed + zIndex:1000 above for web generally (unchanged),
+          // which is what keeps this visible above scrolled content -
+          // the pill wrapping is purely visual on top of that existing
+          // always-on-top behavior, not a fix to it.
+          isWebWide && {
+            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+            borderRadius: 99, paddingHorizontal: 8, paddingVertical: 6
+          }
         ]}>
           <View style={{ width: 36, height: 36 }}>
             <AnimatedTouchableOpacity
