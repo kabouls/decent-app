@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 558;
+const BUILD_NUMBER = 559;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -225,18 +225,20 @@ const ROW_BLOCK_IMAGE_HEIGHT = (SCREEN_WIDTH - 66) / 2;
 
 // b557: STANDALONE_IMAGE_WIDTH and getImageBlockHeight removed - every
 // block image (standalone and row-column, both in the editor's own
-// preview and the actual portfolio view) now uses a plain aspectRatio:1
-// style instead. The "Change Size" toggle that used to switch between
-// square and 16:9 is gone too - images are always square everywhere now.
-// This also fixes a real bug the old approach had: height was computed
-// from a fixed reference width (STANDALONE_IMAGE_WIDTH, based on the
-// mobile-oriented SCREEN_WIDTH constant) while the actual rendered image
-// used width:'100%' - close enough on mobile where those two roughly
-// match, but on wide web the real rendered width is far larger than that
-// stale reference, so the computed height no longer matched, breaking
-// the aspect ratio. aspectRatio:1 adapts to whatever the real container
-// width actually is, on any screen size, with no reference constant
-// needed at all.
+// preview and the actual portfolio view) now uses a plain aspectRatio
+// style instead of a computed pixel height. The "Change Size" toggle
+// that used to switch between square and 16:9 per-block is gone too -
+// b559: standalone image blocks are always 16:9 and row-column block
+// images are always 1:1, a fixed rule per block type rather than a
+// per-block user choice. This also fixes a real bug the old approach
+// had: height was computed from a fixed reference width
+// (STANDALONE_IMAGE_WIDTH, based on the mobile-oriented SCREEN_WIDTH
+// constant) while the actual rendered image used width:'100%' - close
+// enough on mobile where those two roughly match, but on wide web the
+// real rendered width is far larger than that stale reference, so the
+// computed height no longer matched, breaking the aspect ratio.
+// aspectRatio adapts to whatever the real container width actually is,
+// on any screen size, with no reference constant needed at all.
 
 const ALL_UIUX_CATEGORIES_MASTER = [
   'AI & Machine Learning',
@@ -371,14 +373,40 @@ const ILLUSTRATION_SOFTWARE_LIST = [
   { name: 'ibisPaint', color: '#F06292', icon: require('./assets/software-icons/ibispaint.png') }
 ];
 
+// b559: UI/UX software list, same shape as ILLUSTRATION_SOFTWARE_LIST
+// above - only these 5 tools get a real logo; anything else goes through
+// the "Other" free-text path in the wizard instead (no logo, falls back
+// to SoftwareIconSVG's letter-circle same as any unmatched illustration
+// software name already does). Figma uses usesFigmaLogo instead of icon -
+// FigmaLogoSVG (the existing hand-drawn SVG component already used all
+// over the app) is declared further down in this file than this array
+// literal, and array literals evaluate immediately at module load, not
+// deferred like a function body - referencing it directly here would be
+// a real TDZ crash on load, not just a lint nag. SoftwareIconSVG below
+// special-cases this flag instead.
+const UI_UX_SOFTWARE_LIST = [
+  { name: 'Figma', color: '#F24E1E', usesFigmaLogo: true },
+  { name: 'Adobe XD', color: '#FF61F6', icon: require('./assets/software-icons/adobe-xd.png') },
+  { name: 'Framer', color: '#0055FF', icon: require('./assets/software-icons/framer.png') },
+  { name: 'Sketch', color: '#F7B500', icon: require('./assets/software-icons/sketch.png') },
+  { name: 'InVision', color: '#FF3366', icon: require('./assets/software-icons/invision.png') }
+];
+
 // Renders the real logo (rounded square) for any name found in
-// ILLUSTRATION_SOFTWARE_LIST above; falls back to a plain colored circle
-// with the first letter for anything not found there (custom, user-typed
-// software names have no matching logo asset to show). Looks up its own
-// color/icon from the list given just a name, so call sites don't each
-// need to repeat that lookup.
+// ILLUSTRATION_SOFTWARE_LIST or UI_UX_SOFTWARE_LIST above; falls back to
+// a plain colored circle with the first letter for anything not found in
+// either (custom, user-typed software names have no matching logo asset
+// to show). Looks up its own color/icon from the lists given just a
+// name, so call sites don't each need to repeat that lookup.
 const SoftwareIconSVG = React.memo(({ name, size = 18 }) => {
-  const preset = ILLUSTRATION_SOFTWARE_LIST.find((s) => s.name === name);
+  const preset = ILLUSTRATION_SOFTWARE_LIST.find((s) => s.name === name) || UI_UX_SOFTWARE_LIST.find((s) => s.name === name);
+  if (preset && preset.usesFigmaLogo) {
+    return (
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <FigmaLogoSVG />
+      </View>
+    );
+  }
   if (preset) {
     return (
       <Image
@@ -1795,16 +1823,16 @@ const renderContentBlocks = (blocks, onImagePress, theme) => {
           // close, but on wide web the real rendered width is far larger
           // than that stale reference, so the height (computed from the
           // small number) no longer matched the actually-rendered large
-          // width, breaking the aspect ratio. aspectRatio:1 fixes both
-          // problems at once - always genuinely square, and correctly
-          // adapts to whatever the real container width is instead of a
-          // fixed number. Also now always square regardless of the
-          // block's own stored aspectMode - that field (and the "Change
-          // Size" control that used to set it) is gone (b557); images
-          // are always square everywhere, including for older portfolios
-          // that still have aspectMode:'wide' saved from before this
-          // change.
-          style={{ width: '100%', aspectRatio: 1, borderRadius: 12, marginBottom: 18, backgroundColor: '#1E293B' }}
+          // width, breaking the aspect ratio. aspectRatio fixes both
+          // problems at once - correctly adapts to whatever the real
+          // container width is instead of a fixed number, on any screen
+          // size, with no reference constant needed at all. b559:
+          // standalone image blocks are 16:9 specifically (row-column
+          // block images stay square, a few lines down in this same
+          // function - the two block types intentionally look different
+          // from each other now, not both square like the b557 pass
+          // originally made them).
+          style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 12, marginBottom: 18, backgroundColor: '#1E293B' }}
           resizeMode="cover"
         />
       );
@@ -1828,6 +1856,8 @@ const renderContentBlocks = (blocks, onImagePress, theme) => {
         >
           {(block.columns || []).map((col, colIdx) => {
             const colImg = col && col.type === 'image' && col.uri ? (
+              // b559: stays square (16:9 is standalone-only, see the
+              // comment on that image a few lines up in this function).
               <Image
                 source={{ uri: col.uri }}
                 style={{ width: '100%', aspectRatio: 1, borderRadius: 10, backgroundColor: '#1E293B' }}
@@ -9123,7 +9153,9 @@ function App() {
 
   const addImageBlock = async () => {
     if (fContentBlocks.length >= MAX_CONTENT_BLOCKS) return;
-    const uri = await pickBlockImageUri([1, 1]);
+    // b559: 16:9 crop - standalone image blocks specifically (row-column
+    // block images stay 1:1, see addImageToRowColumn etc below).
+    const uri = await pickBlockImageUri([16, 9]);
     if (uri) setFContentBlocks((prev) => [...prev, { id: makeBlockId(), type: 'image', uri }]);
   };
 
@@ -9157,18 +9189,18 @@ function App() {
   };
 
   const replaceImageBlock = async (blockId) => {
-    const uri = await pickBlockImageUri([1, 1]);
+    const uri = await pickBlockImageUri([16, 9]);
     if (!uri) return;
     setFContentBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, uri } : b)));
   };
 
-  // b557: aspectMode/"Change Size" toggle removed - images are always
-  // square now, everywhere (both here in the editor and in the actual
-  // portfolio view). Re-crop still exists (replacing the image with a
-  // freshly-cropped one), just always at a 1:1 crop aspect now instead
-  // of branching on a mode that no longer exists.
+  // b559: standalone image blocks are 16:9, row-column block images are
+  // 1:1 - two genuinely different aspect ratios now (b557 originally
+  // made everything square; this splits it back apart by block type).
+  // Re-crop still just replaces the image with a freshly-cropped one at
+  // whichever ratio matches this block's own type.
   const recropImageBlock = async (blockId) => {
-    const uri = await pickBlockImageUri([1, 1]);
+    const uri = await pickBlockImageUri([16, 9]);
     if (!uri) return;
     setFContentBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, uri } : b)));
   };
@@ -9230,7 +9262,10 @@ function App() {
   };
 
   // b557: setRowColumnImageAspect/toggleAspectMode removed alongside the
-  // standalone versions above - same reasoning, always square now.
+  // standalone versions above. b559: row-column block images stay 1:1
+  // specifically (standalone image blocks are 16:9 instead, see
+  // recropImageBlock above) - the two block types intentionally look
+  // different from each other.
   const recropRowColumnImage = async (rowId, colIdx) => {
     const uri = await pickBlockImageUri([1, 1]);
     if (!uri) return;
@@ -17917,9 +17952,12 @@ function App() {
                                 {block.uri ? (
                                   <View>
                                     <View style={{ position: 'relative' }}>
+                                      {/* b559: 16:9 - standalone image
+                                          blocks, editor preview matches
+                                          the actual portfolio view. */}
                                       <Image
                                         source={{ uri: block.uri }}
-                                        style={{ width: '100%', aspectRatio: 1, borderRadius: 10, backgroundColor: theme.bg }}
+                                        style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 10, backgroundColor: theme.bg }}
                                         resizeMode="cover"
                                       />
                                       <BouncyButton
