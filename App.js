@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 554;
+const BUILD_NUMBER = 557;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -222,11 +222,21 @@ const RESPONSIVE_PROFILE_CARD_WIDTH = (SCREEN_WIDTH - 40 - 16) / 2;
 // the column's own width), and the text side of a row matches that same
 // height so both halves read as one balanced row.
 const ROW_BLOCK_IMAGE_HEIGHT = (SCREEN_WIDTH - 66) / 2;
-const STANDALONE_IMAGE_WIDTH = SCREEN_WIDTH - 64;
 
-// Image blocks only ever have two possible aspect ratios - square (the
-// width) or 16:9 (width * 9/16) - toggled by dragging up/down on the block.
-const getImageBlockHeight = (aspectMode, width) => (aspectMode === 'wide' ? width * (9 / 16) : width);
+// b557: STANDALONE_IMAGE_WIDTH and getImageBlockHeight removed - every
+// block image (standalone and row-column, both in the editor's own
+// preview and the actual portfolio view) now uses a plain aspectRatio:1
+// style instead. The "Change Size" toggle that used to switch between
+// square and 16:9 is gone too - images are always square everywhere now.
+// This also fixes a real bug the old approach had: height was computed
+// from a fixed reference width (STANDALONE_IMAGE_WIDTH, based on the
+// mobile-oriented SCREEN_WIDTH constant) while the actual rendered image
+// used width:'100%' - close enough on mobile where those two roughly
+// match, but on wide web the real rendered width is far larger than that
+// stale reference, so the computed height no longer matched, breaking
+// the aspect ratio. aspectRatio:1 adapts to whatever the real container
+// width actually is, on any screen size, with no reference constant
+// needed at all.
 
 const ALL_UIUX_CATEGORIES_MASTER = [
   'AI & Machine Learning',
@@ -1778,7 +1788,23 @@ const renderContentBlocks = (blocks, onImagePress, theme) => {
       const img = (
         <Image
           source={{ uri: block.uri }}
-          style={{ width: '100%', height: getImageBlockHeight(block.aspectMode, STANDALONE_IMAGE_WIDTH), borderRadius: 12, marginBottom: 18, backgroundColor: '#1E293B' }}
+          // b557: was height computed from a fixed reference width
+          // (STANDALONE_IMAGE_WIDTH, based on the mobile-oriented
+          // SCREEN_WIDTH constant) while the actual rendered width was
+          // width:'100%' - correct enough on mobile where those two are
+          // close, but on wide web the real rendered width is far larger
+          // than that stale reference, so the height (computed from the
+          // small number) no longer matched the actually-rendered large
+          // width, breaking the aspect ratio. aspectRatio:1 fixes both
+          // problems at once - always genuinely square, and correctly
+          // adapts to whatever the real container width is instead of a
+          // fixed number. Also now always square regardless of the
+          // block's own stored aspectMode - that field (and the "Change
+          // Size" control that used to set it) is gone (b557); images
+          // are always square everywhere, including for older portfolios
+          // that still have aspectMode:'wide' saved from before this
+          // change.
+          style={{ width: '100%', aspectRatio: 1, borderRadius: 12, marginBottom: 18, backgroundColor: '#1E293B' }}
           resizeMode="cover"
         />
       );
@@ -1804,7 +1830,7 @@ const renderContentBlocks = (blocks, onImagePress, theme) => {
             const colImg = col && col.type === 'image' && col.uri ? (
               <Image
                 source={{ uri: col.uri }}
-                style={{ width: '100%', height: getImageBlockHeight(col.aspectMode, ROW_BLOCK_IMAGE_HEIGHT), borderRadius: 10, backgroundColor: '#1E293B' }}
+                style={{ width: '100%', aspectRatio: 1, borderRadius: 10, backgroundColor: '#1E293B' }}
                 resizeMode="cover"
               />
             ) : null;
@@ -2270,6 +2296,11 @@ const ProjectCard = React.memo(({
   isTwoRowCard = false,
   showPinControl = false,
   onTogglePin,
+  // b556: how many of the current user's portfolios are already pinned -
+  // only relevant alongside showPinControl. Drives whether the pin icon
+  // shows at all on a NOT-yet-pinned card (hidden once at the 2-max, so
+  // there's no dead-end icon that just toasts an error when tapped).
+  pinnedCount = 0,
   hideFollowButton = false,
   showReadOnlyPin = false,
   // b553: needed specifically for the compact-view tag/avatar treatment
@@ -2354,7 +2385,16 @@ const ProjectCard = React.memo(({
           The wrapping View above (position:'relative') tightly hugs just
           the thumbnail's own bounds, so bottom/right positioning here
           still lines up with the thumbnail corner exactly as before. */}
-      {showPinControl ? (
+      {/* b556: added (item.pinned || pinnedCount < 2) - showPinControl
+          alone used to be enough to show the interactive button
+          regardless of whether pinning was actually still possible,
+          which just meant tapping it on an already-full profile showed
+          an error toast and did nothing. Now the icon simply doesn't
+          render at all on a not-yet-pinned card once 2 are already
+          pinned - it only ever appears where tapping it would actually
+          do something (unpin an already-pinned one, or pin a new one
+          while a slot is free). */}
+      {showPinControl && (item.pinned || pinnedCount < 2) ? (
         <BouncyButton
           style={{
             position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 14,
@@ -2441,7 +2481,14 @@ const ProjectCard = React.memo(({
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             {item.isAiGenerated === true && (
               <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: 5, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: '#E2E8F0', fontSize: 9, fontWeight: '800' }}>{item.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
+                {/* b556: was 'AI ASSISTED' for illustration specifically,
+                    matching just 'AI' now for every type on the card -
+                    the longer wording only reads correctly with more
+                    room than a card badge has. Portfolio detail view
+                    (activeProject.portfolioType, not item.portfolioType -
+                    a separate two-instance render elsewhere in this
+                    file) keeps 'AI Assisted' for illustration, untouched. */}
+                <Text style={{ color: '#E2E8F0', fontSize: 9, fontWeight: '800' }}>AI</Text>
               </View>
             )}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 20, paddingHorizontal: 6, borderRadius: 5, borderWidth: 1, borderColor: theme.border }}>
@@ -2493,7 +2540,7 @@ const ProjectCard = React.memo(({
   );
 });
 
-const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles, cardWidth, showReadOnlyPin, emptyMessage }) => {
+const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, pinnedCount, styles, cardWidth, showReadOnlyPin, emptyMessage }) => {
   // b527: was previously silently rendering nothing at all for an empty
   // items array - matches TwoRowHorizontalGrid's own empty state below,
   // just with an emptyMessage prop so each call site can give
@@ -2521,6 +2568,7 @@ const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerPr
           isOwnContent={!!currentUserId && item.ownerId === currentUserId}
           showPinControl={showPinControl}
           onTogglePin={onTogglePin}
+          pinnedCount={pinnedCount}
           showReadOnlyPin={showReadOnlyPin}
           customWidth={cardWidth}
           styles={styles}
@@ -2902,7 +2950,7 @@ const ZoomPanImage = ({ uri, containerWidth, containerHeight }) => {
   );
 };
 
-const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, styles, theme, isWebWide, showReadOnlyPin, emptyMessage }) => {
+const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, pinnedCount, styles, theme, isWebWide, showReadOnlyPin, emptyMessage }) => {
   if (items.length === 0) {
     return (
       <View style={styles.emptyTabContainer}>
@@ -2945,6 +2993,7 @@ const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenD
               isTwoRowCard={true}
               showPinControl={showPinControl}
               onTogglePin={onTogglePin}
+              pinnedCount={pinnedCount}
               hideFollowButton={true}
               showReadOnlyPin={showReadOnlyPin}
               isWebWide={isWebWide}
@@ -4296,8 +4345,6 @@ function App() {
   const [safeSearchEnabled, setSafeSearchEnabled] = useState(true);
   const [disableSafeSearchModalVisible, setDisableSafeSearchModalVisible] = useState(false);
   const [disableSafeSearchCountdown, setDisableSafeSearchCountdown] = useState(5);
-  const [fancyModeConfirmVisible, setFancyModeConfirmVisible] = useState(false);
-  const [fancyModeCountdown, setFancyModeCountdown] = useState(5);
   const [optionsView, setOptionsView] = useState('root'); // 'root' | 'privacy' | 'supportLegal'
   // Options sub-items (About, Privacy, Terms, Feedback, Reports, Admin
   // Panel, Change Password, Account Settings, Donate) previously closed
@@ -6644,8 +6691,18 @@ function App() {
 
   const handleScroll = (event) => {
     const offsetY = event.nativeEvent.contentOffset.y;
+    // b557: back-to-top visibility is now scroll-direction-aware, not
+    // just position-based - only shows while actively scrolling UP (not
+    // down), and only past the existing 220px "far enough from the top"
+    // threshold, so scrolling up while already near the top still won't
+    // show it. tabScrollOffsetsRef already tracked the last offset per
+    // tab (for scroll-position restoration) - reused here by reading it
+    // BEFORE this line overwrites it, rather than adding a separate ref
+    // for the same purpose.
+    const previousOffsetY = tabScrollOffsetsRef.current[bottomNav] || 0;
+    const scrollingUp = offsetY < previousOffsetY;
     tabScrollOffsetsRef.current[bottomNav] = offsetY;
-    if (offsetY > 220) {
+    if (offsetY > 220 && scrollingUp) {
       if (!showBackToTop) setShowBackToTop(true);
     } else {
       if (showBackToTop) setShowBackToTop(false);
@@ -6693,9 +6750,17 @@ function App() {
     }
   }, [bottomNav]);
 
+  // b557: previous-offset tracker for the portfolio detail view's own
+  // back-to-top button, same direction-aware logic as the main feed's
+  // handleScroll above - see that one's comment for the full reasoning.
+  // Separate ref (not reusing tabScrollOffsetsRef) since this scroll
+  // context isn't keyed by tab at all.
+  const modalPreviousScrollOffsetRef = useRef(0);
   const handleModalScroll = (event) => {
     const offsetY = event.nativeEvent.contentOffset.y;
-    if (offsetY > 220) {
+    const scrollingUp = offsetY < modalPreviousScrollOffsetRef.current;
+    modalPreviousScrollOffsetRef.current = offsetY;
+    if (offsetY > 220 && scrollingUp) {
       if (!showModalBackToTop) setShowModalBackToTop(true);
     } else {
       if (showModalBackToTop) setShowModalBackToTop(false);
@@ -7392,10 +7457,9 @@ function App() {
 
   // Was accidentally deleted during the admin-panel removal (swept up as
   // collateral damage in a large contiguous block that was mostly-but-not-
-  // entirely admin-only code) - restored here, along with confirmDisableSafeSearch,
-  // confirmEnableFancyMode, and the two countdown-ticking effects below
-  // (all four were part of the same missing piece: turning Safe Search
-  // OFF or Fancy Mode ON both require a 5-second confirmation wait first,
+  // entirely admin-only code) - restored here, along with
+  // confirmDisableSafeSearch and its countdown-ticking effect below
+  // (disabling Safe Search requires a 5-second confirmation wait first,
   // matching the "Wait Ns..." countdown button already built in the JSX -
   // that JSX was intact, but every function/timer feeding it was gone).
   // No AsyncStorage or Supabase persistence found referencing
@@ -7416,22 +7480,11 @@ function App() {
     setDisableSafeSearchModalVisible(false);
   };
 
-  const confirmEnableFancyMode = () => {
-    setLightweightMode(false);
-    setFancyModeConfirmVisible(false);
-  };
-
   useEffect(() => {
     if (!disableSafeSearchModalVisible || disableSafeSearchCountdown <= 0) return;
     const t = setTimeout(() => setDisableSafeSearchCountdown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [disableSafeSearchModalVisible, disableSafeSearchCountdown]);
-
-  useEffect(() => {
-    if (!fancyModeConfirmVisible || fancyModeCountdown <= 0) return;
-    const t = setTimeout(() => setFancyModeCountdown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [fancyModeConfirmVisible, fancyModeCountdown]);
 
   const handleExportMyData = async () => {
     if (!session) return;
@@ -9049,7 +9102,7 @@ function App() {
 
   const addImageBlock = async () => {
     if (fContentBlocks.length >= MAX_CONTENT_BLOCKS) return;
-    const uri = await pickBlockImageUri([16, 9]);
+    const uri = await pickBlockImageUri([1, 1]);
     if (uri) setFContentBlocks((prev) => [...prev, { id: makeBlockId(), type: 'image', uri }]);
   };
 
@@ -9083,21 +9136,18 @@ function App() {
   };
 
   const replaceImageBlock = async (blockId) => {
-    const uri = await pickBlockImageUri([16, 9]);
+    const uri = await pickBlockImageUri([1, 1]);
     if (!uri) return;
     setFContentBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, uri } : b)));
   };
 
-  const setImageBlockAspect = (blockId, aspectMode) => {
-    setFContentBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, aspectMode } : b)));
-  };
-
-  // Re-crop: expo-image-picker can't re-edit an already-picked image in
-  // place, so this re-opens the picker with the crop aspect matched to the
-  // block's current mode, ready to reselect/recrop against it.
-  const recropImageBlock = async (blockId, aspectMode) => {
-    const aspect = aspectMode === 'wide' ? [16, 9] : [1, 1];
-    const uri = await pickBlockImageUri(aspect);
+  // b557: aspectMode/"Change Size" toggle removed - images are always
+  // square now, everywhere (both here in the editor and in the actual
+  // portfolio view). Re-crop still exists (replacing the image with a
+  // freshly-cropped one), just always at a 1:1 crop aspect now instead
+  // of branching on a mode that no longer exists.
+  const recropImageBlock = async (blockId) => {
+    const uri = await pickBlockImageUri([1, 1]);
     if (!uri) return;
     setFContentBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, uri } : b)));
   };
@@ -9141,12 +9191,12 @@ function App() {
   };
 
   const addImageToRowColumn = async (rowId, colIdx) => {
-    const uri = await pickBlockImageUri([6, 5]);
+    const uri = await pickBlockImageUri([1, 1]);
     if (uri) setRowColumn(rowId, colIdx, { id: makeBlockId(), type: 'image', uri });
   };
 
   const replaceRowColumnImage = async (rowId, colIdx) => {
-    const uri = await pickBlockImageUri([6, 5]);
+    const uri = await pickBlockImageUri([1, 1]);
     if (!uri) return;
     setFContentBlocks((prev) =>
       prev.map((b) => {
@@ -9158,20 +9208,10 @@ function App() {
     );
   };
 
-  const setRowColumnImageAspect = (rowId, colIdx, aspectMode) => {
-    setFContentBlocks((prev) =>
-      prev.map((b) => {
-        if (b.id !== rowId) return b;
-        const columns = [...b.columns];
-        columns[colIdx] = { ...columns[colIdx], aspectMode };
-        return { ...b, columns };
-      })
-    );
-  };
-
-  const recropRowColumnImage = async (rowId, colIdx, aspectMode) => {
-    const aspect = aspectMode === 'wide' ? [16, 9] : [1, 1];
-    const uri = await pickBlockImageUri(aspect);
+  // b557: setRowColumnImageAspect/toggleAspectMode removed alongside the
+  // standalone versions above - same reasoning, always square now.
+  const recropRowColumnImage = async (rowId, colIdx) => {
+    const uri = await pickBlockImageUri([1, 1]);
     if (!uri) return;
     setFContentBlocks((prev) =>
       prev.map((b) => {
@@ -9182,8 +9222,6 @@ function App() {
       })
     );
   };
-
-  const toggleAspectMode = (currentMode) => (currentMode === 'wide' ? 'square' : 'wide');
 
   const updateRowColumnMarkdown = (rowId, colIdx, markdown) => {
     const capped = markdown.length > MAX_TEXT_BLOCK_CHARS ? markdown.slice(0, MAX_TEXT_BLOCK_CHARS) : markdown;
@@ -10309,6 +10347,15 @@ function App() {
       .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   }, [projects, session]);
 
+  // b556: how many of your own portfolios are currently pinned - drives
+  // whether the pin icon shows at all on unpinned cards (only when a
+  // slot is actually available). Same 2-max/computation logic
+  // togglePinProject itself already enforces, just made reactive here
+  // (that one reads projectsRef.current, a ref, which wouldn't trigger
+  // a re-render) so the UI updates immediately once someone frees up a
+  // slot by unpinning something.
+  const myPinnedCount = useMemo(() => myUploadedProjects.filter((p) => p.pinned).length, [myUploadedProjects]);
+
   const myLikedProjects = useMemo(() => {
     return projects.filter((p) => p.liked === true);
   }, [projects]);
@@ -10619,26 +10666,25 @@ function App() {
           backgroundColor: theme.surface, borderBottomWidth: 1, borderBottomColor: theme.border,
           paddingVertical: 10, paddingHorizontal: 14, gap: 10
         }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-            <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>D</Text>
-            </View>
-            <Text style={{ color: theme.text, fontSize: 12.5, fontWeight: '600', flex: 1 }} numberOfLines={2}>
-              Open this in the DECENT app
+          {/* b556: redesigned - logo square removed, dismiss moved to the
+              far left (where the logo used to sit), and the "open in
+              app" label now sits directly against the action button on
+              the right instead of stretching across the whole row. */}
+          <BouncyButton
+            style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
+            onPress={() => setShowOpenInAppBanner(false)}
+          >
+            <CrossIconSVG color={theme.textSecondary} size={16} />
+          </BouncyButton>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text style={{ color: theme.text, fontSize: 12.5, fontWeight: '600' }}>
+              Open in app
             </Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <BouncyButton
               style={{ backgroundColor: '#8B5CF6', borderRadius: 99, paddingVertical: 7, paddingHorizontal: 14 }}
               onPress={handleOpenInAppTap}
             >
               <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>Open</Text>
-            </BouncyButton>
-            <BouncyButton
-              style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
-              onPress={() => setShowOpenInAppBanner(false)}
-            >
-              <CrossIconSVG color={theme.textSecondary} size={16} />
             </BouncyButton>
           </View>
         </View>
@@ -11117,70 +11163,16 @@ function App() {
         </View>
       )}
 
-      {fancyModeConfirmVisible && (
-        <View
-          pointerEvents="box-none"
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, elevation: 30 }}
-        >
-          <View
-            style={{
-              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-              backgroundColor: 'rgba(0,0,0,0.75)',
-              alignItems: 'center', justifyContent: 'center',
-              padding: 24
-            }}
-          >
-            <View
-              style={{
-                backgroundColor: theme.surface,
-                borderRadius: 20,
-                padding: 24,
-                width: '100%',
-                maxWidth: 340,
-                alignItems: 'center',
-                borderWidth: 1,
-                borderColor: theme.border
-              }}
-            >
-              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(245, 158, 11, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-                <WarningTriangleSVG />
-              </View>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 8, textAlign: 'center' }}>
-                Enable Fancy Mode?
-              </Text>
-              <Text style={{ fontSize: 13, color: theme.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 18 }}>
-                This turns on blur backdrops, translucent effects, and extra animations throughout the app. It's still experimental - performance may lag or behave unexpectedly, especially on lower-end devices. You can turn it back off anytime.
-              </Text>
-              <TouchableOpacity
-                style={{
-                  height: 48,
-                  borderRadius: 12,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '100%',
-                  backgroundColor: fancyModeCountdown > 0 ? theme.bg : '#8B5CF6',
-                  borderWidth: fancyModeCountdown > 0 ? 1.5 : 0,
-                  borderColor: theme.border
-                }}
-                activeOpacity={0.8}
-                disabled={fancyModeCountdown > 0}
-                onPress={confirmEnableFancyMode}
-              >
-                <Text style={{ fontSize: 15, fontWeight: '800', color: fancyModeCountdown > 0 ? theme.textSecondary : '#FFFFFF' }}>
-                  {fancyModeCountdown > 0 ? `Wait ${fancyModeCountdown}s...` : 'Enable Fancy Mode'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ width: '100%', marginTop: 10, alignItems: 'center', paddingVertical: 8 }}
-                activeOpacity={0.6}
-                onPress={() => setFancyModeConfirmVisible(false)}
-              >
-                <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700' }}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
+      {/* b555: Fancy Mode confirm dialog removed - this was the only way
+          fancyModeConfirmVisible/setLightweightMode(false) could ever
+          fire (alongside the Settings toggle below, also removed).
+          Without either of those two call sites, lightweightMode can
+          never become false again, so every lightweightMode ? plain :
+          fancy ternary elsewhere in the file now always takes the plain
+          branch permanently - Fancy Mode is functionally gone from the
+          user's perspective without needing to touch those ~60 scattered
+          ternaries individually, which would have been a much larger,
+          riskier change for the same end result. */}
 
       {/* AUTO-DISMISSING SUCCESS POPUP (5s). Deliberately has ZERO shared
           style/component dependencies (no styles.X, no BouncyButton) - every
@@ -11467,7 +11459,17 @@ function App() {
         {!(isWebWide && modalVisible && activeProject) && (
         <View style={[
           styles.headerRightActionsRow,
-          Platform.OS === 'web' && { position: 'fixed', top: 16, right: 16, zIndex: 1000 },
+          // b556: was Platform.OS === 'web' alone, meaning BOTH wide and
+          // mobile web got fixed positioning here - mobile web never
+          // needed it (its outer container, styles.header a few dozen
+          // lines up, is already a normal-flow flexDirection:row,
+          // justifyContent:space-between row containing the hamburger+
+          // logo block as the other child - exactly the shared bar this
+          // needed to sit in already existed, it just wasn't being used
+          // because this was unconditionally pulled out of flow). Native
+          // was already correct without any change needed here, since
+          // this condition never applied there to begin with.
+          Platform.OS === 'web' && isWebWide && { position: 'fixed', top: 16, right: 16, zIndex: 1000 },
           // b531/b534/b536: shared pill-shaped background housing both
           // icons together, wide web only - narrow web/app keep the two
           // plain individual circular buttons as before. Already
@@ -12578,6 +12580,7 @@ function App() {
                     currentUserId={session ? session.user.id : null}
                     showPinControl={profileTab === 'myWork'}
                     onTogglePin={togglePinProject}
+                    pinnedCount={myPinnedCount}
                   emptyMessage={profileTab === 'myWork' ? "You haven't added any portfolios yet." : "You haven't liked any portfolios yet."}
                   // b524/b526: same shared-width responsive column sizing
                   // as For You (see profileColumnCount/profileCardWidthPx),
@@ -12607,6 +12610,7 @@ function App() {
                     currentUserId={session ? session.user.id : null}
                     showPinControl={profileTab === 'myWork'}
                     onTogglePin={togglePinProject}
+                    pinnedCount={myPinnedCount}
                   styles={styles}
                   theme={theme}
                   isWebWide={isWebWide}
@@ -12634,16 +12638,18 @@ function App() {
 
       {/* BOTTOM FEED SCRIM - replaces the old nav-bar-glow approach
           (b513). Instead of glowing the bar itself, this fades the feed
-          content underneath it: smooth gradient from ~50% opacity at
+          content underneath it: smooth gradient from 100% opacity at
           the very bottom of the screen down to fully transparent, so
           scrolled content doesn't end abruptly right at the translucent
           bar's edge. Color follows the theme (b529) - black made sense
           against the dark theme's own dark background, but read as a
           harsh dark smear on light theme where the background is
           actually light; white matches the same way black did on dark.
-          Height is 75% of the bar's own height (BOTTOM_NAV_BAR_HEIGHT
-          above), which keeps the fade contained near the bottom of the
-          screen rather than washing out content further up the feed.
+          b556: height changed from 75% of the bar's own height to the
+          bar's height PLUS its own bottom offset (BOTTOM_NAV_BAR_HEIGHT
+          + 14, matching floatingBottomBar's bottom:14) - reaches exactly
+          the bar's top edge now instead of stopping short partway up
+          it. Opacity changed from 50%->0% to 100%->0% at the same time.
           Positioned/sized exactly like the sticky back-to-top button and
           the bar itself (siblings at this same level, absolute to the
           screen) - not part of the ScrollView, so it doesn't scroll with
@@ -12654,17 +12660,17 @@ function App() {
       {Platform.OS !== 'web' && (
         <Svg
           width={Dimensions.get('window').width}
-          height={BOTTOM_NAV_BAR_HEIGHT * 0.75}
+          height={BOTTOM_NAV_BAR_HEIGHT + 14}
           style={{ position: 'absolute', bottom: 0, left: 0 }}
           pointerEvents="none"
         >
           <Defs>
             <LinearGradient id="feedBottomScrim" x1="0" y1="1" x2="0" y2="0">
-              <Stop offset="0%" stopColor={themeMode === 'light' ? '#FFFFFF' : '#000000'} stopOpacity={0.5} />
+              <Stop offset="0%" stopColor={themeMode === 'light' ? '#FFFFFF' : '#000000'} stopOpacity={1} />
               <Stop offset="100%" stopColor={themeMode === 'light' ? '#FFFFFF' : '#000000'} stopOpacity={0} />
             </LinearGradient>
           </Defs>
-          <Rect x={0} y={0} width={Dimensions.get('window').width} height={BOTTOM_NAV_BAR_HEIGHT * 0.75} fill="url(#feedBottomScrim)" />
+          <Rect x={0} y={0} width={Dimensions.get('window').width} height={BOTTOM_NAV_BAR_HEIGHT + 14} fill="url(#feedBottomScrim)" />
         </Svg>
       )}
 
@@ -15552,7 +15558,7 @@ function App() {
                     </View>
                     )}
 
-                    <View style={styles.settingToggleRow}>
+                    <View style={[styles.settingToggleRow, { borderBottomWidth: 0 }]}>
                       <View style={{ flex: 1, marginRight: 10 }}>
                         <Text style={styles.settingItemTitle}>Exclude AI-Generated Content</Text>
                         <Text style={styles.settingItemSub}>
@@ -15567,32 +15573,12 @@ function App() {
                       />
                     </View>
 
-                    <View style={[styles.settingToggleRow, { borderBottomWidth: 0 }]}>
-                      <View style={{ flex: 1, marginRight: 10 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={styles.settingItemTitle}>Fancy Mode</Text>
-                          <View style={{ backgroundColor: 'rgba(245,158,11,0.15)', borderWidth: 1, borderColor: '#F59E0B', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 }}>
-                            <Text style={{ color: '#F59E0B', fontSize: 9, fontWeight: '800' }}>EXPERIMENTAL</Text>
-                          </View>
-                        </View>
-                        <Text style={styles.settingItemSub}>
-                          Adds blur backdrops, translucent effects, and extra animation flourish throughout the app. Off by default - performance with this on is still experimental and may lag or behave unexpectedly on some devices.
-                        </Text>
-                      </View>
-                      <Switch
-                        value={!lightweightMode}
-                        onValueChange={(v) => {
-                          if (v) {
-                            setFancyModeCountdown(5);
-                            setFancyModeConfirmVisible(true);
-                          } else {
-                            setLightweightMode(true);
-                          }
-                        }}
-                        trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                        thumbColor="#FFFFFF"
-                      />
-                    </View>
+                    {/* b555: Fancy Mode toggle removed - this and the
+                        confirm dialog it opened were the only two places
+                        setLightweightMode(false) was ever called, so
+                        lightweightMode can now never become false again.
+                        See the removed confirm dialog's comment for the
+                        full reasoning. */}
                   </View>
 
                   <BouncyButton
@@ -17165,6 +17151,19 @@ function App() {
                     {errors.fCategories ? <Text style={styles.errorText}>{errors.fCategories}</Text> : null}
                   </View>
 
+                  {/* b557: gated to web only - was rendering on native
+                      too, letting someone tag a portfolio NSFW from the
+                      app even though the app itself never shows NSFW
+                      content to anyone (b553, Option A). Hiding this
+                      doesn't affect an existing NSFW tag on a portfolio
+                      being edited via the app - fIsNsfw's value is
+                      seeded from the portfolio's real isNsfw at edit
+                      time regardless of whether this control renders,
+                      and is_nsfw: fIsNsfw is written on save either way,
+                      so an existing tag is preserved untouched, not
+                      silently cleared - this only removes the ability
+                      to CHANGE it from the app, not the tag itself. */}
+                  {Platform.OS === 'web' && (
                   <View style={{
                     marginTop: 12, backgroundColor: theme.surface, borderRadius: 12,
                     borderWidth: 1, borderColor: fIsNsfw ? '#F59E0B' : theme.border, padding: 10
@@ -17179,9 +17178,10 @@ function App() {
                       />
                     </View>
                     <Text style={{ color: theme.textSecondary, fontSize: 11, lineHeight: 15, marginTop: 4 }}>
-                      Explicit/sensitive content. Hidden from For You; only shown in search with Safe Search off.
+                      Explicit/sensitive content. Hidden from For You; only shown in search with Safe Search off. Won't appear on the DECENT mobile app under any circumstance - Google Play policy requires apps to fully exclude this kind of content, so this stays website-only regardless of any setting.
                     </Text>
                   </View>
+                  )}
 
                   {/* AI disclosure - dropdown defaults to showing "No
                       selection" as placeholder text, not an actual
@@ -17857,7 +17857,7 @@ function App() {
                                     <View style={{ position: 'relative' }}>
                                       <Image
                                         source={{ uri: block.uri }}
-                                        style={{ width: '100%', height: getImageBlockHeight(block.aspectMode, STANDALONE_IMAGE_WIDTH), borderRadius: 10, backgroundColor: theme.bg }}
+                                        style={{ width: '100%', aspectRatio: 1, borderRadius: 10, backgroundColor: theme.bg }}
                                         resizeMode="cover"
                                       />
                                       <BouncyButton
@@ -17867,7 +17867,7 @@ function App() {
                                           backgroundColor: 'rgba(11,15,23,0.65)',
                                           alignItems: 'center', justifyContent: 'center'
                                         }}
-                                        onPress={() => recropImageBlock(block.id, block.aspectMode)}
+                                        onPress={() => recropImageBlock(block.id)}
                                       >
                                         <CropIconSVG color="#FFFFFF" size={16} />
                                       </BouncyButton>
@@ -17878,6 +17878,9 @@ function App() {
                                     <Text style={{ color: '#64748B', fontSize: 12 }}>No image selected</Text>
                                   </View>
                                 )}
+                                {/* b557: "Change Size" toggle removed -
+                                    images are always square everywhere
+                                    now, see aspectRatio:1 above. */}
                                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
                                   <BouncyButton
                                     style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: '#8B5CF6' }}
@@ -17887,16 +17890,6 @@ function App() {
                                       {block.uri ? 'Replace Image' : 'Choose Image'}
                                     </Text>
                                   </BouncyButton>
-                                  {block.uri && (
-                                    <BouncyButton
-                                      style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
-                                      onPress={() => setImageBlockAspect(block.id, toggleAspectMode(block.aspectMode))}
-                                    >
-                                      <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '700' }}>
-                                        Change Size ({block.aspectMode === 'wide' ? '16:9' : 'Square'})
-                                      </Text>
-                                    </BouncyButton>
-                                  )}
                                 </View>
                               </View>
                             )}
@@ -18005,7 +17998,7 @@ function App() {
                                               <View style={{ position: 'relative' }}>
                                                 <Image
                                                   source={{ uri: col.uri }}
-                                                  style={{ width: '100%', height: getImageBlockHeight(col.aspectMode, ROW_BLOCK_IMAGE_HEIGHT), borderRadius: 8, backgroundColor: theme.bg }}
+                                                  style={{ width: '100%', aspectRatio: 1, borderRadius: 8, backgroundColor: theme.bg }}
                                                   resizeMode="cover"
                                                 />
                                                 <BouncyButton
@@ -18015,7 +18008,7 @@ function App() {
                                                     backgroundColor: 'rgba(11,15,23,0.65)',
                                                     alignItems: 'center', justifyContent: 'center'
                                                   }}
-                                                  onPress={() => recropRowColumnImage(block.id, colIdx, col.aspectMode)}
+                                                  onPress={() => recropRowColumnImage(block.id, colIdx)}
                                                 >
                                                   <CropIconSVG color="#FFFFFF" size={12} />
                                                 </BouncyButton>
@@ -18026,19 +18019,15 @@ function App() {
                                               <Text style={{ color: '#64748B', fontSize: 11 }}>No image</Text>
                                             </View>
                                           )}
+                                          {/* b557: "Size" toggle removed -
+                                              images are always square
+                                              everywhere now. */}
                                           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 }}>
                                             <BouncyButton onPress={() => replaceRowColumnImage(block.id, colIdx)}>
                                               <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>
                                                 {col.uri ? 'Replace' : 'Choose Image'}
                                               </Text>
                                             </BouncyButton>
-                                            {col.uri && (
-                                              <BouncyButton onPress={() => setRowColumnImageAspect(block.id, colIdx, toggleAspectMode(col.aspectMode))}>
-                                                <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700' }}>
-                                                  Size ({col.aspectMode === 'wide' ? '16:9' : 'Sq'})
-                                                </Text>
-                                              </BouncyButton>
-                                            )}
                                             <BouncyButton style={{ marginLeft: 'auto', padding: 2 }} onPress={() => clearRowColumn(block.id, colIdx)}>
                                               <Text style={{ color: '#F87171', fontSize: 12, fontWeight: '700' }}>✕</Text>
                                             </BouncyButton>
@@ -21209,8 +21198,12 @@ const getStyles = (theme) => StyleSheet.create({
 
 
 
+  // b557: bottom raised from 78 to 98 - moved up slightly, portfolio
+  // detail view only (this style is only ever used there, confirmed
+  // single usage - the main feed's own back-to-top button is a
+  // separate style, stickyBackToTopBtn below, untouched).
   stickyModalBackToTopBtn: {
-    position: 'absolute', bottom: 78, right: 20,
+    position: 'absolute', bottom: 98, right: 20,
     width: 44, height: 44, borderRadius: 99,
     backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center',
     elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 6, zIndex: 99
