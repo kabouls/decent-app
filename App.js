@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 557;
+const BUILD_NUMBER = 558;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -4662,6 +4662,14 @@ function App() {
   // text rather than potentially-lengthy media, and shouldn't need an
   // extra tap to be seen at all.
   const [aiUseExpanded, setAiUseExpanded] = useState(true);
+  // b558: info popup explaining the AI disclosure policy + a direct
+  // report action for "this is actually fully AI-generated, not just
+  // assisted" - separate from the full multi-reason Report Portfolio
+  // modal (portfolioReportModalVisible), which already has its own
+  // broader 'ai_undisclosed' reason for a different scenario (no
+  // disclosure at all, vs. this one: a disclosure exists but is
+  // suspected to understate how much AI was actually used).
+  const [aiDisclosureInfoModalVisible, setAiDisclosureInfoModalVisible] = useState(false);
   // Case Study / Video / Image tab switcher - Graphic Design and
   // Illustration portfolio types only. Reset to 'caseStudy' on every new
   // portfolio open (see openProjectModal).
@@ -7797,6 +7805,19 @@ function App() {
     setPortfolioReportModalVisible(false);
     setPortfolioReportSelectedReason(null);
     setPortfolioReportOtherText('');
+  };
+
+  // b558: report action from the new AI disclosure info popup - reuses
+  // the same submitReport primitive as every other report path in the
+  // app, just with its own specific reason/detail rather than going
+  // through the full multi-reason Report Portfolio modal (this is
+  // deliberately a single, direct action - the popup it lives in is
+  // already specifically about AI use, so there's no reason selection
+  // needed here at all).
+  const handleReportFullyAiGenerated = async () => {
+    if (!requireAuth() || !activeProject) return;
+    await submitReport('portfolio', activeProject.id, 'fully_ai_generated', 'Reported as fully AI-generated via the AI disclosure info popup');
+    setAiDisclosureInfoModalVisible(false);
   };
 
   const handleReportContent = (targetType, targetId, targetLabel, detail) => {
@@ -16946,6 +16967,47 @@ function App() {
         </View>
       </Modal>
 
+      {/* b558: AI Disclosure info popup - explains the disclosure policy
+          and offers a direct report action for "this looks fully AI-
+          generated, not just assisted" specifically. Real Modal (not a
+          plain View with manual zIndex) so it's guaranteed to render
+          above everything else regardless of what's already open
+          underneath it (the portfolio detail view) - the same reasoning
+          as every other popup in this file, and specifically the
+          approach that avoids the stacking-context bugs this file has
+          hit more than once before (the header pill, b534) when trying
+          to layer a plain View instead. */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={aiDisclosureInfoModalVisible}
+        onRequestClose={() => setAiDisclosureInfoModalVisible(false)}
+      >
+        <View style={styles.overlayModalBg}>
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
+            <BouncyButton
+              style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 1 }}
+              onPress={() => setAiDisclosureInfoModalVisible(false)}
+            >
+              <CrossIconSVG color={theme.textSecondary} size={18} />
+            </BouncyButton>
+
+            <Text style={[styles.confirmTitle, { marginBottom: 16, paddingRight: 28 }]}>About AI Disclosure</Text>
+
+            <Text style={[styles.confirmSubText, { textAlign: 'left', marginBottom: 20 }]}>
+              Disclosing how AI was used is mandatory for every illustration on DECENT - the note above is required, not optional. Fully AI-generated illustrations (created entirely by AI with no meaningful human authorship) aren't allowed on DECENT at all. If you believe this disclosure understates how this piece was actually made, you can report it below.
+            </Text>
+
+            <BouncyButton
+              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', backgroundColor: '#DC2626' }]}
+              onPress={handleReportFullyAiGenerated}
+            >
+              <Text style={styles.confirmDeleteText}>Report as Fully AI-Generated</Text>
+            </BouncyButton>
+          </View>
+        </View>
+      </Modal>
+
       {/* 4-STEP WIZARD MODAL FOR ADDING/EDITING PORTFOLIO PACKAGE */}
       {addModalVisible && (
       <Modal
@@ -19374,17 +19436,35 @@ function App() {
                               content styling. */}
                           {activeProject.portfolioType === 'illustration' && activeProject.aiDisclosureNote ? (
                             <View style={{ backgroundColor: '#8B5CF6', borderRadius: 14, padding: 14, marginBottom: 16 }}>
-                              <BouncyButton
-                                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: aiUseExpanded ? 6 : 0 }}
-                                onPress={() => setAiUseExpanded((prev) => !prev)}
-                              >
-                                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>HOW I USE AI</Text>
-                                {aiUseExpanded ? (
-                                  <ChevronUpSVG color="#FFFFFF" size={16} />
-                                ) : (
-                                  <ChevronDownSVG color="#FFFFFF" size={16} />
-                                )}
-                              </BouncyButton>
+                              {/* b558: restructured from one BouncyButton
+                                  spanning the whole row into three separate
+                                  pressables - the "!" info button needs its
+                                  own independent tap target rather than
+                                  being nested inside the accordion's own
+                                  toggle button (nested touchables have
+                                  caused real bugs elsewhere in this file
+                                  before - kept this one structurally
+                                  impossible to repeat that). Text is now
+                                  just a label; the chevron on the right is
+                                  what actually toggles the accordion now. */}
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: aiUseExpanded ? 6 : 0 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>HOW I USE AI</Text>
+                                  <BouncyButton
+                                    style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}
+                                    onPress={() => setAiDisclosureInfoModalVisible(true)}
+                                  >
+                                    <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>!</Text>
+                                  </BouncyButton>
+                                </View>
+                                <BouncyButton onPress={() => setAiUseExpanded((prev) => !prev)}>
+                                  {aiUseExpanded ? (
+                                    <ChevronUpSVG color="#FFFFFF" size={16} />
+                                  ) : (
+                                    <ChevronDownSVG color="#FFFFFF" size={16} />
+                                  )}
+                                </BouncyButton>
+                              </View>
                               {aiUseExpanded && (
                                 <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 20 }}>{activeProject.aiDisclosureNote}</Text>
                               )}
@@ -20197,17 +20277,27 @@ function App() {
                       indentation level. */}
                   {activeProject.portfolioType === 'illustration' && activeProject.aiDisclosureNote ? (
                     <View style={{ backgroundColor: '#8B5CF6', borderRadius: 14, padding: 14, marginBottom: 16 }}>
-                      <BouncyButton
-                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: aiUseExpanded ? 6 : 0 }}
-                        onPress={() => setAiUseExpanded((prev) => !prev)}
-                      >
-                        <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>HOW I USE AI</Text>
-                        {aiUseExpanded ? (
-                          <ChevronUpSVG color="#FFFFFF" size={16} />
-                        ) : (
-                          <ChevronDownSVG color="#FFFFFF" size={16} />
-                        )}
-                      </BouncyButton>
+                      {/* b558: same restructuring as the narrow-web
+                          version above - see that one's comment for the
+                          full reasoning. */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: aiUseExpanded ? 6 : 0 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>HOW I USE AI</Text>
+                          <BouncyButton
+                            style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}
+                            onPress={() => setAiDisclosureInfoModalVisible(true)}
+                          >
+                            <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>!</Text>
+                          </BouncyButton>
+                        </View>
+                        <BouncyButton onPress={() => setAiUseExpanded((prev) => !prev)}>
+                          {aiUseExpanded ? (
+                            <ChevronUpSVG color="#FFFFFF" size={16} />
+                          ) : (
+                            <ChevronDownSVG color="#FFFFFF" size={16} />
+                          )}
+                        </BouncyButton>
+                      </View>
                       {aiUseExpanded && (
                         <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 20 }}>{activeProject.aiDisclosureNote}</Text>
                       )}
