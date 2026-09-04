@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 575;
+const BUILD_NUMBER = 576;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -18331,7 +18331,15 @@ function App() {
                                 return (
                                   <BouncyButton
                                     key={p.id}
-                                    style={[styles.categoryVerticalItem, isSelected && styles.categoryVerticalItemActive, { flexDirection: 'row', alignItems: 'flex-start', gap: 10 }]}
+                                    style={[
+                                      styles.categoryVerticalItem,
+                                      isSelected && styles.categoryVerticalItemActive,
+                                      {
+                                        flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+                                        borderRadius: 10, paddingVertical: 14, paddingHorizontal: 14,
+                                        marginVertical: 3, borderBottomWidth: 0
+                                      }
+                                    ]}
                                     onPress={() => toggleImportPortfolioSelection(p.id)}
                                   >
                                     <View style={{
@@ -19164,7 +19172,7 @@ function App() {
                       </>
                     ) : (
                       <>
-                        <View style={[styles.warningNoteBox, { marginTop: 16 }]}>
+                        <View style={[styles.warningNoteBox, { marginTop: 16, marginBottom: 0 }]}>
                           <BouncyButton
                             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
                             onPress={() => setUiUxDisclaimerExpanded((prev) => !prev)}
