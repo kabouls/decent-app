@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 587;
+const BUILD_NUMBER = 588;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -1199,33 +1199,36 @@ const ForYouSVG = React.memo(({ active }) => (
 // rotation - previously the whole icon (circle + mark) rotated together as
 // one unit, but the profile icon inside must now stay upright while only
 // the dashed circle spins around it.
+// b588: replaces the old "person in a dashed circle" icon with a
+// circular-arrow / refresh-style mark (ring with a gap, a rounded square
+// filling that gap, and a small triangular cursor/pointer tip near the
+// ring's start) - built by hand from a reference image without a live
+// preview, so the exact proportions may need a follow-up nudge once
+// it's actually visible on a real screen. spinAnim now drives a one-shot
+// 720deg (2 full clockwise turns) spin per tap instead of a continuous
+// while-active loop - see triggerFollowedSpin.
 const FollowedTabSVG = React.memo(({ active, spinAnim }) => {
   const iconColor = active ? '#8B5CF6' : '#94A3B8';
   return (
     <View style={{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }}>
       <Animated.View
         style={{
-          position: 'absolute',
           transform: spinAnim ? [{
-            rotate: spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] })
+            rotate: spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '720deg'] })
           }] : []
         }}
       >
         <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <Circle
-            cx="12" cy="12" r="9"
+          <Path
+            d="M 18.55 16.59 A 8 8 0 1 1 18.13 6.86"
             stroke={iconColor}
-            strokeWidth="2"
-            strokeDasharray={active ? '4 3' : undefined}
+            strokeWidth="2.6"
+            strokeLinecap="round"
           />
+          <Rect x="14.5" y="3" width="6.5" height="6.5" rx="2" fill={iconColor} />
+          <Path d="M3 13L7.5 15.2L4.2 18.3Z" fill={iconColor} />
         </Svg>
       </Animated.View>
-      <View style={{ position: 'absolute' }}>
-        <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <Circle cx="12" cy="9.2" r="3" stroke={iconColor} strokeWidth="2" />
-          <Path d="M6.2 18.5c0-3.2 2.6-5.3 5.8-5.3s5.8 2.1 5.8 5.3" stroke={iconColor} strokeWidth="2" strokeLinecap="round" />
-        </Svg>
-      </View>
     </View>
   );
 });
@@ -1548,7 +1551,7 @@ const DownloadIconSVG = React.memo(({ color = '#FFFFFF', size = 16 }) => (
   </Svg>
 ));
 
-const CheckIconSVG = React.memo(({ color = '#10B981' }) => (
+const CheckIconSVG = React.memo(({ color = '#FFFFFF' }) => (
   <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
     <Path d="M20 6L9 17l-5-5" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
   </Svg>
@@ -3576,7 +3579,7 @@ function AuthScreen({ onCancel } = {}) {
         <View style={{ marginBottom: 12 }}>
           {getPasswordRequirements(password).map((req) => (
             <View key={req.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-              {req.met ? <CheckIconSVG /> : <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: theme.border }} />}
+              {req.met ? <CheckIconSVG color="#10B981" /> : <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: theme.border }} />}
               <Text style={{ color: req.met ? '#4ADE80' : theme.textSecondary, fontSize: 12 }}>{req.label}</Text>
             </View>
           ))}
@@ -3682,7 +3685,7 @@ function AuthScreen({ onCancel } = {}) {
         visible={!!alertConfig}
         onRequestClose={() => setAlertConfig(null)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setAlertConfig(null)}
         >
@@ -3752,7 +3755,7 @@ function AuthScreen({ onCancel } = {}) {
         visible={true}
         onRequestClose={() => setAuthTermsPreviewVisible(false)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }, Platform.OS === 'web' && { position: 'relative', zIndex: 99999 }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }, Platform.OS === 'web' && { position: 'relative', zIndex: 99999 }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setAuthTermsPreviewVisible(false)}
         >
@@ -5212,17 +5215,24 @@ function App() {
 
   const [bottomNav, setBottomNav] = useState('forYou');
 
-  // Continuous rotation while the Circle tab is the active one.
-  useEffect(() => {
-    if (bottomNav === 'followed') {
-      followedContinuousSpinAnim.setValue(0);
-      const loop = Animated.loop(
-        Animated.timing(followedContinuousSpinAnim, { toValue: 1, duration: 3000, easing: Easing.linear, useNativeDriver: true })
-      );
-      loop.start();
-      return () => loop.stop();
-    }
-  }, [bottomNav]);
+  // b588: was a continuous loop while the Circle tab stayed active -
+  // replaced with a one-shot 2x-clockwise (720deg) spin fired once per
+  // tap instead. followedSpinTapCount just counts taps; the animated
+  // value chases that count up by 1 each time, and the SVG's
+  // interpolation (0deg->720deg per unit, extending past 1 by default)
+  // means each tap adds exactly two more full clockwise turns on top of
+  // wherever the icon currently is, rather than resetting to 0 and
+  // replaying from scratch.
+  const followedSpinTapCount = useRef(0);
+  const triggerFollowedSpin = () => {
+    followedSpinTapCount.current += 1;
+    Animated.timing(followedContinuousSpinAnim, {
+      toValue: followedSpinTapCount.current,
+      duration: 700,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true
+    }).start();
+  };
 
   // Tab visit history - which of the 4 main tabs were visited before the
   // current one, in order. Android hardware back (and, separately, the web
@@ -7148,7 +7158,7 @@ function App() {
 
     playTabBounce(newNav);
     if (newNav === 'forYou') playForYouSparkle();
-    if (newNav === 'followed') { /* continuous rotation handles this now, see followedContinuousSpinAnim effect */ }
+    if (newNav === 'followed') triggerFollowedSpin();
     if (newNav === 'profile') playProfileDraw();
     if (newNav === 'search') playSearchEyes();
 
@@ -12305,6 +12315,18 @@ function App() {
           {bottomNav === 'forYou' && (
             <View>
 
+              {/* b588: wide-web-only heading, matching Your Circle's own
+                  pageHeaderTitle style exactly - the mobile/narrow-web
+                  layout doesn't get this (the category bar sits right
+                  under the top nav there, no room/need for a page title
+                  above it), same as how Your Circle's title only shows
+                  once there's a sidebar layout to sit next to. */}
+              {isWebWide && (
+                <View style={styles.pageHeaderBox}>
+                  <Text style={[styles.pageHeaderTitle, { fontSize: 24 }]}>For You</Text>
+                </View>
+              )}
+
               {/* Category chip bar - now a normal scrollable item at the
                   top of the feed instead of a separate element sitting
                   outside this ScrollView. It used to be position:'absolute'
@@ -12724,6 +12746,11 @@ function App() {
           {/* TAB PAGE 3: SEARCH */}
           {bottomNav === 'search' && (
             <View>
+              {isWebWide && (
+                <View style={styles.pageHeaderBox}>
+                  <Text style={[styles.pageHeaderTitle, { fontSize: 24 }]}>Search</Text>
+                </View>
+              )}
               <View style={styles.inputWithClearRow}>
                 <FocusableTextInput
                   style={[styles.searchInput, { flex: 1 }]}
@@ -13701,7 +13728,7 @@ function App() {
         visible={true}
         onRequestClose={() => setExternalLinkModalVisible(false)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }, Platform.OS === 'web' && { position: 'relative', zIndex: 99999 }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }, Platform.OS === 'web' && { position: 'relative', zIndex: 99999 }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setExternalLinkModalVisible(false)}
         >
@@ -14180,7 +14207,7 @@ function App() {
         visible={deleteConfirmModalVisible}
         onRequestClose={() => setDeleteConfirmModalVisible(false)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setDeleteConfirmModalVisible(false)}
         >
@@ -14703,7 +14730,7 @@ function App() {
                 <View style={{ marginBottom: 12 }}>
                   {getPasswordRequirements(newPassword).map((req) => (
                     <View key={req.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                      {req.met ? <CheckIconSVG /> : <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: theme.border }} />}
+                      {req.met ? <CheckIconSVG color="#10B981" /> : <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: theme.border }} />}
                       <Text style={{ color: req.met ? '#4ADE80' : theme.textSecondary, fontSize: 12 }}>{req.label}</Text>
                     </View>
                   ))}
@@ -14760,7 +14787,7 @@ function App() {
         visible={logoutConfirmModalVisible}
         onRequestClose={() => setLogoutConfirmModalVisible(false)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setLogoutConfirmModalVisible(false)}
         >
@@ -14848,7 +14875,7 @@ function App() {
         visible={deleteAccountModalVisible}
         onRequestClose={() => setDeleteAccountModalVisible(false)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setDeleteAccountModalVisible(false)}
         >
@@ -14925,7 +14952,7 @@ function App() {
         visible={accountSettingsDiscardWarningVisible}
         onRequestClose={() => setAccountSettingsDiscardWarningVisible(false)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setAccountSettingsDiscardWarningVisible(false)}
         >
@@ -14992,7 +15019,7 @@ function App() {
         visible={passwordPageDiscardWarningVisible}
         onRequestClose={() => setPasswordPageDiscardWarningVisible(false)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setPasswordPageDiscardWarningVisible(false)}
         >
@@ -15748,7 +15775,7 @@ function App() {
                     <Switch
                       value={feedbackNotifyEmail}
                       onValueChange={setFeedbackNotifyEmail}
-                      trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+                      trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                       thumbColor="#FFFFFF"
                     />
                   </View>
@@ -15836,7 +15863,7 @@ function App() {
         visible={feedbackSuccessModalVisible}
         onRequestClose={() => setFeedbackSuccessModalVisible(false)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setFeedbackSuccessModalVisible(false)}
         >
@@ -16081,7 +16108,7 @@ function App() {
         visible={donateSuccessModalVisible}
         onRequestClose={handleCloseDonateSuccess}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={handleCloseDonateSuccess}
         >
@@ -16362,7 +16389,7 @@ function App() {
                       <Switch
                         value={hideLikedPortfolios}
                         onValueChange={setHideLikedPortfolios}
-                        trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+                        trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                         thumbColor="#FFFFFF"
                       />
                     </View>
@@ -16385,7 +16412,7 @@ function App() {
                       <Switch
                         value={safeSearchEnabled}
                         onValueChange={handleSafeSearchToggle}
-                        trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+                        trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                         thumbColor="#FFFFFF"
                       />
                     </View>
@@ -16401,7 +16428,7 @@ function App() {
                       <Switch
                         value={excludeAiGeneratedContent}
                         onValueChange={setExcludeAiGeneratedContent}
-                        trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+                        trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                         thumbColor="#FFFFFF"
                       />
                     </View>
@@ -16716,7 +16743,7 @@ function App() {
                     <Switch
                       value={!tutorialsSkippedAll}
                       onValueChange={(v) => setTutorialsSkippedAll(!v)}
-                      trackColor={{ false: theme.border, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+                      trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                       thumbColor="#FFFFFF"
                     />
                   </View>
@@ -16750,7 +16777,7 @@ function App() {
         visible={allCategoriesModalVisible}
         onRequestClose={() => setAllCategoriesModalVisible(false)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setAllCategoriesModalVisible(false)}
         >
@@ -18195,7 +18222,7 @@ function App() {
                       <Switch
                         value={fIsNsfw}
                         onValueChange={setFIsNsfw}
-                        trackColor={{ false: theme.border, true: '#F59E0B' }}
+                        trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                         thumbColor="#FFFFFF"
                       />
                     </View>
@@ -18250,7 +18277,7 @@ function App() {
                             ? 'No selection'
                             : fIsAiGenerated
                               ? (selectedPortfolioType === 'illustration' ? 'This content is AI assisted' : 'This content is AI assisted/generated')
-                              : 'This content is NOT AI assisted/generated'}
+                              : (selectedPortfolioType === 'illustration' ? 'This content is NOT AI assisted' : 'This content is NOT AI assisted/generated')}
                         </Text>
                         <ChevronDownSVG color={theme.textSecondary} size={14} />
                       </BouncyButton>
@@ -18300,7 +18327,9 @@ function App() {
                               style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
                               onPress={() => { setFIsAiGenerated(false); setAiDisclosureDropdownOpen(false); }}
                             >
-                              <Text style={{ color: theme.text, fontSize: 13, fontWeight: fIsAiGenerated === false ? '700' : '500' }}>This content is NOT AI assisted/generated</Text>
+                              <Text style={{ color: theme.text, fontSize: 13, fontWeight: fIsAiGenerated === false ? '700' : '500' }}>
+                                {selectedPortfolioType === 'illustration' ? 'This content is NOT AI assisted' : 'This content is NOT AI assisted/generated'}
+                              </Text>
                             </BouncyButton>
                             </View>
                           </View>
@@ -18329,7 +18358,7 @@ function App() {
                       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)' }}>
                         <WarningTriangleSVG />
                         <Text style={{ color: theme.text, fontSize: 11.5, lineHeight: 16, flex: 1 }}>
-                          Fully AI-generated illustration work is not allowed on DECENT and will be removed immediately if identified. AI assistance (e.g. texture generation, pose reference) is fine as long as it's disclosed here.
+                          <Text style={{ fontWeight: '800' }}>Fully AI-generated illustration work</Text> is <Text style={{ fontWeight: '800' }}>NOT ALLOWED</Text> on DECENT and will be removed immediately if identified. AI assistance (e.g. texture generation, pose reference) is fine as long as it's disclosed properly.
                         </Text>
                       </View>
                     )}
@@ -18512,7 +18541,7 @@ function App() {
                     visible={categoryPickerModalVisible}
                     onRequestClose={() => setCategoryPickerModalVisible(false)}
                   >
-                    <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
+                    <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
                       onStartShouldSetResponder={() => Platform.OS === 'web'}
                       onResponderRelease={() => setCategoryPickerModalVisible(false)}
                     >
@@ -18574,6 +18603,26 @@ function App() {
 
                         {!categoryImportViewOpen && (
                         <View style={{ padding: 16, paddingBottom: 8 }}>
+                          {/* b588: moved above the search bar (was below),
+                              and the separator line that used to sit
+                              between this and "Selected: X/10" is gone -
+                              only renders when the user has at least one
+                              OTHER already-posted portfolio of this same
+                              type, see the fetch effect near
+                              selectedPortfolioType's declaration. */}
+                          {importCandidatePortfolios.length > 0 && (
+                            <BouncyButton
+                              style={{
+                                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                                marginBottom: 10
+                              }}
+                              onPress={() => setCategoryImportViewOpen(true)}
+                            >
+                              <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '600' }}>Copy tags from another portfolio</Text>
+                              <ChevronRightSVG color={theme.accent} size={14} />
+                            </BouncyButton>
+                          )}
+
                           <FocusableTextInput
                             style={styles.categorySearchInput}
                             placeholder="Search or add custom category/tag..."
@@ -18582,27 +18631,6 @@ function App() {
                             onChangeText={setCategorySearchQuery}
                             maxLength={40}
                           />
-
-                          {/* b567: only renders when the user has at least
-                              one OTHER already-posted portfolio of this
-                              same type - see the fetch effect near
-                              selectedPortfolioType's declaration. Text left,
-                              chevron pushed to the far right via
-                              justify-content (was grouped tight against the
-                              text before), separator line below to close
-                              off the section from the tag list underneath. */}
-                          {importCandidatePortfolios.length > 0 && (
-                            <BouncyButton
-                              style={{
-                                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                                marginTop: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: theme.border
-                              }}
-                              onPress={() => setCategoryImportViewOpen(true)}
-                            >
-                              <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '600' }}>Copy tags from another portfolio</Text>
-                              <ChevronRightSVG color={theme.accent} size={14} />
-                            </BouncyButton>
-                          )}
 
                           <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 10 }}>
                             Selected: {fCategories.length}/10 (minimum 3 required)
@@ -18797,7 +18825,7 @@ function App() {
                     <Switch
                       value={fDetailedDescriptionEnabled}
                       onValueChange={handleToggleDetailedDescription}
-                      trackColor={{ false: theme.border, true: '#8B5CF6' }}
+                      trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                       thumbColor="#FFFFFF"
                     />
                   </View>
@@ -21956,7 +21984,7 @@ function App() {
         visible={true}
         onRequestClose={() => setAppAlertConfig(null)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setAppAlertConfig(null)}
         >
@@ -22055,8 +22083,8 @@ function App() {
             and tall content scrolls instead of getting cut off. */}
         <ScrollView
           style={[
-            { flex: 1, backgroundColor: Platform.OS === 'web' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(11, 15, 23, 0.85)' },
-            Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' },
+            { flex: 1, backgroundColor: Platform.OS === 'web' ? 'rgba(0, 0, 0, 0.6)' : 'rgba(11, 15, 23, 0.85)' },
+            Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' },
             Platform.OS === 'web' && { position: 'relative', zIndex: 500 }
           ]}
           contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}
@@ -22339,7 +22367,7 @@ function App() {
         visible={true}
         onRequestClose={() => setUserListModalVisible(false)}
       >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.35)' }, Platform.OS === 'web' && { position: 'relative', zIndex: 500 }]}
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }, Platform.OS === 'web' && { position: 'relative', zIndex: 500 }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={() => setUserListModalVisible(false)}
         >
@@ -22719,7 +22747,7 @@ const getStyles = (theme, radiusScale = 1) => {
   confirmDeleteBtn: { flex: 1, backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#8B5CF6', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   confirmDeleteText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 
-  overlayModalBg: { flex: 1, backgroundColor: Platform.OS === 'web' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(11, 15, 23, 0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  overlayModalBg: { flex: 1, backgroundColor: Platform.OS === 'web' ? 'rgba(0, 0, 0, 0.6)' : 'rgba(11, 15, 23, 0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   overlayModalContainer: {
     backgroundColor: theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
     maxHeight: '85%', width: '100%', overflow: 'hidden',
