@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 581;
+const BUILD_NUMBER = 582;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -4101,7 +4101,6 @@ const hideScrollbarRefCallback = (isWebWide) => (instance) => {
 function App() {
   const { theme, themeMode, toggleTheme } = useTheme();
   const { lightweightMode, setLightweightMode } = useLightweightMode();
-  const styles = useMemo(() => getStyles(theme), [theme]);
   // Reused at every customConfirmCard usage (~18 call sites) - computed
   // once here rather than repeating the same ternary at each one. null in
   // default mode means the array-style override below is a no-op, leaving
@@ -4128,6 +4127,14 @@ function App() {
   const isWebTablet = Platform.OS === 'web' && viewportWidth >= 768 && viewportWidth < 1024;
   const isWebDesktop = Platform.OS === 'web' && viewportWidth >= 1024;
   const isWebWide = isWebTablet || isWebDesktop; // sidebar layout applies to both
+  // b582: styles must be declared AFTER isWebTablet/isWebDesktop above,
+  // not before - it needs radiusScale, which needs those breakpoint
+  // flags. Declaring it earlier (like every other file in this app used
+  // to) referenced them before their own useState/const lines ran in
+  // this same render pass - a real TDZ crash, the same bug class as the
+  // b567 site-wide crash earlier this session.
+  const radiusScale = isWebDesktop ? 0.6 : isWebTablet ? 0.75 : 1;
+  const styles = useMemo(() => getStyles(theme, radiusScale), [theme, radiusScale]);
   // Sidebar: collapsed = icon-only rail, expanded = icons + labels.
   // Defaults open on desktop (more room), collapsed on tablet (less room).
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -22351,7 +22358,22 @@ function App() {
   );
 }
 
-const getStyles = (theme) => StyleSheet.create({
+// b582: responsive corner radius for wide web only - tablet/desktop get
+// smaller (less rounded) corners than mobile/narrow web, matching
+// Iqbal's spec (tablet 75%, desktop 60%). Deliberately excludes anything
+// pill/circular: checked the real distribution of every borderRadius
+// value in this file and there's a clean natural gap - values 2 through
+// 28ish are genuine "corner radius" (cards, inputs, buttons), while 29
+// and up (29, 31, 32, 36, 40, 99, 999) are circular/pill shapes (avatars,
+// round icon buttons, pill buttons/tags). RADIUS_SCALE_CUTOFF encodes
+// that gap so this stays a single mechanical rule instead of hand-editing
+// ~250 individual declarations. Only touches the shared styles object
+// built here - ad-hoc inline borderRadius values written directly in
+// JSX elsewhere in the file are NOT covered by this (a separate, much
+// larger pass Iqbal deferred for later).
+const RADIUS_SCALE_CUTOFF = 29;
+const getStyles = (theme, radiusScale = 1) => {
+  const raw = StyleSheet.create({
   thumbnailContainerCompact: {
     height: 120,
     borderTopLeftRadius: 16,
@@ -22861,7 +22883,21 @@ const getStyles = (theme) => StyleSheet.create({
   caseBodyText: { color: theme.textSecondary, fontSize: 14, lineHeight: 22 },
   formGroupLabel: { fontSize: 13, fontWeight: '700', color: theme.text, marginBottom: 6, marginTop: 12 },
   formInput: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: theme.text, fontSize: 13 }
-});
+  });
+
+  if (radiusScale === 1) return raw;
+
+  const scaled = {};
+  for (const key in raw) {
+    const style = raw[key];
+    if (style && typeof style === 'object' && typeof style.borderRadius === 'number' && style.borderRadius < RADIUS_SCALE_CUTOFF) {
+      scaled[key] = { ...style, borderRadius: Math.round(style.borderRadius * radiusScale * 10) / 10 };
+    } else {
+      scaled[key] = style;
+    }
+  }
+  return scaled;
+};
 
 // SafeAreaProvider gives every SafeAreaView in the app access to real device
 // insets (status bar, camera cutout, gesture bar), which React Native's own
