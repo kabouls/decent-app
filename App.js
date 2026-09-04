@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 579;
+const BUILD_NUMBER = 580;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -6631,11 +6631,14 @@ function App() {
     if (error) console.warn('Notification cleanup failed:', error);
   };
 
+  // b580: notification_history is now a genuinely separate table (see the
+  // migration) - clearing history only ever touches that table, never the
+  // live `notifications` rows the bell dropdown reads.
   const clearAllNotificationHistory = async () => {
     if (!session) return;
     const previousList = notificationHistoryList;
     setNotificationHistoryList([]);
-    const { error } = await supabase.from('notifications').delete().eq('recipient_id', session.user.id);
+    const { error } = await supabase.from('notification_history').delete().eq('recipient_id', session.user.id);
     if (error) {
       console.warn('Failed to clear notification history:', error);
       setNotificationHistoryList(previousList);
@@ -6646,8 +6649,11 @@ function App() {
     }
   };
 
-  // Full notification history (Privacy > Notification History) - unlike the
-  // bell dropdown's capped list of 50, this paginates through everything.
+  // Full notification history (Privacy > Notification History) - unlike
+  // the bell dropdown's capped list of 50, this paginates through
+  // everything, and unlike the bell dropdown's rows (which get hard-
+  // deleted on dismiss/clear/30-day retention), history rows persist
+  // independently - see notification_history migration + trigger.
   const fetchNotificationHistory = async (reset) => {
     if (!session) return;
     if (reset) {
@@ -6655,8 +6661,8 @@ function App() {
       setNotificationHistoryHasMore(true);
     }
     const { data, error } = await supabase
-      .from('notifications')
-      .select('id, type, created_at, portfolio_id, is_read, actor:profiles!notifications_actor_id_fkey(id, name, avatar_url), portfolio:portfolios(title)')
+      .from('notification_history')
+      .select('id, type, created_at, portfolio_id, is_read, actor:profiles!notification_history_actor_id_fkey(id, name, avatar_url), portfolio:portfolios(title)')
       .eq('recipient_id', session.user.id)
       .order('created_at', { ascending: false })
       .range(0, NOTIFICATION_HISTORY_PAGE_SIZE - 1);
@@ -6674,8 +6680,8 @@ function App() {
     if (!session || notificationHistoryLoadingMore || !notificationHistoryHasMore) return;
     setNotificationHistoryLoadingMore(true);
     const { data, error } = await supabase
-      .from('notifications')
-      .select('id, type, created_at, portfolio_id, is_read, actor:profiles!notifications_actor_id_fkey(id, name, avatar_url), portfolio:portfolios(title)')
+      .from('notification_history')
+      .select('id, type, created_at, portfolio_id, is_read, actor:profiles!notification_history_actor_id_fkey(id, name, avatar_url), portfolio:portfolios(title)')
       .eq('recipient_id', session.user.id)
       .order('created_at', { ascending: false })
       .range(notificationHistoryList.length, notificationHistoryList.length + NOTIFICATION_HISTORY_PAGE_SIZE - 1);
