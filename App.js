@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 578;
+const BUILD_NUMBER = 579;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -19115,7 +19115,7 @@ function App() {
                     const showFigmaFields = fSoftwareUsed.length === 0 || fSoftwareUsed.includes('Figma');
                     return showFigmaFields ? (
                       <>
-                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginTop: 16 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 16 }}>
                           <Text style={[styles.formGroupLabel, Platform.OS === 'android' && { includeFontPadding: false }]}>Figma Mobile Prototype Share Link</Text>
                           {renderLinkFieldInfoButton('mobile')}
                         </View>
@@ -19128,7 +19128,7 @@ function App() {
                           onChangeText={setFFigmaProto}
                         />
 
-                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
                           <Text style={[styles.formGroupLabel, Platform.OS === 'android' && { includeFontPadding: false }]}>Figma Desktop Prototype Share Link</Text>
                           {renderLinkFieldInfoButton('desktop')}
                         </View>
@@ -19141,7 +19141,7 @@ function App() {
                           onChangeText={setFDesktopProto}
                         />
 
-                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
                           <Text style={[styles.formGroupLabel, Platform.OS === 'android' && { includeFontPadding: false }]}>Component Showcase Prototype Link</Text>
                           {renderLinkFieldInfoButton('component')}
                         </View>
@@ -19157,7 +19157,7 @@ function App() {
                           onChangeText={setFComponentProto}
                         />
 
-                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
                           <Text style={[styles.formGroupLabel, Platform.OS === 'android' && { includeFontPadding: false }]}>Figma Profile Link</Text>
                           {renderLinkFieldInfoButton('profile')}
                         </View>
@@ -19223,7 +19223,7 @@ function App() {
                       something specific to Figma the way the prototype
                       embed fields above are. Still the same fFigmaFile
                       state/DB column underneath - only the label changed. */}
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginTop: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 16 }}>
                     <Text style={[styles.formGroupLabel, Platform.OS === 'android' && { includeFontPadding: false }]}>Project Canvas Link (Public)</Text>
                     {renderLinkFieldInfoButton('canvas')}
                   </View>
