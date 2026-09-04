@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 586;
+const BUILD_NUMBER = 587;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -5673,6 +5673,15 @@ function App() {
   const [descEditorMode, setDescEditorMode] = useState('edit'); // 'edit' | 'preview'
   // Block editor state (WordPress-style text/image/row blocks for the case study)
   const [fContentBlocks, setFContentBlocks] = useState([]);
+  // b587: master on/off for the whole Detailed Description feature - off
+  // means the block editor section doesn't render at all, and whatever
+  // is in fContentBlocks/fLongDescription is excluded from the save
+  // payload regardless of whether it's actually filled in (see the
+  // finalContentBlocks/flattenedDescription gating near the save
+  // handler). Defaults false for a brand new portfolio; seeded true on
+  // edit only if the portfolio already has real content blocks or a
+  // long description - see the proj-loading effect.
+  const [fDetailedDescriptionEnabled, setFDetailedDescriptionEnabled] = useState(false);
   const [blockSelections, setBlockSelections] = useState({}); // per-block text selection, keyed by block id or `${rowId}:${colIdx}`
   // Typed/tapped block order (main blocks only, not row columns)
   const [orderInputDrafts, setOrderInputDrafts] = useState({}); // block id -> in-progress typed order text
@@ -9348,6 +9357,9 @@ function App() {
         ? proj.contentBlocks
         : wrapMarkdownAsBlocks(proj.longDescription || '')
     );
+    setFDetailedDescriptionEnabled(
+      (Array.isArray(proj.contentBlocks) && proj.contentBlocks.length > 0) || !!(proj.longDescription && proj.longDescription.trim())
+    );
     setFFigmaProto(proj.figmaProto || '');
     setFDesktopProto(proj.desktopProto || '');
     setFComponentProto(proj.componentProto || '');
@@ -9861,8 +9873,14 @@ function App() {
 
     // Upload any freshly-picked local images inside the block editor
     // (standalone image blocks and row-column images) before saving.
-    const finalContentBlocks = await uploadContentBlockImages(fContentBlocks);
-    const flattenedDescription = flattenBlocksToMarkdown(finalContentBlocks) || fLongDescription;
+    // b587: if the toggle is off, nothing from the block editor gets
+    // saved - even if fContentBlocks/fLongDescription still has real
+    // content sitting in them (e.g. the person filled it in, then
+    // switched the toggle off without clearing it). Skipping the upload
+    // step entirely when disabled also avoids uploading images nobody's
+    // going to see.
+    const finalContentBlocks = fDetailedDescriptionEnabled ? await uploadContentBlockImages(fContentBlocks) : [];
+    const flattenedDescription = fDetailedDescriptionEnabled ? (flattenBlocksToMarkdown(finalContentBlocks) || fLongDescription) : '';
 
     if (!editingProjectId && session) {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -10283,6 +10301,34 @@ function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, [performBackNavigation]);
 
+  // b587: whether the block editor actually has anything worth warning
+  // about before letting the toggle turn off - a lone empty text block
+  // (the default state right after tapping "Start Editing") shouldn't
+  // trigger a confirmation, only genuinely typed text, a picked image, or
+  // a filled row column should. Checks both top-level blocks and each
+  // row block's own columns (which are themselves block-shaped).
+  const blockHasRealContent = (b) => {
+    if (!b) return false;
+    if (b.type === 'text') return !!(b.markdown && b.markdown.trim());
+    if (b.type === 'image') return !!b.uri;
+    if (b.type === 'row') return Array.isArray(b.columns) && b.columns.some(blockHasRealContent);
+    return false;
+  };
+  const handleToggleDetailedDescription = (value) => {
+    if (!value && fContentBlocks.some(blockHasRealContent)) {
+      showAppAlert(
+        'Detailed Description Filled',
+        "You've already written content in the block editor. Turning this off means it won't be included in your portfolio. Continue?",
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Turn Off', style: 'destructive', onPress: () => setFDetailedDescriptionEnabled(false) }
+        ]
+      );
+      return;
+    }
+    setFDetailedDescriptionEnabled(value);
+  };
+
   const resetFormWizard = () => {
     setEditingProjectId(null);
     setFormStep(1);
@@ -10296,6 +10342,7 @@ function App() {
     setFBrief('');
     setFLongDescription('');
     setFContentBlocks([]);
+    setFDetailedDescriptionEnabled(false);
     setBlockSelections({});
     setFCategories([]);
     setFIsNsfw(false);
@@ -18745,42 +18792,54 @@ function App() {
                   />
                   {errors.fBrief ? <Text style={styles.errorText}>{errors.fBrief}</Text> : null}
 
-                  <Text style={styles.formGroupLabel}>Detailed Description (Optional)</Text>
-                  <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={[styles.formGroupLabel, { marginBottom: 0 }]}>Detailed Description (Optional)</Text>
+                    <Switch
+                      value={fDetailedDescriptionEnabled}
+                      onValueChange={handleToggleDetailedDescription}
+                      trackColor={{ false: theme.border, true: '#8B5CF6' }}
+                      thumbColor="#FFFFFF"
+                    />
+                  </View>
+                  <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 8, marginTop: 4 }}>
                     Build your case study from text, image, and side-by-side row blocks.
                   </Text>
 
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <Text style={[styles.formGroupLabel, { marginBottom: 0 }]}>Preview</Text>
-                    {fContentBlocks.length > 0 && (
-                      <BouncyButton
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 6,
-                          paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8,
-                          backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
-                        }}
-                        onPress={() => setFullscreenDescEditorVisible(true)}
-                      >
-                        <EditIconSVG color="#FFFFFF" />
-                        <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Edit</Text>
-                      </BouncyButton>
-                    )}
-                  </View>
-
-                  <View style={[styles.formInput, { minHeight: 60, height: 'auto', paddingVertical: 10, borderRadius: 12 }]}>
-                    {fContentBlocks.length > 0 ? (
-                      renderContentBlocks(fContentBlocks, undefined, theme)
-                    ) : (
-                      <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 12 }}>
-                        <BouncyButton
-                          style={{ backgroundColor: '#8B5CF6', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 99 }}
-                          onPress={() => setFullscreenDescEditorVisible(true)}
-                        >
-                          <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Start Editing</Text>
-                        </BouncyButton>
+                  {fDetailedDescriptionEnabled && (
+                    <>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={[styles.formGroupLabel, { marginBottom: 0 }]}>Preview</Text>
+                        {fContentBlocks.length > 0 && (
+                          <BouncyButton
+                            style={{
+                              flexDirection: 'row', alignItems: 'center', gap: 6,
+                              paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8,
+                              backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                            }}
+                            onPress={() => setFullscreenDescEditorVisible(true)}
+                          >
+                            <EditIconSVG color="#FFFFFF" />
+                            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Edit</Text>
+                          </BouncyButton>
+                        )}
                       </View>
-                    )}
-                  </View>
+
+                      <View style={[styles.formInput, { minHeight: 60, height: 'auto', paddingVertical: 10, borderRadius: 12 }]}>
+                        {fContentBlocks.length > 0 ? (
+                          renderContentBlocks(fContentBlocks, undefined, theme)
+                        ) : (
+                          <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 12 }}>
+                            <BouncyButton
+                              style={{ backgroundColor: '#8B5CF6', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 99 }}
+                              onPress={() => setFullscreenDescEditorVisible(true)}
+                            >
+                              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Start Editing</Text>
+                            </BouncyButton>
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
                 </View>
               )}
 
