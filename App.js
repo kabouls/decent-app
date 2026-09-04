@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 585;
+const BUILD_NUMBER = 586;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -22957,8 +22957,28 @@ const getStyles = (theme, radiusScale = 1) => {
   const scaled = {};
   for (const key in raw) {
     const style = raw[key];
-    if (style && typeof style === 'object' && typeof style.borderRadius === 'number' && style.borderRadius < RADIUS_SCALE_CUTOFF) {
-      scaled[key] = { ...style, borderRadius: Math.round(style.borderRadius * radiusScale * 10) / 10 };
+    if (style && typeof style === 'object' && typeof style.borderRadius === 'number') {
+      // b586: RADIUS_SCALE_CUTOFF alone wasn't enough - it correctly
+      // excludes big flat pill/circle numbers (99, 999) but missed
+      // "properly circular" elements whose raw borderRadius happens to
+      // be small just because the element itself is small (e.g. a 48px
+      // avatar with borderRadius:24 - exactly half its width, a genuine
+      // circle - but 24 is under the 29 cutoff, so b582 was quietly
+      // squishing it into an oval on wide web). The real test for
+      // "circular" isn't the raw number, it's whether the radius is
+      // already at least half of the element's own width/height -
+      // adding that check here caught 8 real cases: unreadRedBadgeDot,
+      // notifAvatar, notifTypeIconBox, confirmIconCircle,
+      // successIconCircle, designerAvatar, designerListAvatar (the one
+      // actually reported), and designerAvatarModal.
+      const isCircular =
+        style.borderRadius >= RADIUS_SCALE_CUTOFF ||
+        (typeof style.width === 'number' && typeof style.height === 'number' && style.borderRadius >= Math.min(style.width, style.height) / 2);
+      if (!isCircular) {
+        scaled[key] = { ...style, borderRadius: Math.round(style.borderRadius * radiusScale * 10) / 10 };
+      } else {
+        scaled[key] = style;
+      }
     } else {
       scaled[key] = style;
     }
