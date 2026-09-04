@@ -136,7 +136,13 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 561;
+const BUILD_NUMBER = 562;
+// Explicit column list for reading profiles - excludes push_token, which
+// anon/authenticated no longer have SELECT on at the DB level (b562:
+// column-level grant lockdown, see get_my_push_token() RPC for the one
+// legitimate self-read exception). Any new broad profiles read should use
+// this instead of select('*') or it will error at the DB level.
+const PROFILE_SAFE_COLUMNS = 'id, name, role, location, bio, avatar_url, email, created_at, is_admin, handle, handle_changed_at, links, updated_at, onboarding_completed, last_active_at, last_platform, last_app_version, is_banned, suspended_until, has_password_auth';
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -5659,14 +5665,25 @@ function App() {
   // assuming success.
   const sendPushNotification = async (recipientId, title, body, checkReceipt = false) => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('push_token')
-        .eq('id', recipientId)
-        .maybeSingle();
+      // b562: push_token is no longer readable via a direct profiles select
+      // (anon/authenticated had SELECT revoked at the column level - see
+      // get_my_push_token() SQL function). This RPC only ever returns the
+      // CALLING user's own token via auth.uid(), regardless of recipientId.
+      // Currently sendPushNotification() is only ever invoked with
+      // recipientId === session.user.id (the owner-only test-notification
+      // button) so this is safe as-is - but if this function is ever wired
+      // up to send to OTHER users, this client-side lookup won't work for
+      // that anymore and the send needs to move server-side (e.g. the
+      // send-push Edge Function, which uses the service_role key and isn't
+      // subject to this restriction).
+      if (recipientId !== (session && session.user && session.user.id)) {
+        return { ok: false, reason: 'Client-side push send is only supported for your own account. Sending to another user requires the server-side send-push function.' };
+      }
+      const { data: pushToken, error } = await supabase.rpc('get_my_push_token');
 
       if (error) return { ok: false, reason: 'Could not look up recipient profile.' };
-      if (!data || !data.push_token) return { ok: false, reason: 'This account has no push token registered yet. Make sure notification permission was granted and you are on a real build, not Expo Go.' };
+      if (!pushToken) return { ok: false, reason: 'This account has no push token registered yet. Make sure notification permission was granted and you are on a real build, not Expo Go.' };
+      const data = { push_token: pushToken };
 
       const response = await fetch('https://exp.host/--/api/v2/push/send', {
         method: 'POST',
@@ -6136,7 +6153,7 @@ function App() {
     // everyone; only the session-specific pieces (excluding your own
     // profile, your follow counts, who follows you) are conditional.
     (async () => {
-      let profileQuery = supabase.from('profiles').select('*').neq('name', '');
+      let profileQuery = supabase.from('profiles').select(PROFILE_SAFE_COLUMNS).neq('name', '');
       if (session) profileQuery = profileQuery.neq('id', session.user.id);
       const { data: profileRows } = await profileQuery;
 
@@ -6642,7 +6659,7 @@ function App() {
 
         const { data: cloudProfile, error: profileFetchError } = await supabase
           .from('profiles')
-          .select('*')
+          .select(PROFILE_SAFE_COLUMNS)
           .eq('id', uid)
           .maybeSingle();
 
@@ -7627,7 +7644,7 @@ function App() {
     const uid = session.user.id;
 
     const [profileRes, portfoliosRes, likesRes, followsRes] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
+      supabase.from('profiles').select(PROFILE_SAFE_COLUMNS).eq('id', uid).maybeSingle(),
       supabase.from('portfolios').select('*').eq('user_id', uid),
       supabase.from('likes').select('portfolio_id').eq('user_id', uid),
       supabase.from('follows').select('following_id').eq('follower_id', uid)
@@ -10408,7 +10425,7 @@ function App() {
         })(),
         supabase
           .from('profiles')
-          .select('*')
+          .select(PROFILE_SAFE_COLUMNS)
           .or(`name.ilike.%${q}%,role.ilike.%${q}%,location.ilike.%${q}%,handle.ilike.%${q}%`)
           .neq('name', '')
           .limit(30),
@@ -10470,7 +10487,7 @@ function App() {
         if (tagOwnerIds.length > 0) {
           const { data: tagOwnerProfiles } = await supabase
             .from('profiles')
-            .select('*')
+            .select(PROFILE_SAFE_COLUMNS)
             .in('id', tagOwnerIds);
           if (tagOwnerProfiles) {
             tagOwnerProfiles.forEach((p) => {
