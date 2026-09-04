@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 584;
+const BUILD_NUMBER = 585;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -6136,7 +6136,19 @@ function App() {
         setAboutModalVisible(false);
         setPrivacyModalVisible(false);
         setTermsModalVisible(false);
-        setReportsModalVisible(false);
+        // b585: was setReportsModalVisible(false) - that setter was never
+        // declared anywhere in this component (the report modal got
+        // renamed to portfolioReportModalVisible at some point, and every
+        // other reference was updated except this one). Calling an
+        // undeclared setter threw a ReferenceError here on every login/
+        // logout, which - since JS execution stops at the throwing line -
+        // silently skipped every reset call AFTER this one in this same
+        // block (disableSafeSearchModalVisible, adminPasswordModalVisible,
+        // feedbackModalVisible, donateModalVisible, and more below).
+        // Caught via Sentry in production (b0.3.0/build 1) before this fix.
+        setPortfolioReportModalVisible(false);
+        setPortfolioReportSelectedReason(null);
+        setPortfolioReportOtherText('');
         setDisableSafeSearchModalVisible(false);
         setAdminPasswordModalVisible(false);
         setFeedbackModalVisible(false);
