@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 582;
+const BUILD_NUMBER = 583;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -278,8 +278,6 @@ const USER_PROFILE_KEY = '@user_profile_v1';
 const ONBOARDING_KEY = '@onboarding_done_v1';
 const INTRO_SEEN_KEY = '@intro_carousel_seen_v1';
 const CIRCLE_LAST_SEEN_KEY = '@circle_last_seen_v1';
-
-const RESPONSIVE_PROFILE_CARD_WIDTH = (SCREEN_WIDTH - 40 - 16) / 2;
 
 // Row(2-up) block images default to roughly a square footprint (matching
 // the column's own width), and the text side of a row matches that same
