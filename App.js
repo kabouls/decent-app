@@ -41,6 +41,7 @@ import {
   Easing
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
+import { useFonts, MPLUSU_400Regular, MPLUSU_500Medium, MPLUSU_700Bold } from '@expo-google-fonts/m-plus-u';
 import { WebView as NativeWebView } from 'react-native-webview';
 import { KeyboardAwareScrollView as NativeKeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import Svg, { Rect, Path, Circle, G, Defs, LinearGradient, Stop } from 'react-native-svg';
@@ -61,6 +62,43 @@ import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
 import * as ExpoLinking from 'expo-linking';
 import * as MediaLibrary from 'expo-media-library';
+
+// b589: global custom font (M PLUS U, Regular/Medium/Bold) - applied by
+// patching Text.render/TextInput.render themselves rather than touching
+// every individual Text usage in this file (there are hundreds, nearly
+// all with their own explicit `style` prop already, which is exactly why
+// the usual Text.defaultProps.style trick doesn't work here - defaultProps
+// only fills in when a prop is entirely omitted, and virtually every Text
+// in this file already passes one). This clones whatever element the
+// original render produced and appends a font override to its style
+// array, so it always wins over anything already set, without changing
+// how any existing style prop is written throughout the file.
+//
+// These are 3 separate static font FILES (not one variable font), so a
+// numeric fontWeight in the original style can't just be handed to the
+// OS to render bold/medium itself the way a system font would - each
+// weight needs its own distinct fontFamily name, and the numeric
+// fontWeight then needs to be reset to 'normal' afterward, or some
+// platforms will try to synthetically re-bold an already-bold font file
+// on top of itself. pickMPLUSUFamily reads whatever fontWeight the
+// original style already specifies (defaulting to 400/Regular when none
+// is set) and maps it to the closest of the 3 loaded weights.
+function pickMPLUSUFamily(fontWeight) {
+  const w = typeof fontWeight === 'string' ? parseInt(fontWeight, 10) : (fontWeight || 400);
+  if (w >= 700) return 'MPLUSU_700Bold';
+  if (w >= 500) return 'MPLUSU_500Medium';
+  return 'MPLUSU_400Regular';
+}
+[Text, TextInput].forEach((Component) => {
+  const originalRender = Component.render;
+  Component.render = function patchedRender(...args) {
+    const originalElement = originalRender.apply(this, args);
+    const flatStyle = StyleSheet.flatten(originalElement.props.style) || {};
+    return React.cloneElement(originalElement, {
+      style: [originalElement.props.style, { fontFamily: pickMPLUSUFamily(flatStyle.fontWeight), fontWeight: 'normal' }]
+    });
+  };
+});
 
 // KeyboardAwareScrollView is a mobile-only concept (compensating for a
 // virtual keyboard covering content). On web there's no virtual keyboard to
@@ -136,7 +174,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 588;
+const BUILD_NUMBER = 589;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -23076,11 +23114,21 @@ const getStyles = (theme, radiusScale = 1) => {
 // SafeAreaProvider gives every SafeAreaView in the app access to real device
 // insets (status bar, camera cutout, gesture bar), which React Native's own
 // built-in SafeAreaView doesn't provide on Android.
-const AppWithSafeArea = () => (
-  <SafeAreaProvider>
-    <App />
-  </SafeAreaProvider>
-);
+// b589: gates the whole app behind the 3 M PLUS U weights actually
+// loading first, so there's no flash of the platform default font
+// before swapping to the custom one. Returns null very briefly rather
+// than a spinner - this resolves fast (bundled local font files, not a
+// network fetch) and a flash of blank is less jarring than a flash of
+// wrong-font text that then visibly re-renders.
+const AppWithSafeArea = () => {
+  const [fontsLoaded] = useFonts({ MPLUSU_400Regular, MPLUSU_500Medium, MPLUSU_700Bold });
+  if (!fontsLoaded) return null;
+  return (
+    <SafeAreaProvider>
+      <App />
+    </SafeAreaProvider>
+  );
+};
 
 // Error boundaries must be class components - React doesn't support this
 // with hooks. Catches any render crash, reports it to Sentry automatically
