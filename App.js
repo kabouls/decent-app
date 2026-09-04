@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 583;
+const BUILD_NUMBER = 584;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3365,7 +3365,18 @@ function AuthScreen({ onCancel } = {}) {
     setLoading(true);
 
     if (mode === 'signup') {
-      const { error } = await supabase.auth.signUp({ email: emailOrHandle.trim(), password });
+      // b584: emailRedirectTo points at our own branded confirmation
+      // landing page (see /verify route in App()'s handleIncomingRoute)
+      // instead of Supabase's generic default. Works identically on
+      // mobile web and desktop web - the confirmation link in the email
+      // is always a plain https:// URL (email clients are unreliable
+      // about custom app URL schemes like decent://), so it just opens
+      // the website, which is the full app experience anyway.
+      const { error } = await supabase.auth.signUp({
+        email: emailOrHandle.trim(),
+        password,
+        options: { emailRedirectTo: 'https://www.decent.ink/verify' }
+      });
       setLoading(false);
       if (error) {
         showAppAlert('Error', error.message);
@@ -4486,6 +4497,10 @@ function App() {
   // Settings Secondary Modals
   const [aboutModalVisible, setAboutModalVisible] = useState(false);
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
+  // b584: shown after tapping the confirmation link in a signup email -
+  // see the /verify branch in handleIncomingRoute and the modal itself
+  // near the privacy policy modal below.
+  const [emailVerifiedModalVisible, setEmailVerifiedModalVisible] = useState(false);
   const [changelogModalVisible, setChangelogModalVisible] = useState(false);
   const [changelogEntries, setChangelogEntries] = useState([]);
   const [changelogLoading, setChangelogLoading] = useState(false);
@@ -8916,6 +8931,14 @@ function App() {
     // this only adds a direct route to them, not new UI.
     if (path === '/privacy') {
       setPrivacyModalVisible(true);
+      return;
+    }
+    // b584: Supabase already verifies the email server-side before
+    // redirecting here (see emailRedirectTo in AuthScreen's signUp call)
+    // - by the time this route fires, there's nothing left to verify,
+    // this is purely a "you're confirmed" landing screen.
+    if (path === '/verify') {
+      setEmailVerifiedModalVisible(true);
       return;
     }
     if (path === '/delete-account') {
@@ -15141,6 +15164,40 @@ function App() {
           </SafeAreaView>
         </View>
       </Modal>
+
+      {/* b584: post-signup-confirmation landing screen - logo, simple
+          message, one button. Conditionally mounted (not toggle-visible)
+          per this file's own documented modal-stacking fix, since it's a
+          brand new modal. */}
+      {emailVerifiedModalVisible && (
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={true}
+          onRequestClose={() => setEmailVerifiedModalVisible(false)}
+        >
+          <View style={[styles.overlayModalBg, { justifyContent: 'center', paddingHorizontal: 16 }]}>
+            <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }, { alignItems: 'center', paddingVertical: 36 }]}>
+              <DecentLogoSVG size={44} />
+              <Text style={[styles.confirmTitle, { marginTop: 20, textAlign: 'center' }]}>You're Verified!</Text>
+              <Text style={[styles.confirmSubText, { textAlign: 'center', marginTop: 8 }]}>
+                Your email has been confirmed. You're all set to start exploring DECENT.
+              </Text>
+              <BouncyButton
+                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 20, backgroundColor: theme.accent }]}
+                onPress={() => {
+                  setEmailVerifiedModalVisible(false);
+                  if (Platform.OS === 'web') {
+                    window.history.replaceState({}, document.title, '/for-you');
+                  }
+                }}
+              >
+                <Text style={styles.confirmDeleteText}>Continue to DECENT</Text>
+              </BouncyButton>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* PRIVACY POLICY - WHITE THEME FOR READABILITY */}
       <Modal
