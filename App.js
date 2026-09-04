@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 566;
+const BUILD_NUMBER = 567;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -5575,77 +5575,17 @@ function App() {
   const [linkFieldInfoKey, setLinkFieldInfoKey] = useState(null);
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [categoryPickerModalVisible, setCategoryPickerModalVisible] = useState(false);
-  // b566: "Copy tags from another portfolio" - swaps the body of the same
-  // Categories & Tags modal to a second view (categoryImportViewOpen) with
-  // a chevron-left back button, rather than stacking a new Modal on top -
-  // avoids the nested-touchable/z-index bugs this file has hit before,
-  // and keeps the whole flow inside one modal frame. Candidates are the
-  // user's own OTHER (excludes editingProjectId, so you can't "import"
-  // from the very portfolio you're currently editing) portfolios of the
-  // SAME portfolio_type only, since tags are type-scoped - fetched fresh
-  // whenever the modal opens rather than trusting whatever's already in
-  // the general feed state (which may not include every one of the
-  // user's own portfolios due to pagination).
+  // b566: "Copy tags from another portfolio" state lives here; the
+  // useEffect/handlers that actually REFERENCE selectedPortfolioType are
+  // declared further down, right after selectedPortfolioType's own
+  // useState line (same TDZ reasoning as masterCategoriesList below it -
+  // see that block's comment). Declaring the state up here but the logic
+  // that closes over selectedPortfolioType down there avoids a repeat of
+  // that exact crash class.
   const [categoryImportViewOpen, setCategoryImportViewOpen] = useState(false);
   const [importCandidatePortfolios, setImportCandidatePortfolios] = useState([]);
   const [importCandidatesLoading, setImportCandidatesLoading] = useState(false);
   const [selectedImportPortfolioIds, setSelectedImportPortfolioIds] = useState(new Set());
-  useEffect(() => {
-    if (!categoryPickerModalVisible || !session) {
-      setImportCandidatePortfolios([]);
-      return;
-    }
-    (async () => {
-      setImportCandidatesLoading(true);
-      let q = supabase
-        .from('portfolios')
-        .select('id, title, categories')
-        .eq('user_id', session.user.id)
-        .eq('portfolio_type', selectedPortfolioType);
-      if (editingProjectId) q = q.neq('id', editingProjectId);
-      const { data, error } = await q;
-      if (!error && data) setImportCandidatePortfolios(data);
-      else setImportCandidatePortfolios([]);
-      setImportCandidatesLoading(false);
-    })();
-  }, [categoryPickerModalVisible, selectedPortfolioType, session, editingProjectId]);
-  const toggleImportPortfolioSelection = (id) => {
-    setSelectedImportPortfolioIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-  const handleConfirmImportTags = () => {
-    const tagsToImport = new Set();
-    importCandidatePortfolios
-      .filter((p) => selectedImportPortfolioIds.has(p.id))
-      .forEach((p) => (p.categories || []).forEach((c) => tagsToImport.add(c)));
-
-    // Only genuinely new tags count against the cap/count - one already
-    // selected doesn't need "room" a second time, and de-duping this way
-    // (case-insensitive against fCategories) is also what keeps two
-    // selected portfolios that happen to share a tag from causing any
-    // kind of duplicate/error - the Set above already collapses exact
-    // dupes across portfolios, and this filter collapses against what's
-    // already selected.
-    const newTags = Array.from(tagsToImport).filter(
-      (t) => !fCategories.some((c) => c.toLowerCase() === t.toLowerCase())
-    );
-
-    if (fCategories.length + newTags.length > 10) {
-      showAppAlert(
-        'Too Many Tags',
-        `Importing these would bring you to ${fCategories.length + newTags.length} tags, but the max is 10. Deselect a portfolio or two, or remove some of your current tags first.`
-      );
-      return;
-    }
-
-    setFCategories([...fCategories, ...newTags]);
-    setSelectedImportPortfolioIds(new Set());
-    setCategoryImportViewOpen(false);
-    showToast(`Imported ${newTags.length} tag${newTags.length === 1 ? '' : 's'}.`);
-  };
   // Custom tags (user-typed, not in any base list) are global across every
   // portfolio type, unchanged from before - kept separate from the base
   // list here specifically so switching selectedPortfolioType can swap
@@ -10264,6 +10204,78 @@ function App() {
       .filter((name) => !baseLower.has(name.toLowerCase()));
     return additions.length > 0 ? [...base, ...additions].sort() : base;
   }, [selectedPortfolioType, customCategoriesList]);
+  // b566: "Copy tags from another portfolio" - the useEffect/handlers here
+  // reference selectedPortfolioType, so this must sit AFTER its useState
+  // line above (same TDZ reasoning masterCategoriesList's own comment
+  // already documents) - moved here after an earlier version of this
+  // block crashed the whole app on load by sitting too early, near
+  // categoryPickerModalVisible's declaration, before selectedPortfolioType
+  // existed yet in that render pass. Swaps the body of the same
+  // Categories & Tags modal to a second view (categoryImportViewOpen) with
+  // a chevron-left back button, rather than stacking a new Modal on top -
+  // avoids the nested-touchable/z-index bugs this file has hit before.
+  // Candidates are the user's own OTHER (excludes editingProjectId, so you
+  // can't "import" from the very portfolio you're currently editing)
+  // portfolios of the SAME portfolio_type only, since tags are
+  // type-scoped - fetched fresh whenever the modal opens rather than
+  // trusting whatever's already in the general feed state (which may not
+  // include every one of the user's own portfolios due to pagination).
+  useEffect(() => {
+    if (!categoryPickerModalVisible || !session) {
+      setImportCandidatePortfolios([]);
+      return;
+    }
+    (async () => {
+      setImportCandidatesLoading(true);
+      let q = supabase
+        .from('portfolios')
+        .select('id, title, categories')
+        .eq('user_id', session.user.id)
+        .eq('portfolio_type', selectedPortfolioType);
+      if (editingProjectId) q = q.neq('id', editingProjectId);
+      const { data, error } = await q;
+      if (!error && data) setImportCandidatePortfolios(data);
+      else setImportCandidatePortfolios([]);
+      setImportCandidatesLoading(false);
+    })();
+  }, [categoryPickerModalVisible, selectedPortfolioType, session, editingProjectId]);
+  const toggleImportPortfolioSelection = (id) => {
+    setSelectedImportPortfolioIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const handleConfirmImportTags = () => {
+    const tagsToImport = new Set();
+    importCandidatePortfolios
+      .filter((p) => selectedImportPortfolioIds.has(p.id))
+      .forEach((p) => (p.categories || []).forEach((c) => tagsToImport.add(c)));
+
+    // Only genuinely new tags count against the cap/count - one already
+    // selected doesn't need "room" a second time, and de-duping this way
+    // (case-insensitive against fCategories) is also what keeps two
+    // selected portfolios that happen to share a tag from causing any
+    // kind of duplicate/error - the Set above already collapses exact
+    // dupes across portfolios, and this filter collapses against what's
+    // already selected.
+    const newTags = Array.from(tagsToImport).filter(
+      (t) => !fCategories.some((c) => c.toLowerCase() === t.toLowerCase())
+    );
+
+    if (fCategories.length + newTags.length > 10) {
+      showAppAlert(
+        'Too Many Tags',
+        `Importing these would bring you to ${fCategories.length + newTags.length} tags, but the max is 10. Deselect a portfolio or two, or remove some of your current tags first.`
+      );
+      return;
+    }
+
+    setFCategories([...fCategories, ...newTags]);
+    setSelectedImportPortfolioIds(new Set());
+    setCategoryImportViewOpen(false);
+    showToast(`Imported ${newTags.length} tag${newTags.length === 1 ? '' : 's'}.`);
+  };
   const [myFeatureInterests, setMyFeatureInterests] = useState(new Set());
   const [interestConfirmTarget, setInterestConfirmTarget] = useState(null); // feature_name string, or null if no confirm popup showing
   const [interestConfirmMode, setInterestConfirmMode] = useState('add'); // 'add' | 'remove' - which action interestConfirmTarget is for
