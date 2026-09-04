@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 580;
+const BUILD_NUMBER = 581;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -4334,6 +4334,13 @@ function App() {
   };
 
   const [followedDesigners, setFollowedDesigners] = useState([]);
+  // b581: "Notify" - per-designer opt-in for a notification when that
+  // designer posts a new portfolio, like a YouTube channel bell. Array of
+  // designer ids (subscriber = current user), fetched fresh on
+  // session load - source of truth is post_notification_subscriptions,
+  // a separate table from follows (auto-cleaned up by a DB trigger on
+  // unfollow, but not the reverse - subscribing doesn't touch follows).
+  const [postNotifySubscriptions, setPostNotifySubscriptions] = useState([]);
   const followedDesignersRef = useRef(followedDesigners);
   useEffect(() => { followedDesignersRef.current = followedDesigners; }, [followedDesigners]);
   const [liveDesigners, setLiveDesigners] = useState([]);
@@ -4495,6 +4502,8 @@ function App() {
   // Options as a popup in the same way.
   const [returnToOptionsOnClose, setReturnToOptionsOnClose] = useState(false);
   const [blockedUsersList, setBlockedUsersList] = useState([]);
+  const [postNotifyList, setPostNotifyList] = useState([]);
+  const [postNotifyListLoading, setPostNotifyListLoading] = useState(false);
 
   // Feedback & Support Modal
   const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
@@ -6606,7 +6615,12 @@ function App() {
     user: n.type === 'create_password' ? 'DECENT' : (n.actor ? n.actor.name : 'Someone'),
     actorId: n.actor ? n.actor.id : null,
     portfolioId: n.portfolio_id || null,
-    action: n.type === 'like' ? 'liked your portfolio package' : n.type === 'follow' ? 'started following your profile' : n.type === 'create_password' ? 'reminder: add a password to your account so you can still sign in if Google ever isn\'t available' : 'sent you a notification',
+    // b581: new_post carries batch_count (>1 when a designer posted more
+    // than once within the batching window - see the trigger's 30-minute
+    // rule) - text reflects that instead of always saying "a new
+    // portfolio", and always points at the MOST RECENT post in the batch
+    // (portfolio_id gets overwritten to the latest on each bump).
+    action: n.type === 'like' ? 'liked your portfolio package' : n.type === 'follow' ? 'started following your profile' : n.type === 'create_password' ? 'reminder: add a password to your account so you can still sign in if Google ever isn\'t available' : n.type === 'new_post' ? (n.batch_count > 1 ? `posted ${n.batch_count} new portfolios` : 'posted a new portfolio') : 'sent you a notification',
     target: n.portfolio ? n.portfolio.title : '',
     time: formatRelativeTime(n.created_at),
     avatar: (n.actor && n.actor.avatar_url) || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
@@ -6662,7 +6676,7 @@ function App() {
     }
     const { data, error } = await supabase
       .from('notification_history')
-      .select('id, type, created_at, portfolio_id, is_read, actor:profiles!notification_history_actor_id_fkey(id, name, avatar_url), portfolio:portfolios(title)')
+      .select('id, type, created_at, portfolio_id, is_read, batch_count, actor:profiles!notification_history_actor_id_fkey(id, name, avatar_url), portfolio:portfolios(title)')
       .eq('recipient_id', session.user.id)
       .order('created_at', { ascending: false })
       .range(0, NOTIFICATION_HISTORY_PAGE_SIZE - 1);
@@ -6681,7 +6695,7 @@ function App() {
     setNotificationHistoryLoadingMore(true);
     const { data, error } = await supabase
       .from('notification_history')
-      .select('id, type, created_at, portfolio_id, is_read, actor:profiles!notification_history_actor_id_fkey(id, name, avatar_url), portfolio:portfolios(title)')
+      .select('id, type, created_at, portfolio_id, is_read, batch_count, actor:profiles!notification_history_actor_id_fkey(id, name, avatar_url), portfolio:portfolios(title)')
       .eq('recipient_id', session.user.id)
       .order('created_at', { ascending: false })
       .range(notificationHistoryList.length, notificationHistoryList.length + NOTIFICATION_HISTORY_PAGE_SIZE - 1);
@@ -6699,7 +6713,7 @@ function App() {
     if (!session) return [];
     const { data, error } = await supabase
       .from('notifications')
-      .select('id, type, created_at, portfolio_id, is_read, actor:profiles!notifications_actor_id_fkey(id, name, avatar_url), portfolio:portfolios(title)')
+      .select('id, type, created_at, portfolio_id, is_read, batch_count, actor:profiles!notifications_actor_id_fkey(id, name, avatar_url), portfolio:portfolios(title)')
       .eq('recipient_id', session.user.id)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -6764,6 +6778,7 @@ function App() {
       if (!session) {
         // Logged out: clear local state back to blank
         setFollowedDesigners([]);
+        setPostNotifySubscriptions([]);
         setHideLikedPortfolios(false);
         setNeedsOnboarding(false);
         setUserProfile({
@@ -6804,6 +6819,10 @@ function App() {
             setFollowedDesigners(ids);
             AsyncStorage.setItem(`${FOLLOWED_KEY}_${uid}`, JSON.stringify(ids)).catch(() => {});
           }
+        });
+
+        supabase.from('post_notification_subscriptions').select('designer_id').eq('subscriber_id', uid).then(({ data, error }) => {
+          if (!error && data) setPostNotifySubscriptions(data.map((r) => r.designer_id));
         });
 
         const savedHideLiked = await AsyncStorage.getItem(`${HIDE_LIKED_KEY}_${uid}`);
@@ -7288,9 +7307,59 @@ function App() {
         if (selectedDesignerRef.current && selectedDesignerRef.current.id === designerId) {
           setSelectedDesigner((prev) => ({ ...prev, followersCount: Math.max(0, (prev.followersCount || 0) - 1) }));
         }
+        // b581: a DB trigger already deletes the matching
+        // post_notification_subscriptions row server-side on unfollow -
+        // this just keeps local state in sync so the bell icon updates
+        // immediately without waiting for a refetch.
+        setPostNotifySubscriptions((prev) => prev.filter((id) => id !== designerId));
       }
     }
   }, [session]);
+
+  // b581: "Notify" bell toggle - subscribing is instant (matches Follow's
+  // own instant behavior), unsubscribing confirms first since it's a
+  // quick, easy-to-fat-finger icon right next to Follow. The dedicated
+  // Settings > Privacy > Post Notifications list has its own quicker
+  // one-tap turn-off instead (handleQuickTurnOffNotify below) - that's a
+  // deliberate management surface, not a stray tap target, so it skips
+  // the confirmation.
+  const toggleNotifySubscription = useCallback(async (designerId, designerName) => {
+    if (!requireAuth()) return;
+    const isSubscribed = postNotifySubscriptions.includes(designerId);
+    if (isSubscribed) {
+      showAppAlert(
+        'Turn off post notifications?',
+        `You won't be notified when ${designerName || 'this designer'} posts something new. You can turn it back on anytime.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Turn Off', style: 'destructive', onPress: () => performUnsubscribeNotify(designerId) }
+        ]
+      );
+      return;
+    }
+    setPostNotifySubscriptions((prev) => [...prev, designerId]);
+    const { error } = await supabase.from('post_notification_subscriptions').insert({ subscriber_id: session.user.id, designer_id: designerId });
+    if (error) {
+      console.warn('Failed to subscribe to post notifications:', error);
+      setPostNotifySubscriptions((prev) => prev.filter((id) => id !== designerId));
+      showToast('Could not turn on notifications');
+    } else {
+      showToast(`You'll be notified when ${designerName || 'this designer'} posts`);
+    }
+  }, [session, postNotifySubscriptions]);
+
+  const performUnsubscribeNotify = useCallback(async (designerId) => {
+    const previous = postNotifySubscriptions;
+    setPostNotifySubscriptions((prev) => prev.filter((id) => id !== designerId));
+    const { error } = await supabase.from('post_notification_subscriptions').delete().eq('subscriber_id', session.user.id).eq('designer_id', designerId);
+    if (error) {
+      console.warn('Failed to unsubscribe from post notifications:', error);
+      setPostNotifySubscriptions(previous);
+      showToast('Could not turn off notifications');
+    } else {
+      showToast('Notifications turned off');
+    }
+  }, [session, postNotifySubscriptions]);
 
   const [shareModalVisible, setShareModalVisible] = useState(false);
   // Ref to the actual on-screen styled QR's <Svg> - used by
@@ -7957,6 +8026,46 @@ function App() {
         avatar: r.profiles && r.profiles.avatar_url ? r.profiles.avatar_url : 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png'
       }))
     );
+  };
+
+  // b581: Settings > Privacy > Post Notifications - lists every designer
+  // currently subscribed to, same shape/pattern as fetchBlockedUsers
+  // above. "Turn Off" here is a genuine one-tap action (no confirmation),
+  // unlike the profile bell's toggle - see toggleNotifySubscription's
+  // comment for why the two surfaces deliberately differ.
+  const fetchPostNotifyList = async () => {
+    if (!session) return;
+    setPostNotifyListLoading(true);
+    const { data, error } = await supabase
+      .from('post_notification_subscriptions')
+      .select('designer_id, profiles!post_notification_subscriptions_designer_id_fkey(name, avatar_url)')
+      .eq('subscriber_id', session.user.id);
+    if (!error && data) {
+      setPostNotifyList(
+        data.map((r) => ({
+          id: r.designer_id,
+          name: r.profiles ? r.profiles.name : 'Unknown User',
+          avatar: r.profiles && r.profiles.avatar_url ? r.profiles.avatar_url : 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png'
+        }))
+      );
+    }
+    setPostNotifyListLoading(false);
+  };
+
+  const handleQuickTurnOffNotify = async (designerId) => {
+    if (!session) return;
+    const previousList = postNotifyList;
+    setPostNotifyList((prev) => prev.filter((d) => d.id !== designerId));
+    setPostNotifySubscriptions((prev) => prev.filter((id) => id !== designerId));
+    const { error } = await supabase.from('post_notification_subscriptions').delete().eq('subscriber_id', session.user.id).eq('designer_id', designerId);
+    if (error) {
+      console.warn('Failed to turn off post notification:', error);
+      setPostNotifyList(previousList);
+      setPostNotifySubscriptions((prev) => (prev.includes(designerId) ? prev : [...prev, designerId]));
+      showToast('Could not turn off notifications');
+    } else {
+      showToast('Notifications turned off');
+    }
   };
 
   const handleUnblockUser = async (targetId) => {
@@ -13701,7 +13810,7 @@ function App() {
                           style={{ flex: 1, marginRight: 6 }}
                           onPress={() => {
                             setNotificationModalVisible(false);
-                            if (notif.type === 'like' && notif.portfolioId) {
+                            if ((notif.type === 'like' || notif.type === 'new_post') && notif.portfolioId) {
                               openPortfolioById(notif.portfolioId);
                             } else if (notif.type === 'follow') {
                               openDesignerProfileById(notif.actorId);
@@ -15950,13 +16059,13 @@ function App() {
               {optionsView !== 'root' && (
                 <BouncyButton
                   style={{ padding: 4 }}
-                  onPress={() => setOptionsView(optionsView === 'blockedUsers' || optionsView === 'notificationHistory' ? 'privacy' : optionsView === 'tutorialLibrary' ? 'aboutApp' : 'root')}
+                  onPress={() => setOptionsView(optionsView === 'blockedUsers' || optionsView === 'notificationHistory' || optionsView === 'postNotifications' ? 'privacy' : optionsView === 'tutorialLibrary' ? 'aboutApp' : 'root')}
                 >
                   <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
                 </BouncyButton>
               )}
               <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>
-                {optionsView === 'privacy' ? 'Privacy' : optionsView === 'supportLegal' ? 'Support & Legal' : optionsView === 'blockedUsers' ? 'Blocked Users' : optionsView === 'notificationHistory' ? 'Notification History' : optionsView === 'aboutApp' ? 'About App' : optionsView === 'tutorialLibrary' ? 'Tutorials' : 'Options'}
+                {optionsView === 'privacy' ? 'Privacy' : optionsView === 'supportLegal' ? 'Support & Legal' : optionsView === 'blockedUsers' ? 'Blocked Users' : optionsView === 'notificationHistory' ? 'Notification History' : optionsView === 'postNotifications' ? 'Post Notifications' : optionsView === 'aboutApp' ? 'About App' : optionsView === 'tutorialLibrary' ? 'Tutorials' : 'Options'}
               </Text>
               {optionsView === 'root' && (
                 <BouncyButton
@@ -16104,6 +16213,20 @@ function App() {
                     </View>
                   </BouncyButton>
 
+                  <BouncyButton
+                    style={styles.settingItemRow}
+                    onPress={() => {
+                      fetchPostNotifyList();
+                      setOptionsView('postNotifications');
+                    }}
+                  >
+                    <Text style={styles.settingItemTitle}>Post Notifications</Text>
+                    <View style={styles.iconTextInlineRow}>
+                      <Text style={styles.settingItemValue}>Manage</Text>
+                      <ChevronRightSVG color={theme.accent} size={16} />
+                    </View>
+                  </BouncyButton>
+
                   {/* All 4 toggles grouped in one stroke-only, rounded
                       container, separate from the plain navigation rows
                       above and below it. */}
@@ -16206,6 +16329,35 @@ function App() {
                 </>
               )}
 
+              {optionsView === 'postNotifications' && (
+                <>
+                  {postNotifyListLoading ? (
+                    <View style={{ padding: 32, alignItems: 'center' }}>
+                      <ActivityIndicator color={theme.accent} />
+                    </View>
+                  ) : postNotifyList.length === 0 ? (
+                    <View style={{ padding: 32, alignItems: 'center' }}>
+                      <Text style={{ color: theme.textSecondary, fontSize: 13, textAlign: 'center' }}>
+                        You're not subscribed to any designer's new posts yet. Tap the bell on a designer's profile to turn it on.
+                      </Text>
+                    </View>
+                  ) : (
+                    postNotifyList.map((d) => (
+                      <View key={d.id} style={styles.notificationCard}>
+                        <Image source={{ uri: d.avatar }} style={styles.notifAvatar} />
+                        <Text style={[styles.notifText, { flex: 1 }]}>{d.name}</Text>
+                        <BouncyButton
+                          style={styles.notifFollowBackBtn}
+                          onPress={() => handleQuickTurnOffNotify(d.id)}
+                        >
+                          <Text style={styles.notifFollowBackText}>Turn Off</Text>
+                        </BouncyButton>
+                      </View>
+                    ))
+                  )}
+                </>
+              )}
+
               {optionsView === 'notificationHistory' && (
                 <>
                   {notificationHistoryList.length > 0 && (
@@ -16265,7 +16417,7 @@ function App() {
                             style={{ flex: 1, marginRight: 6 }}
                             onPress={() => {
                               setSettingsModalVisible(false);
-                              if (notif.type === 'like' && notif.portfolioId) {
+                              if ((notif.type === 'like' || notif.type === 'new_post') && notif.portfolioId) {
                                 openPortfolioById(notif.portfolioId);
                               } else if (notif.type === 'follow') {
                                 openDesignerProfileById(notif.actorId);
@@ -16929,20 +17081,45 @@ function App() {
 
                 <View style={[styles.designerProfileActionsRow, { marginTop: 14 }]}>
                   {!(session && selectedDesigner.id === session.user.id) && (
-                    <BouncyButton
-                      style={[
-                        styles.modalFollowBtn,
-                        followedDesigners.includes(selectedDesigner.id) && styles.modalFollowBtnActive
-                      ]}
-                      onPress={() => toggleFollowDesigner(selectedDesigner.id)}
-                    >
-                      <Text style={[
-                        styles.modalFollowText,
-                        followedDesigners.includes(selectedDesigner.id) && styles.modalFollowTextActive
-                      ]}>
-                        {followedDesigners.includes(selectedDesigner.id) ? 'Following' : (selectedDesigner.followsMe ? 'Follow Back' : '+ Follow')}
-                      </Text>
-                    </BouncyButton>
+                    <>
+                      <BouncyButton
+                        style={[
+                          styles.modalFollowBtn,
+                          followedDesigners.includes(selectedDesigner.id) && styles.modalFollowBtnActive
+                        ]}
+                        onPress={() => toggleFollowDesigner(selectedDesigner.id)}
+                      >
+                        <Text style={[
+                          styles.modalFollowText,
+                          followedDesigners.includes(selectedDesigner.id) && styles.modalFollowTextActive
+                        ]}>
+                          {followedDesigners.includes(selectedDesigner.id) ? 'Following' : (selectedDesigner.followsMe ? 'Follow Back' : '+ Follow')}
+                        </Text>
+                      </BouncyButton>
+
+                      {/* b581: "Notify" bell - only shown once you already
+                          follow this designer, matching the YouTube-style
+                          "ring the bell" convention (subscribe first,
+                          bell is the finer-grained opt-in on top). Auto-
+                          hidden the instant you unfollow, since
+                          unfollowing also auto-clears the subscription
+                          server-side (see the DB trigger). */}
+                      {followedDesigners.includes(selectedDesigner.id) && (
+                        <BouncyButton
+                          style={{
+                            width: 46, height: 46, borderRadius: 99, borderWidth: 1, borderColor: theme.border,
+                            backgroundColor: postNotifySubscriptions.includes(selectedDesigner.id) ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.surface,
+                            alignItems: 'center', justifyContent: 'center'
+                          }}
+                          onPress={() => toggleNotifySubscription(selectedDesigner.id, selectedDesigner.name)}
+                        >
+                          <BellOutlineSVG
+                            size={20}
+                            color={postNotifySubscriptions.includes(selectedDesigner.id) ? '#FFFFFF' : theme.accentLight}
+                          />
+                        </BouncyButton>
+                      )}
+                    </>
                   )}
                 </View>
               </View>
