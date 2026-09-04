@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 567;
+const BUILD_NUMBER = 568;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -18209,12 +18209,25 @@ function App() {
                       >
                         <View style={styles.modalTopBar}>
                           {categoryImportViewOpen ? (
+                            // b567: modalTopTitle carries flex:1, which only
+                            // does the right thing as a DIRECT child of
+                            // modalTopBar's space-between row - nesting the
+                            // Text one level deeper (inside this back-button
+                            // wrapper) broke that, since the flex:1 had
+                            // nothing meaningful to size against at its own
+                            // level and the wrapper ballooned to consume
+                            // nearly the whole row, squeezing the close
+                            // button to a clipped sliver at the edge. Fix:
+                            // the WRAPPER takes flex:1 instead (so it's the
+                            // one properly sized against modalTopBar), and
+                            // the inner Text explicitly zeroes flex back out
+                            // so it just sits normally next to the chevron.
                             <BouncyButton
-                              style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}
                               onPress={() => { setCategoryImportViewOpen(false); setSelectedImportPortfolioIds(new Set()); }}
                             >
                               <ChevronLeftSVG color={theme.text} size={18} />
-                              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Copy Tags From</Text>
+                              <Text style={[styles.modalTopTitle, { flex: 0 }, isWebWide && { fontSize: 20 }]}>Copy Tags From</Text>
                             </BouncyButton>
                           ) : (
                             <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Categories & Tags</Text>
@@ -18235,15 +18248,20 @@ function App() {
                             maxLength={40}
                           />
 
-                          {/* b566: only renders when the user has at least
+                          {/* b567: only renders when the user has at least
                               one OTHER already-posted portfolio of this
                               same type - see the fetch effect near
-                              categoryPickerModalVisible's declaration.
-                              Plain text + chevron per spec, no fill/
-                              container. */}
+                              selectedPortfolioType's declaration. Text left,
+                              chevron pushed to the far right via
+                              justify-content (was grouped tight against the
+                              text before), separator line below to close
+                              off the section from the tag list underneath. */}
                           {importCandidatePortfolios.length > 0 && (
                             <BouncyButton
-                              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10, alignSelf: 'flex-start' }}
+                              style={{
+                                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                                marginTop: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: theme.border
+                              }}
                               onPress={() => setCategoryImportViewOpen(true)}
                             >
                               <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '600' }}>Copy tags from another portfolio</Text>
