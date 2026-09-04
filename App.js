@@ -10373,7 +10373,7 @@ function App() {
   // sites below.
   const renderLinkFieldInfoButton = (key) => (
     <BouncyButton
-      style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: theme.textSecondary, alignItems: 'center', justifyContent: 'center' }}
+      style={{ height: 16, aspectRatio: 1, borderRadius: 999, borderWidth: 1.5, borderColor: theme.textSecondary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
       onPress={() => setLinkFieldInfoKey(key)}
     >
       <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '800' }}>!</Text>
