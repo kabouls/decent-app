@@ -63,42 +63,23 @@ import * as WebBrowser from 'expo-web-browser';
 import * as ExpoLinking from 'expo-linking';
 import * as MediaLibrary from 'expo-media-library';
 
-// b589: global custom font (M PLUS U, Regular/Medium/Bold) - applied by
-// patching Text.render/TextInput.render themselves rather than touching
-// every individual Text usage in this file (there are hundreds, nearly
-// all with their own explicit `style` prop already, which is exactly why
-// the usual Text.defaultProps.style trick doesn't work here - defaultProps
-// only fills in when a prop is entirely omitted, and virtually every Text
-// in this file already passes one). This clones whatever element the
-// original render produced and appends a font override to its style
-// array, so it always wins over anything already set, without changing
-// how any existing style prop is written throughout the file.
-//
-// These are 3 separate static font FILES (not one variable font), so a
-// numeric fontWeight in the original style can't just be handed to the
-// OS to render bold/medium itself the way a system font would - each
-// weight needs its own distinct fontFamily name, and the numeric
-// fontWeight then needs to be reset to 'normal' afterward, or some
-// platforms will try to synthetically re-bold an already-bold font file
-// on top of itself. pickMPLUSUFamily reads whatever fontWeight the
-// original style already specifies (defaulting to 400/Regular when none
-// is set) and maps it to the closest of the 3 loaded weights.
-function pickMPLUSUFamily(fontWeight) {
-  const w = typeof fontWeight === 'string' ? parseInt(fontWeight, 10) : (fontWeight || 400);
-  if (w >= 700) return 'MPLUSU_700Bold';
-  if (w >= 500) return 'MPLUSU_500Medium';
-  return 'MPLUSU_400Regular';
-}
-[Text, TextInput].forEach((Component) => {
-  const originalRender = Component.render;
-  Component.render = function patchedRender(...args) {
-    const originalElement = originalRender.apply(this, args);
-    const flatStyle = StyleSheet.flatten(originalElement.props.style) || {};
-    return React.cloneElement(originalElement, {
-      style: [originalElement.props.style, { fontFamily: pickMPLUSUFamily(flatStyle.fontWeight), fontWeight: 'normal' }]
-    });
-  };
-});
+// b592 HOTFIX: the b589 Text.render/TextInput.render patch below caused a
+// live production crash the moment the notification bell's animated
+// element rendered - "CSSStyleProperties doesn't have an indexed
+// property setter for '0'". Root cause: React Native's Animated module on
+// web works by grabbing a direct ref to the underlying DOM node and
+// mutating its .style object imperatively every frame, bypassing React's
+// normal render cycle entirely. Cloning the element via
+// React.cloneElement broke that ref chain for anything wrapped in
+// Animated (Animated.Text, or a plain Text inside an Animated.View
+// relying on a child ref), so Animated ended up writing to something
+// that wasn't the actual style object it expected. Reverted entirely -
+// the font itself (useFonts + the two font-package imports above) is
+// left in place since loading the font isn't what broke anything, only
+// this application method. A safer re-implementation (limited to the
+// shared getStyles object, which doesn't touch component internals or
+// refs at all) is the next step, at real coverage cost since it won't
+// reach ad-hoc inline Text styles the way this did.
 
 // KeyboardAwareScrollView is a mobile-only concept (compensating for a
 // virtual keyboard covering content). On web there's no virtual keyboard to
@@ -174,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 591;
+const BUILD_NUMBER = 592;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
