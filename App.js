@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 570;
+const BUILD_NUMBER = 573;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -457,7 +457,7 @@ const UI_UX_SOFTWARE_LIST = [
   // themes, without changing how every other (already-visible) icon renders.
   { name: 'Framer', color: '#0055FF', icon: require('./assets/software-icons/framer.png'), needsLightBg: true },
   { name: 'Sketch', color: '#F7B500', icon: require('./assets/software-icons/sketch.png') },
-  { name: 'InVision', color: '#FF3366', icon: require('./assets/software-icons/invision.png') }
+  { name: 'InVision', color: '#FF3366', icon: require('./assets/software-icons/invision.png'), needsLightBg: true }
 ];
 
 // b562: explanatory content for the "!" info button next to each UI/UX
@@ -17569,83 +17569,99 @@ function App() {
         </View>
       </Modal>
 
-      {/* b562: UI/UX non-Figma software interest popup - replaces the old
+      {/* b571: UI/UX non-Figma software interest popup - replaces the old
           always-visible text input + pill button inside the disclaimer box
           with a text link that opens this, matching the same
           overlayModalBg/customConfirmCard pattern as the AI Disclosure info
           popup right above. Confirm calls the existing
-          handleSubmitUiUxSoftwareInterest handler unchanged. */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={uiUxSoftwareInterestModalVisible}
-        onRequestClose={() => setUiUxSoftwareInterestModalVisible(false)}
-      >
-        <View style={styles.overlayModalBg}>
-          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
-            <BouncyButton
-              style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 1 }}
-              onPress={() => setUiUxSoftwareInterestModalVisible(false)}
-            >
-              <CrossIconSVG color={theme.textSecondary} size={18} />
-            </BouncyButton>
+          handleSubmitUiUxSoftwareInterest handler unchanged. Conditionally
+          MOUNTED (not just visible-toggled) for the same reason as the
+          link-field info popup below it - see that one's comment. */}
+      {uiUxSoftwareInterestModalVisible && (
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={true}
+          onRequestClose={() => setUiUxSoftwareInterestModalVisible(false)}
+        >
+          <View style={styles.overlayModalBg}>
+            <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
+              <BouncyButton
+                style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 1 }}
+                onPress={() => setUiUxSoftwareInterestModalVisible(false)}
+              >
+                <CrossIconSVG color={theme.textSecondary} size={18} />
+              </BouncyButton>
 
-            <Text style={[styles.confirmTitle, { marginBottom: 10, paddingRight: 28 }]}>Which software would you like supported?</Text>
+              <Text style={[styles.confirmTitle, { marginBottom: 10, paddingRight: 28 }]}>Which software would you like supported?</Text>
 
-            <Text style={[styles.confirmSubText, { textAlign: 'left', marginBottom: 16 }]}>
-              Live prototype embedding currently only works with Figma. Let us know which other tool you'd like to see supported (e.g. Adobe XD, Framer, Sketch, InVision) - it helps us prioritize what to build next.
-            </Text>
+              <Text style={[styles.confirmSubText, { textAlign: 'left', marginBottom: 16 }]}>
+                Live prototype embedding currently only works with Figma. Let us know which other tool you'd like to see supported (e.g. Adobe XD, Framer, Sketch, InVision) - it helps us prioritize what to build next.
+              </Text>
 
-            <FocusableTextInput
-              style={styles.formInput}
-              placeholder="e.g. Framer, Sketch, InVision..."
-              placeholderTextColor="#94A3B8"
-              value={fUiUxSoftwareInterestText}
-              onChangeText={setFUiUxSoftwareInterestText}
-              maxLength={60}
-            />
+              <FocusableTextInput
+                style={styles.formInput}
+                placeholder="e.g. Framer, Sketch, InVision..."
+                placeholderTextColor="#94A3B8"
+                value={fUiUxSoftwareInterestText}
+                onChangeText={setFUiUxSoftwareInterestText}
+                maxLength={60}
+              />
 
-            <BouncyButton
-              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 16, backgroundColor: theme.accent }]}
-              onPress={async () => {
-                const ok = await handleSubmitUiUxSoftwareInterest();
-                if (ok) setUiUxSoftwareInterestModalVisible(false);
-              }}
-            >
-              <Text style={styles.confirmDeleteText}>Confirm</Text>
-            </BouncyButton>
+              <BouncyButton
+                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 16, backgroundColor: theme.accent }]}
+                onPress={async () => {
+                  const ok = await handleSubmitUiUxSoftwareInterest();
+                  if (ok) setUiUxSoftwareInterestModalVisible(false);
+                }}
+              >
+                <Text style={styles.confirmDeleteText}>Confirm</Text>
+              </BouncyButton>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
-      {/* b562: shared info popup for every UI/UX link field's "!" button -
+      {/* b571: shared info popup for every UI/UX link field's "!" button -
           content comes from LINK_FIELD_INFO[linkFieldInfoKey], null when
-          closed. One Modal serving all 5 fields instead of one each. */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={!!linkFieldInfoKey}
-        onRequestClose={() => setLinkFieldInfoKey(null)}
-      >
-        <View style={styles.overlayModalBg}>
-          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
-            <BouncyButton
-              style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 1 }}
-              onPress={() => setLinkFieldInfoKey(null)}
-            >
-              <CrossIconSVG color={theme.textSecondary} size={18} />
-            </BouncyButton>
+          closed. Conditionally MOUNTED (not just visible-toggled) - a
+          plain always-mounted Modal that just toggles its visible prop
+          can render behind another Modal on web regardless of z-index,
+          since react-native-web appends each Modal's portal div
+          to document.body once, at first mount; an always-mounted popup
+          declared outside the wizard's own conditional block gets its
+          portal created earlier than the wizard's (which mounts fresh
+          each time it opens), so it can end up stuck behind it. Same
+          documented fix already used elsewhere in this file: mount the
+          Modal itself only when needed, so its portal is freshly created
+          (and appended last) every time. */}
+      {!!linkFieldInfoKey && (
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={true}
+          onRequestClose={() => setLinkFieldInfoKey(null)}
+        >
+          <View style={styles.overlayModalBg}>
+            <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
+              <BouncyButton
+                style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 1 }}
+                onPress={() => setLinkFieldInfoKey(null)}
+              >
+                <CrossIconSVG color={theme.textSecondary} size={18} />
+              </BouncyButton>
 
-            <Text style={[styles.confirmTitle, { marginBottom: 10, paddingRight: 28 }]}>
-              {linkFieldInfoKey ? LINK_FIELD_INFO[linkFieldInfoKey].title : ''}
-            </Text>
+              <Text style={[styles.confirmTitle, { marginBottom: 10, paddingRight: 28 }]}>
+                {LINK_FIELD_INFO[linkFieldInfoKey].title}
+              </Text>
 
-            <Text style={[styles.confirmSubText, { textAlign: 'left' }]}>
-              {linkFieldInfoKey ? LINK_FIELD_INFO[linkFieldInfoKey].body : ''}
-            </Text>
+              <Text style={[styles.confirmSubText, { textAlign: 'left' }]}>
+                {LINK_FIELD_INFO[linkFieldInfoKey].body}
+              </Text>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
       {/* 4-STEP WIZARD MODAL FOR ADDING/EDITING PORTFOLIO PACKAGE */}
       {addModalVisible && (
@@ -18970,28 +18986,14 @@ function App() {
                     }}
                     onPress={() => setSoftwareDropdownOpen((v) => !v)}
                   >
-                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: fSoftwareUsed.length > 0 ? '700' : '500', flex: 1, marginRight: 8 }} numberOfLines={1}>
-                      {fSoftwareUsed.length === 0 ? 'No selection' : fSoftwareUsed.join(', ')}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
+                      {fSoftwareUsed.length > 0 && <SoftwareIconSVG name={fSoftwareUsed[0]} size={18} />}
+                      <Text style={{ color: theme.text, fontSize: 13, fontWeight: fSoftwareUsed.length > 0 ? '700' : '500', flex: 1 }} numberOfLines={1}>
+                        {fSoftwareUsed.length === 0 ? 'No selection' : fSoftwareUsed.join(', ')}
+                      </Text>
+                    </View>
                     <ChevronDownSVG color={theme.textSecondary} size={14} />
                   </BouncyButton>
-
-                  {fSoftwareUsed.length > 0 && (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                      {fSoftwareUsed.map((sw) => (
-                          <View key={sw} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingVertical: 5, paddingHorizontal: 8 }}>
-                            <SoftwareIconSVG name={sw} size={14} />
-                            <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600' }}>{sw}</Text>
-                            <BouncyButton
-                              style={{ padding: 2 }}
-                              onPress={() => setFSoftwareUsed(fSoftwareUsed.filter((s) => s !== sw))}
-                            >
-                              <CrossIconSVG color={theme.textSecondary} size={11} />
-                            </BouncyButton>
-                          </View>
-                      ))}
-                    </View>
-                  )}
 
                   {softwareDropdownOpen && (
                     <>
