@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 568;
+const BUILD_NUMBER = 570;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -10246,7 +10246,15 @@ function App() {
       return next;
     });
   };
-  const handleConfirmImportTags = () => {
+  // b570: split into a "review" step and a "finalize" step - tapping
+  // Import Tags no longer applies immediately, it computes the tag list
+  // and opens a confirm popup summarizing exactly what will be added,
+  // with Continue/Cancel. Cancel just closes the popup and leaves the
+  // import view + portfolio selections untouched so the person can
+  // adjust their selection rather than starting over.
+  const [importConfirmModalVisible, setImportConfirmModalVisible] = useState(false);
+  const [pendingImportTags, setPendingImportTags] = useState([]);
+  const handleReviewImportTags = () => {
     const tagsToImport = new Set();
     importCandidatePortfolios
       .filter((p) => selectedImportPortfolioIds.has(p.id))
@@ -10271,10 +10279,16 @@ function App() {
       return;
     }
 
-    setFCategories([...fCategories, ...newTags]);
+    setPendingImportTags(newTags);
+    setImportConfirmModalVisible(true);
+  };
+  const handleFinalizeImportTags = () => {
+    setFCategories([...fCategories, ...pendingImportTags]);
+    setImportConfirmModalVisible(false);
+    setPendingImportTags([]);
     setSelectedImportPortfolioIds(new Set());
     setCategoryImportViewOpen(false);
-    showToast(`Imported ${newTags.length} tag${newTags.length === 1 ? '' : 's'}.`);
+    showToast(`Imported ${pendingImportTags.length} tag${pendingImportTags.length === 1 ? '' : 's'}.`);
   };
   const [myFeatureInterests, setMyFeatureInterests] = useState(new Set());
   const [interestConfirmTarget, setInterestConfirmTarget] = useState(null); // feature_name string, or null if no confirm popup showing
@@ -18227,7 +18241,7 @@ function App() {
                               onPress={() => { setCategoryImportViewOpen(false); setSelectedImportPortfolioIds(new Set()); }}
                             >
                               <ChevronLeftSVG color={theme.text} size={18} />
-                              <Text style={[styles.modalTopTitle, { flex: 0 }, isWebWide && { fontSize: 20 }]}>Copy Tags From</Text>
+                              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]} numberOfLines={1}>Copy Tags From</Text>
                             </BouncyButton>
                           ) : (
                             <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Categories & Tags</Text>
@@ -18300,15 +18314,25 @@ function App() {
                                 return (
                                   <BouncyButton
                                     key={p.id}
-                                    style={[styles.categoryVerticalItem, isSelected && styles.categoryVerticalItemActive, { flexDirection: 'column', alignItems: 'flex-start', gap: 4 }]}
+                                    style={[styles.categoryVerticalItem, isSelected && styles.categoryVerticalItemActive, { flexDirection: 'row', alignItems: 'flex-start', gap: 10 }]}
                                     onPress={() => toggleImportPortfolioSelection(p.id)}
                                   >
-                                    <Text style={[styles.categoryVerticalText, isSelected && styles.categoryVerticalTextActive]}>
-                                      {isSelected ? '✓ ' : ''}{p.title || 'Untitled'}
-                                    </Text>
-                                    <Text style={{ color: theme.textSecondary, fontSize: 11.5 }} numberOfLines={1}>
-                                      {(p.categories || []).join(', ') || 'No tags'}
-                                    </Text>
+                                    <View style={{
+                                      width: 20, height: 20, borderRadius: 5, marginTop: 2,
+                                      borderWidth: 1.5, borderColor: isSelected ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                                      backgroundColor: isSelected ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
+                                      alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                    }}>
+                                      {isSelected && <CheckIconSVG />}
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                      <Text style={[styles.categoryVerticalText, isSelected && styles.categoryVerticalTextActive]}>
+                                        {p.title || 'Untitled'}
+                                      </Text>
+                                      <Text style={{ color: theme.textSecondary, fontSize: 11.5 }} numberOfLines={1}>
+                                        {(p.categories || []).join(', ') || 'No tags'}
+                                      </Text>
+                                    </View>
                                   </BouncyButton>
                                 );
                               })}
@@ -18318,7 +18342,7 @@ function App() {
                               <BouncyButton
                                 style={[styles.saveAccountSettingsBtn, { opacity: selectedImportPortfolioIds.size > 0 ? 1 : 0.4 }]}
                                 disabled={selectedImportPortfolioIds.size === 0}
-                                onPress={handleConfirmImportTags}
+                                onPress={handleReviewImportTags}
                               >
                                 <Text style={styles.submitBtnText}>
                                   Import Tags{selectedImportPortfolioIds.size > 0 ? ` (${selectedImportPortfolioIds.size} portfolio${selectedImportPortfolioIds.size === 1 ? '' : 's'})` : ''}
@@ -18373,6 +18397,57 @@ function App() {
                           </>
                         )}
                       </SafeAreaView>
+                    </View>
+                  </Modal>
+
+                  {/* b570: import-tags summary/confirm popup - separate
+                      from the Categories & Tags Modal above so it renders
+                      on top of it cleanly (own native Modal surface, same
+                      reasoning as every other popup-over-a-modal in this
+                      file). Cancel just closes this and leaves the import
+                      view's selections intact. */}
+                  <Modal
+                    transparent
+                    visible={importConfirmModalVisible}
+                    animationType="fade"
+                    onRequestClose={() => setImportConfirmModalVisible(false)}
+                  >
+                    <View
+                      style={styles.overlayModalBg}
+                      onStartShouldSetResponder={() => Platform.OS === 'web'}
+                      onResponderRelease={() => setImportConfirmModalVisible(false)}
+                    >
+                      <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
+                        <Text style={styles.confirmTitle}>Import These Tags?</Text>
+                        <Text style={[styles.confirmSubText, { textAlign: 'left', marginBottom: 12 }]}>
+                          {pendingImportTags.length > 0
+                            ? `${pendingImportTags.length} tag${pendingImportTags.length === 1 ? '' : 's'} will be added to this portfolio:`
+                            : 'Every tag from your selection is already on this portfolio - nothing new to add.'}
+                        </Text>
+                        {pendingImportTags.length > 0 && (
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                            {pendingImportTags.map((tag) => (
+                              <View key={tag} style={styles.selectedCategoryPill}>
+                                <Text style={styles.selectedCategoryText}>{tag}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                        <View style={[styles.confirmActionsRow, { marginTop: 8 }]}>
+                          <BouncyButton
+                            style={[styles.confirmCancelBtn]}
+                            onPress={() => setImportConfirmModalVisible(false)}
+                          >
+                            <Text style={styles.confirmCancelText}>Cancel</Text>
+                          </BouncyButton>
+                          <BouncyButton
+                            style={[styles.confirmDeleteBtn]}
+                            onPress={handleFinalizeImportTags}
+                          >
+                            <Text style={styles.confirmDeleteText}>Continue</Text>
+                          </BouncyButton>
+                        </View>
+                      </View>
                     </View>
                   </Modal>
 
