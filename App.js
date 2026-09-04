@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 564;
+const BUILD_NUMBER = 566;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -162,6 +162,19 @@ const PORTFOLIO_TYPE_ENABLED = {
 // (create at wise.com -> Get paid -> Share payment details). Both buttons
 // below already open whichever URL is set here via openExternalLinkWithWarning.
 const KO_FI_URL = 'https://ko-fi.com/iputra07';
+// b564: Google Play's Payments policy prohibits leading users to any
+// payment method other than Play Billing - including plain text that
+// encourages paying elsewhere, not just tappable links - unless the
+// recipient is a validated tax-exempt org, which DECENT isn't. Real apps
+// (AnkiDroid, StreetComplete) have been rejected/restricted for exactly
+// this. Rather than maintaining two source files, one env var controls
+// whether the Donate entry points render at all - set per EAS build
+// profile in eas.json (see DECENT-Admin/eas.json comments), NOT per
+// Platform.OS, since Play Store and sideloaded APK are both Android.
+// Defaults to enabled (true) so local dev / `expo start` / any profile
+// that doesn't explicitly set this stays exactly as it was before this
+// change - only the Play Store build profile should set this to 'playstore'.
+const DONATIONS_ENABLED = process.env.EXPO_PUBLIC_DECENT_DISTRIBUTION !== 'playstore';
 const GITHUB_URL = 'https://github.com/kabouls/decent-app';
 
 const SCREEN_WIDTH = Platform.OS === 'web' ? Math.min(RAW_WINDOW_WIDTH, 480) : RAW_WINDOW_WIDTH;
@@ -5562,6 +5575,77 @@ function App() {
   const [linkFieldInfoKey, setLinkFieldInfoKey] = useState(null);
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [categoryPickerModalVisible, setCategoryPickerModalVisible] = useState(false);
+  // b566: "Copy tags from another portfolio" - swaps the body of the same
+  // Categories & Tags modal to a second view (categoryImportViewOpen) with
+  // a chevron-left back button, rather than stacking a new Modal on top -
+  // avoids the nested-touchable/z-index bugs this file has hit before,
+  // and keeps the whole flow inside one modal frame. Candidates are the
+  // user's own OTHER (excludes editingProjectId, so you can't "import"
+  // from the very portfolio you're currently editing) portfolios of the
+  // SAME portfolio_type only, since tags are type-scoped - fetched fresh
+  // whenever the modal opens rather than trusting whatever's already in
+  // the general feed state (which may not include every one of the
+  // user's own portfolios due to pagination).
+  const [categoryImportViewOpen, setCategoryImportViewOpen] = useState(false);
+  const [importCandidatePortfolios, setImportCandidatePortfolios] = useState([]);
+  const [importCandidatesLoading, setImportCandidatesLoading] = useState(false);
+  const [selectedImportPortfolioIds, setSelectedImportPortfolioIds] = useState(new Set());
+  useEffect(() => {
+    if (!categoryPickerModalVisible || !session) {
+      setImportCandidatePortfolios([]);
+      return;
+    }
+    (async () => {
+      setImportCandidatesLoading(true);
+      let q = supabase
+        .from('portfolios')
+        .select('id, title, categories')
+        .eq('user_id', session.user.id)
+        .eq('portfolio_type', selectedPortfolioType);
+      if (editingProjectId) q = q.neq('id', editingProjectId);
+      const { data, error } = await q;
+      if (!error && data) setImportCandidatePortfolios(data);
+      else setImportCandidatePortfolios([]);
+      setImportCandidatesLoading(false);
+    })();
+  }, [categoryPickerModalVisible, selectedPortfolioType, session, editingProjectId]);
+  const toggleImportPortfolioSelection = (id) => {
+    setSelectedImportPortfolioIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const handleConfirmImportTags = () => {
+    const tagsToImport = new Set();
+    importCandidatePortfolios
+      .filter((p) => selectedImportPortfolioIds.has(p.id))
+      .forEach((p) => (p.categories || []).forEach((c) => tagsToImport.add(c)));
+
+    // Only genuinely new tags count against the cap/count - one already
+    // selected doesn't need "room" a second time, and de-duping this way
+    // (case-insensitive against fCategories) is also what keeps two
+    // selected portfolios that happen to share a tag from causing any
+    // kind of duplicate/error - the Set above already collapses exact
+    // dupes across portfolios, and this filter collapses against what's
+    // already selected.
+    const newTags = Array.from(tagsToImport).filter(
+      (t) => !fCategories.some((c) => c.toLowerCase() === t.toLowerCase())
+    );
+
+    if (fCategories.length + newTags.length > 10) {
+      showAppAlert(
+        'Too Many Tags',
+        `Importing these would bring you to ${fCategories.length + newTags.length} tags, but the max is 10. Deselect a portfolio or two, or remove some of your current tags first.`
+      );
+      return;
+    }
+
+    setFCategories([...fCategories, ...newTags]);
+    setSelectedImportPortfolioIds(new Set());
+    setCategoryImportViewOpen(false);
+    showToast(`Imported ${newTags.length} tag${newTags.length === 1 ? '' : 's'}.`);
+  };
   // Custom tags (user-typed, not in any base list) are global across every
   // portfolio type, unchanged from before - kept separate from the base
   // list here specifically so switching selectedPortfolioType can swap
@@ -5581,9 +5665,15 @@ function App() {
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase.from('custom_categories').select('name');
+      // b566: custom_categories now carries portfolio_type (migration
+      // required - see notes to Iqbal), so a custom tag created under one
+      // portfolio type no longer leaks into the other two types' pickers.
+      // customCategoriesList is now [{name, portfolio_type}] instead of
+      // plain strings - masterCategoriesList below filters by the current
+      // selectedPortfolioType before merging.
+      const { data, error } = await supabase.from('custom_categories').select('name, portfolio_type');
       if (!error && data && data.length > 0) {
-        setCustomCategoriesList(data.map((r) => r.name));
+        setCustomCategoriesList(data);
       } else if (error) {
         console.warn('Failed to fetch custom categories:', error);
       }
@@ -9118,12 +9208,14 @@ function App() {
     const finalName = existingMatch || trimmed;
 
     if (!existingMatch) {
-      setCustomCategoriesList((prev) => [...prev, finalName]);
+      setCustomCategoriesList((prev) => [...prev, { name: finalName, portfolio_type: selectedPortfolioType }]);
       // Persist so this tag is available to everyone, not just this
       // session - upsert with an incrementing usage_count means multiple
-      // users independently "creating" the same tag just merges into one
-      // shared row instead of erroring or duplicating.
-      const { error } = await supabase.rpc('upsert_custom_category', { tag_name: finalName });
+      // users independently "creating" the same tag (for the SAME
+      // portfolio_type) just merges into one shared row instead of
+      // erroring or duplicating. b566: now scoped by portfolio_type too -
+      // the same tag name can exist once per type without conflicting.
+      const { error } = await supabase.rpc('upsert_custom_category', { tag_name: finalName, tag_portfolio_type: selectedPortfolioType });
       if (error) {
         console.warn('Failed to persist custom category:', error);
       }
@@ -10163,7 +10255,13 @@ function App() {
       selectedPortfolioType === 'illustration' ? ALL_ILLUSTRATION_CATEGORIES_MASTER :
       ALL_UIUX_CATEGORIES_MASTER;
     const baseLower = new Set(base.map((c) => c.toLowerCase()));
-    const additions = customCategoriesList.filter((c) => !baseLower.has(c.toLowerCase()));
+    // b566: only custom tags created FOR this same portfolio_type merge
+    // in - a "wedding"/"celebration" custom tag added under UI/UX no
+    // longer shows up while adding an Illustration portfolio, etc.
+    const additions = customCategoriesList
+      .filter((c) => c.portfolio_type === selectedPortfolioType)
+      .map((c) => c.name)
+      .filter((name) => !baseLower.has(name.toLowerCase()));
     return additions.length > 0 ? [...base, ...additions].sort() : base;
   }, [selectedPortfolioType, customCategoriesList]);
   const [myFeatureInterests, setMyFeatureInterests] = useState(new Set());
@@ -11265,21 +11363,23 @@ function App() {
                   items sit above it. Shown in both expanded and collapsed
                   states, same conditional-label pattern as the nav items
                   above (icon always visible, text only when expanded). */}
-              <BouncyButton
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 10,
-                  marginHorizontal: sidebarCollapsed ? 12 : 16, marginBottom: 8,
-                  paddingVertical: 10, paddingHorizontal: sidebarCollapsed ? 0 : 12,
-                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                  borderRadius: 10, backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.12)'
-                }}
-                onPress={() => { setDonateTermsAgreed(false); setDonateModalVisible(true); }}
-              >
-                <HeartIconSVG liked={true} />
-                {!sidebarCollapsed && (
-                  <Text style={{ color: theme.accent, fontSize: 12.5, fontWeight: '700' }}>Support & Donate</Text>
-                )}
-              </BouncyButton>
+              {DONATIONS_ENABLED && (
+                <BouncyButton
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 10,
+                    marginHorizontal: sidebarCollapsed ? 12 : 16, marginBottom: 8,
+                    paddingVertical: 10, paddingHorizontal: sidebarCollapsed ? 0 : 12,
+                    justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                    borderRadius: 10, backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.12)'
+                  }}
+                  onPress={() => { setDonateTermsAgreed(false); setDonateModalVisible(true); }}
+                >
+                  <HeartIconSVG liked={true} />
+                  {!sidebarCollapsed && (
+                    <Text style={{ color: theme.accent, fontSize: 12.5, fontWeight: '700' }}>Support & Donate</Text>
+                  )}
+                </BouncyButton>
+              )}
             </SafeAreaView>
           </Animated.View>
         )}
@@ -15524,7 +15624,7 @@ function App() {
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'slide'}
         transparent={true}
-        visible={donateModalVisible}
+        visible={donateModalVisible && DONATIONS_ENABLED}
         onRequestClose={handleCloseDonateModal}
       >
         <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
@@ -15927,14 +16027,16 @@ function App() {
                   )}
 
                   {/* Contrast Donate Button at Very Bottom */}
-                  <BouncyButton
-                    style={[styles.donateSettingBtn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }]}
-                    activeOpacity={0.88}
-                    onPress={() => { setDonateTermsAgreed(false); setDonateModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
-                  >
-                    <HeartIconSVG liked={true} />
-                    <Text style={styles.donateSettingBtnText}>Support & Donate to DECENT</Text>
-                  </BouncyButton>
+                  {DONATIONS_ENABLED && (
+                    <BouncyButton
+                      style={[styles.donateSettingBtn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }]}
+                      activeOpacity={0.88}
+                      onPress={() => { setDonateTermsAgreed(false); setDonateModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                    >
+                      <HeartIconSVG liked={true} />
+                      <Text style={styles.donateSettingBtnText}>Support & Donate to DECENT</Text>
+                    </BouncyButton>
+                  )}
                 </>
               )}
 
@@ -18094,12 +18196,23 @@ function App() {
                         onResponderRelease={() => {}}
                       >
                         <View style={styles.modalTopBar}>
-                          <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Categories & Tags</Text>
-                          <BouncyButton style={styles.closeBtn} onPress={() => setCategoryPickerModalVisible(false)}>
+                          {categoryImportViewOpen ? (
+                            <BouncyButton
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                              onPress={() => { setCategoryImportViewOpen(false); setSelectedImportPortfolioIds(new Set()); }}
+                            >
+                              <ChevronLeftSVG color={theme.text} size={18} />
+                              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Copy Tags From</Text>
+                            </BouncyButton>
+                          ) : (
+                            <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Categories & Tags</Text>
+                          )}
+                          <BouncyButton style={styles.closeBtn} onPress={() => { setCategoryPickerModalVisible(false); setCategoryImportViewOpen(false); setSelectedImportPortfolioIds(new Set()); }}>
                             <Text style={styles.closeBtnText}>✕</Text>
                           </BouncyButton>
                         </View>
 
+                        {!categoryImportViewOpen && (
                         <View style={{ padding: 16, paddingBottom: 8 }}>
                           <FocusableTextInput
                             style={styles.categorySearchInput}
@@ -18109,7 +18222,24 @@ function App() {
                             onChangeText={setCategorySearchQuery}
                             maxLength={40}
                           />
-                          <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 4 }}>
+
+                          {/* b566: only renders when the user has at least
+                              one OTHER already-posted portfolio of this
+                              same type - see the fetch effect near
+                              categoryPickerModalVisible's declaration.
+                              Plain text + chevron per spec, no fill/
+                              container. */}
+                          {importCandidatePortfolios.length > 0 && (
+                            <BouncyButton
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10, alignSelf: 'flex-start' }}
+                              onPress={() => setCategoryImportViewOpen(true)}
+                            >
+                              <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '600' }}>Copy tags from another portfolio</Text>
+                              <ChevronRightSVG color={theme.accent} size={14} />
+                            </BouncyButton>
+                          )}
+
+                          <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 10 }}>
                             Selected: {fCategories.length}/10 (minimum 3 required)
                           </Text>
 
@@ -18127,7 +18257,47 @@ function App() {
                             </View>
                           )}
                         </View>
+                        )}
 
+                        {categoryImportViewOpen ? (
+                          <>
+                            <ScrollView ref={hideScrollbarRefCallback(isWebWide)} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20 }}>
+                              {importCandidatesLoading && (
+                                <Text style={{ color: theme.textSecondary, fontSize: 13 }}>Loading your portfolios...</Text>
+                              )}
+                              {!importCandidatesLoading && importCandidatePortfolios.map((p) => {
+                                const isSelected = selectedImportPortfolioIds.has(p.id);
+                                return (
+                                  <BouncyButton
+                                    key={p.id}
+                                    style={[styles.categoryVerticalItem, isSelected && styles.categoryVerticalItemActive, { flexDirection: 'column', alignItems: 'flex-start', gap: 4 }]}
+                                    onPress={() => toggleImportPortfolioSelection(p.id)}
+                                  >
+                                    <Text style={[styles.categoryVerticalText, isSelected && styles.categoryVerticalTextActive]}>
+                                      {isSelected ? '✓ ' : ''}{p.title || 'Untitled'}
+                                    </Text>
+                                    <Text style={{ color: theme.textSecondary, fontSize: 11.5 }} numberOfLines={1}>
+                                      {(p.categories || []).join(', ') || 'No tags'}
+                                    </Text>
+                                  </BouncyButton>
+                                );
+                              })}
+                            </ScrollView>
+
+                            <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: theme.border }}>
+                              <BouncyButton
+                                style={[styles.saveAccountSettingsBtn, { opacity: selectedImportPortfolioIds.size > 0 ? 1 : 0.4 }]}
+                                disabled={selectedImportPortfolioIds.size === 0}
+                                onPress={handleConfirmImportTags}
+                              >
+                                <Text style={styles.submitBtnText}>
+                                  Import Tags{selectedImportPortfolioIds.size > 0 ? ` (${selectedImportPortfolioIds.size} portfolio${selectedImportPortfolioIds.size === 1 ? '' : 's'})` : ''}
+                                </Text>
+                              </BouncyButton>
+                            </View>
+                          </>
+                        ) : (
+                          <>
                         <ScrollView ref={hideScrollbarRefCallback(isWebWide)} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}>
                           {filteredCategoriesForWizard.map((cat) => {
                             const isSelected = fCategories.includes(cat);
@@ -18170,6 +18340,8 @@ function App() {
                             <Text style={styles.submitBtnText}>Done ({fCategories.length} selected)</Text>
                           </BouncyButton>
                         </View>
+                          </>
+                        )}
                       </SafeAreaView>
                     </View>
                   </Modal>
