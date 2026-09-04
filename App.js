@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 573;
+const BUILD_NUMBER = 574;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -10373,10 +10373,11 @@ function App() {
   // sites below.
   const renderLinkFieldInfoButton = (key) => (
     <BouncyButton
-      style={{ height: 16, aspectRatio: 1, borderRadius: 999, borderWidth: 1.5, borderColor: theme.textSecondary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+      style={{ height: 13, aspectRatio: 1, borderRadius: 999, borderWidth: 1.5, borderColor: theme.textSecondary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       onPress={() => setLinkFieldInfoKey(key)}
     >
-      <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '800' }}>!</Text>
+      <Text style={{ color: theme.textSecondary, fontSize: 9, fontWeight: '800', lineHeight: 12 }}>!</Text>
     </BouncyButton>
   );
 
