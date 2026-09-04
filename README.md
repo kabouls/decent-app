@@ -6,14 +6,17 @@ It's a personal passion project. Expect rough edges, and feel free to poke aroun
 
 ## Features
 
-- **Rich portfolio pages** — case studies, image galleries, Figma/prototype embeds, live links
-- **Designer profiles** — bio, location, socials, followers/following
-- **Discover & Search** — browse designers, search by name/tag/topic, trending keywords
-- **Social layer** — like, follow, comment-free feed (For You + Circle)
-- **Share anywhere** — QR codes and real shareable links (`/p/:id`, `/@handle`) with proper link previews on Discord/Twitter/etc.
-- **Notifications** — real-time, with push support on native
+- **Rich portfolio pages** — case studies, image galleries, Figma/prototype embeds, live links, block-based editor (drop in images, side-by-side rows, whatever)
+- **Designer profiles** — bio, location, socials, followers/following, pin up to 2 portfolios to the top of your profile
+- **Discover & Search** — browse designers, search by name/tag/topic, trending keywords, and it'll even guess what you meant if you fat-finger a typo
+- **Social layer** — like, follow, comment-free feed (For You + Circle), unfollowing asks you to confirm first so it's not an oops-tap
+- **Share anywhere** — QR codes and real shareable links (`/p/:id`, `/@handle`) with proper link previews on Discord/Twitter/etc. You can even share a link to just one type of your portfolio (like "only show my UI/UX stuff")
+- **Software tags** — tag what tools you actually used (Figma, Photoshop, Procreate, Sketch, whatever) with real logos on illustration and UI/UX portfolios
+- **AI disclosure, done properly** — if you used AI for illustration work, you have to say so and how. Fully AI-generated art isn't allowed here, and there's a built-in way for people to flag it if something looks off
+- **Notifications** — actually real ones now. Push notifications work server-side, so you'll get pinged even if the app's fully closed, not just while it's open
+- **NSFW handling that respects the rules** — Safe Search toggle on web, but the mobile app just doesn't touch NSFW content at all (Google Play doesn't allow it, so why fight it)
 - **Light/dark theme**, guest browsing (no account required to explore)
-- **Cross-platform** — same codebase on web and Android
+- **Cross-platform** — same codebase on web and Android, with an "Open in App" nudge on mobile web if you've got the app installed
 
 ## Download
 

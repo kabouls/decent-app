@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 559;
+const BUILD_NUMBER = 561;
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -178,6 +178,50 @@ const STORAGE_KEY = '@portfolio_projects_v1';
 const FOLLOWED_KEY = '@followed_designers_v1';
 const HIDE_LIKED_KEY = '@hide_liked_portfolios_v1';
 const formatHandleDisplay = (h) => (h ? `@${h.replace(/^@/, '')}` : '');
+
+// b561: "Did you mean X?" for search - standard Levenshtein edit
+// distance (character insertions/deletions/substitutions needed to turn
+// one string into another), used to catch typos against known-good
+// terms (designer names/handles, popular keywords) rather than leaving a
+// misspelled search with zero results and no path forward. Threshold
+// scales with query length (roughly 30%, floor of 1) so "figma" vs
+// "figna" (1 typo, short word) still matches but wildly different
+// strings don't get suggested as if they were close.
+const levenshteinDistance = (a, b) => {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+};
+
+const getDidYouMeanSuggestion = (query, candidates) => {
+  const q = (query || '').trim().toLowerCase();
+  if (q.length < 3) return null;
+  const threshold = Math.max(1, Math.floor(q.length * 0.3));
+  let best = null;
+  let bestDistance = Infinity;
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const c = candidate.trim().toLowerCase();
+    if (!c || c === q) continue;
+    const distance = levenshteinDistance(q, c);
+    if (distance <= threshold && distance < bestDistance) {
+      bestDistance = distance;
+      best = candidate;
+    }
+  }
+  return best;
+};
 
 const getPasswordRequirements = (pw) => [
   { key: 'length', label: 'At least 8 characters', met: pw.length >= 8 },
@@ -5374,10 +5418,26 @@ function App() {
   // ILLUSTRATION_SOFTWARE_LIST for the full comment on why this is
   // deliberately separate from the category/tag system. fSoftwareUsed
   // holds plain strings, mixing preset names and any custom ones typed in
-  // via softwareCustomInput.
+  // via softwareCustomInput. b560: reused as-is for UI/UX portfolios too
+  // (Step 2 now, see UI_UX_SOFTWARE_LIST) - already generic in both name
+  // and DB column (software_used), no reason for a second, parallel
+  // state just because the portfolio type differs. softwareDropdownOpen/
+  // softwareCustomInput are shared the same way - only one of the two
+  // dropdowns (illustration's on Step 1, UI/UX's on Step 2) can ever be
+  // open at once anyway, since formStep only holds one value at a time.
   const [fSoftwareUsed, setFSoftwareUsed] = useState([]);
   const [softwareDropdownOpen, setSoftwareDropdownOpen] = useState(false);
   const [softwareCustomInput, setSoftwareCustomInput] = useState('');
+  // b560: interest capture for "I'd like live prototype support for a
+  // UI/UX tool other than Figma" - shown only when the selected software
+  // is entirely non-Figma. Reuses the same feature_interest table every
+  // other interest button in the app writes to (feature_name fixed at
+  // 'ui_ux_software_request' for all of these, with the specific
+  // software name in a new `detail` column - see
+  // handleSubmitUiUxSoftwareInterest for the upsert-style handling of a
+  // user submitting a second, different request later).
+  const [fUiUxSoftwareInterestText, setFUiUxSoftwareInterestText] = useState('');
+  const [fUiUxSoftwareInterestSubmitted, setFUiUxSoftwareInterestSubmitted] = useState(false);
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [categoryPickerModalVisible, setCategoryPickerModalVisible] = useState(false);
   // Custom tags (user-typed, not in any base list) are global across every
@@ -6169,6 +6229,43 @@ function App() {
   // if the effect body/callback wouldn't run until later). This is the
   // same TDZ bug class already called out in recurring bug list #4.
   const [categoryFitCount, setCategoryFitCount] = useState(null);
+  // b561: separate, self-contained fit-measurement for the Search page's
+  // own Popular Keywords row specifically - the general technique
+  // (measure each chip's own layout, find how many fit before exceeding
+  // the container width) is the same idea as categoryFitCount above, but
+  // that one is tightly coupled to the For You feed's specific chip bar
+  // (a fixed "all/popularity/newest" prefix, a reserved grid-icon space,
+  // its own container width ref) - built as its own small parallel
+  // version here rather than touching that working code to make it
+  // generic enough for a second, different context.
+  const [searchKeywordsFitCount, setSearchKeywordsFitCount] = useState(null);
+  const [searchKeywordsContainerWidth, setSearchKeywordsContainerWidth] = useState(0);
+  const searchKeywordChipLayoutsRef = useRef({});
+  const computeSearchKeywordsFitCount = () => {
+    if (!(Platform.OS === 'web' && isWebWide)) return;
+    if (!searchKeywordsContainerWidth) return;
+    for (const kw of popularKeywords) {
+      if (!searchKeywordChipLayoutsRef.current[kw]) return;
+    }
+    let fit = popularKeywords.length;
+    for (let i = 0; i < popularKeywords.length; i++) {
+      const layout = searchKeywordChipLayoutsRef.current[popularKeywords[i]];
+      if (layout.x + layout.width > searchKeywordsContainerWidth) {
+        fit = i;
+        break;
+      }
+    }
+    setSearchKeywordsFitCount((prev) => (prev === fit ? prev : fit));
+  };
+  const handleSearchKeywordChipLayout = (kw, e) => {
+    searchKeywordChipLayoutsRef.current[kw] = { x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width };
+    computeSearchKeywordsFitCount();
+  };
+  useEffect(() => {
+    searchKeywordChipLayoutsRef.current = {};
+    setSearchKeywordsFitCount(null);
+  }, [popularKeywords, searchKeywordsContainerWidth]);
+
   const categoryChipLayoutsRef = useRef({});
   // Reserve room for the grid-icon "show all" button itself plus its
   // margin, so the last fitting chip doesn't render flush against it.
@@ -10003,6 +10100,45 @@ function App() {
     showToast("Thanks! We'll let you know when it's ready.");
   };
 
+  // b560: separate from handleConfirmFeatureInterest above - that one is
+  // a simple yes/no toggle per fixed feature name, this one carries a
+  // free-text detail (which software the person wants supported), so it
+  // needs its own upsert-style handling: try insert, and on the
+  // unique(user_id, feature_name) constraint (this always uses the same
+  // fixed feature_name, 'ui_ux_software_request', regardless of which
+  // software was typed), fall back to updating the existing row's detail
+  // instead - treating a second submission as replacing the first
+  // request rather than failing silently or duplicating.
+  const handleSubmitUiUxSoftwareInterest = async () => {
+    if (!requireAuth()) return;
+    const detail = fUiUxSoftwareInterestText.trim();
+    if (!detail) {
+      showToast('Let us know which software you have in mind first.');
+      return;
+    }
+    const { error } = await supabase
+      .from('feature_interest')
+      .insert({ user_id: session.user.id, feature_name: 'ui_ux_software_request', detail });
+    if (error) {
+      if (error.code === '23505') {
+        const { error: updateError } = await supabase
+          .from('feature_interest')
+          .update({ detail })
+          .eq('user_id', session.user.id)
+          .eq('feature_name', 'ui_ux_software_request');
+        if (updateError) {
+          showToast('Could not submit - try again.');
+          return;
+        }
+      } else {
+        showToast('Could not submit - try again.');
+        return;
+      }
+    }
+    setFUiUxSoftwareInterestSubmitted(true);
+    showToast("Thanks! We'll factor this into what we build next.");
+  };
+
   const handleOpenChangelog = async () => {
     setChangelogModalVisible(true);
     if (changelogFetchedRef.current) return;
@@ -10394,6 +10530,20 @@ function App() {
     if (!exactMatch || exactMatch.type !== 'designer') return searchedDesigners;
     return searchedDesigners.filter((d) => d.id !== exactMatch.item.id);
   }, [searchedDesigners, exactMatch]);
+
+  // b561: only computed when it'd actually be shown (nothing else matched)
+  // - Levenshtein against every designer name/handle on every keystroke
+  // would be wasted work for the vast majority of searches, which
+  // already return real results and never need a suggestion at all.
+  const didYouMeanSuggestion = useMemo(() => {
+    if (!searchQuery.trim() || exactMatch || relatedProjects.length > 0 || relatedDesigners.length > 0) return null;
+    const candidates = [
+      ...popularKeywords,
+      ...liveDesigners.map((d) => d.name),
+      ...liveDesigners.map((d) => d.handle)
+    ];
+    return getDidYouMeanSuggestion(searchQuery, candidates);
+  }, [searchQuery, exactMatch, relatedProjects, relatedDesigners, popularKeywords, liveDesigners]);
 
   const myUploadedProjects = useMemo(() => {
     if (!session) return [];
@@ -12152,7 +12302,16 @@ function App() {
                       </View>
                     )
                   ) : (
-                    <Text style={styles.emptySearchText}>No exact match for "{searchQuery}".</Text>
+                    <View>
+                      <Text style={styles.emptySearchText}>No exact match for "{searchQuery}".</Text>
+                      {didYouMeanSuggestion && (
+                        <BouncyButton style={{ marginTop: 6 }} onPress={() => setSearchQuery(didYouMeanSuggestion)}>
+                          <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
+                            Did you mean <Text style={{ color: theme.accent, fontWeight: '700' }}>"{didYouMeanSuggestion}"</Text>?
+                          </Text>
+                        </BouncyButton>
+                      )}
+                    </View>
                   )}
 
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 18, marginBottom: 6 }}>
@@ -12175,33 +12334,21 @@ function App() {
 
                   <Text style={[styles.sectionHeader, { marginTop: 12 }]}>YOU MIGHT ALSO LOOK FOR...</Text>
 
-                  {(searchFilterTab === 'all' || searchFilterTab === 'portfolios') && relatedProjects.length > 0 && (
-                    <View
-                      style={isWebWide ? { width: '100%' } : undefined}
-                      onLayout={isWebWide ? debouncedLayoutWidthSetter(searchGridWidthTimerRef, setSearchGridWidth) : undefined}
-                    >
-                    <ProjectGrid
-                      items={relatedProjects}
-                      onPress={openProjectModal}
-                      onToggleLike={toggleLike}
-                      onOpenDesignerProfile={openDesignerProfileById}
-                      onToggleFollow={isWebWide ? toggleFollowDesigner : undefined}
-                      followedDesigners={followedDesigners}
-                      currentUserId={session ? session.user.id : null}
-                    styles={isWebWide
-                      ? { ...styles, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: FOR_YOU_GRID_GAP, justifyContent: 'flex-start' }, card: { ...styles.card, width: searchCardWidthPx } }
-                      : styles}
-                    cardWidth={Platform.OS === 'web' && !isWebWide ? '100%' : undefined}
-                    />
-                    </View>
-                  )}
-
+                  {/* b561: designers now shown first (was portfolios first,
+                      designers second) - and capped to the top 3 while on
+                      the 'all' tab specifically, with a "Show more
+                      designers" button below switching to the dedicated
+                      Designers tab for the full list. The 'designers' tab
+                      itself still shows everything, uncapped - the 3-item
+                      cap is purely about not letting designer results
+                      dominate the combined 'all' view. */}
                   {(searchFilterTab === 'all' || searchFilterTab === 'designers') && (
+                    <>
                     <View
                       style={[styles.designersList, { marginTop: 20 }, isWebWide && { flexDirection: 'row', flexWrap: 'wrap' }]}
                       onLayout={isWebWide ? debouncedLayoutWidthSetter(searchDesignersGridWidthTimerRef, setSearchDesignersGridWidth) : undefined}
                     >
-                      {relatedDesigners.map((des) => {
+                      {(searchFilterTab === 'all' ? relatedDesigners.slice(0, 3) : relatedDesigners).map((des) => {
                         const isFollowing = followedDesigners.includes(des.id);
                         return (
                           <View
@@ -12262,26 +12409,86 @@ function App() {
                         );
                       })}
                     </View>
+
+                    {searchFilterTab === 'all' && relatedDesigners.length > 3 && (
+                      <BouncyButton
+                        style={{ alignSelf: 'flex-start', marginTop: 12, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
+                        onPress={() => setSearchFilterTab('designers')}
+                      >
+                        <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>
+                          Show more designers ({relatedDesigners.length - 3} more)
+                        </Text>
+                      </BouncyButton>
+                    )}
+                    </>
+                  )}
+
+                  {(searchFilterTab === 'all' || searchFilterTab === 'portfolios') && relatedProjects.length > 0 && (
+                    <View
+                      style={[isWebWide ? { width: '100%' } : undefined, { marginTop: 20 }]}
+                      onLayout={isWebWide ? debouncedLayoutWidthSetter(searchGridWidthTimerRef, setSearchGridWidth) : undefined}
+                    >
+                    <ProjectGrid
+                      items={relatedProjects}
+                      onPress={openProjectModal}
+                      onToggleLike={toggleLike}
+                      onOpenDesignerProfile={openDesignerProfileById}
+                      onToggleFollow={isWebWide ? toggleFollowDesigner : undefined}
+                      followedDesigners={followedDesigners}
+                      currentUserId={session ? session.user.id : null}
+                    styles={isWebWide
+                      ? { ...styles, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: FOR_YOU_GRID_GAP, justifyContent: 'flex-start' }, card: { ...styles.card, width: searchCardWidthPx } }
+                      : styles}
+                    cardWidth={Platform.OS === 'web' && !isWebWide ? '100%' : undefined}
+                    />
+                    </View>
                   )}
 
                   {relatedProjects.length === 0 && relatedDesigners.length === 0 && (
-                    <Text style={styles.emptySearchText}>No related results found.</Text>
+                    <View>
+                      <Text style={styles.emptySearchText}>No related results found.</Text>
+                      {didYouMeanSuggestion && (
+                        <BouncyButton style={{ marginTop: 6 }} onPress={() => setSearchQuery(didYouMeanSuggestion)}>
+                          <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
+                            Did you mean <Text style={{ color: theme.accent, fontWeight: '700' }}>"{didYouMeanSuggestion}"</Text>?
+                          </Text>
+                        </BouncyButton>
+                      )}
+                    </View>
                   )}
                 </View>
               ) : (
                 <View>
                   <Text style={styles.sectionHeader}>POPULAR KEYWORDS</Text>
                   {popularKeywords.length > 0 ? (
-                    <View style={styles.keywordsRow}>
-                      {/* b532: capped to top 6 here specifically - this
-                          list is a "few good starting points" UI, not
-                          meant to be exhaustive. popularKeywords itself
-                          stays a bigger pool (30, since b523) because the
-                          category filter bar elsewhere reuses the same
-                          array and needs enough candidates to dynamically
-                          fill wide-web width - slicing here, not at the
-                          source, keeps that intact. */}
-                      {popularKeywords.slice(0, 6).map((kw) => (
+                    <View
+                      style={styles.keywordsRow}
+                      onLayout={isWebWide ? (e) => setSearchKeywordsContainerWidth(e.nativeEvent.layout.width) : undefined}
+                    >
+                      {/* b532: capped to top 6 by default - this list is a
+                          "few good starting points" UI, not meant to be
+                          exhaustive. popularKeywords itself stays a bigger
+                          pool (30, since b523) because the category filter
+                          bar elsewhere reuses the same array and needs
+                          enough candidates to dynamically fill wide-web
+                          width - slicing here, not at the source, keeps
+                          that intact.
+                          b561: on wide web specifically, once
+                          searchKeywordsFitCount has settled (not null),
+                          show that many instead of the flat 6 - fills the
+                          actual available row width rather than an
+                          arbitrary small number, keeping it to one row
+                          (this container wraps, unlike the horizontally-
+                          scrolling category bar that categoryFitCount
+                          measures, so showing all 30 candidates while
+                          still measuring would flash multiple wrapped rows
+                          before settling - defaulting to 6 here avoids
+                          that, and the true candidate set is measured via
+                          a separate, invisible layer below instead). */}
+                      {(Platform.OS === 'web' && isWebWide && searchKeywordsFitCount !== null
+                        ? popularKeywords.slice(0, searchKeywordsFitCount)
+                        : popularKeywords.slice(0, 6)
+                      ).map((kw) => (
                         <BouncyButton
                           key={kw}
                           style={styles.keywordChip}
@@ -12296,6 +12503,45 @@ function App() {
                     </View>
                   ) : (
                     <Text style={styles.emptySearchText}>No popular tags yet — be the first to publish!</Text>
+                  )}
+
+                  {/* b561: invisible measurement layer, wide web only -
+                      renders every candidate off-screen (position:
+                      absolute lifts it out of normal flow entirely, so it
+                      doesn't affect the visible row's layout or take up
+                      real space) purely so each chip's onLayout can report
+                      its real width, feeding computeSearchKeywordsFitCount
+                      above. pointerEvents:none since these are never
+                      meant to be tappable - they're not the real ones. */}
+                  {Platform.OS === 'web' && isWebWide && popularKeywords.length > 0 && (
+                    <View
+                      // b561 fix: no flexWrap and no width constraint here
+                      // - this needs one continuous, unconstrained row so
+                      // each chip's onLayout reports a true cumulative x
+                      // position (matching how computeSearchKeywordsFitCount
+                      // interprets layout.x + layout.width against the
+                      // container width). Wrapping this the same way as
+                      // the visible row would reset x back near 0 at the
+                      // start of each wrapped row, breaking that math -
+                      // the visible row is allowed to wrap because it's
+                      // never used as measurement input, only this
+                      // hidden one is.
+                      style={{ position: 'absolute', opacity: 0, flexDirection: 'row', gap: 10 }}
+                      pointerEvents="none"
+                    >
+                      {popularKeywords.map((kw) => (
+                        <View
+                          key={kw}
+                          style={styles.keywordChip}
+                          onLayout={(e) => handleSearchKeywordChipLayout(kw, e)}
+                        >
+                          <View style={styles.iconTextInlineRow}>
+                            <SearchChipSVG />
+                            <Text style={styles.keywordText}>{kw}</Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
                   )}
 
                   <Text
@@ -18199,77 +18445,244 @@ function App() {
 
               {formStep === 2 && (
                 <View>
-                  <View style={styles.warningNoteBox}>
-                    <View style={styles.iconTextInlineRow}>
-                      <WarningTriangleSVG />
-                      <Text style={styles.warningTitle}>Prototype Compatibility Note</Text>
-                    </View>
-                    <Text style={styles.warningText}>
-                      Embedded prototype viewports currently support Figma share/embed links. All fields in this step are optional.
+                  {/* b560: software selection moved here (was Step 1 for
+                      illustration, this is the new Step 2 instance for
+                      UI/UX specifically) - reuses fSoftwareUsed/
+                      softwareDropdownOpen/softwareCustomInput (see their
+                      declarations for why sharing state across both
+                      portfolio types is safe here), just with
+                      UI_UX_SOFTWARE_LIST instead of
+                      ILLUSTRATION_SOFTWARE_LIST in the dropdown. */}
+                  <Text style={styles.formGroupLabel}>Software Used (Optional)</Text>
+                  <BouncyButton
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                      borderWidth: 1, borderColor: theme.border,
+                      borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12,
+                      backgroundColor: theme.surface, marginTop: 6
+                    }}
+                    onPress={() => setSoftwareDropdownOpen((v) => !v)}
+                  >
+                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: fSoftwareUsed.length > 0 ? '700' : '500', flex: 1, marginRight: 8 }} numberOfLines={1}>
+                      {fSoftwareUsed.length === 0 ? 'No selection' : fSoftwareUsed.join(', ')}
                     </Text>
-                  </View>
+                    <ChevronDownSVG color={theme.textSecondary} size={14} />
+                  </BouncyButton>
 
-                  <View style={[styles.warningNoteBox, { borderColor: theme.accent, backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)', marginTop: 10 }]}>
-                    <View style={styles.iconTextInlineRow}>
-                      <HelpCircleIconSVG color={theme.accent} size={18} />
-                      <Text style={[styles.warningTitle, { color: theme.accent }]}>Not using Figma?</Text>
+                  {fSoftwareUsed.length > 0 && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                      {fSoftwareUsed.map((sw) => (
+                          <View key={sw} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingVertical: 5, paddingHorizontal: 8 }}>
+                            <SoftwareIconSVG name={sw} size={14} />
+                            <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600' }}>{sw}</Text>
+                            <BouncyButton
+                              style={{ padding: 2 }}
+                              onPress={() => setFSoftwareUsed(fSoftwareUsed.filter((s) => s !== sw))}
+                            >
+                              <CrossIconSVG color={theme.textSecondary} size={11} />
+                            </BouncyButton>
+                          </View>
+                      ))}
                     </View>
-                    <Text style={[styles.warningText, { color: theme.text }]}>
-                      This whole step is safe to skip if you design in Sketch, Adobe XD, Framer, or anything else - just tap Next below. Your portfolio still works great with just the showcase images you'll add in the next step.
-                    </Text>
-                  </View>
+                  )}
 
-                  <Text style={styles.formGroupLabel}>Figma Mobile Prototype Share Link</Text>
+                  {softwareDropdownOpen && (
+                    <>
+                      <TouchableOpacity
+                        style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
+                        activeOpacity={1}
+                        onPress={() => setSoftwareDropdownOpen(false)}
+                      />
+                      <View style={{
+                        position: 'relative', marginTop: 4, zIndex: 100,
+                        borderRadius: 10, borderWidth: 1, borderColor: theme.border, overflow: 'hidden'
+                      }}>
+                        {!lightweightMode && Platform.OS !== 'web' ? (
+                          <BlurView
+                            intensity={40}
+                            tint={themeMode === 'light' ? 'light' : 'dark'}
+                            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                          />
+                        ) : (
+                          <View style={{
+                            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                            backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface
+                          }} />
+                        )}
+                        <View style={{ padding: 4, maxHeight: 260 }}>
+                          <ScrollView style={{ maxHeight: 252 }} nestedScrollEnabled={true}>
+                            {UI_UX_SOFTWARE_LIST.map((sw) => {
+                              const selected = fSoftwareUsed.includes(sw.name);
+                              return (
+                                <BouncyButton
+                                  key={sw.name}
+                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
+                                  onPress={() => {
+                                    setFSoftwareUsed(selected ? fSoftwareUsed.filter((s) => s !== sw.name) : [...fSoftwareUsed, sw.name]);
+                                  }}
+                                >
+                                  <SoftwareIconSVG name={sw.name} size={18} />
+                                  <Text style={{ color: theme.text, fontSize: 13, fontWeight: selected ? '700' : '500', flex: 1 }}>{sw.name}</Text>
+                                  {selected && <CheckIconSVG color={theme.accent} />}
+                                </BouncyButton>
+                              );
+                            })}
+                          </ScrollView>
+                          {/* Custom entry - not a preset, so no icon
+                              color to assign; SoftwareIconSVG falls back
+                              to purple for anything not found in either
+                              preset list, including these. */}
+                          <View style={{ flexDirection: 'row', gap: 6, padding: 6, borderTopWidth: 1, borderTopColor: theme.border, marginTop: 4 }}>
+                            <FocusableTextInput
+                              style={[styles.formInput, { flex: 1 }]}
+                              placeholder="Add custom software..."
+                              placeholderTextColor={theme.textSecondary}
+                              value={softwareCustomInput}
+                              onChangeText={setSoftwareCustomInput}
+                              maxLength={40}
+                              onSubmitEditing={() => {
+                                const trimmed = softwareCustomInput.trim();
+                                if (trimmed && !fSoftwareUsed.includes(trimmed)) {
+                                  setFSoftwareUsed([...fSoftwareUsed, trimmed]);
+                                }
+                                setSoftwareCustomInput('');
+                              }}
+                            />
+                            <BouncyButton
+                              style={{ width: 40, height: 40, borderRadius: 10, borderWidth: 1.5, borderColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
+                              onPress={() => {
+                                const trimmed = softwareCustomInput.trim();
+                                if (trimmed && !fSoftwareUsed.includes(trimmed)) {
+                                  setFSoftwareUsed([...fSoftwareUsed, trimmed]);
+                                }
+                                setSoftwareCustomInput('');
+                              }}
+                            >
+                              <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                <Path d="M12 5V19M5 12H19" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round" />
+                              </Svg>
+                            </BouncyButton>
+                          </View>
+                        </View>
+                      </View>
+                    </>
+                  )}
+
+                  {/* b560: was two always-shown warning boxes regardless
+                      of software choice (there was no software selection
+                      at all before this). Now conditional on what's
+                      actually selected - showFigmaFields true (Figma
+                      picked, or nothing picked yet - default to the
+                      original no-disclaimer behavior rather than
+                      punishing someone who hasn't touched the new field
+                      yet) means no disclaimer at all, the normal Figma
+                      fields just show. Only-non-Figma selected replaces
+                      both old boxes with one specific disclaimer plus an
+                      interest-capture action instead of the Figma fields,
+                      which would be irrelevant/misleading to fill in for
+                      a Sketch/XD/Framer/InVision-only submission. */}
+                  {(() => {
+                    const showFigmaFields = fSoftwareUsed.length === 0 || fSoftwareUsed.includes('Figma');
+                    return showFigmaFields ? (
+                      <>
+                        <Text style={[styles.formGroupLabel, { marginTop: 16 }]}>Figma Mobile Prototype Share Link</Text>
+                        <FocusableTextInput
+                          style={styles.formInput}
+                          placeholder="https://www.figma.com/proto/..."
+                          placeholderTextColor="#94A3B8"
+                          autoCapitalize="none"
+                          value={fFigmaProto}
+                          onChangeText={setFFigmaProto}
+                        />
+
+                        <Text style={styles.formGroupLabel}>Figma Desktop Prototype Share Link</Text>
+                        <FocusableTextInput
+                          style={styles.formInput}
+                          placeholder="https://www.figma.com/proto/... (1440px canvas)"
+                          placeholderTextColor="#94A3B8"
+                          autoCapitalize="none"
+                          value={fDesktopProto}
+                          onChangeText={setFDesktopProto}
+                        />
+
+                        <Text style={styles.formGroupLabel}>Component Showcase Prototype Link</Text>
+                        <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 6, marginTop: -4 }}>
+                          Optional - a focused prototype demonstrating how a single component works (e.g. a dropdown, toggle, or interaction pattern), separate from the full mobile/desktop flow above.
+                        </Text>
+                        <FocusableTextInput
+                          style={styles.formInput}
+                          placeholder="https://www.figma.com/proto/..."
+                          placeholderTextColor="#94A3B8"
+                          autoCapitalize="none"
+                          value={fComponentProto}
+                          onChangeText={setFComponentProto}
+                        />
+
+                        <Text style={styles.formGroupLabel}>Figma Profile Link</Text>
+                        <FocusableTextInput
+                          style={styles.formInput}
+                          placeholder="https://www.figma.com/@username"
+                          placeholderTextColor="#94A3B8"
+                          autoCapitalize="none"
+                          value={fFigmaProfile}
+                          onChangeText={setFFigmaProfile}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <View style={[styles.warningNoteBox, { marginTop: 16 }]}>
+                          <View style={styles.iconTextInlineRow}>
+                            <WarningTriangleSVG />
+                            <Text style={styles.warningTitle}>Figma-Only Prototype Support (For Now)</Text>
+                          </View>
+                          <Text style={styles.warningText}>
+                            Right now only Figma prototype links can be embedded and viewed on DECENT. Your portfolio still works great with just the showcase images from the next step - but if you'd like live prototype support for {fSoftwareUsed.join(', ')} (or another tool), let us know below. It helps us prioritize what to build next.
+                          </Text>
+                        </View>
+
+                        {fUiUxSoftwareInterestSubmitted ? (
+                          <Text style={{ color: theme.textSecondary, fontSize: 12.5, marginTop: 10 }}>
+                            Thanks - we've noted your interest.
+                          </Text>
+                        ) : (
+                          <View style={{ marginTop: 10 }}>
+                            <FocusableTextInput
+                              style={styles.formInput}
+                              placeholder="Which software would you like supported?"
+                              placeholderTextColor="#94A3B8"
+                              value={fUiUxSoftwareInterestText}
+                              onChangeText={setFUiUxSoftwareInterestText}
+                              maxLength={60}
+                            />
+                            <BouncyButton
+                              style={{ alignSelf: 'flex-start', marginTop: 8, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 99, backgroundColor: theme.accent }}
+                              onPress={handleSubmitUiUxSoftwareInterest}
+                            >
+                              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>I'm Interested</Text>
+                            </BouncyButton>
+                          </View>
+                        )}
+                      </>
+                    );
+                  })()}
+
+                  {/* b560: always shown regardless of software choice -
+                      renamed from "Figma Design File Canvas Link (Inspect
+                      Mode)" to a generic label/placeholder, since a
+                      public file/canvas link is a universal concept
+                      across UI/UX tools (Figma file link, Adobe XD Cloud
+                      link, Sketch Cloud, Framer project link, etc.), not
+                      something specific to Figma the way the prototype
+                      embed fields above are. Still the same fFigmaFile
+                      state/DB column underneath - only the label changed. */}
+                  <Text style={[styles.formGroupLabel, { marginTop: 16 }]}>Project Canvas Link (Public)</Text>
                   <FocusableTextInput
                     style={styles.formInput}
-                    placeholder="https://www.figma.com/proto/..."
-                    placeholderTextColor="#94A3B8"
-                    autoCapitalize="none"
-                    value={fFigmaProto}
-                    onChangeText={setFFigmaProto}
-                  />
-
-                  <Text style={styles.formGroupLabel}>Figma Desktop Prototype Share Link</Text>
-                  <FocusableTextInput
-                    style={styles.formInput}
-                    placeholder="https://www.figma.com/proto/... (1440px canvas)"
-                    placeholderTextColor="#94A3B8"
-                    autoCapitalize="none"
-                    value={fDesktopProto}
-                    onChangeText={setFDesktopProto}
-                  />
-
-                  <Text style={styles.formGroupLabel}>Component Showcase Prototype Link</Text>
-                  <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 6, marginTop: -4 }}>
-                    Optional - a focused prototype demonstrating how a single component works (e.g. a dropdown, toggle, or interaction pattern), separate from the full mobile/desktop flow above.
-                  </Text>
-                  <FocusableTextInput
-                    style={styles.formInput}
-                    placeholder="https://www.figma.com/proto/..."
-                    placeholderTextColor="#94A3B8"
-                    autoCapitalize="none"
-                    value={fComponentProto}
-                    onChangeText={setFComponentProto}
-                  />
-
-                  <Text style={styles.formGroupLabel}>Figma Design File Canvas Link (Inspect Mode)</Text>
-                  <FocusableTextInput
-                    style={styles.formInput}
-                    placeholder="https://www.figma.com/design/..."
+                    placeholder="https://... (Figma, Adobe XD, Sketch Cloud, etc.)"
                     placeholderTextColor="#94A3B8"
                     autoCapitalize="none"
                     value={fFigmaFile}
                     onChangeText={setFFigmaFile}
-                  />
-
-                  <Text style={styles.formGroupLabel}>Figma Profile Link</Text>
-                  <FocusableTextInput
-                    style={styles.formInput}
-                    placeholder="https://www.figma.com/@username"
-                    placeholderTextColor="#94A3B8"
-                    autoCapitalize="none"
-                    value={fFigmaProfile}
-                    onChangeText={setFFigmaProfile}
                   />
 
                   <BouncyButton
