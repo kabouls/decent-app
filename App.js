@@ -41,7 +41,7 @@ import {
   Easing
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
-import { useFonts, MPLUSU_400Regular, MPLUSU_500Medium, MPLUSU_700Bold } from '@expo-google-fonts/m-plus-u';
+import { useFonts, Inter_300Light, Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
 import { WebView as NativeWebView } from 'react-native-webview';
 import { KeyboardAwareScrollView as NativeKeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import Svg, { Rect, Path, Circle, G, Defs, LinearGradient, Stop } from 'react-native-svg';
@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 593;
+const BUILD_NUMBER = 594;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -22537,17 +22537,20 @@ function App() {
 // JSX elsewhere in the file are NOT covered by this (a separate, much
 // larger pass Iqbal deferred for later).
 const RADIUS_SCALE_CUTOFF = 29;
-// b593: these are 3 separate static font FILES (not one variable font),
-// so a numeric fontWeight can't just be handed to the OS to render
-// bold/medium itself the way a system font would - each weight needs
-// its own distinct fontFamily name. Reads whatever fontWeight a given
-// style object already specifies (defaulting to 400/Regular when none
-// is set) and maps it to the closest of the 3 loaded weights.
-function pickMPLUSUFamily(fontWeight) {
+// b594: switched from M PLUS U to Inter, Light/Regular/SemiBold (Iqbal's
+// pick - closest Google Fonts match to SF Pro). Same reasoning as
+// before: 3 separate static FILES, not a variable font, so fontWeight
+// gets mapped to the closest of the 3 loaded weights rather than handed
+// to the OS directly. 600 (SemiBold) is the boldest file loaded, so
+// anything at or above that - including the app's existing 700/800
+// "bold" headings - renders as SemiBold, not true Bold; genuinely
+// wanting a heavier weight than that would need loading Inter's own
+// 700Bold file (a rebuild, same as this change itself).
+function pickAppFontFamily(fontWeight) {
   const w = typeof fontWeight === 'string' ? parseInt(fontWeight, 10) : (fontWeight || 400);
-  if (w >= 700) return 'MPLUSU_700Bold';
-  if (w >= 500) return 'MPLUSU_500Medium';
-  return 'MPLUSU_400Regular';
+  if (w >= 550) return 'Inter_600SemiBold';
+  if (w <= 350) return 'Inter_300Light';
+  return 'Inter_400Regular';
 }
 const getStyles = (theme, radiusScale = 1) => {
   const raw = StyleSheet.create({
@@ -23077,7 +23080,7 @@ const getStyles = (theme, radiusScale = 1) => {
   for (const key in raw) {
     const style = raw[key];
     if (style && typeof style === 'object' && !Array.isArray(style)) {
-      withFont[key] = { ...style, fontFamily: pickMPLUSUFamily(style.fontWeight), fontWeight: 'normal' };
+      withFont[key] = { ...style, fontFamily: pickAppFontFamily(style.fontWeight), fontWeight: 'normal' };
     } else {
       withFont[key] = style;
     }
@@ -23127,7 +23130,7 @@ const getStyles = (theme, radiusScale = 1) => {
 // network fetch) and a flash of blank is less jarring than a flash of
 // wrong-font text that then visibly re-renders.
 const AppWithSafeArea = () => {
-  const [fontsLoaded] = useFonts({ MPLUSU_400Regular, MPLUSU_500Medium, MPLUSU_700Bold });
+  const [fontsLoaded] = useFonts({ Inter_300Light, Inter_400Regular, Inter_600SemiBold });
   if (!fontsLoaded) return null;
   return (
     <SafeAreaProvider>
