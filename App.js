@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 577;
+const BUILD_NUMBER = 578;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -19116,7 +19116,7 @@ function App() {
                     return showFigmaFields ? (
                       <>
                         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginTop: 16 }}>
-                          <Text style={styles.formGroupLabel}>Figma Mobile Prototype Share Link</Text>
+                          <Text style={[styles.formGroupLabel, Platform.OS === 'android' && { includeFontPadding: false }]}>Figma Mobile Prototype Share Link</Text>
                           {renderLinkFieldInfoButton('mobile')}
                         </View>
                         <FocusableTextInput
@@ -19129,7 +19129,7 @@ function App() {
                         />
 
                         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>
-                          <Text style={styles.formGroupLabel}>Figma Desktop Prototype Share Link</Text>
+                          <Text style={[styles.formGroupLabel, Platform.OS === 'android' && { includeFontPadding: false }]}>Figma Desktop Prototype Share Link</Text>
                           {renderLinkFieldInfoButton('desktop')}
                         </View>
                         <FocusableTextInput
@@ -19142,7 +19142,7 @@ function App() {
                         />
 
                         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>
-                          <Text style={styles.formGroupLabel}>Component Showcase Prototype Link</Text>
+                          <Text style={[styles.formGroupLabel, Platform.OS === 'android' && { includeFontPadding: false }]}>Component Showcase Prototype Link</Text>
                           {renderLinkFieldInfoButton('component')}
                         </View>
                         <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 6, marginTop: -4 }}>
@@ -19158,7 +19158,7 @@ function App() {
                         />
 
                         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>
-                          <Text style={styles.formGroupLabel}>Figma Profile Link</Text>
+                          <Text style={[styles.formGroupLabel, Platform.OS === 'android' && { includeFontPadding: false }]}>Figma Profile Link</Text>
                           {renderLinkFieldInfoButton('profile')}
                         </View>
                         <FocusableTextInput
@@ -19224,7 +19224,7 @@ function App() {
                       embed fields above are. Still the same fFigmaFile
                       state/DB column underneath - only the label changed. */}
                   <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginTop: 16 }}>
-                    <Text style={styles.formGroupLabel}>Project Canvas Link (Public)</Text>
+                    <Text style={[styles.formGroupLabel, Platform.OS === 'android' && { includeFontPadding: false }]}>Project Canvas Link (Public)</Text>
                     {renderLinkFieldInfoButton('canvas')}
                   </View>
                   <FocusableTextInput
