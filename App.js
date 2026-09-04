@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 592;
+const BUILD_NUMBER = 593;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -22537,6 +22537,18 @@ function App() {
 // JSX elsewhere in the file are NOT covered by this (a separate, much
 // larger pass Iqbal deferred for later).
 const RADIUS_SCALE_CUTOFF = 29;
+// b593: these are 3 separate static font FILES (not one variable font),
+// so a numeric fontWeight can't just be handed to the OS to render
+// bold/medium itself the way a system font would - each weight needs
+// its own distinct fontFamily name. Reads whatever fontWeight a given
+// style object already specifies (defaulting to 400/Regular when none
+// is set) and maps it to the closest of the 3 loaded weights.
+function pickMPLUSUFamily(fontWeight) {
+  const w = typeof fontWeight === 'string' ? parseInt(fontWeight, 10) : (fontWeight || 400);
+  if (w >= 700) return 'MPLUSU_700Bold';
+  if (w >= 500) return 'MPLUSU_500Medium';
+  return 'MPLUSU_400Regular';
+}
 const getStyles = (theme, radiusScale = 1) => {
   const raw = StyleSheet.create({
   thumbnailContainerCompact: {
@@ -23050,11 +23062,32 @@ const getStyles = (theme, radiusScale = 1) => {
   formInput: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: theme.text, fontSize: 13 }
   });
 
-  if (radiusScale === 1) return raw;
-
-  const scaled = {};
+  // b593: redo of the global font, this time safe - injects fontFamily
+  // directly into the plain style OBJECTS this function builds, rather
+  // than patching Text/TextInput component internals (which broke
+  // Animated's imperative DOM style mutation on web, see b592's revert).
+  // This always runs (not gated behind radiusScale like the block below),
+  // since font application isn't tied to the wide-web radius feature at
+  // all. Real tradeoff, disclosed up front: this only reaches styles
+  // referenced via styles.xxx here - ad-hoc inline style={{...}} objects
+  // written directly in JSX elsewhere in the file won't pick this up,
+  // so coverage is partial, not the "every single Text" reach the
+  // reverted patch was aiming for.
+  const withFont = {};
   for (const key in raw) {
     const style = raw[key];
+    if (style && typeof style === 'object' && !Array.isArray(style)) {
+      withFont[key] = { ...style, fontFamily: pickMPLUSUFamily(style.fontWeight), fontWeight: 'normal' };
+    } else {
+      withFont[key] = style;
+    }
+  }
+
+  if (radiusScale === 1) return withFont;
+
+  const scaled = {};
+  for (const key in withFont) {
+    const style = withFont[key];
     if (style && typeof style === 'object' && typeof style.borderRadius === 'number') {
       // b586: RADIUS_SCALE_CUTOFF alone wasn't enough - it correctly
       // excludes big flat pill/circle numbers (99, 999) but missed
