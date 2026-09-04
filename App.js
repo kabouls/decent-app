@@ -136,7 +136,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 562;
+const BUILD_NUMBER = 564;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -437,10 +437,43 @@ const ILLUSTRATION_SOFTWARE_LIST = [
 const UI_UX_SOFTWARE_LIST = [
   { name: 'Figma', color: '#F24E1E', usesFigmaLogo: true },
   { name: 'Adobe XD', color: '#FF61F6', icon: require('./assets/software-icons/adobe-xd.png') },
-  { name: 'Framer', color: '#0055FF', icon: require('./assets/software-icons/framer.png') },
+  // b562: needsLightBg - Framer's logo asset is a black glyph on a
+  // transparent background, so it disappears entirely against the dark
+  // theme's near-black surfaces. SoftwareIconSVG below wraps anything with
+  // this flag in a small white backdrop chip so it stays visible in both
+  // themes, without changing how every other (already-visible) icon renders.
+  { name: 'Framer', color: '#0055FF', icon: require('./assets/software-icons/framer.png'), needsLightBg: true },
   { name: 'Sketch', color: '#F7B500', icon: require('./assets/software-icons/sketch.png') },
   { name: 'InVision', color: '#FF3366', icon: require('./assets/software-icons/invision.png') }
 ];
+
+// b562: explanatory content for the "!" info button next to each UI/UX
+// link field's label in the wizard - what the link is for and how to get
+// it. Keyed lookup so one shared popup (linkFieldInfoKey state + its Modal
+// in the main component) can serve all of these instead of six near-
+// identical one-off modals.
+const LINK_FIELD_INFO = {
+  mobile: {
+    title: 'Figma Mobile Prototype Link',
+    body: 'A live, interactive link to your mobile prototype flow. In Figma: open your prototype, select the flow\u2019s starting frame, then Share \u2192 Copy link. Paste that link here.'
+  },
+  desktop: {
+    title: 'Figma Desktop Prototype Link',
+    body: 'Same idea as the mobile link, but for your desktop-width flow (1440px canvas is typical). Select that flow\u2019s starting frame in Figma, then Share \u2192 Copy link.'
+  },
+  component: {
+    title: 'Component Showcase Prototype Link',
+    body: 'Optional - a focused prototype demonstrating a single component in isolation (e.g. a dropdown, toggle, or interaction pattern), separate from your full mobile/desktop flows above. Build a small interactive frame for it in Figma, then Share \u2192 Copy link the same way.'
+  },
+  profile: {
+    title: 'Figma Profile Link',
+    body: 'Your public Figma Community profile URL, e.g. figma.com/@yourusername. Find it in Figma under your account menu \u2192 Community profile, or from the address bar while viewing your own profile page.'
+  },
+  canvas: {
+    title: 'Project Canvas Link (Public)',
+    body: 'A link to your full design file so viewers can inspect layers and canvas, not just a locked prototype flow. In Figma: Share \u2192 set access to \u201cAnyone with the link can view\u201d \u2192 Copy link. For other tools, use the equivalent public view-only share link (Adobe XD Cloud, Sketch Cloud, Framer project link, etc.).'
+  }
+};
 
 // Renders the real logo (rounded square) for any name found in
 // ILLUSTRATION_SOFTWARE_LIST or UI_UX_SOFTWARE_LIST above; falls back to
@@ -454,6 +487,20 @@ const SoftwareIconSVG = React.memo(({ name, size = 18 }) => {
     return (
       <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
         <FigmaLogoSVG />
+      </View>
+    );
+  }
+  if (preset && preset.needsLightBg) {
+    return (
+      <View style={{
+        width: size, height: size, borderRadius: size * 0.22,
+        backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center'
+      }}>
+        <Image
+          source={preset.icon}
+          style={{ width: size * 0.72, height: size * 0.72 }}
+          resizeMode="contain"
+        />
       </View>
     );
   }
@@ -4663,6 +4710,64 @@ function App() {
   // simple persisted boolean flag, same convention as
   // decent_android_promo_dismissed elsewhere in this file.
   const [showProtoTutorial, setShowProtoTutorial] = useState(false);
+  // b563: mobile-data usage warning before loading a Figma prototype -
+  // separate flag/modal from showProtoTutorial above (that one explains
+  // what a prototype IS, this one is a network-cost heads-up), app-only
+  // and cellular-only, fired specifically from the tab tap itself via
+  // openProtoTab() below - not from the auto-selected default tab when a
+  // portfolio with no case study opens straight onto a prototype, since
+  // that's not a user-initiated tap. Same persisted-dismiss convention as
+  // protoTutorialDismissed above (AsyncStorage boolean, "Never Show
+  // Again" style opt-out) rather than the tutorials array, since this
+  // isn't part of the onboarding tour system.
+  const [protoDataWarningVisible, setProtoDataWarningVisible] = useState(false);
+  const [pendingProtoTab, setPendingProtoTab] = useState(null);
+  const [skipProtoDataWarning, setSkipProtoDataWarning] = useState(false);
+  const [protoDataWarningDontAskAgain, setProtoDataWarningDontAskAgain] = useState(false);
+  useEffect(() => {
+    AsyncStorage.getItem('skipProtoDataWarning').then((saved) => {
+      if (saved === 'true') setSkipProtoDataWarning(true);
+    }).catch(() => {});
+  }, []);
+  const openProtoTab = async (tab) => {
+    if (Platform.OS === 'web' || skipProtoDataWarning) {
+      setActiveTab(tab);
+      setLoadingWebView(true);
+      return;
+    }
+    let isCellular = false;
+    try {
+      const state = await NetInfoCompat.fetch();
+      isCellular = state.type === 'cellular';
+    } catch (e) {
+      isCellular = false;
+    }
+    if (!isCellular) {
+      setActiveTab(tab);
+      setLoadingWebView(true);
+      return;
+    }
+    setPendingProtoTab(tab);
+    setProtoDataWarningVisible(true);
+  };
+  const confirmProtoDataWarning = () => {
+    setProtoDataWarningVisible(false);
+    if (protoDataWarningDontAskAgain) {
+      setSkipProtoDataWarning(true);
+      AsyncStorage.setItem('skipProtoDataWarning', 'true').catch(() => {});
+    }
+    if (pendingProtoTab) {
+      setActiveTab(pendingProtoTab);
+      setLoadingWebView(true);
+    }
+    setPendingProtoTab(null);
+    setProtoDataWarningDontAskAgain(false);
+  };
+  const cancelProtoDataWarning = () => {
+    setProtoDataWarningVisible(false);
+    setPendingProtoTab(null);
+    setProtoDataWarningDontAskAgain(false);
+  };
   const [protoTutorialDismissed, setProtoTutorialDismissed] = useState(false);
   useEffect(() => {
     AsyncStorage.getItem('protoTutorialDismissed').then((saved) => {
@@ -5444,6 +5549,17 @@ function App() {
   // user submitting a second, different request later).
   const [fUiUxSoftwareInterestText, setFUiUxSoftwareInterestText] = useState('');
   const [fUiUxSoftwareInterestSubmitted, setFUiUxSoftwareInterestSubmitted] = useState(false);
+  // b562: disclaimer box is now a collapsible accordion (defaults open,
+  // same visibility as before this change) and the interest-capture flow
+  // moved from an inline text input + pill button into a popup, triggered
+  // by a plain text link inside the box instead.
+  const [uiUxDisclaimerExpanded, setUiUxDisclaimerExpanded] = useState(true);
+  const [uiUxSoftwareInterestModalVisible, setUiUxSoftwareInterestModalVisible] = useState(false);
+  // b562: which LINK_FIELD_INFO entry is currently shown in the shared
+  // link-field info popup, null when closed - see its Modal further down
+  // and the renderLinkFieldInfoButton() helper near
+  // handleSubmitUiUxSoftwareInterest.
+  const [linkFieldInfoKey, setLinkFieldInfoKey] = useState(null);
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [categoryPickerModalVisible, setCategoryPickerModalVisible] = useState(false);
   // Custom tags (user-typed, not in any base list) are global across every
@@ -10126,12 +10242,30 @@ function App() {
   // software was typed), fall back to updating the existing row's detail
   // instead - treating a second submission as replacing the first
   // request rather than failing silently or duplicating.
+  // b562: small "!" info button for a UI/UX link field's label - opens the
+  // shared LINK_FIELD_INFO popup for the given key. A plain helper
+  // function (not its own component) so it can close over
+  // setLinkFieldInfoKey without extra prop plumbing at each of the 5 call
+  // sites below.
+  const renderLinkFieldInfoButton = (key) => (
+    <BouncyButton
+      style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: theme.textSecondary, alignItems: 'center', justifyContent: 'center' }}
+      onPress={() => setLinkFieldInfoKey(key)}
+    >
+      <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '800' }}>!</Text>
+    </BouncyButton>
+  );
+
+  // b562: returns true/false now (was void) so the popup's Confirm button
+  // knows whether to close itself - it should stay open on a validation or
+  // network failure so the person can fix/retry, and only dismiss on
+  // actual success.
   const handleSubmitUiUxSoftwareInterest = async () => {
-    if (!requireAuth()) return;
+    if (!requireAuth()) return false;
     const detail = fUiUxSoftwareInterestText.trim();
     if (!detail) {
       showToast('Let us know which software you have in mind first.');
-      return;
+      return false;
     }
     const { error } = await supabase
       .from('feature_interest')
@@ -10145,15 +10279,16 @@ function App() {
           .eq('feature_name', 'ui_ux_software_request');
         if (updateError) {
           showToast('Could not submit - try again.');
-          return;
+          return false;
         }
       } else {
         showToast('Could not submit - try again.');
-        return;
+        return false;
       }
     }
     setFUiUxSoftwareInterestSubmitted(true);
     showToast("Thanks! We'll factor this into what we build next.");
+    return true;
   };
 
   const handleOpenChangelog = async () => {
@@ -17306,6 +17441,84 @@ function App() {
         </View>
       </Modal>
 
+      {/* b562: UI/UX non-Figma software interest popup - replaces the old
+          always-visible text input + pill button inside the disclaimer box
+          with a text link that opens this, matching the same
+          overlayModalBg/customConfirmCard pattern as the AI Disclosure info
+          popup right above. Confirm calls the existing
+          handleSubmitUiUxSoftwareInterest handler unchanged. */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={uiUxSoftwareInterestModalVisible}
+        onRequestClose={() => setUiUxSoftwareInterestModalVisible(false)}
+      >
+        <View style={styles.overlayModalBg}>
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
+            <BouncyButton
+              style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 1 }}
+              onPress={() => setUiUxSoftwareInterestModalVisible(false)}
+            >
+              <CrossIconSVG color={theme.textSecondary} size={18} />
+            </BouncyButton>
+
+            <Text style={[styles.confirmTitle, { marginBottom: 10, paddingRight: 28 }]}>Which software would you like supported?</Text>
+
+            <Text style={[styles.confirmSubText, { textAlign: 'left', marginBottom: 16 }]}>
+              Live prototype embedding currently only works with Figma. Let us know which other tool you'd like to see supported (e.g. Adobe XD, Framer, Sketch, InVision) - it helps us prioritize what to build next.
+            </Text>
+
+            <FocusableTextInput
+              style={styles.formInput}
+              placeholder="e.g. Framer, Sketch, InVision..."
+              placeholderTextColor="#94A3B8"
+              value={fUiUxSoftwareInterestText}
+              onChangeText={setFUiUxSoftwareInterestText}
+              maxLength={60}
+            />
+
+            <BouncyButton
+              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 16, backgroundColor: theme.accent }]}
+              onPress={async () => {
+                const ok = await handleSubmitUiUxSoftwareInterest();
+                if (ok) setUiUxSoftwareInterestModalVisible(false);
+              }}
+            >
+              <Text style={styles.confirmDeleteText}>Confirm</Text>
+            </BouncyButton>
+          </View>
+        </View>
+      </Modal>
+
+      {/* b562: shared info popup for every UI/UX link field's "!" button -
+          content comes from LINK_FIELD_INFO[linkFieldInfoKey], null when
+          closed. One Modal serving all 5 fields instead of one each. */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={!!linkFieldInfoKey}
+        onRequestClose={() => setLinkFieldInfoKey(null)}
+      >
+        <View style={styles.overlayModalBg}>
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
+            <BouncyButton
+              style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 1 }}
+              onPress={() => setLinkFieldInfoKey(null)}
+            >
+              <CrossIconSVG color={theme.textSecondary} size={18} />
+            </BouncyButton>
+
+            <Text style={[styles.confirmTitle, { marginBottom: 10, paddingRight: 28 }]}>
+              {linkFieldInfoKey ? LINK_FIELD_INFO[linkFieldInfoKey].title : ''}
+            </Text>
+
+            <Text style={[styles.confirmSubText, { textAlign: 'left' }]}>
+              {linkFieldInfoKey ? LINK_FIELD_INFO[linkFieldInfoKey].body : ''}
+            </Text>
+          </View>
+        </View>
+      </Modal>
+
       {/* 4-STEP WIZARD MODAL FOR ADDING/EDITING PORTFOLIO PACKAGE */}
       {addModalVisible && (
       <Modal
@@ -18529,13 +18742,20 @@ function App() {
                         <View style={{ padding: 4, maxHeight: 260 }}>
                           <ScrollView style={{ maxHeight: 252 }} nestedScrollEnabled={true}>
                             {UI_UX_SOFTWARE_LIST.map((sw) => {
+                              // b562: UI/UX software is single-select, unlike
+                              // Illustration's multi-select above - picking a
+                              // new one replaces the prior pick outright
+                              // (empty array if re-tapping the already-selected
+                              // one, same as before), and the dropdown closes
+                              // immediately since there's nothing more to pick.
                               const selected = fSoftwareUsed.includes(sw.name);
                               return (
                                 <BouncyButton
                                   key={sw.name}
                                   style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
                                   onPress={() => {
-                                    setFSoftwareUsed(selected ? fSoftwareUsed.filter((s) => s !== sw.name) : [...fSoftwareUsed, sw.name]);
+                                    setFSoftwareUsed(selected ? [] : [sw.name]);
+                                    setSoftwareDropdownOpen(false);
                                   }}
                                 >
                                   <SoftwareIconSVG name={sw.name} size={18} />
@@ -18545,10 +18765,13 @@ function App() {
                               );
                             })}
                           </ScrollView>
-                          {/* Custom entry - not a preset, so no icon
-                              color to assign; SoftwareIconSVG falls back
-                              to purple for anything not found in either
-                              preset list, including these. */}
+                          {/* Custom entry - single-select here too (b562):
+                              typing a custom name REPLACES fSoftwareUsed
+                              rather than appending, matching the preset list
+                              above. Not a preset, so no icon color to
+                              assign; SoftwareIconSVG falls back to purple
+                              for anything not found in either preset list,
+                              including these. */}
                           <View style={{ flexDirection: 'row', gap: 6, padding: 6, borderTopWidth: 1, borderTopColor: theme.border, marginTop: 4 }}>
                             <FocusableTextInput
                               style={[styles.formInput, { flex: 1 }]}
@@ -18559,8 +18782,9 @@ function App() {
                               maxLength={40}
                               onSubmitEditing={() => {
                                 const trimmed = softwareCustomInput.trim();
-                                if (trimmed && !fSoftwareUsed.includes(trimmed)) {
-                                  setFSoftwareUsed([...fSoftwareUsed, trimmed]);
+                                if (trimmed) {
+                                  setFSoftwareUsed([trimmed]);
+                                  setSoftwareDropdownOpen(false);
                                 }
                                 setSoftwareCustomInput('');
                               }}
@@ -18569,8 +18793,9 @@ function App() {
                               style={{ width: 40, height: 40, borderRadius: 10, borderWidth: 1.5, borderColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
                               onPress={() => {
                                 const trimmed = softwareCustomInput.trim();
-                                if (trimmed && !fSoftwareUsed.includes(trimmed)) {
-                                  setFSoftwareUsed([...fSoftwareUsed, trimmed]);
+                                if (trimmed) {
+                                  setFSoftwareUsed([trimmed]);
+                                  setSoftwareDropdownOpen(false);
                                 }
                                 setSoftwareCustomInput('');
                               }}
@@ -18602,7 +18827,10 @@ function App() {
                     const showFigmaFields = fSoftwareUsed.length === 0 || fSoftwareUsed.includes('Figma');
                     return showFigmaFields ? (
                       <>
-                        <Text style={[styles.formGroupLabel, { marginTop: 16 }]}>Figma Mobile Prototype Share Link</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16 }}>
+                          <Text style={styles.formGroupLabel}>Figma Mobile Prototype Share Link</Text>
+                          {renderLinkFieldInfoButton('mobile')}
+                        </View>
                         <FocusableTextInput
                           style={styles.formInput}
                           placeholder="https://www.figma.com/proto/..."
@@ -18612,7 +18840,10 @@ function App() {
                           onChangeText={setFFigmaProto}
                         />
 
-                        <Text style={styles.formGroupLabel}>Figma Desktop Prototype Share Link</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.formGroupLabel}>Figma Desktop Prototype Share Link</Text>
+                          {renderLinkFieldInfoButton('desktop')}
+                        </View>
                         <FocusableTextInput
                           style={styles.formInput}
                           placeholder="https://www.figma.com/proto/... (1440px canvas)"
@@ -18622,7 +18853,10 @@ function App() {
                           onChangeText={setFDesktopProto}
                         />
 
-                        <Text style={styles.formGroupLabel}>Component Showcase Prototype Link</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.formGroupLabel}>Component Showcase Prototype Link</Text>
+                          {renderLinkFieldInfoButton('component')}
+                        </View>
                         <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 6, marginTop: -4 }}>
                           Optional - a focused prototype demonstrating how a single component works (e.g. a dropdown, toggle, or interaction pattern), separate from the full mobile/desktop flow above.
                         </Text>
@@ -18635,7 +18869,10 @@ function App() {
                           onChangeText={setFComponentProto}
                         />
 
-                        <Text style={styles.formGroupLabel}>Figma Profile Link</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.formGroupLabel}>Figma Profile Link</Text>
+                          {renderLinkFieldInfoButton('profile')}
+                        </View>
                         <FocusableTextInput
                           style={styles.formInput}
                           placeholder="https://www.figma.com/@username"
@@ -18648,37 +18885,43 @@ function App() {
                     ) : (
                       <>
                         <View style={[styles.warningNoteBox, { marginTop: 16 }]}>
-                          <View style={styles.iconTextInlineRow}>
-                            <WarningTriangleSVG />
-                            <Text style={styles.warningTitle}>Figma-Only Prototype Support (For Now)</Text>
-                          </View>
-                          <Text style={styles.warningText}>
-                            Right now only Figma prototype links can be embedded and viewed on DECENT. Your portfolio still works great with just the showcase images from the next step - but if you'd like live prototype support for {fSoftwareUsed.join(', ')} (or another tool), let us know below. It helps us prioritize what to build next.
-                          </Text>
-                        </View>
+                          <BouncyButton
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                            onPress={() => setUiUxDisclaimerExpanded((prev) => !prev)}
+                          >
+                            <View style={[styles.iconTextInlineRow, { flex: 1 }]}>
+                              <WarningTriangleSVG />
+                              <Text style={styles.warningTitle}>Figma-Only Prototype Support (For Now)</Text>
+                            </View>
+                            {uiUxDisclaimerExpanded ? (
+                              <ChevronUpSVG color={theme.textSecondary} size={16} />
+                            ) : (
+                              <ChevronDownSVG color={theme.textSecondary} size={16} />
+                            )}
+                          </BouncyButton>
 
-                        {fUiUxSoftwareInterestSubmitted ? (
-                          <Text style={{ color: theme.textSecondary, fontSize: 12.5, marginTop: 10 }}>
-                            Thanks - we've noted your interest.
-                          </Text>
-                        ) : (
-                          <View style={{ marginTop: 10 }}>
-                            <FocusableTextInput
-                              style={styles.formInput}
-                              placeholder="Which software would you like supported?"
-                              placeholderTextColor="#94A3B8"
-                              value={fUiUxSoftwareInterestText}
-                              onChangeText={setFUiUxSoftwareInterestText}
-                              maxLength={60}
-                            />
-                            <BouncyButton
-                              style={{ alignSelf: 'flex-start', marginTop: 8, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 99, backgroundColor: theme.accent }}
-                              onPress={handleSubmitUiUxSoftwareInterest}
-                            >
-                              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>I'm Interested</Text>
-                            </BouncyButton>
-                          </View>
-                        )}
+                          {uiUxDisclaimerExpanded && (
+                            <>
+                              <Text style={[styles.warningText, { marginTop: 6 }]}>
+                                Right now only Figma prototype links can be embedded and viewed on DECENT. Your portfolio still works great with just the showcase images from the next step.
+                              </Text>
+                              {fUiUxSoftwareInterestSubmitted ? (
+                                <Text style={{ color: theme.textSecondary, fontSize: 12.5, marginTop: 8, fontStyle: 'italic' }}>
+                                  Thanks - we've noted your interest.
+                                </Text>
+                              ) : (
+                                <BouncyButton
+                                  style={{ alignSelf: 'flex-start', marginTop: 8 }}
+                                  onPress={() => setUiUxSoftwareInterestModalVisible(true)}
+                                >
+                                  <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' }}>
+                                    Let us know if you'd like another tool supported
+                                  </Text>
+                                </BouncyButton>
+                              )}
+                            </>
+                          )}
+                        </View>
                       </>
                     );
                   })()}
@@ -18692,7 +18935,10 @@ function App() {
                       something specific to Figma the way the prototype
                       embed fields above are. Still the same fFigmaFile
                       state/DB column underneath - only the label changed. */}
-                  <Text style={[styles.formGroupLabel, { marginTop: 16 }]}>Project Canvas Link (Public)</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16 }}>
+                    <Text style={styles.formGroupLabel}>Project Canvas Link (Public)</Text>
+                    {renderLinkFieldInfoButton('canvas')}
+                  </View>
                   <FocusableTextInput
                     style={styles.formInput}
                     placeholder="https://... (Figma, Adobe XD, Sketch Cloud, etc.)"
@@ -19258,6 +19504,59 @@ function App() {
         </View>
       </Modal>
 
+      {/* b563: mobile-data usage warning - fires from openProtoTab() only
+          when Platform.OS !== 'web' AND NetInfo reports an active
+          cellular connection, so this never appears on Wi-Fi or on web.
+          Same customConfirmCard/confirmActionsRow pattern as the proto
+          tutorial modal right above, for a consistent look. */}
+      <Modal
+        transparent
+        visible={protoDataWarningVisible}
+        animationType="fade"
+        onRequestClose={cancelProtoDataWarning}
+      >
+        <View
+          style={styles.overlayModalBg}
+          onStartShouldSetResponder={() => Platform.OS === 'web'}
+          onResponderRelease={cancelProtoDataWarning}
+        >
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
+            <Text style={styles.confirmTitle}>You're on Mobile Data</Text>
+            <Text style={styles.confirmSubText}>
+              Figma prototypes can use several MB of data to load. Continue on your current cellular connection?
+            </Text>
+            <BouncyButton
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 }}
+              onPress={() => setProtoDataWarningDontAskAgain((prev) => !prev)}
+            >
+              <View style={{
+                width: 20, height: 20, borderRadius: 5,
+                borderWidth: 1.5, borderColor: protoDataWarningDontAskAgain ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                backgroundColor: protoDataWarningDontAskAgain ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
+                alignItems: 'center', justifyContent: 'center'
+              }}>
+                {protoDataWarningDontAskAgain && <CheckIconSVG />}
+              </View>
+              <Text style={{ color: theme.textSecondary, fontSize: 13 }}>Don't ask me again</Text>
+            </BouncyButton>
+            <View style={[styles.confirmActionsRow, { marginTop: 14 }]}>
+              <BouncyButton
+                style={[styles.confirmCancelBtn]}
+                onPress={cancelProtoDataWarning}
+              >
+                <Text style={styles.confirmCancelText}>Not Now</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={[styles.confirmDeleteBtn]}
+                onPress={confirmProtoDataWarning}
+              >
+                <Text style={styles.confirmDeleteText}>Continue</Text>
+              </BouncyButton>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* FORMATTING GUIDE - quick reference for typing markup directly instead of tapping buttons */}
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'fade'}
@@ -19612,7 +19911,7 @@ function App() {
               {activeProject.figmaProto ? (
                 <BouncyButton
                   style={[styles.tabBtn, { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', paddingHorizontal: 18 }, activeTab === 'mobile' && styles.tabBtnActive]}
-                  onPress={() => { setActiveTab('mobile'); setLoadingWebView(true); }}
+                  onPress={() => openProtoTab('mobile')}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                     <FigmaLogoSVG />
@@ -19626,7 +19925,7 @@ function App() {
               {activeProject.desktopProto ? (
                 <BouncyButton
                   style={[styles.tabBtn, { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', paddingHorizontal: 18 }, activeTab === 'desktop' && styles.tabBtnActive]}
-                  onPress={() => { setActiveTab('desktop'); setLoadingWebView(true); }}
+                  onPress={() => openProtoTab('desktop')}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                     <FigmaLogoSVG />
@@ -19640,7 +19939,7 @@ function App() {
               {activeProject.componentProto ? (
                 <BouncyButton
                   style={[styles.tabBtn, { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', paddingHorizontal: 18 }, activeTab === 'component' && styles.tabBtnActive]}
-                  onPress={() => { setActiveTab('component'); setLoadingWebView(true); }}
+                  onPress={() => openProtoTab('component')}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                     <FigmaLogoSVG />
