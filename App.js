@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 600;
+const BUILD_NUMBER = 601;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3257,7 +3257,20 @@ const compressVideoForUploadWeb = async (uri, onProgress) => {
   const { fetchFile } = await import('@ffmpeg/util');
   const inputName = 'input.mp4';
   const outputName = 'output.mp4';
-  await ffmpeg.writeFile(inputName, await fetchFile(uri));
+  const inputData = await fetchFile(uri);
+  // b601: this is the actual bug behind the 0-byte uploads - exec()'s
+  // return value (0 = success, anything else = timeout or error) was
+  // never checked, so a failed compression still fell through to
+  // readFile() and uploaded whatever (possibly empty) output existed as
+  // if it were a real compressed video, instead of throwing and letting
+  // the existing catch-and-fall-back-to-original-file logic in
+  // handleAddVideo actually do its job. Logging sizes at each stage too
+  // so if this fails again, the console shows exactly where.
+  console.warn('[video compress] input size:', inputData.length, 'bytes');
+  if (!inputData || inputData.length === 0) {
+    throw new Error('Input video is empty - fetchFile on the picked video URI returned no data');
+  }
+  await ffmpeg.writeFile(inputName, inputData);
 
   const progressHandler = ({ progress }) => { if (onProgress) onProgress(progress); };
   ffmpeg.on('progress', progressHandler);
@@ -3267,14 +3280,22 @@ const compressVideoForUploadWeb = async (uri, onProgress) => {
     // a reasonable size/quality tradeoff - roughly matching what
     // react-native-compressor's "auto" mode targets on native, though
     // the two won't produce byte-identical output.
-    await ffmpeg.exec([
+    const ret = await ffmpeg.exec([
       '-i', inputName,
       '-vf', "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease",
       '-c:v', 'libx264', '-crf', '28', '-preset', 'veryfast',
       '-c:a', 'aac', '-b:a', '128k',
       outputName
     ]);
+    console.warn('[video compress] ffmpeg exec returned:', ret);
+    if (ret !== 0) {
+      throw new Error(`ffmpeg exec failed with exit code ${ret}`);
+    }
     const data = await ffmpeg.readFile(outputName);
+    console.warn('[video compress] output size:', data ? data.length : 0, 'bytes');
+    if (!data || data.length === 0) {
+      throw new Error('ffmpeg produced an empty output file');
+    }
     const blob = new Blob([data.buffer], { type: 'video/mp4' });
     return URL.createObjectURL(blob);
   } finally {
