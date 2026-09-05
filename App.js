@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 615;
+const BUILD_NUMBER = 617;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -1709,34 +1709,23 @@ const ThemeProvider = ({ children }) => {
 };
 
 // Admin-only "Lightweight Mode": shortens/skips animations and swaps blur
-// backdrops for plain opacity, for lower-end devices or anyone who'd rather
-// have snappier UI than motion polish. Persisted like the theme setting.
-const LIGHTWEIGHT_MODE_STORAGE_KEY = '@decent_lightweight_mode';
-const LightweightModeContext = React.createContext({ lightweightMode: true, setLightweightMode: () => {} });
-const useLightweightMode = () => React.useContext(LightweightModeContext);
+// b621: Fancy Mode is being fully removed - the toggle to turn it off
+// (lightweightMode=false) was already gone since b555, but this
+// Provider still read a legacy AsyncStorage value on load, meaning
+// anyone who'd set it to false BEFORE the toggle was removed could
+// still be silently running the old "fancy"/blurred rendering path
+// today with no way to change it back. Hardcoding this permanently
+// closes that off - lightweightMode can now never be anything but
+// true, for anyone, which makes every "lightweightMode ? X : Y"
+// conditional throughout this file provably always resolve to X.
+// Left those individual call sites as-is rather than mechanically
+// collapsing 50+ separate multi-line ternary blocks in one pass - the
+// dead branches are inert now regardless, and touching that many
+// distinct JSX blocks blind carried real risk of a subtle mistake in
+// one of them that wouldn't show up in a syntax check or Modal count.
+const useLightweightMode = () => ({ lightweightMode: true, setLightweightMode: () => {} });
 
-const LightweightModeProvider = ({ children }) => {
-  // Defaults ON (experimental) until we get feedback; respects an explicit
-  // saved choice either way once the user has toggled it themselves.
-  const [lightweightMode, setLightweightModeState] = useState(true);
-
-  useEffect(() => {
-    AsyncStorage.getItem(LIGHTWEIGHT_MODE_STORAGE_KEY).then((saved) => {
-      if (saved === 'true' || saved === 'false') setLightweightModeState(saved === 'true');
-    });
-  }, []);
-
-  const setLightweightMode = (value) => {
-    setLightweightModeState(value);
-    AsyncStorage.setItem(LIGHTWEIGHT_MODE_STORAGE_KEY, value ? 'true' : 'false').catch(() => {});
-  };
-
-  return (
-    <LightweightModeContext.Provider value={{ lightweightMode, setLightweightMode }}>
-      {children}
-    </LightweightModeContext.Provider>
-  );
-};
+const LightweightModeProvider = ({ children }) => children;
 
 const isValidHandleFormat = (h) => /^[A-Za-z0-9._-]{3,20}$/.test(h);
 
@@ -3304,28 +3293,24 @@ async function getFFmpegInstance() {
   const { FFmpeg } = window.FFmpegWASM;
   const { toBlobURL } = await import('@ffmpeg/util');
   const ffmpeg = new FFmpeg();
-  // b617: SharedArrayBuffer only exists when the page is actually
-  // cross-origin isolated - i.e. when the COOP/COEP response headers
-  // (added to vercel.json alongside this change) are both present and
-  // correctly applied. This is a reliable runtime check for "did the
-  // header change actually take effect", not just "did we remember to
-  // add it" - if a CDN layer or a future config change ever strips
-  // those headers, this falls back to the working single-threaded path
-  // automatically instead of loading a multi-threaded core that would
-  // silently fail without cross-origin isolation.
-  const canUseMultiThreaded = typeof SharedArrayBuffer !== 'undefined';
-  if (canUseMultiThreaded) {
-    await ffmpeg.load({
-      coreURL: await toBlobURL('/ffmpeg-mt/ffmpeg-core.js', 'text/javascript'),
-      wasmURL: await toBlobURL('/ffmpeg-mt/ffmpeg-core.wasm', 'application/wasm'),
-      workerURL: await toBlobURL('/ffmpeg-mt/ffmpeg-core.worker.js', 'text/javascript')
-    });
-  } else {
-    await ffmpeg.load({
-      coreURL: await toBlobURL('/ffmpeg/ffmpeg-core.js', 'text/javascript'),
-      wasmURL: await toBlobURL('/ffmpeg/ffmpeg-core.wasm', 'application/wasm')
-    });
-  }
+  // b620: reverted b617's multi-threaded path - it hung silently on a
+  // real upload (standard H264/AAC source, nothing exotic about the
+  // file itself; the worker.js file was confirmed loading correctly,
+  // the deploy was confirmed clean) rather than throwing a catchable
+  // error. Most likely cause: the multi-threaded core spawns its OWN
+  // internal pool of additional pthread worker threads beyond the
+  // single workerURL configured here, and those internal ones may not
+  // correctly resolve back to the right script - a known rough edge in
+  // ffmpeg.wasm's multi-threaded setups. Rather than keep debugging
+  // blind while uploads stay broken for real users, this restores the
+  // single-threaded path that was actually proven working through this
+  // entire compression saga. Multi-threading could be revisited later
+  // with more careful, isolated testing, but a working slow path beats
+  // a broken fast one.
+  await ffmpeg.load({
+    coreURL: await toBlobURL('/ffmpeg/ffmpeg-core.js', 'text/javascript'),
+    wasmURL: await toBlobURL('/ffmpeg/ffmpeg-core.wasm', 'application/wasm')
+  });
   ffmpegInstance = ffmpeg;
   return ffmpeg;
 }
@@ -6454,7 +6439,6 @@ function App() {
         event_name: 'app_opened',
         metadata: {
           theme_mode: themeMode,
-          lightweight_mode: lightweightMode,
           mobile_os: Platform.OS === 'web' && typeof navigator !== 'undefined'
             ? (/Android/i.test(navigator.userAgent) ? 'android' : /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'ios' : 'desktop')
             : Platform.OS,
@@ -12339,7 +12323,13 @@ function App() {
           branch permanently - Fancy Mode is functionally gone from the
           user's perspective without needing to touch those ~60 scattered
           ternaries individually, which would have been a much larger,
-          riskier change for the same end result. */}
+          riskier change for the same end result.
+          b621: one gap remained even after b555 - the Provider still
+          read a legacy AsyncStorage value on load, so anyone who'd set
+          it to false BEFORE the toggle was removed could still be
+          silently running the old fancy path with no way back. Fixed
+          at the source (useLightweightMode now just always returns
+          true, no Provider/Context/storage at all) rather than here. */}
 
       {/* AUTO-DISMISSING SUCCESS POPUP (5s). Deliberately has ZERO shared
           style/component dependencies (no styles.X, no BouncyButton) - every
@@ -17007,13 +16997,6 @@ function App() {
                         theme={theme}
                       />
                     </View>
-
-                    {/* b555: Fancy Mode toggle removed - this and the
-                        confirm dialog it opened were the only two places
-                        setLightweightMode(false) was ever called, so
-                        lightweightMode can now never become false again.
-                        See the removed confirm dialog's comment for the
-                        full reasoning. */}
                   </View>
 
                   <BouncyButton
