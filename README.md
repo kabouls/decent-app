@@ -8,8 +8,8 @@ One clean link. Real, clickable Figma prototypes embedded right in the page — 
 
 ### 🔗 [decent.ink](https://decent.ink)
 
-[![Web](https://img.shields.io/badge/🌐_Try_it_now-decent.ink-8B5CF6?style=for-the-badge)](https://decent.ink)
-[![Android](https://img.shields.io/badge/📱_Android_APK-Download-8B5CF6?style=for-the-badge)](https://expo.dev/artifacts/eas/400loQ6A2z2EbIaTmSZxnocjLxLLGSeuGCaCdUOapOo.apk)
+[![Web](https://img.shields.io/badge/🌐_Try_it_now-decent.ink-8B5CF6?style=flat)](https://decent.ink)
+[![Android](https://img.shields.io/badge/📱_Android_APK-Download-8B5CF6?style=flat)](https://expo.dev/artifacts/eas/400loQ6A2z2EbIaTmSZxnocjLxLLGSeuGCaCdUOapOo.apk)
 
 </div>
 
@@ -65,10 +65,12 @@ DECENT is a solo-built, self-funded project. If it's useful to you, throwing a f
 
 <div align="center">
 
-[![Ko-fi](https://img.shields.io/badge/☕_Ko--fi-Buy_me_a_coffee-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/iputra07)
-[![GitHub Sponsors](https://img.shields.io/badge/💜_GitHub_Sponsors-Support_DECENT-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/kabouls)
+[![Ko-fi](https://img.shields.io/badge/☕_Ko--fi-Buy_me_a_coffee-FF5E5B?style=flat&logo=kofi&logoColor=white)](https://ko-fi.com/iputra07)
+[![GitHub Sponsors](https://img.shields.io/badge/💜_GitHub_Sponsors-Support_DECENT-EA4AAA?style=flat&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/kabouls)
 
-**🇮🇩 In Indonesia?** Scan the QRIS code in-app under **Settings → Support & Donate** — works with any e-wallet or mobile banking app.
+**🇮🇩 In Indonesia?** Scan below with any e-wallet or mobile banking app:
+
+<img src="./assets/qris-code.png" alt="QRIS donation code" width="220">
 
 </div>
 
