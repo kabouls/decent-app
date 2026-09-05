@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 613;
+const BUILD_NUMBER = 614;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -696,7 +696,11 @@ const LikeButton = React.memo(({ liked, likesCount, onPress, showCount = false, 
   };
 
   return (
-    <TouchableOpacity style={[style, showCount && { alignItems: 'center' }]} onPress={handlePress}>
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={liked ? 'Unlike' : 'Like'}
+      accessibilityState={{ selected: liked }}
+      style={[style, showCount && { alignItems: 'center' }]} onPress={handlePress}>
       {/* Opt-in translucent blur background - only the floating like button
           in the portfolio detail view uses this (native only); every other
           LikeButton usage (feed cards, grids, etc.) is unaffected since this
@@ -3262,10 +3266,28 @@ async function getFFmpegInstance() {
   const { FFmpeg } = window.FFmpegWASM;
   const { toBlobURL } = await import('@ffmpeg/util');
   const ffmpeg = new FFmpeg();
-  await ffmpeg.load({
-    coreURL: await toBlobURL('/ffmpeg/ffmpeg-core.js', 'text/javascript'),
-    wasmURL: await toBlobURL('/ffmpeg/ffmpeg-core.wasm', 'application/wasm')
-  });
+  // b617: SharedArrayBuffer only exists when the page is actually
+  // cross-origin isolated - i.e. when the COOP/COEP response headers
+  // (added to vercel.json alongside this change) are both present and
+  // correctly applied. This is a reliable runtime check for "did the
+  // header change actually take effect", not just "did we remember to
+  // add it" - if a CDN layer or a future config change ever strips
+  // those headers, this falls back to the working single-threaded path
+  // automatically instead of loading a multi-threaded core that would
+  // silently fail without cross-origin isolation.
+  const canUseMultiThreaded = typeof SharedArrayBuffer !== 'undefined';
+  if (canUseMultiThreaded) {
+    await ffmpeg.load({
+      coreURL: await toBlobURL('/ffmpeg-mt/ffmpeg-core.js', 'text/javascript'),
+      wasmURL: await toBlobURL('/ffmpeg-mt/ffmpeg-core.wasm', 'application/wasm'),
+      workerURL: await toBlobURL('/ffmpeg-mt/ffmpeg-core.worker.js', 'text/javascript')
+    });
+  } else {
+    await ffmpeg.load({
+      coreURL: await toBlobURL('/ffmpeg/ffmpeg-core.js', 'text/javascript'),
+      wasmURL: await toBlobURL('/ffmpeg/ffmpeg-core.wasm', 'application/wasm')
+    });
+  }
   ffmpegInstance = ffmpeg;
   return ffmpeg;
 }
@@ -7369,7 +7391,11 @@ function App() {
       reason: 'reported_as_suspicious'
     });
     setExternalLinkModalVisible(false);
-    showToast(error ? 'Failed to submit report' : 'Link reported — thank you');
+    // b618: shows the specific reason when there is one (e.g. the
+    // rate-limit trigger's message) instead of a generic "failed" that
+    // hides useful information from someone who'd otherwise have no
+    // idea why their report didn't go through.
+    showToast(error ? (error.message || 'Failed to submit report') : 'Link reported — thank you');
   };
 
   const confirmProceedToExternalLink = () => {
@@ -8592,7 +8618,7 @@ function App() {
       target_detail: detail || null,
       reason
     });
-    showToast(error ? 'Failed to submit report' : 'Report submitted — thank you');
+    showToast(error ? (error.message || 'Failed to submit report') : 'Report submitted — thank you');
   };
 
   const handleSubmitPortfolioReport = async () => {
@@ -13928,7 +13954,11 @@ function App() {
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           />
         )}
-        <TouchableOpacity style={styles.uniformTabItem} onPress={() => handleNavChange('forYou')}>
+        <TouchableOpacity
+          accessibilityRole="tab"
+          accessibilityLabel="For You"
+          accessibilityState={{ selected: bottomNav === 'forYou' }}
+          style={styles.uniformTabItem} onPress={() => handleNavChange('forYou')}>
           <View style={{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }}>
             <Animated.View style={{ transform: [{ scale: tabScaleAnims.forYou }] }}>
               <ForYouSVG active={bottomNav === 'forYou'} />
@@ -13961,7 +13991,11 @@ function App() {
           <Text style={[styles.menuLabel, bottomNav === 'forYou' && styles.menuLabelActive]}>For You</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.uniformTabItem} onPress={() => handleNavChange('followed')}>
+        <TouchableOpacity
+          accessibilityRole="tab"
+          accessibilityLabel="Circle"
+          accessibilityState={{ selected: bottomNav === 'followed' }}
+          style={styles.uniformTabItem} onPress={() => handleNavChange('followed')}>
           <Animated.View style={{
             transform: [{ scale: tabScaleAnims.followed }]
           }}>
@@ -13972,6 +14006,8 @@ function App() {
 
         <TouchableOpacity
           ref={nativePlusBtnRef}
+          accessibilityRole="button"
+          accessibilityLabel="Add Portfolio"
           style={[styles.plusContainerBtn, { backgroundColor: 'transparent', shadowColor: 'transparent', elevation: 0 }]}
           activeOpacity={0.85}
           onPress={handleOpenAddPortfolio}
@@ -13984,14 +14020,22 @@ function App() {
           </Animated.View>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.uniformTabItem} onPress={() => handleNavChange('search')}>
+        <TouchableOpacity
+          accessibilityRole="tab"
+          accessibilityLabel="Search"
+          accessibilityState={{ selected: bottomNav === 'search' }}
+          style={styles.uniformTabItem} onPress={() => handleNavChange('search')}>
           <Animated.View style={{ transform: [{ scale: tabScaleAnims.search }] }}>
             <SearchSVG active={bottomNav === 'search'} eyesAnim={searchEyesAnim} />
           </Animated.View>
           <Text style={[styles.menuLabel, bottomNav === 'search' && styles.menuLabelActive]}>Search</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.uniformTabItem} onPress={() => handleNavChange('profile')}>
+        <TouchableOpacity
+          accessibilityRole="tab"
+          accessibilityLabel="Profile"
+          accessibilityState={{ selected: bottomNav === 'profile' }}
+          style={styles.uniformTabItem} onPress={() => handleNavChange('profile')}>
           <Animated.View style={{ transform: [{ scale: tabScaleAnims.profile }] }}>
             <ProfileNavIcon active={bottomNav === 'profile'} drawAnim={profileDrawAnim} avatarUrl={session ? userProfile.avatar : null} themeMode={themeMode} />
           </Animated.View>
@@ -14103,6 +14147,9 @@ function App() {
                 return (
                   <BouncyButton
                     key={key}
+                    accessibilityRole="button"
+                    accessibilityLabel={label}
+                    accessibilityState={{ selected: active }}
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 14,
                       paddingVertical: 12, paddingHorizontal: 16
