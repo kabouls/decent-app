@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 612;
+const BUILD_NUMBER = 613;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -6512,7 +6512,8 @@ function App() {
     });
 
     const validateSessionStillExists = async () => {
-    const { error } = await supabase.auth.getUser();
+    const { data: initialData, error } = await supabase.auth.getUser();
+    let currentUser = initialData?.user;
     if (error) {
       // Don't sign out immediately on the first failure. A cached session
       // restored fresh on page load can have an access token that's
@@ -6542,6 +6543,49 @@ function App() {
             console.warn('Updates.reloadAsync unavailable (expected in dev):', e.message);
           }
         }
+        return; // session is dead - nothing more to check
+      }
+      currentUser = retry.data?.user;
+    }
+
+    // b615: is_banned/suspended_until were only ever fetched as profile
+    // data before this - the admin panel could mark someone banned or
+    // suspended, but nothing here actually acted on it, so their app kept
+    // working normally regardless. This runs every time this function
+    // does, which is on every app open AND every foreground (see the
+    // AppState listener below) - not real-time instant enforcement, but
+    // frequent enough in normal usage without needing a persistent
+    // connection just for this.
+    if (currentUser) {
+      const { data: statusRow } = await supabase
+        .from('profiles')
+        .select('is_banned, suspended_until')
+        .eq('id', currentUser.id)
+        .maybeSingle();
+      const isSuspendedNow = statusRow?.suspended_until && new Date(statusRow.suspended_until) > new Date();
+      if (statusRow && (statusRow.is_banned || isSuspendedNow)) {
+        const isBanned = statusRow.is_banned;
+        showAppAlert(
+          isBanned ? 'Account Banned' : 'Account Suspended',
+          isBanned
+            ? "Your account has been banned for violating DECENT's community guidelines."
+            : `Your account is suspended until ${new Date(statusRow.suspended_until).toLocaleDateString()}.`,
+          [{
+            text: 'OK',
+            onPress: async () => {
+              await supabase.auth.signOut();
+              if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                window.location.reload();
+              } else {
+                try {
+                  await Updates.reloadAsync();
+                } catch (e) {
+                  console.warn('Updates.reloadAsync unavailable (expected in dev):', e.message);
+                }
+              }
+            }
+          }]
+        );
       }
     }
   };
