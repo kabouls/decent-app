@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 614;
+const BUILD_NUMBER = 615;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -1349,6 +1349,44 @@ const ProfileNavIcon = React.memo(({ active, drawAnim, avatarUrl, themeMode, siz
           strokeDashoffset={!active ? PROFILE_AVATAR_RING_CIRCUMFERENCE : (drawAnim ? ringOffset : 0)}
         />
       </Svg>
+    </View>
+  );
+});
+
+// b619: generic default avatar shown for anyone who hasn't uploaded a
+// profile photo - previously these 12 call sites just rendered a raw
+// <Image> with no fallback at all, meaning a missing avatar_url showed
+// up as either a blank box or a broken-image icon depending on
+// platform, with no consistency between them. One shared component
+// instead of duplicating this fallback logic 12 times over - black
+// background, purple silhouette icon, matching the app's own branding
+// rather than a generic gray placeholder. StyleSheet.flatten handles
+// both a direct inline style object and a styles.xxx reference
+// uniformly, so this is a drop-in replacement for <Image
+// source={{uri}}> at every one of those call sites without needing to
+// touch the size-specific style definitions themselves.
+const DefaultAvatarSVG = React.memo(({ size }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Circle cx="12" cy="8" r="4" fill="#8B5CF6" />
+    <Path d="M4 20c0-4.42 3.58-8 8-8s8 3.58 8 8" fill="#8B5CF6" />
+  </Svg>
+));
+
+const Avatar = React.memo(({ uri, style }) => {
+  const flat = StyleSheet.flatten(style) || {};
+  const width = typeof flat.width === 'number' ? flat.width : 32;
+  const height = typeof flat.height === 'number' ? flat.height : width;
+  const radius = typeof flat.borderRadius === 'number' ? flat.borderRadius : Math.min(width, height) / 2;
+
+  if (uri) {
+    return <Image source={{ uri }} style={style} />;
+  }
+  return (
+    <View style={[style, {
+      borderRadius: radius, backgroundColor: '#0B0F17',
+      alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
+    }]}>
+      <DefaultAvatarSVG size={Math.round(Math.min(width, height) * 0.6)} />
     </View>
   );
 });
@@ -12564,7 +12602,7 @@ function App() {
                   width: TOAST_PILL_WIDTH, overflow: 'hidden'
                 }}
               >
-                <Image source={{ uri: headerToast.avatar }} style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: theme.bg }} />
+                <Avatar uri={headerToast.avatar} style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: theme.bg }} />
                 <Text style={{ color: theme.text, fontSize: 11, fontWeight: '700', flex: 1 }} numberOfLines={1}>
                   <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '800' }}>{headerToast.name}</Text>
                   {' '}{headerToast.action}
@@ -13075,7 +13113,7 @@ function App() {
                       >
                         <View style={{ position: 'relative' }}>
                           <View style={[styles.storyRing, isSelected && styles.storyRingActive]}>
-                            <Image source={{ uri: des.avatar }} style={styles.storyAvatar} />
+                            <Avatar uri={des.avatar} style={styles.storyAvatar} />
                           </View>
                           {circleHasNewPost[des.id] && (
                             <View style={{
@@ -13208,7 +13246,7 @@ function App() {
                         style={[styles.designerItemCard, { borderColor: '#8B5CF6', borderWidth: 1.5 }]}
                         onPress={() => openDesignerModal(exactMatch.item)}
                       >
-                        <Image source={{ uri: exactMatch.item.avatar }} style={styles.designerListAvatar} />
+                        <Avatar uri={exactMatch.item.avatar} style={styles.designerListAvatar} />
                         <View style={styles.designerInfoCol}>
                           <Text style={styles.designerListName}>{exactMatch.item.name}</Text>
                           {exactMatch.item.handle ? (
@@ -13303,7 +13341,7 @@ function App() {
                               style={{ flexDirection: 'row', alignItems: 'center' }}
                               onPress={() => openDesignerModal(des)}
                             >
-                              <Image source={{ uri: des.avatar }} style={styles.designerListAvatar} />
+                              <Avatar uri={des.avatar} style={styles.designerListAvatar} />
                               <View style={styles.designerInfoCol}>
                                 <Text style={styles.designerListName}>{des.name}</Text>
                                 <Text style={styles.designerListRole}>{des.role}</Text>
@@ -13506,7 +13544,7 @@ function App() {
                             style={{ flexDirection: 'row', alignItems: 'center' }}
                             onPress={() => openDesignerModal(des)}
                           >
-                            <Image source={{ uri: des.avatar }} style={styles.designerListAvatar} />
+                            <Avatar uri={des.avatar} style={styles.designerListAvatar} />
                             <View style={styles.designerInfoCol}>
                               <Text style={styles.designerListName}>{des.name}</Text>
                               <Text style={styles.designerListRole}>{des.role}</Text>
@@ -13667,8 +13705,8 @@ function App() {
                 </BouncyButton>
 
                 <BouncyButton activeOpacity={0.9} onPress={() => setLightboxImageUri(userProfile.avatar)}>
-                  <Image
-                    source={{ uri: userProfile.avatar }}
+                  <Avatar
+                    uri={userProfile.avatar}
                     style={styles.profileLargeAvatar}
                   />
                 </BouncyButton>
@@ -14370,7 +14408,7 @@ function App() {
                               <LockIconSVG color={theme.accent} size={16} />
                             </View>
                           ) : (
-                            <Image source={{ uri: notif.avatar }} style={styles.notifAvatar} />
+                            <Avatar uri={notif.avatar} style={styles.notifAvatar} />
                           )}
                         </BouncyButton>
                         <BouncyButton
@@ -17000,7 +17038,7 @@ function App() {
                   ) : (
                     blockedUsersList.map((u) => (
                       <View key={u.id} style={styles.notificationCard}>
-                        <Image source={{ uri: u.avatar }} style={styles.notifAvatar} />
+                        <Avatar uri={u.avatar} style={styles.notifAvatar} />
                         <Text style={[styles.notifText, { flex: 1 }]}>{u.name}</Text>
                         <BouncyButton
                           style={styles.notifFollowBackBtn}
@@ -17029,7 +17067,7 @@ function App() {
                   ) : (
                     postNotifyList.map((d) => (
                       <View key={d.id} style={styles.notificationCard}>
-                        <Image source={{ uri: d.avatar }} style={styles.notifAvatar} />
+                        <Avatar uri={d.avatar} style={styles.notifAvatar} />
                         <Text style={[styles.notifText, { flex: 1 }]}>{d.name}</Text>
                         <BouncyButton
                           style={styles.notifFollowBackBtn}
@@ -17092,7 +17130,7 @@ function App() {
                                 <LockIconSVG color={theme.accent} size={16} />
                               </View>
                             ) : (
-                              <Image source={{ uri: notif.avatar }} style={styles.notifAvatar} />
+                              <Avatar uri={notif.avatar} style={styles.notifAvatar} />
                             )}
                             {!notif.read && (
                               <View style={{ position: 'absolute', top: 0, right: 0, width: 9, height: 9, borderRadius: 4.5, backgroundColor: '#EF4444', borderWidth: 1.5, borderColor: theme.surface }} />
@@ -17709,7 +17747,7 @@ function App() {
                   </View>
                 )}
                 <BouncyButton activeOpacity={0.9} onPress={() => setLightboxImageUri(selectedDesigner.avatar)}>
-                  <Image source={{ uri: selectedDesigner.avatar }} style={styles.profileLargeAvatar} />
+                  <Avatar uri={selectedDesigner.avatar} style={styles.profileLargeAvatar} />
                 </BouncyButton>
                 <Text style={[styles.profileName, isWebWide && { fontSize: 24 }]}>{selectedDesigner.name}</Text>
                 {selectedDesigner.handle ? (
@@ -23048,7 +23086,7 @@ function App() {
                       openDesignerModal(usr);
                     }}
                   >
-                    <Image source={{ uri: usr.avatar }} style={styles.designerListAvatar} />
+                    <Avatar uri={usr.avatar} style={styles.designerListAvatar} />
                     <View style={styles.designerInfoCol}>
                       <Text style={styles.designerListName}>{usr.name}</Text>
                       <Text style={styles.designerListRole}>{usr.role}</Text>
