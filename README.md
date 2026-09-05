@@ -1,71 +1,86 @@
-# DECENT
+# DECENT Admin
 
-Hey, I'm Iqbal. I'm a UI/UX designer, not a developer — I have basically zero traditional coding background. This whole app was "vibe coded" (built almost entirely through AI-assisted development), because I mainly work in Figma and just wanted one clean, nice-looking place to actually showcase my portfolio, instead of scattered links and static PDFs.
+Internal moderation & analytics dashboard for [DECENT](https://decent.ink).
+Separate Next.js app, own repo, own Vercel project - deliberately not
+bundled into the main React Native app (admin code shouldn't ship to every
+user's device).
 
-It's a personal passion project. Expect rough edges, and feel free to poke around the source — nothing hidden.
+## Setup
 
-## Features
+1. Run `migrations/001_admin_app.sql` against the main DECENT Supabase
+   project (`kqjdqidwzegbtysarksa`) - **not** a new project. Note: this adds
+   `profiles.is_admin`, which doesn't exist yet anywhere in the main app.
+2. Manually set `is_admin = true` on your own profile row in Supabase.
+3. Copy `.env.local.example` to `.env.local` and fill in the anon key and
+   service role key from Supabase project settings.
+4. `npm install`
+5. `npm run dev`
 
-- **Rich portfolio pages** — case studies, image galleries, Figma/prototype embeds, live links, block-based editor (drop in images, side-by-side rows, whatever)
-- **Designer profiles** — bio, location, socials, followers/following, pin up to 2 portfolios to the top of your profile
-- **Discover & Search** — browse designers, search by name/tag/topic, trending keywords, and it'll even guess what you meant if you fat-finger a typo
-- **Social layer** — like, follow, comment-free feed (For You + Circle), unfollowing asks you to confirm first so it's not an oops-tap
-- **Share anywhere** — QR codes and real shareable links (`/p/:id`, `/@handle`) with proper link previews on Discord/Twitter/etc. You can even share a link to just one type of your portfolio (like "only show my UI/UX stuff")
-- **Software tags** — tag what tools you actually used (Figma, Photoshop, Procreate, Sketch, whatever) with real logos on illustration and UI/UX portfolios
-- **AI disclosure, done properly** — if you used AI for illustration work, you have to say so and how. Fully AI-generated art isn't allowed here, and there's a built-in way for people to flag it if something looks off
-- **Notifications** — actually real ones now. Push notifications work server-side, so you'll get pinged even if the app's fully closed, not just while it's open
-- **NSFW handling that respects the rules** — Safe Search toggle on web, but the mobile app just doesn't touch NSFW content at all (Google Play doesn't allow it, so why fight it)
-- **Light/dark theme**, guest browsing (no account required to explore)
-- **Cross-platform** — same codebase on web and Android, with an "Open in App" nudge on mobile web if you've got the app installed
+## Deploying
 
-## Download
+Push to `main`, Vercel auto-deploys - it's a plain Next.js app so Vercel
+just handles it natively, no custom build config needed (unlike the main
+app's Expo web export, which needed a bunch of extra wrangling). Set the
+same three env vars in the Vercel project settings (Environment
+Variables) - `.env.local` is gitignored and won't carry over.
 
-📱 **[Download the latest APK](https://expo.dev/artifacts/eas/pm0RvyhbwVp2MOVj3NWYTLg28HSpa1XCs-Licpo5KuY.apk)**
+## What's here
 
-This is a direct install (not on the Play Store yet), so Android will show an "unknown sources" prompt on first install — that's expected for any app installed outside the Play Store, not a warning specific to this app.
+- `/login` - Supabase Auth email/password sign-in
+- `/insights` - the home page now. Used to be split across `/dashboard`
+  and `/insights` separately, merged into one so you're not bouncing
+  between two pages for the same kind of thing. Covers:
+  - Top-line numbers: users, portfolios, active users (24h/7d), new
+    signups/portfolios, activation rate, pending reports
+  - **Activation funnel** - what % of everyone who's ever signed up has
+    actually posted something
+  - **Reports backlog** - pending count + how old the oldest one is (so
+    you know if something's been sitting too long)
+  - Currently banned/suspended counts (full list lives on `/moderation`)
+  - **Interactive signup/posting trend chart** (Recharts, actually
+    hoverable/toggleable - not just static bars)
+  - Software support requests people have asked for (from the "which
+    tool would you like supported" prompt in the app)
+  - Portfolio type breakdown, AI disclosure rate
+  - Login method split (password vs Google), push notification token
+    health
+  - Top categories/tags, with a specific frontend-interest count pulled
+    out of those
+  - Leaderboards: most-liked portfolios and most-followed designers,
+    last 30 days
+  - Recently joined designers
+  - **Storage breakdown by folder** (avatars/covers/showcase/videos) -
+    so you can actually see what's filling up storage instead of just a
+    single combined number
+- `/reports` - moderation queue. For `target_type: 'user'` reports: Warn /
+  Suspend (with duration) / Ban / Flag-only. Every action snapshots the
+  prior profile state into `moderation_log` and can be reverted from the
+  UI.
+- `/moderation` - new page, just a clean list of who's currently banned
+  and who's currently suspended (with when their suspension lifts), each
+  with the reason from their last moderation action.
+- `/tags` - new page, every custom tag anyone's ever created, grouped by
+  portfolio type (they're scoped per type now) and sorted by how much
+  they're actually used. Good for spotting junk/duplicate tags before
+  they pile up.
+- `middleware.js` - gates every route except `/login` behind a real signed
+  in + `profiles.is_admin` check (not just "logged in").
 
-🌐 **[Try it on the web](https://www.decent.ink)** — no install needed.
+## Known gaps / next steps
 
-## Tech Stack
-
-React Native (Expo) · Supabase (auth, database, storage) · Vercel (web hosting) · Sentry (crash reporting)
-
-## Status
-
-Actively in development — expect frequent updates.
-
-## Support
-
-If you find this useful, a donation helps keep it running.
-
-### 🇮🇩 Indonesia
-
-<p align="center">
-  <img src="./assets/qris-code.png" alt="QRIS donation code" width="220">
-</p>
-
-Scan the QRIS code above with any e-wallet or mobile banking app.
-
-### 🌍 International
-
-<p align="center">
-  <a href="https://ko-fi.com/iputra07">
-    <img src="https://storage.ko-fi.com/cdn/kofi5.png?v=3" alt="Support me on Ko-fi" width="200">
-  </a>
-</p>
-
-Same option also available in-app under Settings → Support & Donate.
-
-## Verified Safe
-
-✅ Scanned with [VirusTotal](https://www.virustotal.com/gui/file/1619a55e5888e33670ca8971424a32b930431362b3bb59b0166e0e85d04b49b5?nocache=1) — see the report for current detection results
-
-Since this isn't distributed through the Play Store yet, Android's install prompt looks generic/unfamiliar — the scan above is independent, third-party confirmation this build is clean.
-
-## Contact / Feedback
-
-Found a bug, want a feature, or just have thoughts? Reach out directly:
-
-- 📧 **Email:** [iputra07@gmail.com](mailto:iputra07@gmail.com)
-- 💼 **LinkedIn:** [Iqbal Aprianda Putra](https://www.linkedin.com/in/iqbal-putra-2220a11a5)
-- 💬 **Discord:** `@kabouls`
+- The main app (`App.js`) doesn't yet **enforce** `is_banned` /
+  `suspended_until` anywhere - banning someone here doesn't currently
+  block them from using the app. That's follow-up scope in the main
+  codebase, not this repo.
+- Portfolio-targeted reports (`target_type: 'portfolio'`) only get a
+  "Mark resolved" button right now - no portfolio-level actions (hide,
+  delete) built yet.
+- No pagination on `/reports` - `limit(100)`, fine for now given report
+  volume.
+- Storage breakdown only walks the 4 known top-level folders
+  (avatars/covers/showcase/videos), not a fully recursive scan - fine
+  since that's the whole bucket structure right now, but worth
+  revisiting if that structure ever changes.
+- Push token "stale" count on `/insights` is a heuristic (token saved +
+  60 days inactive), not a real check that the token still resolves -
+  there's no way to know that without actually trying to send to it.
