@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 609;
+const BUILD_NUMBER = 612;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3384,14 +3384,28 @@ const compressVideoForUploadWeb = async (uri, onProgress, mimeTypeOrFileName) =>
   }
 };
 
-const compressImageForUpload = async (uri) => {
+// b614: minWidth is optional and new - added after Facebook's Sharing
+// Debugger flagged a real profile's avatar as too small for its og:image
+// requirement (hard minimum 200x200px), which was silently falling back
+// to a generic logo instead of the person's actual photo. Nothing in
+// the pick-to-upload chain ever enforced a minimum before this - only
+// ever downscaled large images, never upscaled small ones. Only passed
+// for avatars (see uploadImageToSupabase below) - general portfolio
+// covers/showcase images don't have this same external constraint, so
+// they're left at their original behavior.
+const compressImageForUpload = async (uri, minWidth) => {
   try {
     const originalWidth = await new Promise((resolve, reject) => {
       Image.getSize(uri, (w) => resolve(w), (err) => reject(err));
     });
 
     const MAX_WIDTH = 1600;
-    const actions = originalWidth > MAX_WIDTH ? [{ resize: { width: MAX_WIDTH } }] : [];
+    const actions = [];
+    if (originalWidth > MAX_WIDTH) {
+      actions.push({ resize: { width: MAX_WIDTH } });
+    } else if (minWidth && originalWidth < minWidth) {
+      actions.push({ resize: { width: minWidth } });
+    }
 
     const result = await ImageManipulator.manipulateAsync(uri, actions, {
       compress: 0.75,
@@ -3430,7 +3444,10 @@ const uploadImageToSupabase = async (uri, path) => {
     return uri; // Already a remote web URL
   }
   try {
-    const compressedUri = await compressImageForUpload(uri);
+    // 400px floor specifically for avatars - comfortably above Facebook's
+    // hard 200x200 minimum for og:image, with margin to spare. Other
+    // paths (covers, showcase, videos) get no minimum, unchanged.
+    const compressedUri = await compressImageForUpload(uri, path === 'avatars' ? 400 : undefined);
     const fileExt = 'jpg';
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
     const filePath = `${path}/${fileName}`;
@@ -9708,32 +9725,22 @@ function App() {
   // files; there's no equivalent pure-JS compressor without pulling in a
   // full ffmpeg.wasm build).
   const MAX_UPLOADED_VIDEO_DURATION_SEC = 60;
-  const pickUploadedVideo = async () => {
-    if (fUploadedVideos.length >= 3) {
-      showAppAlert('Maximum Limit Reached', 'You can upload up to 3 videos.');
-      return;
-    }
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      showAppAlert('Permission Denied', 'Media library access is required to upload local videos.');
-      return;
-    }
+  // b611: extracted out of pickUploadedVideo so a failed compression can
+  // be retried from the same item later, rather than only ever running
+  // once at pick-time with no way to try again short of removing and
+  // re-picking the whole file. sourceMimeType is stored on the item
+  // itself (see pickUploadedVideo below) since retry has no access to
+  // the original ImagePicker asset object the first attempt did.
+  const attemptVideoCompression = async (placeholderIndex, sourceUri, sourceMimeType) => {
+    setFUploadedVideos((prev) =>
+      prev.map((v, i) => (i === placeholderIndex ? { ...v, compressing: true, compressionProgress: 0, compressionFailed: false } : v))
+    );
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      quality: 1
-    });
-
-    if (result.canceled || !result.assets || result.assets.length === 0) return;
-    const asset = result.assets[0];
-
-    if (asset.duration && asset.duration / 1000 > MAX_UPLOADED_VIDEO_DURATION_SEC) {
-      showAppAlert('Video Too Long', `Videos must be ${MAX_UPLOADED_VIDEO_DURATION_SEC} seconds or shorter.`);
-      return;
-    }
-
-    const placeholderIndex = fUploadedVideos.length;
-    setFUploadedVideos((prev) => [...prev, { uri: asset.uri, width: asset.width || 1280, height: asset.height || 720, compressing: true, caption: '' }]);
+    const updateCompressionProgress = (progress) => {
+      setFUploadedVideos((prev) =>
+        prev.map((v, i) => (i === placeholderIndex ? { ...v, compressionProgress: Math.round(progress * 100) } : v))
+      );
+    };
 
     if (Platform.OS === 'web') {
       // b597: was an early return with the original file used as-is -
@@ -9741,14 +9748,14 @@ function App() {
       // compressVideoForUploadWeb's own comment for why this is
       // single-threaded (slower, but needs no hosting header changes).
       try {
-        const compressedUri = await compressVideoForUploadWeb(asset.uri, undefined, asset.mimeType || asset.fileName);
+        const compressedUri = await compressVideoForUploadWeb(sourceUri, updateCompressionProgress, sourceMimeType);
         setFUploadedVideos((prev) =>
           prev.map((v, i) => (i === placeholderIndex ? { ...v, uri: compressedUri, compressing: false } : v))
         );
       } catch (e) {
         console.warn('Web video compression failed, using original file:', e);
         setFUploadedVideos((prev) =>
-          prev.map((v, i) => (i === placeholderIndex ? { ...v, compressing: false } : v))
+          prev.map((v, i) => (i === placeholderIndex ? { ...v, compressing: false, compressionFailed: true } : v))
         );
         // b603: was silent before - the file still uploads fine (at
         // original size), but the person had no way to know compression
@@ -9775,9 +9782,9 @@ function App() {
       // own top-level side effect, never executes in the web bundle.
       const { Video: VideoCompressor } = require('react-native-compressor');
       const compressedUri = await VideoCompressor.compress(
-        asset.uri,
+        sourceUri,
         { compressionMethod: 'auto' },
-        () => {} // progress callback available here if a progress bar is wanted later
+        updateCompressionProgress
       );
       setFUploadedVideos((prev) =>
         prev.map((v, i) => (i === placeholderIndex ? { ...v, uri: compressedUri, compressing: false } : v))
@@ -9785,9 +9792,50 @@ function App() {
     } catch (e) {
       console.warn('Video compression failed, using original file:', e);
       setFUploadedVideos((prev) =>
-        prev.map((v, i) => (i === placeholderIndex ? { ...v, compressing: false } : v))
+        prev.map((v, i) => (i === placeholderIndex ? { ...v, compressing: false, compressionFailed: true } : v))
       );
+      showToast("Couldn't compress this video - uploaded at original size instead.");
     }
+  };
+
+  const handleRetryVideoCompression = (index) => {
+    const vid = fUploadedVideos[index];
+    if (!vid) return;
+    attemptVideoCompression(index, vid.uri, vid.sourceMimeType);
+  };
+
+  const pickUploadedVideo = async () => {
+    if (fUploadedVideos.length >= 3) {
+      showAppAlert('Maximum Limit Reached', 'You can upload up to 3 videos.');
+      return;
+    }
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showAppAlert('Permission Denied', 'Media library access is required to upload local videos.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      quality: 1
+    });
+
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+    const asset = result.assets[0];
+
+    if (asset.duration && asset.duration / 1000 > MAX_UPLOADED_VIDEO_DURATION_SEC) {
+      showAppAlert('Video Too Long', `Videos must be ${MAX_UPLOADED_VIDEO_DURATION_SEC} seconds or shorter.`);
+      return;
+    }
+
+    const placeholderIndex = fUploadedVideos.length;
+    const sourceMimeType = asset.mimeType || asset.fileName;
+    setFUploadedVideos((prev) => [...prev, {
+      uri: asset.uri, width: asset.width || 1280, height: asset.height || 720,
+      compressing: true, compressionProgress: 0, compressionFailed: false,
+      sourceMimeType, caption: ''
+    }]);
+    attemptVideoCompression(placeholderIndex, asset.uri, sourceMimeType);
   };
 
   const handleRemoveUploadedVideo = (index) => {
@@ -20213,10 +20261,37 @@ function App() {
                                   <View style={{
                                     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
                                     backgroundColor: 'rgba(11, 15, 23, 0.6)',
-                                    alignItems: 'center', justifyContent: 'center'
+                                    alignItems: 'center', justifyContent: 'center', gap: 6
                                   }}>
                                     <ActivityIndicator color="#FFFFFF" size="small" />
+                                    {/* b610: only show a number once compression has actually
+                                        started reporting real progress - both platforms' progress
+                                        callbacks can sit at 0 briefly during setup (loading the
+                                        wasm core on web, initializing the encoder on native),
+                                        and "0%" reads as stuck/broken rather than just starting. */}
+                                    {vid.compressionProgress > 0 && (
+                                      <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>
+                                        {vid.compressionProgress}%
+                                      </Text>
+                                    )}
                                   </View>
+                                )}
+                                {/* b611: shown after a failed compression - the video still
+                                    uploads fine at original size regardless (existing safety
+                                    net), this just offers a way to actually try compressing it
+                                    without removing and re-picking the whole file. */}
+                                {vid.compressionFailed && !vid.compressing && (
+                                  <BouncyButton
+                                    style={{
+                                      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                                      backgroundColor: 'rgba(11, 15, 23, 0.7)',
+                                      alignItems: 'center', justifyContent: 'center', gap: 4
+                                    }}
+                                    onPress={() => handleRetryVideoCompression(slotIdx)}
+                                  >
+                                    <Text style={{ color: '#FFFFFF', fontSize: 16 }}>↻</Text>
+                                    <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '600' }}>Retry</Text>
+                                  </BouncyButton>
                                 )}
                               </View>
 
