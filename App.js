@@ -34,7 +34,6 @@ import {
   RefreshControl,
   AppState,
   Keyboard,
-  Switch,
   Share,
   Appearance,
   BackHandler,
@@ -155,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 594;
+const BUILD_NUMBER = 597;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -1755,7 +1754,55 @@ const BouncyButton = React.memo(({ style, onPressIn, onPressOut, children, ...re
   );
 });
 
-// --- Content blocks (WordPress-style block editor groundwork) -------------
+// b595: fully custom-drawn Switch, replacing React Native's built-in
+// <Switch> everywhere - that component renders as a native HTML checkbox
+// on web, and different browsers/OSes were bleeding their own default
+// accent-color styling through underneath the trackColor/thumbColor
+// props (confirmed happening identically on both Firefox and Chrome,
+// after a hard refresh and a confirmed-successful deploy, ruling out
+// cache), producing a purple-to-green blended look neither of us ever
+// actually coded. Being pure View/Animated.View means nothing native is
+// involved, so the colors passed in are exactly what renders, on every
+// platform. Same prop shape as the built-in Switch (value, onValueChange,
+// trackColor: {false, true}, thumbColor) so every existing call site
+// only needed <Switch -> <AppSwitch, nothing else.
+const AppSwitch = React.memo(({ value, onValueChange, trackColor, thumbColor = '#FFFFFF', disabled }) => {
+  const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: value ? 1 : 0,
+      duration: 200,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false // interpolating backgroundColor isn't supported by the native driver
+    }).start();
+  }, [value]);
+
+  const bgColor = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [trackColor.false, trackColor.true]
+  });
+  const thumbTranslateX = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [2, 22]
+  });
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      disabled={disabled}
+      onPress={() => onValueChange(!value)}
+      style={{ opacity: disabled ? 0.5 : 1 }}
+    >
+      <Animated.View style={{ width: 48, height: 28, borderRadius: 14, backgroundColor: bgColor, padding: 2, justifyContent: 'center' }}>
+        <Animated.View style={{
+          width: 24, height: 24, borderRadius: 12, backgroundColor: thumbColor,
+          transform: [{ translateX: thumbTranslateX }],
+          shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2
+        }} />
+      </Animated.View>
+    </TouchableOpacity>
+  );
+});
 // A block is one of:
 //   { id, type: 'text', markdown }
 //   { id, type: 'image', uri }
@@ -2672,7 +2719,7 @@ const ProjectCard = React.memo(({
           to be "inside" the anchor removes the need to intercept anything -
           it can never trigger navigation, regardless of how any event
           system behaves, because it simply isn't a descendant of it. */}
-      <View style={styles.titleRow}>
+      <View style={[styles.titleRow, { marginBottom: 0 }]}>
         <CardLink href={`/p/${item.id}`} style={{ flex: 1 }} activeOpacity={0.88} onPress={() => onPress(item)}>
           <Text style={[styles.cardTitle, isTwoRowCard && styles.cardTitleCompact]} numberOfLines={2}>{item.title}</Text>
         </CardLink>
@@ -3163,6 +3210,66 @@ const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenD
 // Resizes down to a max width (only if the image is actually bigger than that,
 // so small images are never upscaled) and compresses quality - invisible to the
 // user, no manual file-size limits or errors, just smaller uploads automatically.
+// b597: browser-side video compression via ffmpeg.wasm - the only real
+// way to transcode video client-side on web (react-native-compressor,
+// used on native below, has no web build at all). Single-threaded core
+// specifically (not core-mt) - the multi-threaded build needs
+// SharedArrayBuffer, which needs COOP/COEP response headers configured
+// on the hosting itself; starting with the version that needs zero
+// infra changes, at the cost of being slower to transcode. Both the
+// ffmpeg packages and the ~30MB wasm core are lazy-loaded (dynamic
+// import + fetched on first use only) so a) native's bundle never pulls
+// any of this in, and b) someone who never uploads a video on web never
+// pays for it either.
+let ffmpegInstance = null;
+async function getFFmpegInstance() {
+  if (ffmpegInstance) return ffmpegInstance;
+  const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+  const { toBlobURL } = await import('@ffmpeg/util');
+  const ffmpeg = new FFmpeg();
+  const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
+  await ffmpeg.load({
+    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+  });
+  ffmpegInstance = ffmpeg;
+  return ffmpeg;
+}
+
+const compressVideoForUploadWeb = async (uri, onProgress) => {
+  const ffmpeg = await getFFmpegInstance();
+  const { fetchFile } = await import('@ffmpeg/util');
+  const inputName = 'input.mp4';
+  const outputName = 'output.mp4';
+  await ffmpeg.writeFile(inputName, await fetchFile(uri));
+
+  const progressHandler = ({ progress }) => { if (onProgress) onProgress(progress); };
+  ffmpeg.on('progress', progressHandler);
+
+  try {
+    // Scale down to a max of 1280px on the longer side, moderate CRF for
+    // a reasonable size/quality tradeoff - roughly matching what
+    // react-native-compressor's "auto" mode targets on native, though
+    // the two won't produce byte-identical output.
+    await ffmpeg.exec([
+      '-i', inputName,
+      '-vf', "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease",
+      '-c:v', 'libx264', '-crf', '28', '-preset', 'veryfast',
+      '-c:a', 'aac', '-b:a', '128k',
+      outputName
+    ]);
+    const data = await ffmpeg.readFile(outputName);
+    const blob = new Blob([data.buffer], { type: 'video/mp4' });
+    return URL.createObjectURL(blob);
+  } finally {
+    ffmpeg.off('progress', progressHandler);
+    // Clean up the virtual filesystem so back-to-back video uploads in
+    // the same session don't accumulate files in ffmpeg's in-memory FS.
+    try { await ffmpeg.deleteFile(inputName); } catch (e) {}
+    try { await ffmpeg.deleteFile(outputName); } catch (e) {}
+  }
+};
+
 const compressImageForUpload = async (uri) => {
   try {
     const originalWidth = await new Promise((resolve, reject) => {
@@ -9456,9 +9563,26 @@ function App() {
     }
 
     const placeholderIndex = fUploadedVideos.length;
-    setFUploadedVideos((prev) => [...prev, { uri: asset.uri, width: asset.width || 1280, height: asset.height || 720, compressing: Platform.OS !== 'web', caption: '' }]);
+    setFUploadedVideos((prev) => [...prev, { uri: asset.uri, width: asset.width || 1280, height: asset.height || 720, compressing: true, caption: '' }]);
 
-    if (Platform.OS === 'web') return; // no on-device compressor available on web - original file is used as-is
+    if (Platform.OS === 'web') {
+      // b597: was an early return with the original file used as-is -
+      // now actually compresses via ffmpeg.wasm. See
+      // compressVideoForUploadWeb's own comment for why this is
+      // single-threaded (slower, but needs no hosting header changes).
+      try {
+        const compressedUri = await compressVideoForUploadWeb(asset.uri);
+        setFUploadedVideos((prev) =>
+          prev.map((v, i) => (i === placeholderIndex ? { ...v, uri: compressedUri, compressing: false } : v))
+        );
+      } catch (e) {
+        console.warn('Web video compression failed, using original file:', e);
+        setFUploadedVideos((prev) =>
+          prev.map((v, i) => (i === placeholderIndex ? { ...v, compressing: false } : v))
+        );
+      }
+      return;
+    }
 
     try {
       // Lazy require, native-only: react-native-compressor has no web
@@ -15783,7 +15907,7 @@ function App() {
                         Receive an email alert when your reported issue is confirmed and being fixed.
                       </Text>
                     </View>
-                    <Switch
+                    <AppSwitch
                       value={feedbackNotifyEmail}
                       onValueChange={setFeedbackNotifyEmail}
                       trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
@@ -16397,7 +16521,7 @@ function App() {
                           When enabled, visitors can only see your uploaded portfolios on your profile page.
                         </Text>
                       </View>
-                      <Switch
+                      <AppSwitch
                         value={hideLikedPortfolios}
                         onValueChange={setHideLikedPortfolios}
                         trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
@@ -16420,7 +16544,7 @@ function App() {
                           When on, NSFW designers and portfolios never appear in search. NSFW content never appears on For You regardless of this setting.
                         </Text>
                       </View>
-                      <Switch
+                      <AppSwitch
                         value={safeSearchEnabled}
                         onValueChange={handleSafeSearchToggle}
                         trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
@@ -16436,7 +16560,7 @@ function App() {
                           When on, For You hides portfolios tagged as AI-generated. AI tags are self-disclosed by uploaders, so some content may not be labeled accurately. Only affects For You.
                         </Text>
                       </View>
-                      <Switch
+                      <AppSwitch
                         value={excludeAiGeneratedContent}
                         onValueChange={setExcludeAiGeneratedContent}
                         trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
@@ -16751,7 +16875,7 @@ function App() {
                         When on, tutorials pop up the first time you reach a new step. Turn back on here anytime after skipping.
                       </Text>
                     </View>
-                    <Switch
+                    <AppSwitch
                       value={!tutorialsSkippedAll}
                       onValueChange={(v) => setTutorialsSkippedAll(!v)}
                       trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
@@ -18230,7 +18354,7 @@ function App() {
                   }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <Text style={[styles.settingItemTitle, { flex: 1, fontSize: 13 }]}>Mark as NSFW</Text>
-                      <Switch
+                      <AppSwitch
                         value={fIsNsfw}
                         onValueChange={setFIsNsfw}
                         trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
@@ -18833,7 +18957,7 @@ function App() {
 
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Text style={[styles.formGroupLabel, { marginBottom: 0 }]}>Detailed Description (Optional)</Text>
-                    <Switch
+                    <AppSwitch
                       value={fDetailedDescriptionEnabled}
                       onValueChange={handleToggleDetailedDescription}
                       trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
