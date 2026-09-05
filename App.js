@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 606;
+const BUILD_NUMBER = 607;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -1770,7 +1770,7 @@ const BouncyButton = React.memo(({ style, onPressIn, onPressOut, children, ...re
 // platform. Same prop shape as the built-in Switch (value, onValueChange,
 // trackColor: {false, true}, thumbColor) so every existing call site
 // only needed <Switch -> <AppSwitch, nothing else.
-const AppSwitch = React.memo(({ value, onValueChange, trackColor, thumbColor = '#FFFFFF', disabled }) => {
+const AppSwitch = React.memo(({ value, onValueChange, trackColor, thumbColor = '#FFFFFF', disabled, theme }) => {
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
   useEffect(() => {
     Animated.timing(anim, {
@@ -1797,7 +1797,17 @@ const AppSwitch = React.memo(({ value, onValueChange, trackColor, thumbColor = '
       onPress={() => onValueChange(!value)}
       style={{ opacity: disabled ? 0.5 : 1 }}
     >
-      <Animated.View style={{ width: 48, height: 28, borderRadius: 14, backgroundColor: bgColor, padding: 2, justifyContent: 'center' }}>
+      {/* b607: subtle border added, using the same neutral theme.border
+          token every input/card border in this file already uses (falls
+          back to a translucent white if theme somehow isn't passed) -
+          the off-state track color (theme.bg) is intentionally close to
+          the app's own background for a clean look, but that meant it
+          could nearly disappear against other same-toned dark surfaces
+          without some edge to define its shape. */}
+      <Animated.View style={{
+        width: 48, height: 28, borderRadius: 14, backgroundColor: bgColor, padding: 2, justifyContent: 'center',
+        borderWidth: 1, borderColor: theme ? theme.border : 'rgba(255,255,255,0.15)'
+      }}>
         <Animated.View style={{
           width: 24, height: 24, borderRadius: 12, backgroundColor: thumbColor,
           transform: [{ translateX: thumbTranslateX }],
@@ -16040,6 +16050,7 @@ function App() {
                       onValueChange={setFeedbackNotifyEmail}
                       trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                       thumbColor="#FFFFFF"
+                      theme={theme}
                     />
                   </View>
 
@@ -16654,6 +16665,7 @@ function App() {
                         onValueChange={setHideLikedPortfolios}
                         trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                         thumbColor="#FFFFFF"
+                        theme={theme}
                       />
                     </View>
 
@@ -16677,6 +16689,7 @@ function App() {
                         onValueChange={handleSafeSearchToggle}
                         trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                         thumbColor="#FFFFFF"
+                        theme={theme}
                       />
                     </View>
                     )}
@@ -16693,6 +16706,7 @@ function App() {
                         onValueChange={setExcludeAiGeneratedContent}
                         trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                         thumbColor="#FFFFFF"
+                        theme={theme}
                       />
                     </View>
 
@@ -17008,6 +17022,7 @@ function App() {
                       onValueChange={(v) => setTutorialsSkippedAll(!v)}
                       trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                       thumbColor="#FFFFFF"
+                      theme={theme}
                     />
                   </View>
 
@@ -18487,6 +18502,7 @@ function App() {
                         onValueChange={setFIsNsfw}
                         trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                         thumbColor="#FFFFFF"
+                        theme={theme}
                       />
                     </View>
                     <Text style={{ color: theme.textSecondary, fontSize: 11, lineHeight: 15, marginTop: 4 }}>
@@ -19090,6 +19106,7 @@ function App() {
                       onValueChange={handleToggleDetailedDescription}
                       trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                       thumbColor="#FFFFFF"
+                      theme={theme}
                     />
                   </View>
                   <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 8, marginTop: 4 }}>
