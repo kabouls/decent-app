@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 597;
+const BUILD_NUMBER = 599;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3210,27 +3210,47 @@ const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenD
 // Resizes down to a max width (only if the image is actually bigger than that,
 // so small images are never upscaled) and compresses quality - invisible to the
 // user, no manual file-size limits or errors, just smaller uploads automatically.
-// b597: browser-side video compression via ffmpeg.wasm - the only real
-// way to transcode video client-side on web (react-native-compressor,
-// used on native below, has no web build at all). Single-threaded core
-// specifically (not core-mt) - the multi-threaded build needs
-// SharedArrayBuffer, which needs COOP/COEP response headers configured
-// on the hosting itself; starting with the version that needs zero
-// infra changes, at the cost of being slower to transcode. Both the
-// ffmpeg packages and the ~30MB wasm core are lazy-loaded (dynamic
-// import + fetched on first use only) so a) native's bundle never pulls
-// any of this in, and b) someone who never uploads a video on web never
-// pays for it either.
+// b599: two prior attempts (a Metro resolver stub, then a classWorkerURL
+// pointing at a CDN copy) both failed with the exact same SyntaxError -
+// Metro was still trying to parse @ffmpeg/ffmpeg's worker.js somewhere
+// my resolver override never intercepted, meaning Metro handles the
+// `new URL(path, import.meta.url)` pattern that file uses through some
+// lower-level mechanism than the resolver hook, not the standard
+// require/import resolution path. Rather than keep guessing at Metro
+// internals I can't test against directly, this loads the ENTIRE
+// @ffmpeg/ffmpeg library via a real <script> tag injected at runtime -
+// the UMD build's own officially-documented "no bundler" usage pattern
+// (exposes a plain `window.FFmpegWASM.FFmpeg` global). Since this is a
+// real script tag fetched by the browser directly, Metro never parses
+// any of this code at all - it's invisible to the bundler entirely, not
+// just worked around. @ffmpeg/ffmpeg is no longer imported anywhere in
+// this file for that reason; @ffmpeg/util still is (fetchFile/toBlobURL
+// are plain utility functions with none of this worker.js baggage, no
+// need to route them through a script tag too).
 let ffmpegInstance = null;
+let ffmpegScriptPromise = null;
+function loadFFmpegScript() {
+  if (window.FFmpegWASM) return Promise.resolve();
+  if (ffmpegScriptPromise) return ffmpegScriptPromise;
+  ffmpegScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/umd/ffmpeg.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load ffmpeg.wasm script'));
+    document.head.appendChild(script);
+  });
+  return ffmpegScriptPromise;
+}
 async function getFFmpegInstance() {
   if (ffmpegInstance) return ffmpegInstance;
-  const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+  await loadFFmpegScript();
+  const { FFmpeg } = window.FFmpegWASM;
   const { toBlobURL } = await import('@ffmpeg/util');
   const ffmpeg = new FFmpeg();
-  const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
+  const coreBaseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
   await ffmpeg.load({
-    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+    coreURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.wasm`, 'application/wasm')
   });
   ffmpegInstance = ffmpeg;
   return ffmpeg;
