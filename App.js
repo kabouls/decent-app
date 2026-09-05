@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 608;
+const BUILD_NUMBER = 609;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -294,6 +294,10 @@ const formatRelativeTime = (isoString) => {
 
 const USER_PROFILE_KEY = '@user_profile_v1';
 const ONBOARDING_KEY = '@onboarding_done_v1';
+// b609: device-level (not per-user like ONBOARDING_KEY/INTRO_SEEN_KEY
+// above) - "have you seen this update's patch notes" is about the
+// installation, not which account happens to be logged in at the time.
+const LAST_SEEN_BUILD_KEY = '@last_seen_build_v1';
 const INTRO_SEEN_KEY = '@intro_carousel_seen_v1';
 const CIRCLE_LAST_SEEN_KEY = '@circle_last_seen_v1';
 
@@ -4755,6 +4759,43 @@ function App() {
   const [changelogEntries, setChangelogEntries] = useState([]);
   const [changelogLoading, setChangelogLoading] = useState(false);
   const changelogFetchedRef = useRef(false); // only fetch once per session, not every time the modal reopens
+  // b609: separate from the manually-opened changelogModalVisible above -
+  // this one triggers itself automatically, once, the first time this
+  // build runs on a device that previously ran a different one. Reuses
+  // changelogEntries/changelogLoading for its content rather than
+  // duplicating that state, since it's showing the exact same data.
+  const [newUpdatePopupVisible, setNewUpdatePopupVisible] = useState(false);
+  useEffect(() => {
+    (async () => {
+      let lastSeenBuild = null;
+      try {
+        lastSeenBuild = await AsyncStorage.getItem(LAST_SEEN_BUILD_KEY);
+      } catch (e) {
+        return; // can't read storage - safest to skip rather than risk showing this every launch
+      }
+      const currentBuild = String(BUILD_NUMBER);
+      if (lastSeenBuild !== null && lastSeenBuild !== currentBuild) {
+        setChangelogLoading(true);
+        const { data, error } = await supabase
+          .from('changelog_entries')
+          .select('id, version, title, description, created_at')
+          .order('created_at', { ascending: false })
+          .limit(5);
+        setChangelogLoading(false);
+        if (!error) {
+          setChangelogEntries(data || []);
+          changelogFetchedRef.current = true; // the manually-opened modal won't need to re-fetch after this
+          setNewUpdatePopupVisible(true);
+        }
+      }
+      // Written regardless of whether the popup showed - including the
+      // very first-ever launch (lastSeenBuild === null), so a fresh
+      // install never sees this as if it were "an update".
+      try {
+        await AsyncStorage.setItem(LAST_SEEN_BUILD_KEY, currentBuild);
+      } catch (e) {}
+    })();
+  }, []);
   const [termsModalVisible, setTermsModalVisible] = useState(false);
   // Safe search: on by default (hides NSFW everywhere including search).
   // Turning it off requires an explicit warning + countdown before it takes
@@ -15524,7 +15565,87 @@ function App() {
         </View>
       </Modal>
 
-      {/* b584: post-signup-confirmation landing screen - logo, simple
+      {/* b609: the auto-greeting version of the modal just above - same
+          content (changelogEntries), different framing (a "Got it"
+          primary action instead of just a close X, plus a link into the
+          permanent What's New screen for the full history). Conditionally
+          mounted, not toggle-visible, per this file's own documented
+          modal-stacking fix for any newly-added modal. */}
+      {newUpdatePopupVisible && (
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={true}
+          onRequestClose={() => setNewUpdatePopupVisible(false)}
+        >
+          <View style={[styles.overlayModalBg, { justifyContent: 'center', paddingHorizontal: 16 }]}>
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView
+                  intensity={55}
+                  tint={themeMode === 'light' ? 'light' : 'dark'}
+                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                />
+              )
+            )}
+            <View style={[styles.overlayModalContainer, { maxHeight: Math.min(560, Dimensions.get('window').height - 120), ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}>
+              <View style={styles.modalTopBar}>
+                <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>What's New</Text>
+              </View>
+
+              {changelogEntries.length === 0 ? (
+                <View style={{ padding: 40, alignItems: 'center' }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 13 }}>You're all caught up.</Text>
+                </View>
+              ) : (
+                <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }} style={{ maxHeight: 360 }}>
+                  {changelogEntries.map((entry) => (
+                    <View key={entry.id} style={{ borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 14 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        {entry.version && (
+                          <View style={{ backgroundColor: theme.bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
+                            <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>{entry.version}</Text>
+                          </View>
+                        )}
+                        <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
+                          {new Date(entry.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </Text>
+                      </View>
+                      <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14, marginBottom: entry.description ? 4 : 0 }}>
+                        {entry.title}
+                      </Text>
+                      {entry.description && (
+                        <Text style={{ color: theme.textSecondary, fontSize: 13, lineHeight: 18 }}>
+                          {entry.description}
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+
+              <View style={{ padding: 16, paddingTop: 8, gap: 10 }}>
+                <BouncyButton
+                  style={{ backgroundColor: theme.accent, borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}
+                  onPress={() => setNewUpdatePopupVisible(false)}
+                >
+                  <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Got it</Text>
+                </BouncyButton>
+                <BouncyButton
+                  onPress={() => {
+                    setNewUpdatePopupVisible(false);
+                    setChangelogModalVisible(true);
+                  }}
+                >
+                  <Text style={{ color: theme.textSecondary, fontSize: 13, textAlign: 'center' }}>See full changelog</Text>
+                </BouncyButton>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
           message, one button. Conditionally mounted (not toggle-visible)
           per this file's own documented modal-stacking fix, since it's a
           brand new modal. */}
