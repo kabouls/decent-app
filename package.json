@@ -5,7 +5,8 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "vercel-build": "mkdir -p public/ffmpeg && cp node_modules/@ffmpeg/ffmpeg/dist/umd/ffmpeg.js node_modules/@ffmpeg/ffmpeg/dist/umd/814.ffmpeg.js node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.js node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.wasm public/ffmpeg/ && npx expo export -p web"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
