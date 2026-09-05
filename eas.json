@@ -16,6 +16,12 @@
     "production": {
       "autoIncrement": true,
       "channel": "production"
+    },
+    "playstore": {
+      "extends": "production",
+      "env": {
+        "EXPO_PUBLIC_DECENT_DISTRIBUTION": "playstore"
+      }
     }
   },
   "submit": {
