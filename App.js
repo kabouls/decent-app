@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 607;
+const BUILD_NUMBER = 608;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -1229,7 +1229,7 @@ const ForYouSVG = React.memo(({ active }) => (
 const FollowedTabSVG = React.memo(({ active, spinAnim }) => {
   const iconColor = active ? '#8B5CF6' : '#94A3B8';
   return (
-    <View style={{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: 19, height: 19, alignItems: 'center', justifyContent: 'center' }}>
       <Animated.View
         style={{
           transform: spinAnim ? [{
@@ -1237,7 +1237,7 @@ const FollowedTabSVG = React.memo(({ active, spinAnim }) => {
           }] : []
         }}
       >
-        <Svg width="22" height="22" viewBox="0 0 117 117" fill="none">
+        <Svg width="19" height="19" viewBox="0 0 117 117" fill="none">
           <Path d="M113.738 40.7695C115.531 46.3583 116.5 52.3159 116.5 58.5C116.5 90.5325 90.5325 116.5 58.5 116.5C46.3596 116.5 35.0909 112.769 25.7764 106.393L27.7852 102.429L34.4219 101.183C41.5333 105.203 49.748 107.5 58.5 107.5C85.562 107.5 107.5 85.562 107.5 58.5C107.5 54.0511 106.907 49.7408 105.796 45.6436C108.778 44.5693 111.473 42.8962 113.738 40.7695ZM24.0547 98.8262C23.9548 98.9602 23.8663 99.1031 23.79 99.2529L22.9238 100.962L23.7891 99.2529C23.8654 99.1029 23.9545 98.9602 24.0547 98.8262ZM9.1875 89.0488L9.18652 89.0469L7.54297 80.2783L9.1875 89.0488ZM58.5 0.5C63.6597 0.5 68.662 1.17414 73.4238 2.43848C71.898 4.56889 71 7.17963 71 10V11.1094C67.0095 10.0596 62.8201 9.5 58.5 9.5C31.438 9.5 9.5 31.438 9.5 58.5C9.5 63.133 10.1422 67.616 11.3438 71.8643C10.8793 71.8099 10.4094 71.7956 9.93945 71.8242L9.66504 71.8457L9.39062 71.877C8.11606 72.044 6.90097 72.5187 5.85059 73.2598L5.62891 73.4219C4.62789 74.1815 3.82368 75.1667 3.28027 76.293C1.47505 70.6862 0.5 64.707 0.5 58.5C0.5 26.4675 26.4675 0.5 58.5 0.5ZM78.6143 4.08301C93.5145 9.59256 105.532 21.047 111.789 35.5674C109.795 37.9422 107.2 39.7951 104.236 40.8896C99.2537 27.9577 88.947 17.6729 76 12.7207V10C76 7.65573 77.0076 5.54622 78.6143 4.08301Z" fill={iconColor} />
           <Path d="M7.54291 80.2779C7.44262 79.7434 7.49315 79.1915 7.68883 78.6842C7.88451 78.1768 8.21761 77.7339 8.65081 77.4052C9.08401 77.0764 9.60019 76.8748 10.1415 76.823C10.6828 76.7711 11.2279 76.871 11.7157 77.1114L37.9752 90.0662C40.4965 91.3092 39.9833 95.0522 37.2205 95.5707L25.861 97.7022C25.42 97.7846 25.0038 97.9674 24.6446 98.2362C24.2854 98.5051 23.9928 98.8529 23.7894 99.2528L18.4284 109.837C17.1657 112.333 13.4556 111.804 12.9393 109.053L7.54291 80.2779Z" fill={iconColor} />
           <Path d="M76 10C76 5.58172 79.5817 2 84 2H98C107.941 2 116 10.0589 116 20V24C116 33.9411 107.941 42 98 42H84C79.5817 42 76 38.4183 76 34V10Z" fill={iconColor} />
