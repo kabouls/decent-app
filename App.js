@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 605;
+const BUILD_NUMBER = 606;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -501,6 +501,10 @@ const LINK_FIELD_INFO = {
   canvas: {
     title: 'Project Canvas Link (Public)',
     body: 'A link to your full design file so viewers can inspect layers and canvas, not just a locked prototype flow. In Figma: Share \u2192 set access to \u201cAnyone with the link can view\u201d \u2192 Copy link. For other tools, use the equivalent public view-only share link (Adobe XD Cloud, Sketch Cloud, Framer project link, etc.).'
+  },
+  videoFormat: {
+    title: 'Recommended Video Format',
+    body: 'MP4 with H.264 encoding works most reliably for both compression and playback - most phone recordings and screen recordings already use this by default. Newer formats like AV1 aren\u2019t supported for compression on the website specifically yet and will upload at their original file size instead. The app version compresses through the device\u2019s own system tools, which generally handle a wider range of source formats.'
   }
 };
 
@@ -4240,14 +4244,29 @@ const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, t
 // hand-written platform branches already. Platform.OS is fixed for the
 // life of a given build (web build only ever runs 'web'), so branching a
 // hook call around it here is safe despite looking conditional.
-const PortfolioVideoPlayer = React.memo(({ uri, width, height }) => {
+const PortfolioVideoPlayer = React.memo(({ uri, width, height, fillContainer }) => {
   const [status, setStatus] = useState('loading');
   const aspectRatio = width && height ? width / height : 16 / 9;
 
   if (Platform.OS === 'web') {
-    // Same layered loading/error placeholder as VideoSquareThumb above.
+    // b606: fillContainer is the wide-web MEDIA panel's single-video case
+    // - the default width:'100%'+aspectRatio sizing (still used
+    // everywhere else, mobile/app feed included) means a tall portrait
+    // video at full container WIDTH can compute a height taller than the
+    // available viewport, forcing the video tab to scroll even though
+    // there's nothing else on the page - "fills width, height scrolls",
+    // reported directly. fillContainer instead fills the available
+    // space in BOTH dimensions and lets the browser's own
+    // object-fit:contain letterbox/pillarbox the video to fit, the same
+    // idea as contentFit="contain" already used on the native VideoView
+    // below. Only used when there's exactly one video AND isWebWide -
+    // multiple stacked videos still need to scroll regardless of how
+    // any single one is sized, so this isn't applied there.
     return (
-      <View style={{ width: '100%', aspectRatio, borderRadius: 12, backgroundColor: '#000', overflow: 'hidden' }}>
+      <View style={fillContainer
+        ? { flex: 1, width: '100%', borderRadius: 12, backgroundColor: '#000', overflow: 'hidden' }
+        : { width: '100%', aspectRatio, borderRadius: 12, backgroundColor: '#000', overflow: 'hidden' }
+      }>
         {React.createElement('video', {
           src: uri,
           controls: true,
@@ -4256,7 +4275,8 @@ const PortfolioVideoPlayer = React.memo(({ uri, width, height }) => {
           onLoadedData: () => setStatus('ready'),
           onError: () => setStatus('error'),
           style: {
-            width: '100%', height: '100%', backgroundColor: '#000', display: status === 'ready' ? 'block' : 'none'
+            width: '100%', height: '100%', backgroundColor: '#000', display: status === 'ready' ? 'block' : 'none',
+            objectFit: fillContainer ? 'contain' : undefined
           }
         })}
         {status !== 'ready' && (
@@ -4272,7 +4292,10 @@ const PortfolioVideoPlayer = React.memo(({ uri, width, height }) => {
   return (
     <VideoView
       player={player}
-      style={{ width: '100%', aspectRatio, borderRadius: 12, backgroundColor: '#000' }}
+      style={fillContainer
+        ? { flex: 1, width: '100%', borderRadius: 12, backgroundColor: '#000' }
+        : { width: '100%', aspectRatio, borderRadius: 12, backgroundColor: '#000' }
+      }
       contentFit="contain"
       allowsFullscreen
       nativeControls
@@ -19060,8 +19083,8 @@ function App() {
                   />
                   {errors.fBrief ? <Text style={styles.errorText}>{errors.fBrief}</Text> : null}
 
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={[styles.formGroupLabel, { marginBottom: 0 }]}>Detailed Description (Optional)</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 24 }}>
+                    <Text style={[styles.formGroupLabel, { marginBottom: 0, marginTop: 0 }]}>Detailed Description (Optional)</Text>
                     <AppSwitch
                       value={fDetailedDescriptionEnabled}
                       onValueChange={handleToggleDetailedDescription}
@@ -20021,9 +20044,12 @@ function App() {
 
                   {(selectedPortfolioType === 'graphic_design' || selectedPortfolioType === 'illustration') && (
                     <View style={{ marginTop: 20 }}>
-                      <Text style={styles.formGroupLabel}>
-                        Upload Videos (Optional - up to 3, max {MAX_UPLOADED_VIDEO_DURATION_SEC}s each)
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                        <Text style={styles.formGroupLabel}>
+                          Upload Videos (Optional - up to 3, max {MAX_UPLOADED_VIDEO_DURATION_SEC}s each)
+                        </Text>
+                        {renderLinkFieldInfoButton('videoFormat')}
+                      </View>
                       <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 8 }}>
                         Videos are automatically compressed to save space, which may slightly reduce quality. Plays back at the video's own aspect ratio.
                       </Text>
@@ -21444,6 +21470,43 @@ function App() {
                         </View>
                       )}
                     </View>
+                    {(() => {
+                      const uploadedVidsForFill = gdAllVideos.filter((v) => v.kind === 'uploaded');
+                      // b606: a ScrollView's content sizes to fit its
+                      // content, not the reverse - flex:1 on something
+                      // inside it doesn't claim extra space the way it
+                      // would as a direct child of a plain flex:1 View.
+                      // So the single-video, wide-web case needs to
+                      // render OUTSIDE the ScrollView entirely to
+                      // actually fill the available height instead of
+                      // just sizing to its own aspect ratio and
+                      // scrolling if that's taller than the viewport.
+                      // Every other case (image tab, multiple videos,
+                      // narrow/app layout) is completely unchanged.
+                      if (gdSplitTab === 'video' && isWebWide && gdAllVideos.length === 1 && uploadedVidsForFill.length === 1) {
+                        const v = uploadedVidsForFill[0];
+                        const videoItems = [{ type: 'video', uri: v.url, width: v.width, height: v.height, caption: v.caption }];
+                        return (
+                          <View style={{ flex: 1, padding: 16 }}>
+                            <View style={{ position: 'relative', flex: 1 }}>
+                              <PortfolioVideoPlayer uri={v.url} width={v.width} height={v.height} fillContainer />
+                              <BouncyButton
+                                style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                onPress={() => openMediaViewer(videoItems, 0)}
+                              >
+                                <ExpandIconSVG size={15} />
+                              </BouncyButton>
+                            </View>
+                            {v.caption && v.caption.trim() !== '' && (
+                              <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 6 }}>{v.caption}</Text>
+                            )}
+                            <Text style={{ color: theme.textTertiary, fontSize: 11, marginTop: 6 }}>
+                              Video compressed to save space - quality may differ slightly from the original upload.
+                            </Text>
+                          </View>
+                        );
+                      }
+                      return (
                     <ScrollView ref={hideScrollbarRefCallback(isWebWide)} style={{ flex: 1, width: '100%' }} contentContainerStyle={{ padding: 16, gap: 16, width: '100%' }}>
                       {gdSplitTab === 'video' ? (
                         gdAllVideos.length === 0 ? (
@@ -21527,6 +21590,8 @@ function App() {
                         )
                       )}
                     </ScrollView>
+                      );
+                    })()}
                   </View>
                 );
 
