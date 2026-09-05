@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 604;
+const BUILD_NUMBER = 605;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3330,7 +3330,17 @@ const compressVideoForUploadWeb = async (uri, onProgress, mimeTypeOrFileName) =>
       // dimensions in trunc(.../2)*2 rounds down to the nearest even
       // number, always, regardless of the input's aspect ratio - this
       // isn't a fix for one video, it removes the whole class of bug.
-      '-vf', "scale='trunc(min(1280,iw)/2)*2':'trunc(min(1280,ih)/2)*2':force_original_aspect_ratio=decrease",
+      // b605: b604's trunc()-based fix wasn't actually sufficient - same
+      // exact failure, same dimensions, confirmed by the next real
+      // upload attempt. Root cause: force_original_aspect_ratio=decrease
+      // RECALCULATES one dimension AFTER the scale expression evaluates,
+      // to preserve aspect ratio - and that recalculated value isn't
+      // guaranteed to stay even, silently undoing the trunc() rounding
+      // that ran before it. force_divisible_by is a dedicated scale
+      // filter parameter (ffmpeg 4.3+, well within this WASM core's
+      // 5.1.4) built specifically for this interaction - it enforces
+      // evenness AFTER the aspect-ratio recalculation, not before it.
+      '-vf', "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
       '-c:v', 'libx264', '-crf', '28', '-preset', 'veryfast',
       '-c:a', 'aac', '-b:a', '128k',
       outputName
