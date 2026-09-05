@@ -1,6 +1,6 @@
-// Dynamic sitemap — generated fresh from Supabase on each request (cached
-// 1hr at the edge), so new portfolios/profiles get discoverable automatically
-// with no separate build step or cron job needed.
+// Vercel Edge Function - generates the sitemap fresh from live Supabase
+// data on each request (1hr cache below). New portfolios/profiles
+// become sitemap-visible automatically, no manual rebuild step needed.
 export const config = { runtime: 'edge' };
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -19,7 +19,8 @@ export default async function handler() {
     return new Response('Missing SUPABASE_URL / SUPABASE_ANON_KEY env vars', { status: 500 });
   }
 
-  // portfolios has no updated_at column — use created_at for lastmod instead.
+  // portfolios has no updated_at column - created_at is the correct
+  // lastmod source there. profiles does have updated_at.
   const [portfolios, profiles] = await Promise.all([
     supaGet('portfolios?select=id,created_at&is_nsfw=eq.false'),
     supaGet('profiles?select=handle,updated_at&handle=not.is.null')

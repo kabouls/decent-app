@@ -1,26 +1,30 @@
 import { next } from '@vercel/edge';
 
-// Rich link previews (like GitHub's) for shared /p/:id and /@:handle URLs.
-// The app is a client-rendered SPA (Expo web export) - a preview bot for
-// iMessage/WhatsApp/Twitter/Slack/Discord fetches the URL and reads
-// whatever's in the raw HTML BEFORE any JavaScript runs, so without this,
-// every shared link looks identical (one generic index.html shell) no
-// matter which portfolio or designer it actually points to.
+// Rich previews AND real SEO for shared /p/:id and /@:handle URLs.
 //
-// This only affects what a preview BOT sees. Real visitors (anything
-// that isn't a recognized crawler User-Agent) pass straight through to
-// the normal app, completely untouched - see the isCrawler check below.
+// b613 correction (second correction on this file today): my prior
+// "fix" in this same conversation used a nested `profiles(name,handle)`
+// select assuming a foreign key between portfolios and profiles - that
+// FK does NOT exist in this schema, confirmed directly in a prior
+// session. portfolios denormalizes user_name/user_handle/user_avatar
+// directly onto its own row instead of joining. A nested select against
+// a nonexistent relationship fails against Supabase's PostgREST API, so
+// that version would have silently fallen through to the generic
+// default for every single portfolio - the exact kind of regression
+// this whole audit was asked to catch. Also switched from hardcoded
+// Supabase credentials to process.env, matching this project's
+// established convention (needs SUPABASE_URL and SUPABASE_ANON_KEY set
+// in Vercel's Environment Variables - Production scope).
 //
 // Framework-agnostic (@vercel/edge, not next/server) because this
 // project's vercel.json has "framework": null - it's an Expo web
-// export, not Next.js, so the Next-specific NextResponse API used in
-// decent-admin's proxy.js doesn't apply here at all.
+// export, not Next.js.
 
-const SUPABASE_URL = 'https://kqjdqidwzegbtysarksa.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_d59enY6PUoyiMHne-U1bQQ_kDZZq7X7';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const SITE_URL = 'https://www.decent.ink';
 
-const CRAWLER_UA_PATTERN = /facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|Discordbot|TelegramBot|WhatsApp|Pinterest|redditbot|Applebot|SkypeUriPreview|vkShare|W3C_Validator/i;
+const CRAWLER_UA_PATTERN = /bot|crawl|spider|facebookexternalhit|Twitterbot|Slackbot|LinkedInBot|WhatsApp|Discordbot|TelegramBot|Googlebot|Bingbot|Pinterest|redditbot|Applebot|SkypeUriPreview|vkShare/i;
 
 function escapeHtml(str) {
   return String(str || '')
@@ -30,12 +34,15 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-function buildHtml({ title, description, image, url }) {
+function buildHtml({ title, description, image, url, jsonLd }) {
   return `<!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <title>${escapeHtml(title)}</title>
+<meta name="description" content="${escapeHtml(description)}">
+<link rel="canonical" href="${escapeHtml(url)}">
+<meta property="og:site_name" content="DECENT">
 <meta property="og:type" content="website">
 <meta property="og:title" content="${escapeHtml(title)}">
 <meta property="og:description" content="${escapeHtml(description)}">
@@ -45,6 +52,7 @@ function buildHtml({ title, description, image, url }) {
 <meta name="twitter:title" content="${escapeHtml(title)}">
 <meta name="twitter:description" content="${escapeHtml(description)}">
 <meta name="twitter:image" content="${escapeHtml(image)}">
+<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
 </head>
 <body></body>
 </html>`;
@@ -56,8 +64,11 @@ const DEFAULT_META = {
   image: `${SITE_URL}/assets/og-default.png`,
 };
 
-async function supabaseGet(table, query) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
+const CACHE_HEADERS = { 'Cache-Control': 'public, max-age=3600, s-maxage=3600' };
+
+async function supabaseGet(query) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null; // fail open, not a crash
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${query}`, {
     headers: {
       apikey: SUPABASE_ANON_KEY,
       Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
@@ -84,36 +95,67 @@ export default async function middleware(request) {
   try {
     if (path.startsWith('/p/')) {
       const portfolioId = path.slice('/p/'.length);
-      const portfolio = await supabaseGet(
-        'portfolios',
-        `id=eq.${encodeURIComponent(portfolioId)}&select=title,brief,cover_url`
+      // No join - user_name/user_handle/user_avatar are denormalized
+      // directly onto portfolios, there is no FK to profiles.
+      const p = await supabaseGet(
+        `portfolios?id=eq.${encodeURIComponent(portfolioId)}&select=title,brief,cover_url,user_name,user_handle,portfolio_type`
       );
-      if (portfolio) {
+      if (p) {
+        const typeLabel =
+          p.portfolio_type === 'graphic_design' ? 'Graphic Design' :
+          p.portfolio_type === 'illustration' ? 'Illustration' : 'UI/UX Design';
+        const title = p.user_name ? `${p.title} by ${p.user_name} | DECENT` : `${p.title} | DECENT`;
+        const description = (p.brief || `A ${typeLabel} portfolio by ${p.user_name || 'a designer'} on DECENT.`).slice(0, 160);
+        const image = p.cover_url || DEFAULT_META.image;
         return new Response(
           buildHtml({
-            title: portfolio.title || DEFAULT_META.title,
-            description: portfolio.brief || 'View this portfolio on DECENT.',
-            image: portfolio.cover_url || DEFAULT_META.image,
+            title,
+            description,
+            image,
             url: request.url,
+            jsonLd: {
+              '@context': 'https://schema.org',
+              '@type': 'CreativeWork',
+              name: p.title,
+              description,
+              image,
+              url: request.url,
+              ...(p.user_name ? {
+                author: {
+                  '@type': 'Person',
+                  name: p.user_name,
+                  ...(p.user_handle ? { url: `${SITE_URL}/@${p.user_handle}` } : {}),
+                },
+              } : {}),
+            },
           }),
-          { headers: { 'content-type': 'text/html; charset=utf-8' } }
+          { headers: { 'content-type': 'text/html; charset=utf-8', ...CACHE_HEADERS } }
         );
       }
     } else if (path.startsWith('/@')) {
       const handle = path.slice('/@'.length);
       const profile = await supabaseGet(
-        'profiles',
-        `handle=eq.${encodeURIComponent(handle)}&select=name,avatar_url`
+        `profiles?handle=eq.${encodeURIComponent(handle)}&select=name,bio,avatar_url`
       );
       if (profile) {
+        const description = (profile.bio || `Check out ${profile.name}'s portfolios on DECENT.`).slice(0, 160);
+        const image = profile.avatar_url || DEFAULT_META.image;
         return new Response(
           buildHtml({
             title: `${profile.name} on DECENT`,
-            description: `Check out ${profile.name}'s portfolios on DECENT.`,
-            image: profile.avatar_url || DEFAULT_META.image,
+            description,
+            image,
             url: request.url,
+            jsonLd: {
+              '@context': 'https://schema.org',
+              '@type': 'Person',
+              name: profile.name,
+              description,
+              image,
+              url: request.url,
+            },
           }),
-          { headers: { 'content-type': 'text/html; charset=utf-8' } }
+          { headers: { 'content-type': 'text/html; charset=utf-8', ...CACHE_HEADERS } }
         );
       }
     }
@@ -123,9 +165,14 @@ export default async function middleware(request) {
   }
 
   // Unmatched, or the fetch above found nothing (deleted portfolio, bad
-  // handle, etc.) - generic site-wide preview instead of nothing at all.
+  // handle, missing env vars, etc.) - generic site-wide preview instead
+  // of nothing at all.
   return new Response(
-    buildHtml({ ...DEFAULT_META, url: request.url }),
-    { headers: { 'content-type': 'text/html; charset=utf-8' } }
+    buildHtml({
+      ...DEFAULT_META,
+      url: request.url,
+      jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'DECENT', url: SITE_URL },
+    }),
+    { headers: { 'content-type': 'text/html; charset=utf-8', ...CACHE_HEADERS } }
   );
 }
