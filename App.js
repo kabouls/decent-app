@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 599;
+const BUILD_NUMBER = 600;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3210,23 +3210,20 @@ const TwoRowHorizontalGrid = React.memo(({ items, onPress, onToggleLike, onOpenD
 // Resizes down to a max width (only if the image is actually bigger than that,
 // so small images are never upscaled) and compresses quality - invisible to the
 // user, no manual file-size limits or errors, just smaller uploads automatically.
-// b599: two prior attempts (a Metro resolver stub, then a classWorkerURL
-// pointing at a CDN copy) both failed with the exact same SyntaxError -
-// Metro was still trying to parse @ffmpeg/ffmpeg's worker.js somewhere
-// my resolver override never intercepted, meaning Metro handles the
-// `new URL(path, import.meta.url)` pattern that file uses through some
-// lower-level mechanism than the resolver hook, not the standard
-// require/import resolution path. Rather than keep guessing at Metro
-// internals I can't test against directly, this loads the ENTIRE
-// @ffmpeg/ffmpeg library via a real <script> tag injected at runtime -
-// the UMD build's own officially-documented "no bundler" usage pattern
-// (exposes a plain `window.FFmpegWASM.FFmpeg` global). Since this is a
-// real script tag fetched by the browser directly, Metro never parses
-// any of this code at all - it's invisible to the bundler entirely, not
-// just worked around. @ffmpeg/ffmpeg is no longer imported anywhere in
-// this file for that reason; @ffmpeg/util still is (fetchFile/toBlobURL
-// are plain utility functions with none of this worker.js baggage, no
-// need to route them through a script tag too).
+// b600: switched from unpkg to self-hosted, same-origin files - unpkg
+// loading was blocked outright by a Content-Security-Policy somewhere in
+// front of decent.ink (Cloudflare's dashboard settings or an HTML meta
+// tag, never pinned down exactly where), which silently hangs rather
+// than erroring (no clean failure for the onerror handler to catch,
+// since the browser blocks the request before it ever completes or
+// fails in a way JS can observe). Same-origin resources sidestep CSP
+// concerns entirely regardless of policy strictness, and remove the
+// dependency on unpkg's uptime for a core feature. The 4 files
+// (ffmpeg.js, 814.ffmpeg.js, ffmpeg-core.js, ffmpeg-core.wasm) get
+// copied from node_modules into public/ffmpeg/ automatically on every
+// Vercel build - see vercel.json's buildCommand - so they stay in sync
+// with whatever @ffmpeg/ffmpeg and @ffmpeg/core versions are installed
+// without a manual copy step.
 let ffmpegInstance = null;
 let ffmpegScriptPromise = null;
 function loadFFmpegScript() {
@@ -3234,7 +3231,7 @@ function loadFFmpegScript() {
   if (ffmpegScriptPromise) return ffmpegScriptPromise;
   ffmpegScriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/umd/ffmpeg.js';
+    script.src = '/ffmpeg/ffmpeg.js';
     script.onload = () => resolve();
     script.onerror = () => reject(new Error('Failed to load ffmpeg.wasm script'));
     document.head.appendChild(script);
@@ -3247,10 +3244,9 @@ async function getFFmpegInstance() {
   const { FFmpeg } = window.FFmpegWASM;
   const { toBlobURL } = await import('@ffmpeg/util');
   const ffmpeg = new FFmpeg();
-  const coreBaseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
   await ffmpeg.load({
-    coreURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.js`, 'text/javascript'),
-    wasmURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.wasm`, 'application/wasm')
+    coreURL: await toBlobURL('/ffmpeg/ffmpeg-core.js', 'text/javascript'),
+    wasmURL: await toBlobURL('/ffmpeg/ffmpeg-core.wasm', 'application/wasm')
   });
   ffmpegInstance = ffmpeg;
   return ffmpeg;
