@@ -53,7 +53,6 @@ Every other portfolio tool makes you choose: a boring PDF, a screenshot gallery 
 **It just feels good to use**
 - 🌗 Dark and light themes
 - 💻 A real desktop-optimized layout on web, not a phone screen stretched wide
-- ⚡ A "Fancy Mode" toggle for reduced motion / lighter effects when you want it snappier
 - 🧭 Smart navigation that remembers where you were — scroll position, tab history, back button that actually makes sense
 
 **Behind the scenes (for the curious)**
