@@ -1,6 +1,8 @@
 <div align="center">
 
-# ✨ DECENT
+<img src="./assets/icon.png" alt="DECENT logo" width="72">
+
+# DECENT
 
 **Your portfolio deserves better than a PDF.**
 
@@ -8,8 +10,8 @@ One clean link. Real, clickable Figma prototypes embedded right in the page — 
 
 ### 🔗 [decent.ink](https://decent.ink)
 
-[![Web](https://img.shields.io/badge/🌐_Try_it_now-decent.ink-8B5CF6?style=flat)](https://decent.ink)
-[![Android](https://img.shields.io/badge/📱_Android_APK-Download-8B5CF6?style=flat)](https://expo.dev/artifacts/eas/400loQ6A2z2EbIaTmSZxnocjLxLLGSeuGCaCdUOapOo.apk)
+<a href="https://decent.ink"><img src="https://img.shields.io/badge/🌐_Try_it_now-decent.ink-8B5CF6?style=flat" height="45"></a>
+<a href="https://expo.dev/artifacts/eas/400loQ6A2z2EbIaTmSZxnocjLxLLGSeuGCaCdUOapOo.apk"><img src="https://img.shields.io/badge/📱_Android_APK-Download-8B5CF6?style=flat" height="45"></a>
 
 </div>
 
@@ -65,8 +67,8 @@ DECENT is a solo-built, self-funded project. If it's useful to you, throwing a f
 
 <div align="center">
 
-[![Ko-fi](https://img.shields.io/badge/☕_Ko--fi-Buy_me_a_coffee-FF5E5B?style=flat&logo=kofi&logoColor=white)](https://ko-fi.com/iputra07)
-[![GitHub Sponsors](https://img.shields.io/badge/💜_GitHub_Sponsors-Support_DECENT-EA4AAA?style=flat&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/kabouls)
+<a href="https://ko-fi.com/iputra07"><img src="https://img.shields.io/badge/☕_Ko--fi-Buy_me_a_coffee-FF5E5B?style=flat&logo=kofi&logoColor=white" height="45"></a>
+<a href="https://github.com/sponsors/kabouls"><img src="https://img.shields.io/badge/💜_GitHub_Sponsors-Support_DECENT-EA4AAA?style=flat&logo=githubsponsors&logoColor=white" height="45"></a>
 
 **🇮🇩 In Indonesia?** Scan below with any e-wallet or mobile banking app:
 
