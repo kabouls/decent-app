@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 602;
+const BUILD_NUMBER = 604;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3290,13 +3290,47 @@ const compressVideoForUploadWeb = async (uri, onProgress, mimeTypeOrFileName) =>
   ffmpeg.on('log', logHandler);
 
   try {
+    // b603: probe the actual video codec BEFORE attempting a full
+    // compression pass - AV1 in particular has no working decoder in
+    // the WASM core (confirmed via real ffmpeg log output: "Missing
+    // Sequence Header" repeated endlessly), so letting a full exec()
+    // run and fail wastes real time for something we can already know
+    // won't work. Checking this way also lets the fallback message be
+    // specific ("this uses AV1") instead of a generic failure.
+    await ffmpeg.ffprobe([
+      '-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=codec_name',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      inputName, '-o', 'probe.txt'
+    ]);
+    const probeData = await ffmpeg.readFile('probe.txt', 'utf8');
+    const codecName = (probeData || '').trim().toLowerCase();
+    console.warn('[video compress] detected video codec:', codecName);
+    try { await ffmpeg.deleteFile('probe.txt'); } catch (e) {}
+
+    const KNOWN_UNSUPPORTED_CODECS = ['av1'];
+    if (KNOWN_UNSUPPORTED_CODECS.includes(codecName)) {
+      const err = new Error(`This video uses ${codecName.toUpperCase()} encoding, which browser-based compression doesn't support yet.`);
+      err.isKnownUnsupportedCodec = true;
+      err.codecName = codecName;
+      throw err;
+    }
+
     // Scale down to a max of 1280px on the longer side, moderate CRF for
     // a reasonable size/quality tradeoff - roughly matching what
     // react-native-compressor's "auto" mode targets on native, though
     // the two won't produce byte-identical output.
     const ret = await ffmpeg.exec([
       '-i', inputName,
-      '-vf', "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease",
+      // b604: libx264 hard-requires both output dimensions to be even
+      // numbers (a YUV 4:2:0 chroma subsampling requirement) - the
+      // previous scale expression could land on an odd number depending
+      // on the input's aspect ratio (confirmed: a 720x1582 source scaled
+      // to 583x1280, and libx264 flatly refuses that). Wrapping both
+      // dimensions in trunc(.../2)*2 rounds down to the nearest even
+      // number, always, regardless of the input's aspect ratio - this
+      // isn't a fix for one video, it removes the whole class of bug.
+      '-vf', "scale='trunc(min(1280,iw)/2)*2':'trunc(min(1280,ih)/2)*2':force_original_aspect_ratio=decrease",
       '-c:v', 'libx264', '-crf', '28', '-preset', 'veryfast',
       '-c:a', 'aac', '-b:a', '128k',
       outputName
@@ -9632,6 +9666,15 @@ function App() {
         setFUploadedVideos((prev) =>
           prev.map((v, i) => (i === placeholderIndex ? { ...v, compressing: false } : v))
         );
+        // b603: was silent before - the file still uploads fine (at
+        // original size), but the person had no way to know compression
+        // didn't happen at all, whether it's a known codec gap (AV1) or
+        // any other failure.
+        if (e && e.isKnownUnsupportedCodec) {
+          showToast(`${e.codecName.toUpperCase()} video detected - uploaded at original size, since browser compression doesn't support this codec yet.`);
+        } else {
+          showToast("Couldn't compress this video - uploaded at original size instead.");
+        }
       }
       return;
     }
