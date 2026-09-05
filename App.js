@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 601;
+const BUILD_NUMBER = 602;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3252,28 +3252,42 @@ async function getFFmpegInstance() {
   return ffmpeg;
 }
 
-const compressVideoForUploadWeb = async (uri, onProgress) => {
+// b602: two fixes based on the b601 diagnostic - the failing input was
+// an .mkv file, and (1) the input was always hardcoded as "input.mp4"
+// regardless of actual source format, which can confuse ffmpeg's format
+// detection in the stripped-down WASM core even though it mostly relies
+// on content probing rather than extension; (2) there was no visibility
+// into ffmpeg's own internal error text, only the bare numeric exit
+// code - the 'log' event carries ffmpeg's real stderr output (the exact
+// same text you'd see running ffmpeg on a real terminal), which is what
+// actually explains a failure. Both logged to console now so a failure
+// is diagnosable from the browser console alone, no more guessing.
+const guessFFmpegExtension = (mimeTypeOrFileName) => {
+  const s = (mimeTypeOrFileName || '').toLowerCase();
+  if (s.includes('matroska') || s.endsWith('.mkv')) return 'mkv';
+  if (s.includes('quicktime') || s.endsWith('.mov')) return 'mov';
+  if (s.includes('webm') || s.endsWith('.webm')) return 'webm';
+  if (s.includes('avi') || s.endsWith('.avi')) return 'avi';
+  return 'mp4';
+};
+
+const compressVideoForUploadWeb = async (uri, onProgress, mimeTypeOrFileName) => {
   const ffmpeg = await getFFmpegInstance();
   const { fetchFile } = await import('@ffmpeg/util');
-  const inputName = 'input.mp4';
+  const inputExt = guessFFmpegExtension(mimeTypeOrFileName);
+  const inputName = `input.${inputExt}`;
   const outputName = 'output.mp4';
   const inputData = await fetchFile(uri);
-  // b601: this is the actual bug behind the 0-byte uploads - exec()'s
-  // return value (0 = success, anything else = timeout or error) was
-  // never checked, so a failed compression still fell through to
-  // readFile() and uploaded whatever (possibly empty) output existed as
-  // if it were a real compressed video, instead of throwing and letting
-  // the existing catch-and-fall-back-to-original-file logic in
-  // handleAddVideo actually do its job. Logging sizes at each stage too
-  // so if this fails again, the console shows exactly where.
-  console.warn('[video compress] input size:', inputData.length, 'bytes');
+  console.warn('[video compress] input size:', inputData.length, 'bytes, detected as:', inputName);
   if (!inputData || inputData.length === 0) {
     throw new Error('Input video is empty - fetchFile on the picked video URI returned no data');
   }
   await ffmpeg.writeFile(inputName, inputData);
 
   const progressHandler = ({ progress }) => { if (onProgress) onProgress(progress); };
+  const logHandler = ({ message }) => console.warn('[ffmpeg log]', message);
   ffmpeg.on('progress', progressHandler);
+  ffmpeg.on('log', logHandler);
 
   try {
     // Scale down to a max of 1280px on the longer side, moderate CRF for
@@ -3300,6 +3314,7 @@ const compressVideoForUploadWeb = async (uri, onProgress) => {
     return URL.createObjectURL(blob);
   } finally {
     ffmpeg.off('progress', progressHandler);
+    ffmpeg.off('log', logHandler);
     // Clean up the virtual filesystem so back-to-back video uploads in
     // the same session don't accumulate files in ffmpeg's in-memory FS.
     try { await ffmpeg.deleteFile(inputName); } catch (e) {}
@@ -9608,7 +9623,7 @@ function App() {
       // compressVideoForUploadWeb's own comment for why this is
       // single-threaded (slower, but needs no hosting header changes).
       try {
-        const compressedUri = await compressVideoForUploadWeb(asset.uri);
+        const compressedUri = await compressVideoForUploadWeb(asset.uri, undefined, asset.mimeType || asset.fileName);
         setFUploadedVideos((prev) =>
           prev.map((v, i) => (i === placeholderIndex ? { ...v, uri: compressedUri, compressing: false } : v))
         );
