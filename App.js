@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 626;
+const BUILD_NUMBER = 628;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -1117,6 +1117,9 @@ const AnimatedPillTabs = React.memo(({ tabs, activeKey, onChange, theme, themeMo
             setTabWidths((prev) => (prev[tab.key] === w ? prev : { ...prev, [tab.key]: w }));
           }}
           onPress={() => onChange(tab.key)}
+          accessibilityRole="tab"
+          accessibilityLabel={tab.label}
+          accessibilityState={{ selected: activeKey === tab.key }}
         >
           {tab.icon ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
@@ -8287,7 +8290,7 @@ function App() {
   // job, same "no more infrastructure than needed" approach as the
   // notification cleanup elsewhere in this file.
   useEffect(() => {
-    if (!session || hasPasswordAuth) return;
+    if (!session || !userDataLoaded || hasPasswordAuth) return;
     (async () => {
       const { data: last } = await supabase
         .from('notifications')
@@ -8314,7 +8317,7 @@ function App() {
         }
       }
     })();
-  }, [session, hasPasswordAuth]);
+  }, [session, userDataLoaded, hasPasswordAuth]);
 
   const showStickySaveButton = accountSettingsModalVisible && hasUnsavedAccountChanges();
   const [stickySaveRendered, setStickySaveRendered] = useState(false);
@@ -13026,6 +13029,9 @@ function App() {
                       style={[styles.topCategoryChip, categoryFilter === 'all' && styles.topCategoryChipActive]}
                       onPress={() => setCategoryFilter('all')}
                       onLayout={(e) => handleCategoryChipLayout('all', e)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Highlighted"
+                      accessibilityState={{ selected: categoryFilter === 'all' }}
                     >
                       <CategoryChipBg active={categoryFilter === 'all'} />
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -13040,6 +13046,9 @@ function App() {
                       style={[styles.topCategoryChip, categoryFilter === 'popularity' && styles.topCategoryChipActive]}
                       onPress={() => setCategoryFilter('popularity')}
                       onLayout={(e) => handleCategoryChipLayout('popularity', e)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Popularity"
+                      accessibilityState={{ selected: categoryFilter === 'popularity' }}
                     >
                       <CategoryChipBg active={categoryFilter === 'popularity'} />
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -13054,6 +13063,9 @@ function App() {
                       style={[styles.topCategoryChip, categoryFilter === 'newest' && styles.topCategoryChipActive]}
                       onPress={() => setCategoryFilter('newest')}
                       onLayout={(e) => handleCategoryChipLayout('newest', e)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Newest"
+                      accessibilityState={{ selected: categoryFilter === 'newest' }}
                     >
                       <CategoryChipBg active={categoryFilter === 'newest'} />
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -13081,6 +13093,9 @@ function App() {
                         style={[styles.topCategoryChip, categoryFilter === cat && styles.topCategoryChipActive]}
                         onPress={() => setCategoryFilter(cat)}
                         onLayout={(e) => handleCategoryChipLayout(cat, e)}
+                        accessibilityRole="button"
+                        accessibilityLabel={cat}
+                        accessibilityState={{ selected: categoryFilter === cat }}
                       >
                         <CategoryChipBg active={categoryFilter === cat} />
                         <Text style={[styles.topCategoryText, categoryFilter === cat && styles.topCategoryTextActive]}>
@@ -13097,6 +13112,8 @@ function App() {
                         setAllCategoriesTab('all');
                         setAllCategoriesModalVisible(true);
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel="All categories"
                     >
                       <Grid2x2SVG />
                     </BouncyButton>
@@ -13114,6 +13131,8 @@ function App() {
                         const target = Math.max(0, categoryScrollXRef.current - (categoryScrollContainerWidthRef.current || 200) * 0.7);
                         categoryScrollRef.current?.scrollTo({ x: target, animated: true });
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Scroll categories left"
                     >
                       <ChevronLeftSVG color={theme.accentLight} size={16} />
                     </BouncyButton>
@@ -13132,6 +13151,8 @@ function App() {
                         const target = Math.min(maxX, categoryScrollXRef.current + (categoryScrollContainerWidthRef.current || 200) * 0.7);
                         categoryScrollRef.current?.scrollTo({ x: target, animated: true });
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Scroll categories right"
                     >
                       <ChevronRightSVG color={theme.accentLight} size={16} />
                     </BouncyButton>
@@ -13164,6 +13185,9 @@ function App() {
                       borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
                     }}
                     onPress={() => setForYouTypeFilterOpen((v) => !v)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Filter by portfolio type"
+                    accessibilityState={{ expanded: forYouTypeFilterOpen }}
                   >
                     <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
                       {forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length
@@ -13186,6 +13210,8 @@ function App() {
                       style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
                       activeOpacity={1}
                       onPress={() => setForYouTypeFilterOpen(false)}
+                      accessible={false}
+                      importantForAccessibility="no-hide-descendants"
                     />
                     <View style={{
                       position: 'absolute', top: 34, left: 0, width: 200, height: 225, zIndex: 100,
@@ -13201,6 +13227,9 @@ function App() {
                               : new Set(PORTFOLIO_TYPE_OPTIONS.map((t) => t.key))
                           );
                         }}
+                        accessibilityRole="checkbox"
+                        accessibilityLabel="All Portfolios"
+                        accessibilityState={{ checked: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length }}
                       >
                         <View style={{
                           width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
@@ -13226,6 +13255,9 @@ function App() {
                               return next;
                             });
                           }}
+                          accessibilityRole="checkbox"
+                          accessibilityLabel={type.label}
+                          accessibilityState={{ checked: forYouTypeFilter.has(type.key) }}
                         >
                           <View style={{
                             width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
