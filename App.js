@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 617;
+const BUILD_NUMBER = 620;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -1387,6 +1387,36 @@ const Avatar = React.memo(({ uri, style }) => {
       alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
     }]}>
       <DefaultAvatarSVG size={Math.round(Math.min(width, height) * 0.6)} />
+    </View>
+  );
+});
+
+// b622: shows a spinner overlay on a single thumbnail while its image is
+// still decoding, instead of the whole picker screen just sitting there
+// looking frozen with no explanation. Specifically for the moment right
+// after picking several photos at once - decoding multiple full-
+// resolution native camera photos simultaneously for thumbnail display
+// is a real, known source of visible lag with zero built-in feedback,
+// since a plain <Image> gives no indication it's still working. Local
+// per-thumbnail state (not the shared image array) since "has this one
+// finished decoding yet" is a transient rendering concern, not portfolio
+// data worth persisting.
+const LoadingThumbnail = React.memo(({ uri, style }) => {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <View style={style}>
+      <Image
+        source={{ uri }}
+        style={StyleSheet.absoluteFill}
+        onLoadEnd={() => setLoaded(true)}
+      />
+      {!loaded && (
+        <View style={[StyleSheet.absoluteFill, {
+          alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(11, 15, 23, 0.45)'
+        }]}>
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        </View>
+      )}
     </View>
   );
 });
@@ -3287,30 +3317,79 @@ function loadFFmpegScript() {
   });
   return ffmpegScriptPromise;
 }
+async function loadSingleThreadedCore(ffmpeg, toBlobURL) {
+  console.warn('[ffmpeg] loading single-threaded core...');
+  await ffmpeg.load({
+    coreURL: await toBlobURL('/ffmpeg/ffmpeg-core.js', 'text/javascript'),
+    wasmURL: await toBlobURL('/ffmpeg/ffmpeg-core.wasm', 'application/wasm')
+  });
+  console.warn('[ffmpeg] single-threaded core loaded successfully');
+}
+
 async function getFFmpegInstance() {
   if (ffmpegInstance) return ffmpegInstance;
   await loadFFmpegScript();
   const { FFmpeg } = window.FFmpegWASM;
   const { toBlobURL } = await import('@ffmpeg/util');
   const ffmpeg = new FFmpeg();
-  // b620: reverted b617's multi-threaded path - it hung silently on a
-  // real upload (standard H264/AAC source, nothing exotic about the
-  // file itself; the worker.js file was confirmed loading correctly,
-  // the deploy was confirmed clean) rather than throwing a catchable
-  // error. Most likely cause: the multi-threaded core spawns its OWN
-  // internal pool of additional pthread worker threads beyond the
-  // single workerURL configured here, and those internal ones may not
-  // correctly resolve back to the right script - a known rough edge in
-  // ffmpeg.wasm's multi-threaded setups. Rather than keep debugging
-  // blind while uploads stay broken for real users, this restores the
-  // single-threaded path that was actually proven working through this
-  // entire compression saga. Multi-threading could be revisited later
-  // with more careful, isolated testing, but a working slow path beats
-  // a broken fast one.
-  await ffmpeg.load({
-    coreURL: await toBlobURL('/ffmpeg/ffmpeg-core.js', 'text/javascript'),
-    wasmURL: await toBlobURL('/ffmpeg/ffmpeg-core.wasm', 'application/wasm')
-  });
+
+  // b623: retrying multi-threading after b620's revert, with two real
+  // changes from the version that hung silently:
+  //
+  // 1. coreURL/wasmURL/workerURL now point at real same-origin paths
+  // instead of toBlobURL()-wrapped blob: URLs, for the multi-threaded
+  // core specifically (single-threaded below is untouched, still using
+  // blob URLs exactly as proven working). Best-informed theory, not
+  // certainty: the multi-threaded core needs to spawn its OWN
+  // additional pool of pthread worker threads beyond the one workerURL
+  // configured here, and doing that requires resolving its own file's
+  // location to find sibling scripts - a blob: URL has no real path
+  // structure to resolve "relative to", which could be exactly why the
+  // internal thread pool never came online and the main thread waited
+  // forever for threads that never started.
+  //
+  // 2. A hard timeout wraps the whole attempt. This is the part that
+  // actually matters regardless of whether theory #1 is even right -
+  // if multi-threaded loading hasn't finished within 8 seconds, it's
+  // abandoned and single-threaded loads instead, automatically, with
+  // no silent hang possible. Best case: multi-threading works and
+  // compression gets faster. Worst case: same working behavior as
+  // today, just an 8-second delay before falling back. There is no
+  // scenario where this makes things worse than before this change.
+  const canAttemptMultiThreaded = typeof SharedArrayBuffer !== 'undefined';
+
+  if (canAttemptMultiThreaded) {
+    console.warn('[ffmpeg] SharedArrayBuffer available, attempting multi-threaded core...');
+    try {
+      await Promise.race([
+        (async () => {
+          await ffmpeg.load({
+            coreURL: '/ffmpeg-mt/ffmpeg-core.js',
+            wasmURL: '/ffmpeg-mt/ffmpeg-core.wasm',
+            workerURL: '/ffmpeg-mt/ffmpeg-core.worker.js'
+          });
+          console.warn('[ffmpeg] multi-threaded core loaded successfully');
+        })(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('multi-threaded load timed out after 8s')), 8000)
+        )
+      ]);
+      ffmpegInstance = ffmpeg;
+      return ffmpeg;
+    } catch (e) {
+      console.warn('[ffmpeg] multi-threaded load failed or timed out, falling back to single-threaded:', e.message);
+      // A fresh FFmpeg instance for the fallback attempt - the one above
+      // may be left in a partially-loaded, unknown state after a timeout
+      // or error mid-load, not something to keep reusing.
+      const freshFfmpeg = new FFmpeg();
+      await loadSingleThreadedCore(freshFfmpeg, toBlobURL);
+      ffmpegInstance = freshFfmpeg;
+      return freshFfmpeg;
+    }
+  }
+
+  console.warn('[ffmpeg] SharedArrayBuffer unavailable, using single-threaded core');
+  await loadSingleThreadedCore(ffmpeg, toBlobURL);
   ffmpegInstance = ffmpeg;
   return ffmpeg;
 }
@@ -20289,7 +20368,7 @@ function App() {
                     {fShowcaseImages.filter((img) => img.uri.trim() !== '').map((img, index) => (
                       <View key={index} style={styles.squarePickerWrapper}>
                         <View style={[styles.smallSquarePicker, isWebWide && { width: 110, height: 110 }, errors.showcaseImages && styles.inputErrorBorder]}>
-                          <Image source={{ uri: img.uri }} style={styles.smallSquarePreview} />
+                          <LoadingThumbnail uri={img.uri} style={styles.smallSquarePreview} />
                         </View>
 
                         {fShowcaseImages.filter((im) => im.uri.trim() !== '').length > 2 && (
@@ -20314,13 +20393,15 @@ function App() {
                           style={{
                             marginTop: 6, width: '100%', fontSize: 11, color: theme.text,
                             borderWidth: 1, borderColor: theme.border, borderRadius: 8,
-                            paddingHorizontal: 8, paddingVertical: 6, backgroundColor: theme.surface
+                            paddingHorizontal: 8, paddingVertical: 6, backgroundColor: theme.surface,
+                            textAlignVertical: 'top'
                           }}
                           placeholder="Caption (optional)"
                           placeholderTextColor="#64748B"
                           value={img.caption}
                           onChangeText={(t) => handleShowcaseCaptionChange(index, t)}
                           maxLength={150}
+                          multiline
                         />
                       </View>
                     ))}
@@ -20423,13 +20504,15 @@ function App() {
                                 style={{
                                   marginTop: 6, width: '100%', fontSize: 11, color: theme.text,
                                   borderWidth: 1, borderColor: theme.border, borderRadius: 8,
-                                  paddingHorizontal: 8, paddingVertical: 6, backgroundColor: theme.surface
+                                  paddingHorizontal: 8, paddingVertical: 6, backgroundColor: theme.surface,
+                                  textAlignVertical: 'top'
                                 }}
                                 placeholder="Caption (optional)"
                                 placeholderTextColor="#64748B"
                                 value={vid.caption}
                                 onChangeText={(t) => setFUploadedVideos((prev) => prev.map((v, i) => (i === slotIdx ? { ...v, caption: t } : v)))}
                                 maxLength={150}
+                                multiline
                               />
                             </View>
                           );

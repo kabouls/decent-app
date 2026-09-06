@@ -29,6 +29,7 @@ Every other portfolio tool makes you choose: a boring PDF, a screenshot gallery 
 - 🎥 Upload up to 3 videos per portfolio (60s each), automatically compressed on upload — on web *and* app — so you never think about file size
 - 📝 Case studies with a full block editor — text, images, side-by-side rows — for the story behind the work, not just the pretty final shot
 - 🏷️ Custom tags per portfolio type, plus curated categories, so people can actually find your kind of work
+- 📋 Copy tags straight from one of your other portfolios instead of retyping the same set every time
 - 🤖 Honest AI disclosure — say if a piece was AI-assisted, no judgment, just transparency
 - 🔞 NSFW flagging for mature illustration work (web-only, kept off the mobile app to stay Play Store-friendly)
 
