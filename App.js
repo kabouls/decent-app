@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 625;
+const BUILD_NUMBER = 626;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -8306,6 +8306,7 @@ function App() {
         // server-side now.
         const { error } = await supabase.from('notifications').insert({
           recipient_id: session.user.id,
+          actor_id: session.user.id,
           type: 'create_password'
         });
         if (!error) {
