@@ -154,13 +154,54 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 623;
+const BUILD_NUMBER = 624;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
 // legitimate self-read exception). Any new broad profiles read should use
 // this instead of select('*') or it will error at the DB level.
-const PROFILE_SAFE_COLUMNS = 'id, name, role, location, bio, avatar_url, email, created_at, is_admin, handle, handle_changed_at, links, updated_at, onboarding_completed, last_active_at, last_platform, last_app_version, is_banned, suspended_until, has_password_auth';
+const PROFILE_SAFE_COLUMNS = 'id, name, role, location, bio, avatar_url, email, created_at, is_admin, handle, handle_changed_at, links, updated_at, onboarding_completed, last_active_at, last_platform, last_app_version, is_banned, suspended_until, has_password_auth, contacts, contact_consent';
+
+// b627: contact info feature - designers can optionally list up to 5 ways
+// to reach them, only visible to others once they've explicitly turned on
+// contact_consent. Each type maps to a specific action rather than
+// treating every contact the same: email/phone launch the device's own
+// mail/dialer app directly (no "leaving the app" warning needed for
+// those, since they're not websites), whatsapp/website/social links open
+// as a real external link (through the same warning-wrapped path as any
+// other outbound link elsewhere in the app), and anything else (mainly
+// Discord, which has no universal deep link) falls back to a plain
+// copy-to-clipboard action.
+const CONTACT_TYPES = [
+  { key: 'email', label: 'Email', placeholder: 'you@example.com', keyboardType: 'email-address' },
+  { key: 'phone', label: 'Phone', placeholder: '+1 234 567 8900', keyboardType: 'phone-pad' },
+  { key: 'whatsapp', label: 'WhatsApp', placeholder: '+1 234 567 8900', keyboardType: 'phone-pad' },
+  { key: 'website', label: 'Website', placeholder: 'https://yoursite.com', keyboardType: 'url' },
+  { key: 'instagram', label: 'Instagram', placeholder: 'https://instagram.com/you', keyboardType: 'url' },
+  { key: 'linkedin', label: 'LinkedIn', placeholder: 'https://linkedin.com/in/you', keyboardType: 'url' },
+  { key: 'twitter', label: 'Twitter / X', placeholder: 'https://x.com/you', keyboardType: 'url' },
+  { key: 'telegram', label: 'Telegram', placeholder: 'https://t.me/you', keyboardType: 'url' },
+  { key: 'discord', label: 'Discord', placeholder: 'username or discord.gg link', keyboardType: 'default' }
+];
+
+const getContactTypeLabel = (key) => CONTACT_TYPES.find((t) => t.key === key)?.label || key;
+
+const getContactAction = (contact) => {
+  const { type, value } = contact;
+  if (type === 'email') return { kind: 'direct', url: `mailto:${value}` };
+  if (type === 'phone') return { kind: 'direct', url: `tel:${value}` };
+  if (type === 'whatsapp') return { kind: 'link', url: `https://wa.me/${value.replace(/[^\d]/g, '')}` };
+  if (value.startsWith('http')) return { kind: 'link', url: value };
+  return { kind: 'copy', text: value };
+};
+
+const ContactCardIconSVG = React.memo(({ size = 20, color = '#FFFFFF' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Rect x="2" y="4" width="20" height="16" rx="3" stroke={color} strokeWidth="2" fill="none" />
+    <Path d="M3 6l9 6 9-6" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
 // Keep in sync with styles.floatingBottomBar.height - used to size the
 // bottom feed scrim gradient relative to the actual bar height.
 const BOTTOM_NAV_BAR_HEIGHT = 64;
@@ -4834,6 +4875,11 @@ function App() {
   const [editEmail, setEditEmail] = useState(userProfile.email);
   const [editAvatar, setEditAvatar] = useState(userProfile.avatar);
   const [editLinks, setEditLinks] = useState(userProfile.links);
+  const [editContacts, setEditContacts] = useState([]);
+  const [editContactConsent, setEditContactConsent] = useState(false);
+  const [addingContactType, setAddingContactType] = useState(null);
+  const [newContactValue, setNewContactValue] = useState('');
+  const [contactInfoModalVisible, setContactInfoModalVisible] = useState(false);
   // Drag-to-reorder for profile links: uniform row height, single active
   // drag at a time, reorder resolves on release (not live during drag) to
   // keep it simple and avoid the jank a live-reorder had for variable-height
@@ -6827,7 +6873,9 @@ function App() {
         followingCount: followingCounts[p.id] || 0,
         followsMe: myFollowers.has(p.id),
         createdAt: p.created_at || null,
-        links: p.links || []
+        links: p.links || [],
+        contacts: p.contacts || [],
+        contactConsent: !!p.contact_consent
       }));
 
       setLiveDesigners(mapped.filter((d) => !blockedIds.has(d.id)));
@@ -7321,6 +7369,8 @@ function App() {
             avatar: cloudProfile.avatar_url || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
             handle: cloudProfile.handle || '',
             links: cloudProfile.links || [],
+            contacts: cloudProfile.contacts || [],
+            contactConsent: !!cloudProfile.contact_consent,
             hasPasswordAuth: !!cloudProfile.has_password_auth
           };
           setUserProfile(parsed);
@@ -7333,6 +7383,8 @@ function App() {
           setEditHandle(parsed.handle);
           setHandleChangedAt(cloudProfile.handle_changed_at || null);
           setEditLinks(parsed.links);
+          setEditContacts(parsed.contacts);
+          setEditContactConsent(parsed.contactConsent);
           setFeedbackEmail(parsed.email);
           AsyncStorage.setItem(`${USER_PROFILE_KEY}_${uid}`, JSON.stringify(parsed)).catch(() => {});
 
@@ -7353,6 +7405,8 @@ function App() {
             setEditEmail(parsed.email || userEmail);
             setEditAvatar(parsed.avatar || '');
             setEditLinks(parsed.links || []);
+            setEditContacts(parsed.contacts || []);
+            setEditContactConsent(!!parsed.contactConsent);
             setFeedbackEmail(parsed.email || userEmail);
 
             // No cloud profile reachable right now (offline) - fall back to the
@@ -8731,6 +8785,8 @@ function App() {
         email: profile.email,
         avatar_url: profile.avatar,
         links: profile.links,
+        contacts: profile.contacts || [],
+        contact_consent: !!profile.contactConsent,
         updated_at: new Date().toISOString()
       };
       if (profile.handle) payload.handle = profile.handle;
@@ -8809,7 +8865,9 @@ function App() {
       email: newEmail || (session ? session.user.email : ''),
       avatar: avatarUrl || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
       handle: newHandle,
-      links: validLinks
+      links: validLinks,
+      contacts: editContacts,
+      contactConsent: editContactConsent
     };
     setUserProfile(updated);
     setEditAvatar(updated.avatar);
@@ -8860,7 +8918,9 @@ function App() {
         email: editEmail.trim() || (session ? session.user.email : ''),
         avatar: avatarUrl || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
         handle,
-        links: validLinks
+        links: validLinks,
+        contacts: editContacts,
+        contactConsent: editContactConsent
       };
       setUserProfile(updated);
       setEditAvatar(updated.avatar);
@@ -11080,6 +11140,110 @@ function App() {
     </BouncyButton>
   );
 
+  // b627: contact info - shared between onboarding and Account Settings
+  // (same underlying editContacts/editContactConsent state either way,
+  // matching how editLinks/editBio/etc. already work across both
+  // screens). Kept as one render function rather than duplicating this
+  // JSX in both places.
+  const handleAddContact = () => {
+    if (editContacts.length >= 5 || !addingContactType || !newContactValue.trim()) return;
+    setEditContacts((prev) => [...prev, { type: addingContactType, value: newContactValue.trim() }]);
+    setAddingContactType(null);
+    setNewContactValue('');
+  };
+
+  const handleRemoveContact = (idx) => {
+    setEditContacts((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const renderContactInfoSection = () => (
+    <View style={{ marginTop: 24 }}>
+      <Text style={styles.formGroupLabel}>Contact Info (Optional)</Text>
+      <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 10, lineHeight: 16 }}>
+        Let other designers reach out to you directly. Completely optional - if you turn this on, anyone viewing your profile can see and use whatever contact methods you add below. Only add what you're comfortable sharing publicly, and you can remove or turn this off anytime.
+      </Text>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: editContactConsent ? 14 : 0 }}>
+        <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', flex: 1, marginRight: 12 }}>
+          Show my contact info on my profile
+        </Text>
+        <AppSwitch
+          value={editContactConsent}
+          onValueChange={setEditContactConsent}
+          trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+          theme={theme}
+        />
+      </View>
+
+      {editContactConsent && (
+        <>
+          {editContacts.map((c, idx) => (
+            <View key={idx} style={[styles.videoInputRow, { marginBottom: 8 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.textSecondary, fontSize: 10, marginBottom: 2 }}>{getContactTypeLabel(c.type)}</Text>
+                <Text style={{ color: theme.text, fontSize: 13 }} numberOfLines={1}>{c.value}</Text>
+              </View>
+              <BouncyButton style={{ padding: 8 }} onPress={() => handleRemoveContact(idx)}>
+                <TrashIconSVG />
+              </BouncyButton>
+            </View>
+          ))}
+
+          {addingContactType !== null ? (
+            <View style={{ backgroundColor: theme.surface, borderRadius: 10, padding: 12, marginTop: 4 }}>
+              <Text style={{ color: theme.textSecondary, fontSize: 11, marginBottom: 8 }}>Choose a contact type:</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                {CONTACT_TYPES.filter((t) => !editContacts.some((c) => c.type === t.key)).map((t) => (
+                  <BouncyButton
+                    key={t.key}
+                    style={{
+                      paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8,
+                      backgroundColor: addingContactType === t.key ? theme.accent : theme.bg,
+                      borderWidth: 1, borderColor: addingContactType === t.key ? theme.accent : theme.border
+                    }}
+                    onPress={() => setAddingContactType(t.key)}
+                  >
+                    <Text style={{ color: addingContactType === t.key ? '#FFFFFF' : theme.text, fontSize: 12, fontWeight: '600' }}>{t.label}</Text>
+                  </BouncyButton>
+                ))}
+              </View>
+              <FocusableTextInput
+                style={styles.formInput}
+                value={newContactValue}
+                onChangeText={setNewContactValue}
+                placeholder={CONTACT_TYPES.find((t) => t.key === addingContactType)?.placeholder || 'Enter value'}
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="none"
+                keyboardType={CONTACT_TYPES.find((t) => t.key === addingContactType)?.keyboardType || 'default'}
+              />
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                <BouncyButton style={{ flex: 1, paddingVertical: 10, alignItems: 'center' }} onPress={() => { setAddingContactType(null); setNewContactValue(''); }}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
+                </BouncyButton>
+                <BouncyButton
+                  style={{ flex: 1, backgroundColor: theme.accent, borderRadius: 8, paddingVertical: 10, alignItems: 'center', opacity: newContactValue.trim() ? 1 : 0.5 }}
+                  onPress={handleAddContact}
+                  disabled={!newContactValue.trim()}
+                >
+                  <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Add</Text>
+                </BouncyButton>
+              </View>
+            </View>
+          ) : (
+            editContacts.length < 5 && (
+              <BouncyButton
+                style={styles.addMoreVideoBtn}
+                onPress={() => setAddingContactType(CONTACT_TYPES.find((t) => !editContacts.some((c) => c.type === t.key))?.key)}
+              >
+                <Text style={styles.addMoreVideoText}>+ Add Contact ({editContacts.length}/5)</Text>
+              </BouncyButton>
+            )
+          )}
+        </>
+      )}
+    </View>
+  );
+
   // b562: returns true/false now (was void) so the popup's Confirm button
   // knows whether to close itself - it should stay open on a validation or
   // network failure so the person can fix/retry, and only dismiss on
@@ -11816,6 +11980,8 @@ function App() {
               <Text style={styles.addMoreVideoText}>+ Add Profile Link ({editLinks.length}/5)</Text>
             </BouncyButton>
           )}
+
+          {renderContactInfoSection()}
 
           <BouncyButton
             style={[styles.saveAccountSettingsBtn, { marginTop: 24 }]}
@@ -15081,6 +15247,8 @@ function App() {
                 </BouncyButton>
               )}
 
+              {renderContactInfoSection()}
+
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 18, alignItems: 'center' }}>
                 <BouncyButton
                   style={[styles.saveAccountSettingsBtn, { paddingHorizontal: 20, backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#EF4444', marginTop: 0 }]}
@@ -15874,6 +16042,85 @@ function App() {
               >
                 <Text style={styles.confirmDeleteText}>Continue to DECENT</Text>
               </BouncyButton>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* b627: contact info viewing modal - opened via the button between
+          Follow and the notification bell on someone else's profile.
+          Conditionally mounted (not toggle-visible) per this file's own
+          documented modal-stacking fix, since it's a brand new modal.
+          Each row's action depends on getContactAction()'s classification
+          of that specific contact's type: 'direct' (email/phone) opens
+          the device's own mail/dialer app straight away, 'link'
+          (WhatsApp/website/socials) goes through the same external-link
+          warning every other outbound link in this app already uses,
+          and 'copy' (Discord, or anything that isn't a real URL) just
+          copies the value to the clipboard since there's no universal
+          way to "open" it. */}
+      {contactInfoModalVisible && selectedDesigner && (
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={true}
+          onRequestClose={() => setContactInfoModalVisible(false)}
+        >
+          <View style={[styles.overlayModalBg, { justifyContent: 'center', paddingHorizontal: 16 }]}>
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView
+                  intensity={55}
+                  tint={themeMode === 'light' ? 'light' : 'dark'}
+                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                />
+              )
+            )}
+            <View style={[styles.overlayModalContainer, isWebWide && { maxWidth: contentModalWidth }]}>
+              <View style={styles.modalTopBar}>
+                <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]} numberOfLines={1}>
+                  Contact {selectedDesigner.name}
+                </Text>
+                <BouncyButton onPress={() => setContactInfoModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <CrossIconSVG />
+                </BouncyButton>
+              </View>
+
+              <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }} style={{ maxHeight: 420 }}>
+                {(selectedDesigner.contacts || []).map((c, idx) => {
+                  const action = getContactAction(c);
+                  return (
+                    <BouncyButton
+                      key={idx}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                        backgroundColor: theme.surface, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: theme.border
+                      }}
+                      onPress={() => {
+                        if (action.kind === 'direct') {
+                          ExpoLinking.openURL(action.url).catch(() => showToast("Couldn't open this - your device may not support it."));
+                        } else if (action.kind === 'link') {
+                          setContactInfoModalVisible(false);
+                          openExternalLinkWithWarning(action.url);
+                        } else {
+                          Clipboard.setStringAsync(action.text);
+                          showToast('Copied to clipboard');
+                        }
+                      }}
+                    >
+                      <View style={{ flex: 1, marginRight: 12 }}>
+                        <Text style={{ color: theme.textSecondary, fontSize: 11 }}>{getContactTypeLabel(c.type)}</Text>
+                        <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>{c.value}</Text>
+                      </View>
+                      <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>
+                        {action.kind === 'copy' ? 'Copy' : 'Open'}
+                      </Text>
+                    </BouncyButton>
+                  );
+                })}
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -17836,6 +18083,23 @@ function App() {
                           {followedDesigners.includes(selectedDesigner.id) ? 'Following' : (selectedDesigner.followsMe ? 'Follow Back' : '+ Follow')}
                         </Text>
                       </BouncyButton>
+
+                      {/* b627: contact button - unlike the bell below,
+                          NOT gated on whether the viewer follows this
+                          designer. Only depends on whether the designer
+                          themselves has turned on contact_consent and
+                          added at least one contact. */}
+                      {selectedDesigner.contactConsent && selectedDesigner.contacts && selectedDesigner.contacts.length > 0 && (
+                        <BouncyButton
+                          style={{
+                            width: 46, height: 46, borderRadius: 99, borderWidth: 1, borderColor: theme.border,
+                            backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center'
+                          }}
+                          onPress={() => setContactInfoModalVisible(true)}
+                        >
+                          <ContactCardIconSVG size={20} color={theme.accentLight} />
+                        </BouncyButton>
+                      )}
 
                       {/* b581: "Notify" bell - only shown once you already
                           follow this designer, matching the YouTube-style
