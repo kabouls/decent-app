@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 622;
+const BUILD_NUMBER = 623;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -20386,6 +20386,30 @@ function App() {
                       <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 8 }}>
                         Videos are automatically compressed to save space, which may slightly reduce quality. Plays back at the video's own aspect ratio.
                       </Text>
+
+                      {/* b626: web-only - compression here runs entirely in
+                          the browser tab itself (ffmpeg.wasm), unlike
+                          native's compression which happens in a native
+                          module the OS keeps running independently.
+                          Refreshing or navigating away on web kills the
+                          in-progress compression outright, with no way to
+                          resume it - worth a clear, visible warning while
+                          it's actually happening, not just the small
+                          spinner+percentage on the thumbnail itself which
+                          is easy to not notice if you're not looking right
+                          at it. */}
+                      {Platform.OS === 'web' && fUploadedVideos.some((v) => v.compressing) && (
+                        <View style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 8,
+                          backgroundColor: 'rgba(139, 92, 246, 0.12)', borderRadius: 10,
+                          paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12
+                        }}>
+                          <ActivityIndicator size="small" color={theme.accent} />
+                          <Text style={{ color: theme.text, fontSize: 12, flex: 1 }}>
+                            Compressing video - please don't refresh or close this page until it's done.
+                          </Text>
+                        </View>
+                      )}
 
                       <View style={styles.smallSquaresGrid}>
                         {[0, 1, 2].map((slotIdx) => {
