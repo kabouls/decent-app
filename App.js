@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 620;
+const BUILD_NUMBER = 621;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3378,9 +3378,23 @@ async function getFFmpegInstance() {
       return ffmpeg;
     } catch (e) {
       console.warn('[ffmpeg] multi-threaded load failed or timed out, falling back to single-threaded:', e.message);
-      // A fresh FFmpeg instance for the fallback attempt - the one above
-      // may be left in a partially-loaded, unknown state after a timeout
-      // or error mid-load, not something to keep reusing.
+      // b624: Promise.race() only makes this JS code stop WAITING on the
+      // multi-threaded load - it does not actually stop that load from
+      // continuing to run in the background. The abandoned attempt was
+      // very likely still alive (workers still spawning, still fetching)
+      // and competing for the same browser resources as the fallback
+      // attempt right below, which is the most likely reason the
+      // fallback itself then ALSO got stuck in real testing rather than
+      // completing normally like every single-threaded load before this
+      // change. terminate() actually kills the abandoned instance's
+      // worker before the fresh fallback instance starts, instead of
+      // leaving it running unsupervised in the background.
+      try {
+        ffmpeg.terminate();
+      } catch (termErr) {
+        console.warn('[ffmpeg] terminate() on abandoned multi-threaded instance failed (non-fatal):', termErr.message);
+      }
+      console.warn('[ffmpeg] loading single-threaded core...');
       const freshFfmpeg = new FFmpeg();
       await loadSingleThreadedCore(freshFfmpeg, toBlobURL);
       ffmpegInstance = freshFfmpeg;
@@ -3414,7 +3428,24 @@ const guessFFmpegExtension = (mimeTypeOrFileName) => {
 };
 
 const compressVideoForUploadWeb = async (uri, onProgress, mimeTypeOrFileName) => {
-  const ffmpeg = await getFFmpegInstance();
+  // b624: absolute outer safety net, on top of the multi-threaded-specific
+  // 8s timeout inside getFFmpegInstance itself. That inner timeout has
+  // now failed to prevent a hang once already in real testing (the
+  // fallback it triggered got stuck too, separately fixed via
+  // terminate() above) - this outer one is a second, independent
+  // guarantee that doesn't depend on that fix actually working. If
+  // loading hasn't finished at all within 25s (generous - single-
+  // threaded loading alone has never taken close to that in any test
+  // this session), this throws and the existing catch block in
+  // attemptVideoCompression falls back to uploading the original file
+  // uncompressed, exactly like any other compression failure - never an
+  // indefinite hang, no matter what new reason might cause one.
+  const ffmpeg = await Promise.race([
+    getFFmpegInstance(),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('ffmpeg failed to load within 25s (outer safety timeout)')), 25000)
+    )
+  ]);
   const { fetchFile } = await import('@ffmpeg/util');
   const inputExt = guessFFmpegExtension(mimeTypeOrFileName);
   const inputName = `input.${inputExt}`;
