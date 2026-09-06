@@ -6510,9 +6510,9 @@ function App() {
       }
       // Fires for guests too now (previously only logged-in users, which
       // misses most traffic since guest browsing became the default entry
-      // point). Includes current theme/lightweight-mode/detected mobile OS
-      // so the admin analytics dashboard has an actual snapshot to
-      // aggregate, instead of an empty metadata object.
+      // point). Includes current theme/detected mobile OS so the admin
+      // analytics dashboard has an actual snapshot to aggregate, instead
+      // of an empty metadata object.
       supabase.from('analytics_events').insert({
         user_id: session ? session.user.id : null,
         event_name: 'app_opened',
