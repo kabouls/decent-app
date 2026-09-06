@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 624;
+const BUILD_NUMBER = 625;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -8219,6 +8219,8 @@ function App() {
     setEditEmail(userProfile.email);
     setEditAvatar(userProfile.avatar);
     setEditLinks(userProfile.links || []);
+    setEditContacts(userProfile.contacts || []);
+    setEditContactConsent(!!userProfile.contactConsent);
     setAccountSettingsModalVisible(true);
     // Content items get their own centered view on web - the small
     // top-right menu popup underneath should close, not stay open behind it.
@@ -8237,6 +8239,8 @@ function App() {
     setEditEmail(userProfile.email);
     setEditAvatar(userProfile.avatar);
     setEditLinks(userProfile.links || []);
+    setEditContacts(userProfile.contacts || []);
+    setEditContactConsent(!!userProfile.contactConsent);
     showToast('Changes reverted');
   };
 
@@ -8249,7 +8253,9 @@ function App() {
       editBio !== userProfile.bio ||
       editEmail !== userProfile.email ||
       editAvatar !== userProfile.avatar ||
-      JSON.stringify(editLinks) !== JSON.stringify(userProfile.links || [])
+      JSON.stringify(editLinks) !== JSON.stringify(userProfile.links || []) ||
+      editContactConsent !== !!userProfile.contactConsent ||
+      JSON.stringify(editContacts) !== JSON.stringify(userProfile.contacts || [])
     );
   };
 
