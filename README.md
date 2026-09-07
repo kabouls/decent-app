@@ -12,6 +12,7 @@ One clean link. Real, clickable Figma prototypes embedded right in the page — 
 
 <a href="https://decent.ink"><img src="https://img.shields.io/badge/🌐_Try_it_now-decent.ink-8B5CF6?style=flat" height="45"></a>
 <a href="https://expo.dev/artifacts/eas/400loQ6A2z2EbIaTmSZxnocjLxLLGSeuGCaCdUOapOo.apk"><img src="https://img.shields.io/badge/📱_Android_APK-Download-8B5CF6?style=flat" height="45"></a>
+<a href="https://www.virustotal.com/gui/file/b165c6911f4e75874245f0889995f4f3cb1f33dff7b64484ea2f4d3d0a27c090/detection"><img src="https://img.shields.io/badge/🛡️_VirusTotal-Scan_Report-8B5CF6?style=flat" height="45"></a>
 
 </div>
 
@@ -39,7 +40,7 @@ Every other portfolio tool makes you choose: a boring PDF, a screenshot gallery 
 - 🔍 Real search across designers and portfolios
 - 🔗 Shareable portfolio and profile links with real, rich previews everywhere you paste them (iMessage, Discord, Twitter, Slack — actual thumbnails, not a blank box)
 - 🎯 Filtered share links — send someone your profile pre-filtered to just your UI/UX work, or just your illustrations
-- 📱 QR codes for every portfolio and profile, ready to drop in a resume or a pitch deck
+- 📱 QR code for your profile, ready to drop in a resume or a pitch deck
 
 **Stay in the loop**
 - ❤️ Likes, follows, and real push notifications when either happens
