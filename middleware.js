@@ -66,6 +66,34 @@ const DEFAULT_META = {
 
 const CACHE_HEADERS = { 'Cache-Control': 'public, max-age=3600, s-maxage=3600' };
 
+// /tools pages are static (not user-generated like portfolios/profiles),
+// so this needs no Supabase fetch at all - just a lookup table. Keys
+// match the URL slug used by the app's own client-side router (see
+// TOOLS_ROUTE_SLUGS in App.js) so the two stay in sync by construction
+// rather than by convention alone.
+const TOOLS_META = {
+  '': {
+    title: 'Free Tools for Designers & Job Seekers | DECENT',
+    description: 'Free image compressor, QR code generator, image converter, and PDF editor. No signup, no ads, no limits - everything runs on your device.',
+  },
+  'image-compressor': {
+    title: 'Free Image Compressor - Shrink Photos to Any Size | DECENT Tools',
+    description: 'Compress images to a target file size for free. No signup, no upload - runs entirely in your browser or the DECENT app.',
+  },
+  'qr-code-generator': {
+    title: 'Free QR Code Generator - Customizable, No Signup | DECENT Tools',
+    description: 'Generate QR codes for URLs, WiFi, contact cards, and more. Custom colors, logo, and export as PNG or SVG - completely free.',
+  },
+  'image-converter': {
+    title: 'Free Image Converter - JPEG, PNG, WEBP | DECENT Tools',
+    description: 'Convert images between JPEG, PNG, and WEBP for free, in batches of up to 10. No signup, nothing uploaded anywhere.',
+  },
+  'pdf-editor': {
+    title: 'Free PDF Editor - Merge, Reorder, Rotate Pages | DECENT Tools',
+    description: 'Merge PDFs and photos into one document, reorder pages, rotate, and delete - free, no signup, no software to install.',
+  },
+};
+
 async function supabaseGet(query) {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null; // fail open, not a crash
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${query}`, {
@@ -80,7 +108,7 @@ async function supabaseGet(query) {
 }
 
 export const config = {
-  matcher: ['/p/:path*', '/@:path*'],
+  matcher: ['/p/:path*', '/@:path*', '/tools', '/tools/:path*'],
 };
 
 export default async function middleware(request) {
@@ -162,6 +190,31 @@ export default async function middleware(request) {
   } catch (e) {
     // Supabase fetch failed for whatever reason - fall through to the
     // generic default below rather than showing a broken/blank preview.
+  }
+
+  if (path === '/tools' || path.startsWith('/tools/')) {
+    const slug = path === '/tools' ? '' : path.slice('/tools/'.length).replace(/\/$/, '');
+    const meta = TOOLS_META[slug];
+    if (meta) {
+      return new Response(
+        buildHtml({
+          title: meta.title,
+          description: meta.description,
+          image: DEFAULT_META.image,
+          url: request.url,
+          jsonLd: {
+            '@context': 'https://schema.org',
+            '@type': 'WebApplication',
+            name: meta.title.split(' | ')[0],
+            description: meta.description,
+            url: request.url,
+            applicationCategory: 'UtilitiesApplication',
+            offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+          },
+        }),
+        { headers: { 'content-type': 'text/html; charset=utf-8', ...CACHE_HEADERS } }
+      );
+    }
   }
 
   // Unmatched, or the fetch above found nothing (deleted portfolio, bad

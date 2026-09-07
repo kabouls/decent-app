@@ -50,6 +50,9 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { PDFDocument, degrees } from 'pdf-lib';
+import * as DocumentPicker from 'expo-document-picker';
+import * as Sharing from 'expo-sharing';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { decode } from 'base64-arraybuffer';
 import { BlurView } from 'expo-blur';
@@ -155,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 673;
+const BUILD_NUMBER = 679;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -690,6 +693,31 @@ const QrIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
     <Rect x="19" y="15" width="2.2" height="2.2" fill={color} />
     <Rect x="15" y="19" width="2.2" height="2.2" fill={color} />
     <Rect x="19" y="19" width="2.2" height="2.2" fill={color} />
+  </Svg>
+));
+
+// Two arrows forming a cycle - represents format conversion, distinct
+// from the wrench (Tools generally) and the compression-target icon.
+const SwapIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M4 7h13l-3-3M20 17H7l3 3" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
+// A document outline with a folded corner, plus a small "PDF" mark -
+// used only as the PDF Editor's hub-card icon.
+const PdfIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+    <Path d="M15 2v5h5" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+    <Path d="M8 13h1.5a1.5 1.5 0 0 0 0-3H8v6M12.5 16v-6h1.2a2.3 2.3 0 0 1 0 6h-1.2zM17 16v-6h2.5M17 13h2" stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
+const RotateIconSVG = React.memo(({ color = '#94A3B8', size = 15 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M4 12a8 8 0 1 1 2.5 5.8" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    <Path d="M4 17v-5h5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
@@ -1269,8 +1297,6 @@ const buildQrContentString = (type, fields) => {
       if (fields.body) params.push(`body=${encodeURIComponent(fields.body)}`);
       return `mailto:${fields.to || ''}${params.length ? '?' + params.join('&') : ''}`;
     }
-    case 'sms':
-      return `SMSTO:${fields.number || ''}:${fields.message || ''}`;
     case 'text':
       return fields.text || '';
     case 'url':
@@ -2016,6 +2042,22 @@ const TOOLS_TRANSLATIONS = {
     imageCompressorDesc: 'Shrink photos to a target file size, right in your browser or app',
     qrGenerator: 'QR Code Generator',
     qrGeneratorDesc: 'URLs, WiFi, contact cards, and more - customizable and free',
+    imageConverter: 'Image Converter',
+    imageConverterDesc: 'Convert photos between JPEG, PNG, and WEBP - batch up to 10 at once',
+    pdfEditor: 'PDF Editor',
+    pdfEditorDesc: 'Merge PDFs, reorder pages, delete, and rotate - export as one file',
+    pdfEditorIntro: 'Add PDF files or photos to build your document. Drag to reorder, tap to rotate or remove a page. Nothing leaves your device.',
+    addPdf: 'Add PDF',
+    addImages: 'Add Images',
+    exportPdf: 'Export PDF',
+    exportingPdf: 'Exporting...',
+    loadingPdf: 'Loading...',
+    pageCount: 'pages',
+    converterIntro: 'Drop up to 10 images and pick a format to convert them all to. Nothing leaves your device.',
+    convertTo: 'Convert To',
+    convert: 'Convert',
+    convertAll: 'Convert All',
+    converting: 'Converting...',
     moreToolsComingSoon: 'More tools coming soon',
     documentCompressor: 'Document compressor',
     compressorIntro: "Drop up to 10 images and pick a target file size - useful for application portals with strict upload limits. Nothing leaves your device.",
@@ -2023,6 +2065,7 @@ const TOOLS_TRANSLATIONS = {
     customSizeLabel: 'Custom Size (KB)',
     customSizePlaceholder: 'Custom target in KB (e.g. 350)',
     advanced: 'Advanced',
+    customization: 'Customization',
     maxDimensions: 'Max Dimensions (optional)',
     maxWidthPlaceholder: 'Max width (px)',
     maxHeightPlaceholder: 'Max height (px)',
@@ -2040,9 +2083,11 @@ const TOOLS_TRANSLATIONS = {
     download: 'Download',
     clearAll: 'Clear All',
     waitingToCompress: 'Waiting to compress',
+    waitingToProcess: 'Waiting to convert',
     original: 'Original',
     closestPossible: 'closest possible',
     qrIntro: 'Generate a QR code for a link, WiFi network, contact card, and more. Fully customizable, nothing ever leaves your device.',
+    qrScanCaution: 'Please check and scan before downloading and using it',
     contentType: 'Content Type',
     colors: 'Colors',
     foreground: 'Foreground',
@@ -2055,6 +2100,7 @@ const TOOLS_TRANSLATIONS = {
     remove: 'Remove',
     logoNote: 'A small centered logo is safe to add - this QR code is generated with extra error correction specifically to allow for it.',
     downloadPng: 'Download PNG',
+    download: 'Download',
     downloadSvg: 'Download SVG',
     exporting: 'Exporting...',
     language: 'Language',
@@ -2069,6 +2115,22 @@ const TOOLS_TRANSLATIONS = {
     imageCompressorDesc: 'Perkecil ukuran file foto sesuai target, langsung di browser atau aplikasi Anda',
     qrGenerator: 'Pembuat Kode QR',
     qrGeneratorDesc: 'URL, WiFi, kartu kontak, dan lainnya - dapat disesuaikan dan gratis',
+    imageConverter: 'Konversi Gambar',
+    imageConverterDesc: 'Konversi foto antara JPEG, PNG, dan WEBP - hingga 10 sekaligus',
+    pdfEditor: 'Editor PDF',
+    pdfEditorDesc: 'Gabungkan PDF, atur ulang halaman, hapus, dan putar - ekspor sebagai satu file',
+    pdfEditorIntro: 'Tambahkan file PDF atau foto untuk membuat dokumen Anda. Seret untuk mengatur ulang, ketuk untuk memutar atau menghapus halaman. Tidak ada yang meninggalkan perangkat Anda.',
+    addPdf: 'Tambah PDF',
+    addImages: 'Tambah Gambar',
+    exportPdf: 'Ekspor PDF',
+    exportingPdf: 'Mengekspor...',
+    loadingPdf: 'Memuat...',
+    pageCount: 'halaman',
+    converterIntro: 'Unggah hingga 10 gambar dan pilih format untuk mengonversinya. Tidak ada yang meninggalkan perangkat Anda.',
+    convertTo: 'Konversi Ke',
+    convert: 'Konversi',
+    convertAll: 'Konversi Semua',
+    converting: 'Mengonversi...',
     moreToolsComingSoon: 'Alat lainnya akan segera hadir',
     documentCompressor: 'Kompres dokumen',
     compressorIntro: 'Unggah hingga 10 gambar dan pilih ukuran file target - berguna untuk portal lamaran dengan batas unggah yang ketat. Tidak ada yang meninggalkan perangkat Anda.',
@@ -2076,6 +2138,7 @@ const TOOLS_TRANSLATIONS = {
     customSizeLabel: 'Ukuran Kustom (KB)',
     customSizePlaceholder: 'Target kustom dalam KB (mis. 350)',
     advanced: 'Lanjutan',
+    customization: 'Kustomisasi',
     maxDimensions: 'Dimensi Maksimal (opsional)',
     maxWidthPlaceholder: 'Lebar maksimal (px)',
     maxHeightPlaceholder: 'Tinggi maksimal (px)',
@@ -2093,9 +2156,11 @@ const TOOLS_TRANSLATIONS = {
     download: 'Unduh',
     clearAll: 'Hapus Semua',
     waitingToCompress: 'Menunggu untuk dikompres',
+    waitingToProcess: 'Menunggu untuk dikonversi',
     original: 'Asli',
     closestPossible: 'sedekat mungkin',
     qrIntro: 'Buat kode QR untuk tautan, jaringan WiFi, kartu kontak, dan lainnya. Dapat disesuaikan sepenuhnya, tidak ada yang pernah meninggalkan perangkat Anda.',
+    qrScanCaution: 'Harap periksa dan pindai sebelum mengunduh dan menggunakannya',
     contentType: 'Jenis Konten',
     colors: 'Warna',
     foreground: 'Warna Depan',
@@ -2108,6 +2173,7 @@ const TOOLS_TRANSLATIONS = {
     remove: 'Hapus',
     logoNote: 'Logo kecil di tengah aman untuk ditambahkan - kode QR ini dibuat dengan koreksi kesalahan ekstra khusus untuk itu.',
     downloadPng: 'Unduh PNG',
+    download: 'Unduh',
     downloadSvg: 'Unduh SVG',
     exporting: 'Mengekspor...',
     language: 'Bahasa',
@@ -4004,6 +4070,134 @@ const detectImageFormat = (mimeType, uri) => {
   if (source.includes('png')) return 'PNG';
   if (source.includes('webp')) return 'WEBP';
   return 'JPEG';
+};
+
+// Image Converter engine - a single-pass format change, not the iterative
+// target-size loop compressImageToTarget below uses. No dimension/quality
+// target to hit here, just "give me this image as a different file type."
+// Output is still limited to JPEG/PNG/WEBP (the same ImageManipulator
+// ceiling as the Compressor) - but input can be pretty much anything the
+// platform's image picker will hand over (HEIC included), which is the
+// actual common real-world conversion need this covers.
+// TOOLS: PDF Editor engine, built on pdf-lib - pure JS, works identically
+// on web and native, so none of the actual page manipulation needs a
+// platform split. Only thumbnail RENDERING differs by platform (see
+// generatePdfThumbnails further below) - pdf-lib can edit pages fine
+// without ever needing to rasterize one to a viewable image.
+
+// Reads a file URI into raw bytes - both web (blob/data URLs) and native
+// (file:// URIs) need this before pdf-lib can load anything, since
+// pdf-lib itself only understands byte arrays, not URIs.
+const fetchBytesFromUri = async (uri) => {
+  if (Platform.OS === 'web') {
+    const res = await fetch(uri);
+    const buf = await res.arrayBuffer();
+    return new Uint8Array(buf);
+  }
+  const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+};
+
+// Wraps a single picked image as a one-page PDF, then loads it as a real
+// PDFDocument - this normalizes every source (whether originally a real
+// PDF or a photo) into the same PDFDocument shape, so the rest of the
+// editor (page count, copyPages, rotation) never needs to special-case
+// "this one's actually an image."
+const loadImageAsPdfDoc = async (imageUri) => {
+  const doc = await PDFDocument.create();
+  const bytes = await fetchBytesFromUri(imageUri);
+  let embedded;
+  try {
+    embedded = await doc.embedJpg(bytes);
+  } catch (e) {
+    // Not every picked image is actually a JPEG under the hood (PNG
+    // screenshots are common too) - fall back rather than fail the
+    // whole import over a format guess.
+    embedded = await doc.embedPng(bytes);
+  }
+  const page = doc.addPage([embedded.width, embedded.height]);
+  page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height });
+  return doc;
+};
+
+const loadSourceAsPdfDoc = async (uri, isImage) => {
+  if (isImage) return loadImageAsPdfDoc(uri);
+  const bytes = await fetchBytesFromUri(uri);
+  return PDFDocument.load(bytes, { ignoreEncryption: true });
+};
+
+// Final export - takes the user's current page order (each entry
+// tagged with which loaded source doc + page index it came from) and
+// assembles one output PDF, applying whatever rotation was set along
+// the way. sourceDocs is the array of already-loaded PDFDocument
+// objects (one per originally-picked file/image), kept alive in state
+// for the whole editing session specifically so this step can pull
+// from them without re-reading files from disk each time.
+const assemblePdfFromPages = async (sourceDocs, pages) => {
+  const outDoc = await PDFDocument.create();
+  for (const p of pages) {
+    const [copiedPage] = await outDoc.copyPages(sourceDocs[p.sourceFileIndex], [p.sourcePageIndex]);
+    if (p.rotation) {
+      const current = copiedPage.getRotation().angle || 0;
+      copiedPage.setRotation(degrees((current + p.rotation) % 360));
+    }
+    outDoc.addPage(copiedPage);
+  }
+  return outDoc.save();
+};
+
+// Thumbnail generation - deliberately separate from the pdf-lib
+// manipulation logic above, and deliberately NOT statically imported at
+// the top of the file. pdfjs-dist is web-only (would bloat or break the
+// native bundle if forced in); react-native-pdf-thumbnail is native-only
+// and needs a real native rebuild before it actually works even once
+// installed - same class of gap as expo-store-review earlier this
+// project. Dynamic import/require + try/catch means a missing or not-
+// yet-linked module fails gracefully (no thumbnail, not a crash).
+const generateWebPdfThumbnails = async (uri) => {
+  try {
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    const pdf = await pdfjsLib.getDocument(uri).promise;
+    const thumbnails = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 0.4 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      thumbnails.push(canvas.toDataURL('image/jpeg', 0.7));
+    }
+    return thumbnails;
+  } catch (e) {
+    console.warn('Web PDF thumbnail generation failed:', e);
+    return null;
+  }
+};
+
+const generateNativePdfThumbnails = async (uri) => {
+  try {
+    const PdfThumbnail = require('react-native-pdf-thumbnail').default;
+    const results = await PdfThumbnail.generateAllPages(uri, 70);
+    return results.map((r) => r.uri);
+  } catch (e) {
+    console.warn('Native PDF thumbnail generation failed (needs a native rebuild if the dependency was just added):', e);
+    return null;
+  }
+};
+
+const convertImageFormat = async (uri, format) => {
+  const saveFormat =
+    format === 'PNG' ? ImageManipulator.SaveFormat.PNG :
+    format === 'WEBP' ? ImageManipulator.SaveFormat.WEBP :
+    ImageManipulator.SaveFormat.JPEG;
+  const result = await ImageManipulator.manipulateAsync(uri, [], {
+    compress: saveFormat === ImageManipulator.SaveFormat.PNG ? 1 : 0.92,
+    format: saveFormat
+  });
+  const size = await getFileSizeBytes(result.uri);
+  return { uri: result.uri, size, width: result.width, height: result.height };
 };
 
 const COMPRESSOR_MAX_ITERATIONS = 8;
@@ -6729,6 +6923,66 @@ function App() {
   // which one renders inside it.
   const [toolsScreenVisible, setToolsScreenVisible] = useState(false);
   const [activeTool, setActiveTool] = useState('hub'); // 'hub' | 'imageCompressor'
+
+  // TOOLS URL SYNC (web only) - this app has no client-side router at
+  // all otherwise (every other screen is pure React state, never
+  // reflected in the address bar), so without this, typing
+  // decent.ink/tools directly just loads the SPA at its default landing
+  // screen instead of opening Tools - the app never looks at the URL on
+  // boot. This is deliberately narrow (just Tools, not a general
+  // router) rather than retrofitting URL sync onto the whole app, which
+  // would be a much larger, riskier change than what was actually asked
+  // for here. Slugs match TOOLS_META's keys in middleware.js exactly,
+  // so the crawler-facing SEO page and the real client-side screen it
+  // hands off to always agree on what each URL means.
+  const TOOLS_ROUTE_SLUGS = {
+    hub: '', imageCompressor: 'image-compressor', qrGenerator: 'qr-code-generator',
+    imageConverter: 'image-converter', pdfEditor: 'pdf-editor'
+  };
+  const toolsUrlInitializedRef = useRef(false);
+  const toolsPreviousPathRef = useRef('/');
+
+  // Runs once on mount - reads whatever URL the page actually loaded at
+  // and opens Tools straight to the matching screen, rather than always
+  // landing on the default feed and forcing a manual click into Tools.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || toolsUrlInitializedRef.current) return;
+    toolsUrlInitializedRef.current = true;
+    const path = window.location.pathname;
+    if (path === '/tools' || path.startsWith('/tools/')) {
+      const slug = path === '/tools' ? '' : path.slice('/tools/'.length).replace(/\/$/, '');
+      const matchedTool = Object.keys(TOOLS_ROUTE_SLUGS).find((key) => TOOLS_ROUTE_SLUGS[key] === slug);
+      setToolsScreenVisible(true);
+      setActiveTool(matchedTool || 'hub');
+    }
+  }, []);
+
+  // Keeps the address bar honest as the user navigates within Tools via
+  // the in-app UI (not by typing a URL) - so the URL stays shareable/
+  // bookmarkable/refreshable at whatever screen they're actually on,
+  // and the back button does something sensible instead of nothing.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !toolsUrlInitializedRef.current) return;
+    const targetPath = toolsScreenVisible ? `/tools${TOOLS_ROUTE_SLUGS[activeTool] ? '/' + TOOLS_ROUTE_SLUGS[activeTool] : ''}` : null;
+    if (targetPath) {
+      // First transition into Tools this session - remember wherever
+      // the address bar was pointed (e.g. a deep-linked /p/:id the
+      // person had open before tapping into Tools), so closing Tools
+      // can restore that instead of always dropping back to root.
+      if (!window.location.pathname.startsWith('/tools')) {
+        toolsPreviousPathRef.current = window.location.pathname;
+      }
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({}, '', targetPath);
+      }
+    } else if (window.location.pathname.startsWith('/tools')) {
+      // Closing Tools - only rewrite the URL if it's currently pointed
+      // at a Tools path, so this never clobbers wherever the rest of
+      // the app's own navigation already put the address bar.
+      window.history.pushState({}, '', toolsPreviousPathRef.current);
+    }
+  }, [toolsScreenVisible, activeTool]);
+
   const [compressorFiles, setCompressorFiles] = useState([]); // [{ id, originalUri, originalSize, resultUri, resultSize, status, error }]
   const [compressorTargetKB, setCompressorTargetKB] = useState(200);
   const [compressorAdvancedOpen, setCompressorAdvancedOpen] = useState(false);
@@ -6749,31 +7003,60 @@ function App() {
   const [qrLogoUri, setQrLogoUri] = useState(null);
   const [qrExporting, setQrExporting] = useState(false);
   const toolsQrExportRef = useRef(null);
-  const [clearCompressorConfirmVisible, setClearCompressorConfirmVisible] = useState(false);
+  const [clearFilesConfirmTarget, setClearFilesConfirmTarget] = useState(null); // null | 'compressor' | 'converter'
 
-  // TOOLS-ONLY language + theme. Both intentionally separate state from
-  // the app's own themeMode (useTheme() above) - toggling either of
-  // these only affects what's rendered inside the Tools screens, nothing
-  // else in the app changes. Persisted so a choice sticks across visits,
-  // loaded once on mount.
+  // TOOLS: Image Converter state - separate file list from the
+  // Compressor's, same collect-then-process pattern.
+  const [converterFiles, setConverterFiles] = useState([]);
+  const [converterFormat, setConverterFormat] = useState('JPEG');
+  const [converterProcessing, setConverterProcessing] = useState(false);
+
+  // TOOLS: PDF Editor state. pdfEditorSourceDocs holds the actual loaded
+  // PDFDocument objects (one per picked file/image, kept alive for the
+  // whole session) - pdfEditorPages is the flat, reorderable page list
+  // that references back into those docs by index, which is what the
+  // grid UI and export step both actually work from.
+  const [pdfEditorSourceDocs, setPdfEditorSourceDocs] = useState([]);
+  const [pdfEditorPages, setPdfEditorPages] = useState([]);
+  const [pdfEditorLoading, setPdfEditorLoading] = useState(false);
+  const [pdfEditorExporting, setPdfEditorExporting] = useState(false);
+  const [pdfDragIndex, setPdfDragIndex] = useState(null);
+
+  // TOOLS-ONLY language + theme, WEB ONLY. On native, Tools follows the
+  // app's own global theme/language instead of an independent toggle -
+  // native has no language switcher at all right now (English only), and
+  // reusing the global theme keeps native's Tools screens visually
+  // consistent with the rest of the app rather than introducing a second
+  // theme setting on the same device. Persisted so a web choice sticks
+  // across visits, loaded once on mount.
   const [toolsLanguage, setToolsLanguage] = useState('en');
-  const [toolsThemeMode, setToolsThemeMode] = useState('dark');
+  const [toolsThemeModePersisted, setToolsThemeModePersisted] = useState('dark');
   useEffect(() => {
+    if (Platform.OS !== 'web') return;
     AsyncStorage.getItem(TOOLS_LANGUAGE_STORAGE_KEY).then((v) => { if (v) setToolsLanguage(v); }).catch(() => {});
-    AsyncStorage.getItem(TOOLS_THEME_STORAGE_KEY).then((v) => { if (v) setToolsThemeMode(v); }).catch(() => {});
+    AsyncStorage.getItem(TOOLS_THEME_STORAGE_KEY).then((v) => { if (v) setToolsThemeModePersisted(v); }).catch(() => {});
   }, []);
+  // Derived, not raw state - every existing toolsThemeMode/toolsTheme
+  // reference throughout the Tools JSX (both here and elsewhere in the
+  // file) reads this same value, so the native-follows-global-theme
+  // behavior applies everywhere automatically without touching each
+  // individual usage.
+  const toolsThemeMode = Platform.OS === 'web' ? toolsThemeModePersisted : themeMode;
   const toolsTheme = toolsThemeMode === 'light' ? THEME_LIGHT : THEME_DARK;
   // Named tt(), not t() - the Tools JSX already uses .map((t) => ...) in
   // several places (content type buttons, format pickers), which would
   // shadow a same-named helper within those callbacks.
-  const tt = (key) => (TOOLS_TRANSLATIONS[toolsLanguage] && TOOLS_TRANSLATIONS[toolsLanguage][key]) || TOOLS_TRANSLATIONS.en[key] || key;
+  const tt = (key) => {
+    const lang = Platform.OS === 'web' ? toolsLanguage : 'en';
+    return (TOOLS_TRANSLATIONS[lang] && TOOLS_TRANSLATIONS[lang][key]) || TOOLS_TRANSLATIONS.en[key] || key;
+  };
   const setToolsLanguagePersisted = (lang) => {
     setToolsLanguage(lang);
     AsyncStorage.setItem(TOOLS_LANGUAGE_STORAGE_KEY, lang).catch(() => {});
   };
   const toggleToolsTheme = () => {
-    const next = toolsThemeMode === 'light' ? 'dark' : 'light';
-    setToolsThemeMode(next);
+    const next = toolsThemeModePersisted === 'light' ? 'dark' : 'light';
+    setToolsThemeModePersisted(next);
     AsyncStorage.setItem(TOOLS_THEME_STORAGE_KEY, next).catch(() => {});
   };
 
@@ -11023,6 +11306,266 @@ function App() {
   const handleSingleCompressedDownload = async (file) => {
     await handleDownloadCompressedImage(file);
     maybeShowToolsDownloadInterstitial(false);
+  };
+
+  // TOOLS: Image Converter handlers - same collect-then-process pattern
+  // as the Compressor above, separate file list.
+  const pickConverterImages = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showAppAlert('Permission Denied', 'Media library access is required to pick photos.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
+      quality: 1
+    });
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+    const newItems = await Promise.all(result.assets.map(async (a) => {
+      const size = await getFileSizeBytes(a.uri).catch(() => 0);
+      const originalFormat = detectImageFormat(a.mimeType, a.uri);
+      return {
+        id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        originalUri: a.uri,
+        originalSize: size,
+        originalFormat,
+        resultUri: null,
+        resultSize: null,
+        status: 'pending',
+        error: null
+      };
+    }));
+    setConverterFiles((prev) => [...prev, ...newItems].slice(0, 10));
+  };
+
+  const removeConverterFile = (id) => {
+    setConverterFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  const clearAllConverterFiles = () => {
+    setConverterFiles([]);
+  };
+
+  const convertOneFile = async (file) => {
+    setConverterFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, status: 'processing', error: null } : f)));
+    try {
+      const result = await convertImageFormat(file.originalUri, converterFormat);
+      setConverterFiles((prev) => prev.map((f) => (f.id === file.id ? {
+        ...f, status: 'done', resultUri: result.uri, resultSize: result.size
+      } : f)));
+    } catch (e) {
+      console.warn('Image conversion failed for', file.id, e);
+      setConverterFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, status: 'error', error: 'Could not convert this image.' } : f)));
+    }
+  };
+
+  const runConverterBatch = async () => {
+    const pending = converterFiles.filter((f) => f.status === 'pending' || f.status === 'error');
+    if (pending.length === 0) return;
+    setConverterProcessing(true);
+    for (const file of pending) {
+      await convertOneFile(file);
+    }
+    setConverterProcessing(false);
+  };
+
+  // Download intercepted with the interstitial offering to ALSO compress
+  // the image (offerCompress=true) - format conversion alone doesn't
+  // necessarily shrink file size, so this is the one download flow where
+  // that offer is actually relevant.
+  const handleDownloadConvertedImage = async (file) => {
+    if (!file.resultUri) return;
+    const ext = converterFormat === 'PNG' ? 'png' : converterFormat === 'WEBP' ? 'webp' : 'jpg';
+    if (Platform.OS === 'web') {
+      try {
+        const response = await fetch(file.resultUri);
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = `converted-${file.id}.${ext}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(objectUrl);
+      } catch (e) {
+        console.warn('Converted image download failed:', e);
+        showToast('Could not download - try again.');
+      }
+    } else {
+      try {
+        const permission = await MediaLibrary.requestPermissionsAsync();
+        if (!permission.granted) {
+          showToast('Photo library permission needed to save this image.');
+          return;
+        }
+        await MediaLibrary.saveToLibraryAsync(file.resultUri);
+        showToast('Saved to your photos.');
+      } catch (e) {
+        console.warn('Converted image save failed:', e);
+        showToast('Could not save - try again.');
+      }
+    }
+  };
+
+  const handleSingleConvertedDownload = async (file) => {
+    await handleDownloadConvertedImage(file);
+    maybeShowToolsDownloadInterstitial(true);
+  };
+
+  const handleDownloadAllConverted = async () => {
+    const done = converterFiles.filter((f) => f.status === 'done' && f.resultUri);
+    for (const f of done) {
+      await handleDownloadConvertedImage(f);
+    }
+    if (done.length > 0) maybeShowToolsDownloadInterstitial(true);
+  };
+
+  // TOOLS: PDF Editor handlers. Every picked file/image becomes a loaded
+  // PDFDocument appended to pdfEditorSourceDocs, and its pages get
+  // appended to the flat pdfEditorPages list (which is what the grid UI
+  // and reordering actually operate on) - thumbnails generate in the
+  // background per page so the grid can show placeholders immediately
+  // rather than blocking on every page rendering first.
+  const addPdfEditorSource = async (uri, isImage) => {
+    const sourceIndex = pdfEditorSourceDocs.length;
+    let doc;
+    try {
+      doc = await loadSourceAsPdfDoc(uri, isImage);
+    } catch (e) {
+      console.warn('Could not load PDF/image source:', e);
+      showToast('Could not open that file - it may be corrupted or password-protected.');
+      return;
+    }
+    setPdfEditorSourceDocs((prev) => [...prev, doc]);
+
+    const pageCount = doc.getPageCount();
+    const newPages = Array.from({ length: pageCount }, (_, i) => ({
+      id: `${Date.now()}_${sourceIndex}_${i}_${Math.random().toString(36).slice(2)}`,
+      sourceFileIndex: sourceIndex,
+      sourcePageIndex: i,
+      thumbnailUri: isImage ? uri : null, // an image IS its own thumbnail, no rendering needed
+      rotation: 0,
+      thumbnailLoading: !isImage
+    }));
+    setPdfEditorPages((prev) => [...prev, ...newPages]);
+
+    if (!isImage) {
+      const thumbnails = Platform.OS === 'web'
+        ? await generateWebPdfThumbnails(uri)
+        : await generateNativePdfThumbnails(uri);
+      setPdfEditorPages((prev) => prev.map((p) => {
+        if (p.sourceFileIndex !== sourceIndex) return p;
+        const t = thumbnails ? thumbnails[p.sourcePageIndex] : null;
+        return { ...p, thumbnailUri: t || null, thumbnailLoading: false };
+      }));
+    }
+  };
+
+  const pickPdfEditorPdfs = async () => {
+    const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', multiple: true, copyToCacheDirectory: true });
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+    setPdfEditorLoading(true);
+    for (const asset of result.assets) {
+      await addPdfEditorSource(asset.uri, false);
+    }
+    setPdfEditorLoading(false);
+  };
+
+  const pickPdfEditorImages = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showAppAlert('Permission Denied', 'Media library access is required to pick photos.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 1
+    });
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+    setPdfEditorLoading(true);
+    for (const asset of result.assets) {
+      await addPdfEditorSource(asset.uri, true);
+    }
+    setPdfEditorLoading(false);
+  };
+
+  const removePdfEditorPage = (pageId) => {
+    setPdfEditorPages((prev) => prev.filter((p) => p.id !== pageId));
+  };
+
+  const rotatePdfEditorPage = (pageId) => {
+    setPdfEditorPages((prev) => prev.map((p) => (p.id === pageId ? { ...p, rotation: (p.rotation + 90) % 360 } : p)));
+  };
+
+  // Native reorder - simple move-by-one-position rather than true drag
+  // gestures, since a real drag-and-drop interaction needs a gesture
+  // library this project doesn't currently have. Web gets genuine drag-
+  // and-drop instead (see the HTML5 drag events used directly in the
+  // grid UI), since that's free on web with no new dependency.
+  const movePdfEditorPage = (pageId, direction) => {
+    setPdfEditorPages((prev) => {
+      const index = prev.findIndex((p) => p.id === pageId);
+      const targetIndex = index + direction;
+      if (index === -1 || targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+      return next;
+    });
+  };
+
+  const reorderPdfEditorPages = (fromIndex, toIndex) => {
+    setPdfEditorPages((prev) => {
+      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= prev.length || toIndex >= prev.length) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  };
+
+  const clearAllPdfEditorPages = () => {
+    setPdfEditorSourceDocs([]);
+    setPdfEditorPages([]);
+  };
+
+  const handleExportPdf = async () => {
+    if (pdfEditorPages.length === 0) return;
+    setPdfEditorExporting(true);
+    try {
+      const bytes = await assemblePdfFromPages(pdfEditorSourceDocs, pdfEditorPages);
+      if (Platform.OS === 'web') {
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = 'edited.pdf';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(objectUrl);
+      } else {
+        const localUri = `${FileSystem.cacheDirectory}edited-${Date.now()}.pdf`;
+        const base64 = btoa(String.fromCharCode(...bytes));
+        await FileSystem.writeAsStringAsync(localUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(localUri, { mimeType: 'application/pdf', dialogTitle: 'Save PDF' });
+        } else {
+          showToast('Sharing is not available on this device.');
+        }
+      }
+      maybeShowToolsDownloadInterstitial(false);
+    } catch (e) {
+      console.warn('PDF export failed:', e);
+      showToast('Could not export the PDF - try again.');
+    } finally {
+      setPdfEditorExporting(false);
+    }
   };
 
   // TOOLS: QR Code Generator handlers.
@@ -15685,9 +16228,6 @@ function App() {
                   setActiveTool('hub');
                 }}
               >
-                <View style={{ transform: [{ scale: 0.85 }] }}>
-                  <WrenchIconSVG color={theme.text} size={20} />
-                </View>
                 <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600' }}>Tools</Text>
                 <BetaTag themeMode={themeMode} />
               </BouncyButton>
@@ -17015,7 +17555,10 @@ function App() {
                   </BouncyButton>
 
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ color: toolsTheme.text, fontSize: isWebWide ? 18 : 15, fontWeight: '800' }}>DECENT Tools</Text>
+                    <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                      <DecentLogoSVG size={15} />
+                    </View>
+                    <Text style={{ color: toolsTheme.text, fontSize: isWebWide ? 18 : 15, fontWeight: '800' }}>ECENT Tools</Text>
                     <BetaTag themeMode={toolsThemeMode} />
                   </View>
 
@@ -17075,7 +17618,7 @@ function App() {
                     </BouncyButton>
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 12 }}>/</Text>
                     <Text style={{ color: toolsTheme.text, fontSize: 12, fontWeight: '700' }}>
-                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : tt('qrGenerator')}
+                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : tt('pdfEditor')}
                     </Text>
                   </View>
                 )}
@@ -17135,9 +17678,13 @@ function App() {
                       <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
                     </BouncyButton>
                   ) : <View style={{ width: 30 }} />}
-                  <Text style={[styles.modalTopTitle, { flex: 1, textAlign: 'center', color: toolsTheme.text }]}>
-                    {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : tt('tools')}
-                  </Text>
+                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                      <DecentLogoSVG size={15} />
+                    </View>
+                    <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '800' }}>ECENT Tools</Text>
+                    <BetaTag themeMode={toolsThemeMode} />
+                  </View>
                   <BouncyButton
                     style={[styles.closeBtn, { backgroundColor: toolsTheme.bg, borderColor: toolsTheme.border }]}
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -17149,38 +17696,23 @@ function App() {
                   </BouncyButton>
                 </View>
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8, backgroundColor: toolsTheme.surface, borderBottomWidth: 1, borderBottomColor: toolsTheme.border }}>
-                  <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, overflow: 'hidden' }}>
-                    {['en', 'id'].map((lang) => (
-                      <BouncyButton
-                        key={lang}
-                        style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: toolsLanguage === lang ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent' }}
-                        onPress={() => setToolsLanguagePersisted(lang)}
-                        accessibilityRole="button"
-                        accessibilityLabel={lang === 'en' ? 'English' : 'Indonesian'}
-                        accessibilityState={{ selected: toolsLanguage === lang }}
-                      >
-                        <Text style={{ color: toolsLanguage === lang ? '#FFFFFF' : toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>{lang.toUpperCase()}</Text>
-                      </BouncyButton>
-                    ))}
-                  </View>
-                  <BouncyButton
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                    onPress={toggleToolsTheme}
-                    accessibilityRole="button"
-                    accessibilityLabel={toolsThemeMode === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
-                  >
-                    {toolsThemeMode === 'light' ? <SunIconSVG color={toolsTheme.textSecondary} size={13} /> : <MoonIconSVG color={toolsTheme.textSecondary} size={13} />}
-                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>
-                      {toolsThemeMode === 'light' ? tt('light') : tt('dark')}
+                {activeTool !== 'hub' && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 6, backgroundColor: toolsTheme.bg, borderBottomWidth: 1, borderBottomColor: toolsTheme.border }}>
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : tt('pdfEditor')}
                     </Text>
-                  </BouncyButton>
-                </View>
+                  </View>
+                )}
               </>
             )}
 
             <AppKeyboardAwareScrollView
-              contentContainerStyle={[{ padding: 20, gap: 14 }, isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }]}
+              contentContainerStyle={[
+                { padding: 20, gap: 14 },
+                activeTool === 'imageCompressor' && compressorFiles.length > 0 && { paddingBottom: 90 },
+                activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && { paddingBottom: 90 },
+                isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }
+              ]}
               enableOnAndroid={true}
               extraScrollHeight={140}
               keyboardShouldPersistTaps="handled"
@@ -17229,13 +17761,43 @@ function App() {
                     <ChevronRightSVG color={toolsTheme.accent} size={18} />
                   </BouncyButton>
 
-                  <View style={{
-                    borderRadius: 16, borderWidth: 1, borderColor: toolsTheme.border, borderStyle: 'dashed',
-                    padding: 16, alignItems: 'center', opacity: 0.6
-                  }}>
-                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 13, fontWeight: '600' }}>{tt('moreToolsComingSoon')}</Text>
-                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11.5, marginTop: 4, textAlign: 'center' }}>{tt('documentCompressor')}</Text>
-                  </View>
+                  <BouncyButton
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 14,
+                      backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
+                      borderRadius: 16, padding: 16
+                    }}
+                    onPress={() => setActiveTool('imageConverter')}
+                    accessibilityRole="button"
+                  >
+                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                      <SwapIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('imageConverter')}</Text>
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('imageConverterDesc')}</Text>
+                    </View>
+                    <ChevronRightSVG color={toolsTheme.accent} size={18} />
+                  </BouncyButton>
+
+                  <BouncyButton
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 14,
+                      backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
+                      borderRadius: 16, padding: 16
+                    }}
+                    onPress={() => setActiveTool('pdfEditor')}
+                    accessibilityRole="button"
+                  >
+                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                      <PdfIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('pdfEditor')}</Text>
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('pdfEditorDesc')}</Text>
+                    </View>
+                    <ChevronRightSVG color={toolsTheme.accent} size={18} />
+                  </BouncyButton>
                 </>
               )}
 
@@ -17277,19 +17839,23 @@ function App() {
                     accessibilityLabel="Custom target file size in KB"
                   />
 
-                  <BouncyButton
-                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
-                    onPress={() => setCompressorAdvancedOpen((v) => !v)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Advanced options"
-                    accessibilityState={{ expanded: compressorAdvancedOpen }}
-                  >
-                    <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>{tt('advanced')}</Text>
-                    {compressorAdvancedOpen ? <ChevronUpSVG color={toolsTheme.textSecondary} size={16} /> : <ChevronDownSVG color={toolsTheme.textSecondary} size={16} />}
-                  </BouncyButton>
+                  <View style={{
+                    backgroundColor: toolsThemeMode === 'light' ? 'rgba(109,40,217,0.06)' : 'rgba(125,82,221,0.10)',
+                    borderRadius: 12, overflow: 'hidden', marginTop: 14
+                  }}>
+                    <BouncyButton
+                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12 }}
+                      onPress={() => setCompressorAdvancedOpen((v) => !v)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Advanced options"
+                      accessibilityState={{ expanded: compressorAdvancedOpen }}
+                    >
+                      <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>{tt('advanced')}</Text>
+                      {compressorAdvancedOpen ? <ChevronUpSVG color={toolsTheme.textSecondary} size={16} /> : <ChevronDownSVG color={toolsTheme.textSecondary} size={16} />}
+                    </BouncyButton>
 
-                  {compressorAdvancedOpen && (
-                    <View style={{ backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 14, gap: 10 }}>
+                    {compressorAdvancedOpen && (
+                    <View style={{ paddingHorizontal: 14, paddingBottom: 14, gap: 10 }}>
                       <Text style={styles.formGroupLabel}>{tt('maxDimensions')}</Text>
                       <View style={{ flexDirection: 'row', gap: 10 }}>
                         <FocusableTextInput
@@ -17353,7 +17919,8 @@ function App() {
                         {tt('formatNote')}
                       </Text>
                     </View>
-                  )}
+                    )}
+                  </View>
 
                   <BouncyButton
                     style={{
@@ -17370,9 +17937,25 @@ function App() {
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>{tt('upTo10')}</Text>
                   </BouncyButton>
 
-                  {compressorFiles.map((file) => (
+                  {compressorFiles.length > 0 && (
+                    <BouncyButton
+                      style={{ alignSelf: 'flex-start', marginTop: 4 }}
+                      onPress={() => setClearFilesConfirmTarget('compressor')}
+                      accessibilityRole="button"
+                    >
+                      <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>{tt('clearAll')}</Text>
+                    </BouncyButton>
+                  )}
+
+                  {compressorFiles.map((file, fileIndex) => (
                     <View key={file.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 10 }}>
-                      <Image source={{ uri: file.originalUri }} style={{ width: 48, height: 48, borderRadius: 8 }} />
+                      <BouncyButton
+                        onPress={() => openMediaViewer(compressorFiles.map((f) => ({ type: 'image', uri: f.originalUri })), fileIndex)}
+                        accessibilityRole="button"
+                        accessibilityLabel="View image"
+                      >
+                        <Image source={{ uri: file.originalUri }} style={{ width: 48, height: 48, borderRadius: 8 }} />
+                      </BouncyButton>
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>
                           {tt('original')}: {(file.originalSize / 1024).toFixed(0)} KB
@@ -17421,42 +18004,6 @@ function App() {
                     </View>
                   ))}
 
-                  {compressorFiles.length > 0 && (
-                    <View style={{ gap: 10, marginTop: 4 }}>
-                      <View style={{ flexDirection: 'row', gap: 10 }}>
-                        <BouncyButton
-                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: compressorProcessing ? 0.6 : 1 }]}
-                          onPress={runCompressorBatch}
-                          disabled={compressorProcessing || !compressorFiles.some((f) => f.status === 'pending' || f.status === 'error')}
-                          accessibilityRole="button"
-                          accessibilityState={{ disabled: compressorProcessing, busy: compressorProcessing }}
-                        >
-                          <Text style={styles.submitBtnText}>{compressorProcessing ? tt('compressing') : tt('compressAll')}</Text>
-                        </BouncyButton>
-                        <BouncyButton
-                          style={[
-                            styles.saveAccountSettingsBtn,
-                            { flex: 1, marginTop: 0, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border },
-                            !compressorFiles.every((f) => f.status === 'done') && { opacity: 0.4 }
-                          ]}
-                          onPress={handleDownloadAllCompressed}
-                          disabled={!compressorFiles.every((f) => f.status === 'done')}
-                          accessibilityRole="button"
-                          accessibilityState={{ disabled: !compressorFiles.every((f) => f.status === 'done') }}
-                        >
-                          <Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text>
-                        </BouncyButton>
-                      </View>
-                      <BouncyButton
-                        style={{ alignSelf: 'center' }}
-                        onPress={() => setClearCompressorConfirmVisible(true)}
-                        accessibilityRole="button"
-                      >
-                        <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>{tt('clearAll')}</Text>
-                      </BouncyButton>
-                    </View>
-                  )}
-
                   )}
                 </>
               )}
@@ -17467,6 +18014,25 @@ function App() {
                     {tt('qrIntro')}
                   </Text>
 
+                  {!!currentQrValue() && (
+                    <View style={{ alignItems: 'center', marginVertical: 14, gap: 6 }}>
+                      <View style={{ padding: 16, backgroundColor: '#FFFFFF', borderRadius: 16 }}>
+                        <ToolsQRCode
+                          ref={toolsQrExportRef}
+                          value={currentQrValue()}
+                          size={220}
+                          color={qrColor || '#000000'}
+                          backgroundColor={qrBackgroundColor || '#FFFFFF'}
+                          dotStyle={qrDotStyle}
+                          logoUri={qrLogoUri}
+                        />
+                      </View>
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontStyle: 'italic', textAlign: 'center' }}>
+                        {tt('qrScanCaution')}
+                      </Text>
+                    </View>
+                  )}
+
                   <Text style={styles.formGroupLabel}>{tt('contentType')}</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {[
@@ -17474,8 +18040,7 @@ function App() {
                       { key: 'text', label: 'Text' },
                       { key: 'wifi', label: 'WiFi' },
                       { key: 'vcard', label: 'Contact Card' },
-                      { key: 'email', label: 'Email' },
-                      { key: 'sms', label: 'SMS' }
+                      { key: 'email', label: 'Email' }
                     ].map((t) => (
                       <BouncyButton
                         key={t.key}
@@ -17612,69 +18177,103 @@ function App() {
                     </>
                   )}
 
-                  {qrContentType === 'sms' && (
-                    <>
-                      <FocusableTextInput
-                        style={styles.formInput}
-                        placeholder="Phone number"
-                        placeholderTextColor="#94A3B8"
-                        keyboardType="phone-pad"
-                        value={qrFields.number || ''}
-                        onChangeText={(t) => setQrFields((p) => ({ ...p, number: t }))}
-                        accessibilityLabel="Phone number"
-                      />
-                      <FocusableTextInput
-                        style={[styles.formInput, { height: 70, textAlignVertical: 'top' }]}
-                        multiline
-                        placeholder="Message (optional)"
-                        placeholderTextColor="#94A3B8"
-                        value={qrFields.message || ''}
-                        onChangeText={(t) => setQrFields((p) => ({ ...p, message: t }))}
-                        accessibilityLabel="Message"
-                      />
-                    </>
-                  )}
+                  <View style={{
+                    backgroundColor: toolsThemeMode === 'light' ? 'rgba(109,40,217,0.06)' : 'rgba(125,82,221,0.10)',
+                    borderRadius: 12, overflow: 'hidden', marginTop: 14
+                  }}>
+                    <BouncyButton
+                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12 }}
+                      onPress={() => setQrAdvancedOpen((v) => !v)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Customization options"
+                      accessibilityState={{ expanded: qrAdvancedOpen }}
+                    >
+                      <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>{tt('customization')}</Text>
+                      {qrAdvancedOpen ? <ChevronUpSVG color={toolsTheme.textSecondary} size={16} /> : <ChevronDownSVG color={toolsTheme.textSecondary} size={16} />}
+                    </BouncyButton>
 
-                  <BouncyButton
-                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
-                    onPress={() => setQrAdvancedOpen((v) => !v)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Advanced options"
-                    accessibilityState={{ expanded: qrAdvancedOpen }}
-                  >
-                    <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>Advanced</Text>
-                    {qrAdvancedOpen ? <ChevronUpSVG color={toolsTheme.textSecondary} size={16} /> : <ChevronDownSVG color={toolsTheme.textSecondary} size={16} />}
-                  </BouncyButton>
-
-                  {qrAdvancedOpen && (
-                    <View style={{ backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 14, gap: 10 }}>
+                    {qrAdvancedOpen && (
+                    <View style={{ paddingHorizontal: 14, paddingBottom: 14, gap: 10 }}>
                       <Text style={styles.formGroupLabel}>{tt('colors')}</Text>
                       <View style={{ flexDirection: 'row', gap: 10 }}>
                         <View style={{ flex: 1 }}>
                           <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginBottom: 4 }}>{tt('foreground')}</Text>
-                          <FocusableTextInput
-                            style={styles.formInput}
-                            placeholder="#000000"
-                            placeholderTextColor="#94A3B8"
-                            autoCapitalize="characters"
-                            value={qrColor}
-                            onChangeText={setQrColor}
-                            accessibilityLabel="Foreground color"
-                          />
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            {Platform.OS === 'web' ? (
+                              <input
+                                type="color"
+                                value={/^#[0-9A-Fa-f]{6}$/.test(qrColor) ? qrColor : '#000000'}
+                                onChange={(e) => setQrColor(e.target.value.toUpperCase())}
+                                style={{ width: 36, height: 36, border: `1px solid ${toolsTheme.border}`, borderRadius: 8, padding: 0, background: 'none', cursor: 'pointer', flexShrink: 0 }}
+                                aria-label="Foreground color picker"
+                              />
+                            ) : (
+                              <View style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: /^#[0-9A-Fa-f]{6}$/.test(qrColor) ? qrColor : '#000000', borderWidth: 1, borderColor: toolsTheme.border, flexShrink: 0 }} />
+                            )}
+                            <FocusableTextInput
+                              style={[styles.formInput, { flex: 1 }]}
+                              placeholder="#000000"
+                              placeholderTextColor="#94A3B8"
+                              autoCapitalize="characters"
+                              value={qrColor}
+                              onChangeText={setQrColor}
+                              accessibilityLabel="Foreground color"
+                            />
+                          </View>
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginBottom: 4 }}>{tt('background')}</Text>
-                          <FocusableTextInput
-                            style={styles.formInput}
-                            placeholder="#FFFFFF"
-                            placeholderTextColor="#94A3B8"
-                            autoCapitalize="characters"
-                            value={qrBackgroundColor}
-                            onChangeText={setQrBackgroundColor}
-                            accessibilityLabel="Background color"
-                          />
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            {Platform.OS === 'web' ? (
+                              <input
+                                type="color"
+                                value={/^#[0-9A-Fa-f]{6}$/.test(qrBackgroundColor) ? qrBackgroundColor : '#FFFFFF'}
+                                onChange={(e) => setQrBackgroundColor(e.target.value.toUpperCase())}
+                                style={{ width: 36, height: 36, border: `1px solid ${toolsTheme.border}`, borderRadius: 8, padding: 0, background: 'none', cursor: 'pointer', flexShrink: 0 }}
+                                aria-label="Background color picker"
+                              />
+                            ) : (
+                              <View style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: /^#[0-9A-Fa-f]{6}$/.test(qrBackgroundColor) ? qrBackgroundColor : '#FFFFFF', borderWidth: 1, borderColor: toolsTheme.border, flexShrink: 0 }} />
+                            )}
+                            <FocusableTextInput
+                              style={[styles.formInput, { flex: 1 }]}
+                              placeholder="#FFFFFF"
+                              placeholderTextColor="#94A3B8"
+                              autoCapitalize="characters"
+                              value={qrBackgroundColor}
+                              onChangeText={setQrBackgroundColor}
+                              accessibilityLabel="Background color"
+                            />
+                          </View>
                         </View>
                       </View>
+
+                      {/* Native has no built-in color-picker UI equivalent
+                          to a browser's <input type="color"> - a new
+                          native dependency for this would need a real
+                          rebuild (same issue as expo-store-review), so
+                          this preset swatch row is the picker there,
+                          alongside the hex field above for precise entry. */}
+                      {Platform.OS !== 'web' && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                          {['#000000', '#FFFFFF', '#7D52DD', '#EF4444', '#10B981', '#3B82F6', '#F59E0B', '#EC4899'].map((swatch) => (
+                            <BouncyButton
+                              key={swatch}
+                              style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: swatch, borderWidth: 1, borderColor: toolsTheme.border }}
+                              onPress={() => {
+                                showAppAlert('Set Which Color?', '', [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  { text: tt('foreground'), onPress: () => setQrColor(swatch) },
+                                  { text: tt('background'), onPress: () => setQrBackgroundColor(swatch) }
+                                ]);
+                              }}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Swatch ${swatch}`}
+                            />
+                          ))}
+                        </View>
+                      )}
+
                       {qrColor.toUpperCase() === qrBackgroundColor.toUpperCase() && (
                         <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '600' }}>
                           Foreground and background are the same color - this won't scan.
@@ -17726,22 +18325,11 @@ function App() {
                         A small centered logo is safe to add - this QR code is generated with extra error correction specifically to allow for it.
                       </Text>
                     </View>
-                  )}
+                    )}
+                  </View>
 
                   {!!currentQrValue() && (
-                    <View style={{ alignItems: 'center', marginTop: 18, gap: 14 }}>
-                      <View style={{ padding: 16, backgroundColor: '#FFFFFF', borderRadius: 16 }}>
-                        <ToolsQRCode
-                          ref={toolsQrExportRef}
-                          value={currentQrValue()}
-                          size={220}
-                          color={qrColor || '#000000'}
-                          backgroundColor={qrBackgroundColor || '#FFFFFF'}
-                          dotStyle={qrDotStyle}
-                          logoUri={qrLogoUri}
-                        />
-                      </View>
-
+                    <View style={{ marginTop: 14, width: '100%' }}>
                       <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
                         <BouncyButton
                           style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: qrExporting ? 0.6 : 1 }]}
@@ -17766,21 +18354,340 @@ function App() {
                   )}
                 </>
               )}
+
+              {activeTool === 'imageConverter' && (
+                <>
+                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
+                    {tt('converterIntro')}
+                  </Text>
+
+                  <Text style={styles.formGroupLabel}>{tt('convertTo')}</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {['JPEG', 'PNG', 'WEBP'].map((fmt) => (
+                      <BouncyButton
+                        key={fmt}
+                        style={{
+                          flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99,
+                          backgroundColor: converterFormat === fmt ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : toolsTheme.bg,
+                          borderWidth: 1, borderColor: converterFormat === fmt ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
+                        }}
+                        onPress={() => setConverterFormat(fmt)}
+                        accessibilityRole="button"
+                        accessibilityLabel={fmt}
+                        accessibilityState={{ selected: converterFormat === fmt }}
+                      >
+                        <Text style={{ color: converterFormat === fmt ? '#FFFFFF' : toolsTheme.text, fontSize: 12, fontWeight: '700' }}>{fmt}</Text>
+                      </BouncyButton>
+                    ))}
+                  </View>
+
+                  <BouncyButton
+                    style={{
+                      marginTop: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
+                      borderRadius: 14, padding: 20, alignItems: 'center', gap: 8
+                    }}
+                    onPress={pickConverterImages}
+                    accessibilityRole="button"
+                  >
+                    <ImageIconSVG size={26} color={toolsTheme.textSecondary} />
+                    <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
+                      {converterFiles.length === 0 ? tt('chooseImages') : tt('addMoreImages')}
+                    </Text>
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>{tt('upTo10')}</Text>
+                  </BouncyButton>
+
+                  {converterFiles.map((file, fileIndex) => (
+                    <View key={file.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 10 }}>
+                      <BouncyButton
+                        onPress={() => openMediaViewer(converterFiles.map((f) => ({ type: 'image', uri: f.originalUri })), fileIndex)}
+                        accessibilityRole="button"
+                        accessibilityLabel="View image"
+                      >
+                        <Image source={{ uri: file.originalUri }} style={{ width: 48, height: 48, borderRadius: 8 }} />
+                      </BouncyButton>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>
+                          {file.originalFormat} · {(file.originalSize / 1024).toFixed(0)} KB
+                        </Text>
+                        {file.status === 'processing' && (
+                          <Text style={{ color: toolsTheme.accent, fontSize: 11, fontWeight: '600', marginTop: 2 }}>{tt('converting')}</Text>
+                        )}
+                        {file.status === 'done' && (
+                          <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '700', marginTop: 2 }}>
+                            {converterFormat} · {(file.resultSize / 1024).toFixed(0)} KB
+                          </Text>
+                        )}
+                        {file.status === 'error' && (
+                          <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '600', marginTop: 2 }}>{file.error}</Text>
+                        )}
+                        {file.status === 'pending' && (
+                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginTop: 2 }}>{tt('waitingToProcess')}</Text>
+                        )}
+                      </View>
+                      {file.status === 'done' ? (
+                        <BouncyButton
+                          style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                          onPress={() => handleSingleConvertedDownload(file)}
+                          accessibilityRole="button"
+                          accessibilityLabel="Download"
+                        >
+                          <Text style={{ color: toolsTheme.accent, fontSize: 11, fontWeight: '700' }}>{tt('download')}</Text>
+                        </BouncyButton>
+                      ) : file.status === 'processing' ? (
+                        <ActivityIndicator color={toolsTheme.accent} size="small" />
+                      ) : (
+                        <>
+                          <BouncyButton
+                            style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD' }}
+                            onPress={() => convertOneFile(file)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Convert this image"
+                          >
+                            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>{tt('convert')}</Text>
+                          </BouncyButton>
+                          <BouncyButton style={{ padding: 6 }} onPress={() => removeConverterFile(file.id)} accessibilityRole="button" accessibilityLabel="Remove">
+                            <TrashIconSVG />
+                          </BouncyButton>
+                        </>
+                      )}
+                    </View>
+                  ))}
+
+                  {converterFiles.length > 0 && (
+                    <View style={{ gap: 10, marginTop: 4 }}>
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <BouncyButton
+                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: converterProcessing ? 0.6 : 1 }]}
+                          onPress={runConverterBatch}
+                          disabled={converterProcessing || !converterFiles.some((f) => f.status === 'pending' || f.status === 'error')}
+                          accessibilityRole="button"
+                          accessibilityState={{ disabled: converterProcessing, busy: converterProcessing }}
+                        >
+                          <Text style={styles.submitBtnText}>{converterProcessing ? tt('converting') : tt('convertAll')}</Text>
+                        </BouncyButton>
+                        <BouncyButton
+                          style={[
+                            styles.saveAccountSettingsBtn,
+                            { flex: 1, marginTop: 0, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border },
+                            !converterFiles.every((f) => f.status === 'done') && { opacity: 0.4 }
+                          ]}
+                          onPress={handleDownloadAllConverted}
+                          disabled={!converterFiles.every((f) => f.status === 'done')}
+                          accessibilityRole="button"
+                          accessibilityState={{ disabled: !converterFiles.every((f) => f.status === 'done') }}
+                        >
+                          <Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text>
+                        </BouncyButton>
+                      </View>
+                      <BouncyButton
+                        style={{ alignSelf: 'center' }}
+                        onPress={() => setClearFilesConfirmTarget('converter')}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>{tt('clearAll')}</Text>
+                      </BouncyButton>
+                    </View>
+                  )}
+                </>
+              )}
+
+              {activeTool === 'pdfEditor' && (
+                <>
+                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
+                    {tt('pdfEditorIntro')}
+                  </Text>
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                    <BouncyButton
+                      style={{
+                        flex: 1, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
+                        borderRadius: 14, padding: 16, alignItems: 'center', gap: 6
+                      }}
+                      onPress={pickPdfEditorPdfs}
+                      disabled={pdfEditorLoading}
+                      accessibilityRole="button"
+                    >
+                      <PdfIconSVG size={22} color={toolsTheme.textSecondary} />
+                      <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addPdf')}</Text>
+                    </BouncyButton>
+                    <BouncyButton
+                      style={{
+                        flex: 1, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
+                        borderRadius: 14, padding: 16, alignItems: 'center', gap: 6
+                      }}
+                      onPress={pickPdfEditorImages}
+                      disabled={pdfEditorLoading}
+                      accessibilityRole="button"
+                    >
+                      <ImageIconSVG size={22} color={toolsTheme.textSecondary} />
+                      <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addImages')}</Text>
+                    </BouncyButton>
+                  </View>
+
+                  {pdfEditorLoading && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 }}>
+                      <ActivityIndicator color={toolsTheme.accent} size="small" />
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12 }}>{tt('loadingPdf')}</Text>
+                    </View>
+                  )}
+
+                  {pdfEditorPages.length > 0 && (
+                    <BouncyButton
+                      style={{ alignSelf: 'flex-start', marginTop: 14 }}
+                      onPress={() => setClearFilesConfirmTarget('pdfEditor')}
+                      accessibilityRole="button"
+                    >
+                      <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>{tt('clearAll')}</Text>
+                    </BouncyButton>
+                  )}
+
+                  {pdfEditorPages.length > 0 && (
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginTop: pdfEditorPages.length > 0 ? 8 : 0 }}>
+                      {pdfEditorPages.length} {tt('pageCount')}
+                    </Text>
+                  )}
+
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
+                    {pdfEditorPages.map((page, index) => (
+                      <View
+                        key={page.id}
+                        style={{
+                          width: 100, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 8,
+                          borderWidth: pdfDragIndex === index ? 2 : 1,
+                          borderColor: pdfDragIndex === index ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
+                        }}
+                        {...(Platform.OS === 'web' ? {
+                          draggable: true,
+                          onDragStart: () => setPdfDragIndex(index),
+                          onDragOver: (e) => e.preventDefault(),
+                          onDrop: (e) => {
+                            e.preventDefault();
+                            if (pdfDragIndex !== null) reorderPdfEditorPages(pdfDragIndex, index);
+                            setPdfDragIndex(null);
+                          },
+                          onDragEnd: () => setPdfDragIndex(null)
+                        } : {})}
+                      >
+                        <View style={{
+                          width: '100%', aspectRatio: 0.75, borderRadius: 8, backgroundColor: toolsTheme.bg,
+                          alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
+                        }}>
+                          {page.thumbnailLoading ? (
+                            <ActivityIndicator color={toolsTheme.accent} size="small" />
+                          ) : page.thumbnailUri ? (
+                            <Image
+                              source={{ uri: page.thumbnailUri }}
+                              style={{ width: '100%', height: '100%', transform: [{ rotate: `${page.rotation}deg` }] }}
+                              resizeMode="contain"
+                            />
+                          ) : (
+                            <PdfIconSVG size={28} color={toolsTheme.textSecondary} />
+                          )}
+                        </View>
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 10, textAlign: 'center', marginTop: 4 }}>
+                          {index + 1}
+                        </Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+                          <BouncyButton onPress={() => rotatePdfEditorPage(page.id)} accessibilityRole="button" accessibilityLabel="Rotate page">
+                            <RotateIconSVG size={15} color={toolsTheme.textSecondary} />
+                          </BouncyButton>
+                          <BouncyButton onPress={() => removePdfEditorPage(page.id)} accessibilityRole="button" accessibilityLabel="Remove page">
+                            <TrashIconSVG />
+                          </BouncyButton>
+                        </View>
+                        {Platform.OS !== 'web' && (
+                          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+                            <BouncyButton
+                              onPress={() => movePdfEditorPage(page.id, -1)}
+                              disabled={index === 0}
+                              accessibilityRole="button"
+                              accessibilityLabel="Move page earlier"
+                              style={{ opacity: index === 0 ? 0.3 : 1 }}
+                            >
+                              <ChevronUpSVG size={14} color={toolsTheme.textSecondary} />
+                            </BouncyButton>
+                            <BouncyButton
+                              onPress={() => movePdfEditorPage(page.id, 1)}
+                              disabled={index === pdfEditorPages.length - 1}
+                              accessibilityRole="button"
+                              accessibilityLabel="Move page later"
+                              style={{ opacity: index === pdfEditorPages.length - 1 ? 0.3 : 1 }}
+                            >
+                              <ChevronDownSVG size={14} color={toolsTheme.textSecondary} />
+                            </BouncyButton>
+                          </View>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
             </AppKeyboardAwareScrollView>
+
+            {/* Sticky footer - only the Compressor's Compress All/Download
+                All, deliberately outside the ScrollView so it stays
+                pinned to the bottom of the screen instead of scrolling
+                away with the file list. */}
+            {activeTool === 'imageCompressor' && compressorFiles.length > 0 && (
+              <View style={[
+                { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 10, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border },
+                isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }
+              ]}>
+                <BouncyButton
+                  style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: compressorProcessing ? 0.6 : 1 }]}
+                  onPress={runCompressorBatch}
+                  disabled={compressorProcessing || !compressorFiles.some((f) => f.status === 'pending' || f.status === 'error')}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: compressorProcessing, busy: compressorProcessing }}
+                >
+                  <Text style={styles.submitBtnText}>{compressorProcessing ? tt('compressing') : tt('compressAll')}</Text>
+                </BouncyButton>
+                <BouncyButton
+                  style={[
+                    styles.saveAccountSettingsBtn,
+                    { flex: 1, marginTop: 0, backgroundColor: toolsTheme.bg, borderWidth: 1, borderColor: toolsTheme.border },
+                    !compressorFiles.every((f) => f.status === 'done') && { opacity: 0.4 }
+                  ]}
+                  onPress={handleDownloadAllCompressed}
+                  disabled={!compressorFiles.every((f) => f.status === 'done')}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !compressorFiles.every((f) => f.status === 'done') }}
+                >
+                  <Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text>
+                </BouncyButton>
+              </View>
+            )}
+
+            {activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && (
+              <View style={[
+                { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border },
+                isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }
+              ]}>
+                <BouncyButton
+                  style={[styles.saveAccountSettingsBtn, { marginTop: 0, opacity: pdfEditorExporting ? 0.6 : 1 }]}
+                  onPress={handleExportPdf}
+                  disabled={pdfEditorExporting}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: pdfEditorExporting, busy: pdfEditorExporting }}
+                >
+                  <Text style={styles.submitBtnText}>{pdfEditorExporting ? tt('exportingPdf') : tt('exportPdf')}</Text>
+                </BouncyButton>
+              </View>
+            )}
           </SafeAreaView>
         </Modal>
       )}
 
-      {/* CLEAR COMPRESSED IMAGES CONFIRMATION */}
+      {/* CLEAR IMAGES CONFIRMATION - shared between Compressor and Converter, dispatches by clearFilesConfirmTarget */}
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'fade'}
         transparent={true}
-        visible={clearCompressorConfirmVisible}
-        onRequestClose={() => setClearCompressorConfirmVisible(false)}
+        visible={!!clearFilesConfirmTarget}
+        onRequestClose={() => setClearFilesConfirmTarget(null)}
       >
         <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
-          onResponderRelease={() => setClearCompressorConfirmVisible(false)}
+          onResponderRelease={() => setClearFilesConfirmTarget(null)}
         >
           {Platform.OS !== 'web' && (
             lightweightMode ? (
@@ -17801,11 +18708,11 @@ function App() {
               <TrashIconSVG />
             </View>
             <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Clear All Images?</Text>
-            <Text style={styles.confirmSubText}>This removes every image from this session, including any you've already compressed. This can't be undone.</Text>
+            <Text style={styles.confirmSubText}>This removes every image from this session, including any you've already processed. This can't be undone.</Text>
             <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
               <BouncyButton
                 style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                onPress={() => setClearCompressorConfirmVisible(false)}
+                onPress={() => setClearFilesConfirmTarget(null)}
                 accessibilityRole="button"
               >
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
@@ -17814,8 +18721,10 @@ function App() {
                 style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
                 accessibilityRole="button"
                 onPress={() => {
-                  clearAllCompressorFiles();
-                  setClearCompressorConfirmVisible(false);
+                  if (clearFilesConfirmTarget === 'compressor') clearAllCompressorFiles();
+                  else if (clearFilesConfirmTarget === 'converter') clearAllConverterFiles();
+                  else if (clearFilesConfirmTarget === 'pdfEditor') clearAllPdfEditorPages();
+                  setClearFilesConfirmTarget(null);
                 }}
               >
                 <Text style={styles.confirmDeleteText}>Clear All</Text>
@@ -19052,11 +19961,20 @@ function App() {
         </View>
       </Modal>
 
-      {/* DONATE MODAL - single screen, no scroll, Indonesia (QRIS) / International (PayPal, Wise) */}
+      {/* DONATE MODAL - single screen, no scroll, Indonesia (QRIS) / International (PayPal, Wise).
+          Conditionally mounted (not toggled via visible= on an always-
+          mounted Modal) specifically so it always creates a fresh portal
+          on open - an always-mounted Modal's portal DOM node stays fixed
+          in place from first render, so anything mounted AFTER it (like
+          Tools, opened later) would portal on top of it regardless of
+          which one is actually "visible". This was exactly the bug where
+          the post-download interstitial appeared hidden behind the Tools
+          page until Tools was closed. */}
+      {donateModalVisible && DONATIONS_ENABLED && (
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'slide'}
         transparent={true}
-        visible={donateModalVisible && DONATIONS_ENABLED}
+        visible={true}
         onRequestClose={handleCloseDonateModal}
       >
         <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
@@ -19280,6 +20198,7 @@ function App() {
           </SafeAreaView>
         </View>
       </Modal>
+      )}
 
       {/* DONATE SUCCESS POPUP MODAL */}
       <Modal
@@ -19521,7 +20440,6 @@ function App() {
                       accessibilityRole="button"
                     >
                       <View style={styles.iconTextInlineRow}>
-                        <WrenchIconSVG color={theme.textSecondary} size={16} />
                         <Text style={styles.settingItemTitle}>Tools</Text>
                         <BetaTag themeMode={themeMode} />
                       </View>
