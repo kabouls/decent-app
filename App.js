@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 653;
+const BUILD_NUMBER = 654;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -1921,7 +1921,7 @@ const BouncyButton = React.memo(({ style, onPressIn, onPressOut, children, ...re
 // platform. Same prop shape as the built-in Switch (value, onValueChange,
 // trackColor: {false, true}, thumbColor) so every existing call site
 // only needed <Switch -> <AppSwitch, nothing else.
-const AppSwitch = React.memo(({ value, onValueChange, trackColor, thumbColor = '#FFFFFF', disabled, theme }) => {
+const AppSwitch = React.memo(({ value, onValueChange, trackColor, thumbColor = '#FFFFFF', disabled, theme, accessibilityRole, accessibilityLabel, accessibilityState }) => {
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
   useEffect(() => {
     Animated.timing(anim, {
@@ -1941,12 +1941,17 @@ const AppSwitch = React.memo(({ value, onValueChange, trackColor, thumbColor = '
     outputRange: [2, 22]
   });
 
+  const mergedAccessibilityState = { ...accessibilityState, disabled };
+
   return (
     <TouchableOpacity
       activeOpacity={0.85}
       disabled={disabled}
       onPress={() => onValueChange(!value)}
       style={{ opacity: disabled ? 0.5 : 1 }}
+      accessibilityRole={accessibilityRole || 'switch'}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={mergedAccessibilityState}
     >
       {/* b607: subtle border added, using the same neutral theme.border
           token every input/card border in this file already uses (falls
@@ -12625,6 +12630,8 @@ function App() {
                 activeOpacity={0.8}
                 disabled={disableSafeSearchCountdown > 0}
                 onPress={confirmDisableSafeSearch}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: disableSafeSearchCountdown > 0 }}
               >
                 <Text style={{ fontSize: 15, fontWeight: '800', color: disableSafeSearchCountdown > 0 ? theme.textSecondary : '#FFFFFF' }}>
                   {disableSafeSearchCountdown > 0 ? `Wait ${disableSafeSearchCountdown}s...` : 'Turn Off Safe Search'}
@@ -12634,6 +12641,7 @@ function App() {
                 style={{ width: '100%', marginTop: 10, alignItems: 'center', paddingVertical: 8 }}
                 activeOpacity={0.6}
                 onPress={() => setDisableSafeSearchModalVisible(false)}
+                accessibilityRole="button"
               >
                 <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700' }}>Cancel</Text>
               </TouchableOpacity>
@@ -12726,6 +12734,7 @@ function App() {
                   if (autoSuccessIntervalRef.current) clearInterval(autoSuccessIntervalRef.current);
                   setAutoSuccessConfig(null);
                 }}
+                accessibilityRole="button"
               >
                 <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>
                   Continue ({autoSuccessCountdown}s)
@@ -15083,6 +15092,7 @@ function App() {
           style={{ flex: 1, backgroundColor: 'rgba(11, 15, 23, 0.6)', alignItems: 'center', justifyContent: 'center', padding: 32 }}
           activeOpacity={1}
           onPress={() => setLinkPreview(null)}
+          accessible={false}
         >
           {linkPreview && (
             <View style={{
@@ -15103,6 +15113,7 @@ function App() {
                   setLinkPreview(null);
                   openExternalLinkWithWarning(url);
                 }}
+                accessibilityRole="button"
               >
                 <Text style={styles.submitBtnText}>Open Link</Text>
               </BouncyButton>
@@ -15113,6 +15124,7 @@ function App() {
                   setLinkPreview(null);
                   handleReportContent('link', ownerId, `${ownerLabel}'s ${name} link`, url);
                 }}
+                accessibilityRole="button"
               >
                 <Text style={{ color: '#F87171', fontSize: 13, fontWeight: '700' }}>Report Link</Text>
               </BouncyButton>
@@ -21710,11 +21722,15 @@ function App() {
           style={styles.overlayModalBg}
           activeOpacity={1}
           onPress={() => setFormattingGuideVisible(false)}
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
         >
-          <TouchableOpacity activeOpacity={1} style={[styles.customConfirmCard, fancyConfirmCardOverlay, { position: 'relative' }]}>
+          <TouchableOpacity activeOpacity={1} style={[styles.customConfirmCard, fancyConfirmCardOverlay, { position: 'relative' }]} accessible={false}>
             <BouncyButton
               style={{ position: 'absolute', top: 12, right: 12, zIndex: 1, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 99, backgroundColor: theme.bg }}
               onPress={() => setFormattingGuideVisible(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
               <Text style={{ color: theme.textSecondary, fontSize: 16, fontWeight: '700', lineHeight: 16 }}>✕</Text>
             </BouncyButton>
@@ -21939,6 +21955,8 @@ function App() {
                       style={{ flex: 1 }}
                       activeOpacity={1}
                       onPress={() => setPortfolioOptionsMenuVisible(false)}
+                      accessible={false}
+                      importantForAccessibility="no-hide-descendants"
                     />
                     <View style={{
                       position: 'absolute', top: portfolioMenuPos.top, left: portfolioMenuPos.left,
@@ -23711,6 +23729,9 @@ function App() {
                     borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bg
                   }}
                   onPress={() => setShareTypeDropdownOpen((v) => !v)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Filter by portfolio type"
+                  accessibilityState={{ expanded: shareTypeDropdownOpen }}
                 >
                   <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>
                     {shareTypeFilters.size === 0
@@ -23726,6 +23747,8 @@ function App() {
                       style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
                       activeOpacity={1}
                       onPress={() => setShareTypeDropdownOpen(false)}
+                      accessible={false}
+                      importantForAccessibility="no-hide-descendants"
                     />
                     <View style={{
                       position: 'absolute', top: 40, left: 0, right: 0, zIndex: 100,
@@ -23744,6 +23767,9 @@ function App() {
                       <BouncyButton
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
                         onPress={() => setShareTypeFilters(new Set())}
+                        accessibilityRole="checkbox"
+                        accessibilityLabel="All Portfolios"
+                        accessibilityState={{ checked: shareTypeFilters.size === 0 }}
                       >
                         <View style={{
                           width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
@@ -23768,6 +23794,9 @@ function App() {
                                 return next;
                               });
                             }}
+                            accessibilityRole="checkbox"
+                            accessibilityLabel={t.label}
+                            accessibilityState={{ checked: selected }}
                           >
                             <View style={{
                               width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
