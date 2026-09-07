@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 655;
+const BUILD_NUMBER = 656;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -6151,6 +6151,16 @@ function App() {
   // by a plain text link inside the box instead.
   const [uiUxDisclaimerExpanded, setUiUxDisclaimerExpanded] = useState(true);
   const [uiUxSoftwareInterestModalVisible, setUiUxSoftwareInterestModalVisible] = useState(false);
+  // Same feature_interest table/pattern as the UI/UX software request
+  // above, distinct feature_name ('new_portfolio_type_request'). Unlike
+  // that one, consent isn't a separate stored field - the checkbox gates
+  // the Send button itself (same pattern as the Donate modal's Terms
+  // checkbox), so submitting at all IS the disclosure being agreed to,
+  // with no schema change needed.
+  const [requestPortfolioTypeModalVisible, setRequestPortfolioTypeModalVisible] = useState(false);
+  const [newPortfolioTypeText, setNewPortfolioTypeText] = useState('');
+  const [newPortfolioTypeDetails, setNewPortfolioTypeDetails] = useState('');
+  const [newPortfolioTypeConsent, setNewPortfolioTypeConsent] = useState(false);
   // b562: which LINK_FIELD_INFO entry is currently shown in the shared
   // link-field info popup, null when closed - see its Modal further down
   // and the renderLinkFieldInfoButton() helper near
@@ -11409,6 +11419,44 @@ function App() {
       }
     }
     setFUiUxSoftwareInterestSubmitted(true);
+    showToast("Thanks! We'll factor this into what we build next.");
+    return true;
+  };
+
+  const handleSubmitPortfolioTypeRequest = async () => {
+    if (!requireAuth()) return false;
+    const typeWanted = newPortfolioTypeText.trim();
+    if (!typeWanted) {
+      showToast('Let us know what type of portfolio you have in mind first.');
+      return false;
+    }
+    if (!newPortfolioTypeConsent) {
+      showToast('Please check the box to confirm you\'re okay being contacted about this.');
+      return false;
+    }
+    const extraDetails = newPortfolioTypeDetails.trim();
+    const detail = extraDetails
+      ? `Portfolio type requested: ${typeWanted}\n\nDetails: ${extraDetails}`
+      : `Portfolio type requested: ${typeWanted}`;
+    const { error } = await supabase
+      .from('feature_interest')
+      .insert({ user_id: session.user.id, feature_name: 'new_portfolio_type_request', detail });
+    if (error) {
+      if (error.code === '23505') {
+        const { error: updateError } = await supabase
+          .from('feature_interest')
+          .update({ detail })
+          .eq('user_id', session.user.id)
+          .eq('feature_name', 'new_portfolio_type_request');
+        if (updateError) {
+          showToast('Could not submit - try again.');
+          return false;
+        }
+      } else {
+        showToast('Could not submit - try again.');
+        return false;
+      }
+    }
     showToast("Thanks! We'll factor this into what we build next.");
     return true;
   };
@@ -18996,6 +19044,16 @@ function App() {
               )
             ))}
           </View>
+
+          <BouncyButton
+            style={{ alignSelf: 'center', marginTop: 20, marginBottom: 4, paddingVertical: 8, paddingHorizontal: 16 }}
+            onPress={() => setRequestPortfolioTypeModalVisible(true)}
+            accessibilityRole="button"
+          >
+            <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700', textAlign: 'center' }}>
+              Don't see your portfolio type? Request one →
+            </Text>
+          </BouncyButton>
         </SafeAreaView>
           </View>
         </View>
@@ -19259,6 +19317,102 @@ function App() {
                 accessibilityRole="button"
               >
                 <Text style={styles.confirmDeleteText}>Confirm</Text>
+              </BouncyButton>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* REQUEST A PORTFOLIO TYPE - lets someone ask for a category not
+          among the 4 current cards (e.g. Animation, Motion Design, 3D).
+          Same feature_interest table/upsert pattern as the UI/UX software
+          request above, distinct feature_name so they coexist. Consent
+          isn't a stored column - the checkbox gates Send itself, same
+          approach as the Donate modal's Terms checkbox, so submitting at
+          all IS the agreement, no schema change needed. */}
+      {requestPortfolioTypeModalVisible && (
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={true}
+          onRequestClose={() => setRequestPortfolioTypeModalVisible(false)}
+        >
+          <View style={styles.overlayModalBg}>
+            <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
+              <BouncyButton
+                style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 1 }}
+                onPress={() => setRequestPortfolioTypeModalVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <CrossIconSVG color={theme.textSecondary} size={18} />
+              </BouncyButton>
+
+              <Text style={[styles.confirmTitle, { marginBottom: 10, paddingRight: 28 }]}>Request a Portfolio Type</Text>
+
+              <Text style={[styles.confirmSubText, { textAlign: 'left', marginBottom: 16 }]}>
+                Don't see a category that fits your work? Tell us what you'd want to showcase (e.g. Animation, Motion Design, 3D Art) and we'll factor it into what we build next.
+              </Text>
+
+              <Text style={styles.formGroupLabel}>What type of portfolio? *</Text>
+              <FocusableTextInput
+                style={styles.formInput}
+                placeholder="e.g. Animation, Motion Design, 3D Art..."
+                placeholderTextColor="#94A3B8"
+                value={newPortfolioTypeText}
+                onChangeText={setNewPortfolioTypeText}
+                maxLength={60}
+                accessibilityLabel="Portfolio type requested"
+              />
+
+              <Text style={styles.formGroupLabel}>Tell us more (optional)</Text>
+              <FocusableTextInput
+                style={[styles.formInput, { height: 80, textAlignVertical: 'top' }]}
+                multiline
+                placeholder="What kind of work would you upload? Any examples or references help."
+                placeholderTextColor="#94A3B8"
+                value={newPortfolioTypeDetails}
+                onChangeText={setNewPortfolioTypeDetails}
+                maxLength={500}
+                accessibilityLabel="Additional details"
+              />
+
+              <BouncyButton
+                style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 16 }}
+                onPress={() => setNewPortfolioTypeConsent(!newPortfolioTypeConsent)}
+                accessibilityRole="checkbox"
+                accessibilityLabel="I'm okay being contacted if this request is considered"
+                accessibilityState={{ checked: newPortfolioTypeConsent }}
+              >
+                <View style={{
+                  width: 20, height: 20, borderRadius: 5, marginTop: 1,
+                  borderWidth: 1.5, borderColor: newPortfolioTypeConsent ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                  backgroundColor: newPortfolioTypeConsent ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
+                  alignItems: 'center', justifyContent: 'center'
+                }}>
+                  {newPortfolioTypeConsent && <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '900' }}>✓</Text>}
+                </View>
+                <Text style={{ color: theme.textSecondary, fontSize: 12, flex: 1, lineHeight: 17 }}>
+                  I'm okay being contacted at my account email if this request is considered.
+                </Text>
+              </BouncyButton>
+
+              <BouncyButton
+                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 16, backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD', opacity: (newPortfolioTypeText.trim() && newPortfolioTypeConsent) ? 1 : 0.5 }]}
+                onPress={async () => {
+                  const ok = await handleSubmitPortfolioTypeRequest();
+                  if (ok) {
+                    setRequestPortfolioTypeModalVisible(false);
+                    setNewPortfolioTypeText('');
+                    setNewPortfolioTypeDetails('');
+                    setNewPortfolioTypeConsent(false);
+                  }
+                }}
+                disabled={!(newPortfolioTypeText.trim() && newPortfolioTypeConsent)}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: !(newPortfolioTypeText.trim() && newPortfolioTypeConsent) }}
+              >
+                <Text style={styles.confirmDeleteText}>Send Request</Text>
               </BouncyButton>
             </View>
           </View>
