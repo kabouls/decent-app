@@ -37,7 +37,8 @@ import {
   Share,
   Appearance,
   BackHandler,
-  Easing
+  Easing,
+  AccessibilityInfo
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts, Inter_300Light, Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
@@ -154,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 651;
+const BUILD_NUMBER = 652;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -1799,6 +1800,41 @@ const ThemeProvider = ({ children }) => {
 // one of them that wouldn't show up in a syntax check or Modal count.
 const useLightweightMode = () => ({ lightweightMode: true, setLightweightMode: () => {} });
 
+// Reduce Motion - reads the actual OS-level accessibility setting (iOS
+// Settings > Accessibility > Motion > Reduce Motion; Android Settings >
+// Accessibility > Remove animations), completely separate from
+// lightweightMode above (that one is this app's own permanently-forced
+// blur/effects toggle, not tied to any user accessibility preference).
+// Starts false and flips once the initial async check resolves, rather
+// than blocking first paint on it - the very first press before that
+// resolves will still bounce, which is an acceptable tradeoff for
+// avoiding a loading gate on every app launch.
+const ReduceMotionContext = React.createContext(false);
+const useReduceMotion = () => React.useContext(ReduceMotionContext);
+
+const ReduceMotionProvider = ({ children }) => {
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return; // AccessibilityInfo.isReduceMotionEnabled is native-only
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (mounted) setReduceMotion(enabled);
+    });
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
+  return (
+    <ReduceMotionContext.Provider value={reduceMotion}>
+      {children}
+    </ReduceMotionContext.Provider>
+  );
+};
+
 const LightweightModeProvider = ({ children }) => children;
 
 const isValidHandleFormat = (h) => /^[A-Za-z0-9._-]{3,20}$/.test(h);
@@ -1827,6 +1863,7 @@ const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpaci
 // "wide web centered card" constraint to preserve, so there's no
 // downside to using a real Modal there specifically.
 const FullscreenEditorOverlay = ({ visible, onRequestClose, children }) => {
+  const reduceMotion = useReduceMotion();
   if (!visible) return null;
   if (Platform.OS === 'web') {
     return (
@@ -1836,7 +1873,7 @@ const FullscreenEditorOverlay = ({ visible, onRequestClose, children }) => {
     );
   }
   return (
-    <Modal visible={true} animationType="slide" transparent={false} onRequestClose={onRequestClose}>
+    <Modal visible={true} animationType={reduceMotion ? 'fade' : 'slide'} transparent={false} onRequestClose={onRequestClose}>
       {children}
     </Modal>
   );
@@ -1847,12 +1884,17 @@ const FullscreenEditorOverlay = ({ visible, onRequestClose, children }) => {
 // transparent swap wherever it's used.
 const BouncyButton = React.memo(({ style, onPressIn, onPressOut, children, ...rest }) => {
   const bounceScale = useRef(new Animated.Value(1)).current;
+  const reduceMotion = useReduceMotion();
   const handlePressIn = (e) => {
-    Animated.spring(bounceScale, { toValue: 0.94, useNativeDriver: true, speed: 50, bounciness: 6 }).start();
+    if (!reduceMotion) {
+      Animated.spring(bounceScale, { toValue: 0.94, useNativeDriver: true, speed: 50, bounciness: 6 }).start();
+    }
     if (onPressIn) onPressIn(e);
   };
   const handlePressOut = (e) => {
-    Animated.spring(bounceScale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 8 }).start();
+    if (!reduceMotion) {
+      Animated.spring(bounceScale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 8 }).start();
+    }
     if (onPressOut) onPressOut(e);
   };
   return (
@@ -24666,9 +24708,11 @@ class CrashFallbackBoundary extends React.Component {
 export default Sentry.wrap(() => (
   <ThemeProvider>
     <LightweightModeProvider>
-      <CrashFallbackBoundary>
-        <AppWithSafeArea />
-      </CrashFallbackBoundary>
+      <ReduceMotionProvider>
+        <CrashFallbackBoundary>
+          <AppWithSafeArea />
+        </CrashFallbackBoundary>
+      </ReduceMotionProvider>
     </LightweightModeProvider>
   </ThemeProvider>
 ));
