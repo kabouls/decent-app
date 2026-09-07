@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 663;
+const BUILD_NUMBER = 664;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -6782,7 +6782,7 @@ function App() {
         // force a clean logout rather than continuing to run on a stale
         // session pointing at a deleted account.
         console.warn('Session no longer valid, signing out:', retry.error.message);
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: 'local' });
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
           window.location.reload();
         } else {
@@ -6822,6 +6822,10 @@ function App() {
           [{
             text: 'OK',
             onPress: async () => {
+              // b663: deliberately global scope (Supabase's default) -
+              // unlike a normal voluntary logout, a ban or suspension
+              // should end every session on every device, not just this
+              // one.
               await supabase.auth.signOut();
               if (Platform.OS === 'web' && typeof window !== 'undefined') {
                 window.location.reload();
@@ -15896,7 +15900,16 @@ function App() {
                 accessibilityRole="button"
                 onPress={async () => {
                   setLogoutConfirmModalVisible(false);
-                  await supabase.auth.signOut();
+                  // b663: scope 'local' - was defaulting to Supabase's
+                  // global signOut, which revokes the refresh token for
+                  // every active session of this account, not just this
+                  // one. That meant logging out on web also logged out
+                  // the native app (and vice versa) the next time either
+                  // one tried to refresh its token, which happens
+                  // routinely in the background. A normal voluntary
+                  // logout should only affect the device someone actually
+                  // tapped Log Out on.
+                  await supabase.auth.signOut({ scope: 'local' });
                   // Web only: resets every bit of in-memory navigation state
                   // (which tab, which modal was open, scroll position, etc.)
                   // in one guaranteed-clean move, rather than tracking down
