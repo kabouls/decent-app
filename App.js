@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 665;
+const BUILD_NUMBER = 666;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -2336,6 +2336,35 @@ const GlobeIconSVG = React.memo(({ color = '#94A3B8' }) => (
     <Path d="M3.6 9h16.8M3.6 15h16.8M12 3a15.3 15.3 0 0 1 4 9 15.3 15.3 0 0 1-4 9 15.3 15.3 0 0 1-4-9 15.3 15.3 0 0 1 4-9z" stroke={color} strokeWidth="2" />
   </Svg>
 ));
+
+// Used on the Active Sessions screen - a phone silhouette for mobile OSes,
+// a laptop/monitor silhouette for desktop OSes, and a plain question-mark
+// circle for anything parseSessionDevice() couldn't confidently identify.
+const DeviceIconSVG = React.memo(({ kind, color = '#94A3B8', size = 18 }) => {
+  if (kind === 'android' || kind === 'ios') {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <Rect x="6" y="2" width="12" height="20" rx="2.5" stroke={color} strokeWidth="2" />
+        <Path d="M11 18.5h2" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      </Svg>
+    );
+  }
+  if (kind === 'windows' || kind === 'mac' || kind === 'linux') {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <Rect x="2" y="4" width="20" height="13" rx="1.5" stroke={color} strokeWidth="2" />
+        <Path d="M8 20.5h8M12 17v3.5" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      </Svg>
+    );
+  }
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth="2" />
+      <Path d="M9.5 9.5a2.5 2.5 0 0 1 4.8-1c0 1.7-2.3 2-2.3 3.5" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Circle cx="12" cy="16.2" r="0.9" fill={color} />
+    </Svg>
+  );
+});
 
 const extractDomainFromUrl = (url) => {
   try {
@@ -5038,6 +5067,10 @@ function App() {
   const [blockedUsersList, setBlockedUsersList] = useState([]);
   const [postNotifyList, setPostNotifyList] = useState([]);
   const [postNotifyListLoading, setPostNotifyListLoading] = useState(false);
+  const [activeSessionsList, setActiveSessionsList] = useState([]);
+  const [activeSessionsLoading, setActiveSessionsLoading] = useState(false);
+  const [revokeSessionTarget, setRevokeSessionTarget] = useState(null);
+  const [revokingSession, setRevokingSession] = useState(false);
 
   // Feedback & Support Modal
   const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
@@ -8742,6 +8775,70 @@ function App() {
         avatar: r.profiles && r.profiles.avatar_url ? r.profiles.avatar_url : 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png'
       }))
     );
+  };
+
+  // Settings > Privacy > Active Sessions. Session data itself (id,
+  // created_at, updated_at, user_agent, is_current) comes from the
+  // get_my_active_sessions() RPC - auth.sessions lives in Postgres's
+  // auth schema, which isn't directly queryable from the client, so a
+  // SECURITY DEFINER function is the only way to read it. That function
+  // is explicitly scoped to auth.uid() internally, so this can never
+  // return anyone else's sessions regardless of who calls it.
+  //
+  // Turning a raw user_agent string into something a real person can
+  // recognize is inherently a best-effort heuristic - there's no fully
+  // reliable client/OS signal here, only pattern-matching common
+  // substrings. Good enough to tell "this is probably your phone" from
+  // "this is probably your laptop," not meant to be forensically exact.
+  const parseSessionDevice = (userAgent) => {
+    if (!userAgent) return { label: 'Unknown device', icon: 'generic' };
+    const ua = userAgent.toLowerCase();
+
+    let os = 'Unknown OS';
+    if (ua.includes('android')) os = 'Android';
+    else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ios')) os = 'iOS';
+    else if (ua.includes('windows')) os = 'Windows';
+    else if (ua.includes('mac os') || ua.includes('macintosh')) os = 'Mac';
+    else if (ua.includes('linux')) os = 'Linux';
+
+    let browser = '';
+    if (ua.includes('edg/')) browser = 'Edge';
+    else if (ua.includes('chrome/') && !ua.includes('edg/')) browser = 'Chrome';
+    else if (ua.includes('firefox/')) browser = 'Firefox';
+    else if (ua.includes('safari/') && !ua.includes('chrome/')) browser = 'Safari';
+
+    // Native app requests generally carry a networking-stack user agent
+    // (OkHttp on Android, CFNetwork on iOS) rather than a real browser
+    // string - falls through to "<OS> App" instead of matching none of
+    // the browser checks above and showing a bare, unhelpful OS name.
+    const isLikelyNativeApp = !browser && (ua.includes('okhttp') || ua.includes('cfnetwork') || ua.includes('expo'));
+
+    const icon = os.toLowerCase().replace(' ', '');
+    if (isLikelyNativeApp) return { label: `${os} App`, icon };
+    if (browser) return { label: `${browser} on ${os}`, icon };
+    return { label: os, icon };
+  };
+
+  const fetchActiveSessions = async () => {
+    if (!session) return;
+    setActiveSessionsLoading(true);
+    const { data, error } = await supabase.rpc('get_my_active_sessions');
+    setActiveSessionsList(error ? [] : (data || []));
+    setActiveSessionsLoading(false);
+  };
+
+  const handleRevokeSession = async () => {
+    if (!revokeSessionTarget) return;
+    setRevokingSession(true);
+    const { error } = await supabase.rpc('revoke_my_session', { target_session_id: revokeSessionTarget.id });
+    setRevokingSession(false);
+    setRevokeSessionTarget(null);
+    if (error) {
+      showToast('Could not log out that device - try again.');
+      return;
+    }
+    showToast('Device logged out');
+    setActiveSessionsList((prev) => prev.filter((s) => s.id !== revokeSessionTarget.id));
   };
 
   // b581: Settings > Privacy > Post Notifications - lists every designer
@@ -15942,6 +16039,69 @@ function App() {
         </View>
       </Modal>
 
+      {/* REVOKE SESSION CONFIRMATION - logging a specific other device out
+          of Active Sessions. Deliberately its own top-level Modal (not
+          nested inside the settings dropdown's own View tree) for the
+          same reason every other confirm dialog in this app is - a real
+          Modal gets its own portal/paint surface, so it always renders on
+          top regardless of whatever else happens to be open, rather than
+          being trapped inside the settings popup's local stacking
+          context (which is exactly what "buried" would look like). */}
+      <Modal
+        animationType={Platform.OS === 'web' ? 'none' : 'fade'}
+        transparent={true}
+        visible={!!revokeSessionTarget}
+        onRequestClose={() => setRevokeSessionTarget(null)}
+      >
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+          onStartShouldSetResponder={() => Platform.OS === 'web'}
+          onResponderRelease={() => setRevokeSessionTarget(null)}
+        >
+          {Platform.OS !== 'web' && (
+            lightweightMode ? (
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+            ) : (
+              <BlurView
+                intensity={55}
+                tint={themeMode === 'light' ? 'light' : 'dark'}
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+              />
+            )
+          )}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => {}}
+          >
+            <View style={[styles.successIconCircle, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+              <WarningTriangleSVG />
+            </View>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Log Out This Device?</Text>
+            <Text style={styles.confirmSubText}>
+              {revokeSessionTarget ? `"${parseSessionDevice(revokeSessionTarget.user_agent).label}" will be signed out. If it's currently offline, this may take a little while to take effect there.` : ''}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+              <BouncyButton
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                onPress={() => setRevokeSessionTarget(null)}
+                disabled={revokingSession}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B', opacity: revokingSession ? 0.7 : 1 }]}
+                accessibilityRole="button"
+                disabled={revokingSession}
+                accessibilityState={{ disabled: revokingSession, busy: revokingSession }}
+                onPress={handleRevokeSession}
+              >
+                <Text style={styles.confirmDeleteText}>{revokingSession ? 'Logging Out...' : 'Log Out'}</Text>
+              </BouncyButton>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* DELETE ACCOUNT - requires typing DELETE, real failsafe for a destructive action */}
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'fade'}
@@ -17478,7 +17638,7 @@ function App() {
               {optionsView !== 'root' && (
                 <BouncyButton
                   style={{ padding: 4 }}
-                  onPress={() => setOptionsView(optionsView === 'blockedUsers' || optionsView === 'notificationHistory' || optionsView === 'postNotifications' ? 'privacy' : optionsView === 'tutorialLibrary' ? 'aboutApp' : 'root')}
+                  onPress={() => setOptionsView(optionsView === 'blockedUsers' || optionsView === 'notificationHistory' || optionsView === 'postNotifications' || optionsView === 'activeSessions' ? 'privacy' : optionsView === 'tutorialLibrary' ? 'aboutApp' : 'root')}
                   accessibilityRole="button"
                   accessibilityLabel="Back"
                 >
@@ -17486,7 +17646,7 @@ function App() {
                 </BouncyButton>
               )}
               <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>
-                {optionsView === 'privacy' ? 'Privacy' : optionsView === 'supportLegal' ? 'Support & Legal' : optionsView === 'blockedUsers' ? 'Blocked Users' : optionsView === 'notificationHistory' ? 'Notification History' : optionsView === 'postNotifications' ? 'Post Notifications' : optionsView === 'aboutApp' ? 'About App' : optionsView === 'tutorialLibrary' ? 'Tutorials' : 'Options'}
+                {optionsView === 'privacy' ? 'Privacy' : optionsView === 'supportLegal' ? 'Support & Legal' : optionsView === 'blockedUsers' ? 'Blocked Users' : optionsView === 'notificationHistory' ? 'Notification History' : optionsView === 'postNotifications' ? 'Post Notifications' : optionsView === 'activeSessions' ? 'Active Sessions' : optionsView === 'aboutApp' ? 'About App' : optionsView === 'tutorialLibrary' ? 'Tutorials' : 'Options'}
               </Text>
               {optionsView === 'root' && (
                 <BouncyButton
@@ -17622,6 +17782,21 @@ function App() {
                     accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>Blocked Users</Text>
+                    <View style={styles.iconTextInlineRow}>
+                      <Text style={styles.settingItemValue}>Manage</Text>
+                      <ChevronRightSVG color={theme.accent} size={16} />
+                    </View>
+                  </BouncyButton>
+
+                  <BouncyButton
+                    style={styles.settingItemRow}
+                    onPress={() => {
+                      fetchActiveSessions();
+                      setOptionsView('activeSessions');
+                    }}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.settingItemTitle}>Active Sessions</Text>
                     <View style={styles.iconTextInlineRow}>
                       <Text style={styles.settingItemValue}>Manage</Text>
                       <ChevronRightSVG color={theme.accent} size={16} />
@@ -17796,6 +17971,61 @@ function App() {
                         </BouncyButton>
                       </View>
                     ))
+                  )}
+                </>
+              )}
+
+              {optionsView === 'activeSessions' && (
+                <>
+                  {activeSessionsLoading ? (
+                    <View style={{ padding: 32, alignItems: 'center' }}>
+                      <ActivityIndicator color={theme.accent} />
+                    </View>
+                  ) : activeSessionsList.length === 0 ? (
+                    <View style={{ padding: 32, alignItems: 'center' }}>
+                      <Text style={{ color: theme.textSecondary, fontSize: 13, textAlign: 'center' }}>
+                        Couldn't load your active sessions right now.
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={{ color: theme.textSecondary, fontSize: 11.5, lineHeight: 16, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
+                        Everywhere you're currently signed in. Logging out a device may take a little while to take effect there if it's offline.
+                      </Text>
+                      {activeSessionsList.map((s) => {
+                        const device = parseSessionDevice(s.user_agent);
+                        return (
+                          <View key={s.id} style={styles.notificationCard}>
+                            <View style={[styles.notifAvatar, { backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }]}>
+                              <DeviceIconSVG kind={device.icon} color={theme.textSecondary} size={18} />
+                            </View>
+                            <View style={{ flex: 1, marginRight: 8 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={[styles.notifText, { flexShrink: 1 }]} numberOfLines={1}>{device.label}</Text>
+                                {s.is_current && (
+                                  <View style={{ backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#7D52DD', borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 }}>
+                                    <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700' }}>This device</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>
+                                Active {formatRelativeTime(s.updated_at || s.created_at)}
+                              </Text>
+                            </View>
+                            {!s.is_current && (
+                              <BouncyButton
+                                style={styles.notifFollowBackBtn}
+                                onPress={() => setRevokeSessionTarget(s)}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Log out ${device.label}`}
+                              >
+                                <Text style={styles.notifFollowBackText}>Log Out</Text>
+                              </BouncyButton>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </>
                   )}
                 </>
               )}
