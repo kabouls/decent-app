@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 649;
+const BUILD_NUMBER = 650;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -593,7 +593,7 @@ const SoftwareIconSVG = React.memo(({ name, size = 18 }) => {
   }
   return (
     <View style={{
-      width: size, height: size, borderRadius: size / 2, backgroundColor: '#8B5CF6',
+      width: size, height: size, borderRadius: size / 2, backgroundColor: '#7D52DD',
       alignItems: 'center', justifyContent: 'center'
     }}>
       <Text style={{ color: '#FFFFFF', fontSize: size * 0.55, fontWeight: '800' }}>
@@ -687,7 +687,7 @@ const CategoryChipBg = React.memo(({ active }) => {
     return (
       <View style={{
         position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-        backgroundColor: active ? '#8B5CF6' : (themeMode === 'light' ? '#FFFFFF' : '#1E2330')
+        backgroundColor: active ? '#7D52DD' : (themeMode === 'light' ? '#FFFFFF' : '#1E2330')
       }} />
     );
   }
@@ -699,7 +699,7 @@ const CategoryChipBg = React.memo(({ active }) => {
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
       />
       {active && (
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(139, 92, 246, 0.55)' }} />
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(125, 82, 221, 0.75)' }} />
       )}
     </>
   );
@@ -1099,7 +1099,7 @@ const AnimatedPillTabs = React.memo(({ tabs, activeKey, onChange, theme, themeMo
             top: 4, bottom: 4,
             width: tabWidths[tabs[activeIndex].key],
             borderRadius: 99,
-            backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+            backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
             transform: [{
               translateX: tabs.length > 1
                 ? slideAnim.interpolate({ inputRange: tabs.map((_, i) => i), outputRange: offsets })
@@ -1724,7 +1724,7 @@ const THEME_DARK = {
   border: '#26334D',
   text: '#F8FAFC',
   textSecondary: '#94A3B8',
-  textTertiary: '#64748B',
+  textTertiary: '#7B889C',
   primary: '#8B5CF6',
   accent: '#C084FC',
   accentLight: '#D8B4FE'
@@ -1737,7 +1737,7 @@ const THEME_LIGHT = {
   border: '#E2DFF0',
   text: '#1A1625',
   textSecondary: '#6B6478',
-  textTertiary: '#8B85A0',
+  textTertiary: '#6F6A80',
   primary: '#7C3AED',
   accent: '#7C3AED',
   accentLight: '#9061F9'
@@ -2819,7 +2819,7 @@ const ProjectCard = React.memo(({
         <CardLink href={`/p/${item.id}`} activeOpacity={0.88} onPress={() => onPress(item)}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             {item.isAiGenerated === true && (
-              <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: 5, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: 5, backgroundColor: '#7D52DD', alignItems: 'center', justifyContent: 'center' }}>
                 {/* b556: was 'AI ASSISTED' for illustration specifically,
                     matching just 'AI' now for every type on the card -
                     the longer wording only reads correctly with more
@@ -3131,7 +3131,7 @@ const WebImageCropModal = ({ visible, imageUri, aspect, onConfirm, onCancel, the
               <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>Cancel</Text>
             </BouncyButton>
             <BouncyButton
-              style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: '#8B5CF6' }}
+              style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: '#7D52DD' }}
               onPress={handleConfirm}
             >
               <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 13 }}>Use Photo</Text>
@@ -4023,7 +4023,7 @@ function AuthScreen({ onCancel } = {}) {
         </BouncyButton>
       )}
       <BouncyButton
-        style={{ backgroundColor: '#8B5CF6', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}
+        style={{ backgroundColor: '#7D52DD', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}
         onPress={handleSubmit}
         disabled={loading}
       >
@@ -4112,7 +4112,7 @@ function AuthScreen({ onCancel } = {}) {
             <Text style={[styles.confirmTitle, { marginTop: 10 }]}>{alertConfig?.title}</Text>
             {alertConfig?.message ? <Text style={styles.confirmSubText}>{alertConfig.message}</Text> : null}
             <BouncyButton
-              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 8, backgroundColor: '#8B5CF6' }]}
+              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 8, backgroundColor: '#7D52DD' }]}
               onPress={() => setAlertConfig(null)}
               activeOpacity={0.7}
             >
@@ -4295,7 +4295,7 @@ const AnimatedPillTabBar = ({ tabs, activeKey, onChange, theme, themeMode, fontS
           style={{
             position: 'absolute', top: 4, bottom: 4, left: 4,
             width: segmentWidth, borderRadius: 99,
-            backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+            backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
             transform: [{
               translateX: slideAnim.interpolate({
                 inputRange: tabs.map((_, i) => i),
@@ -11980,7 +11980,7 @@ function App() {
                 pointerEvents="none"
                 style={{
                   position: 'absolute', left: 0, right: 0, top: 0, height: 3, borderRadius: 2,
-                  backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+                  backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
                   zIndex: 20,
                   transform: [{ translateY: linkDragY.interpolate(linkDropLineInterpRef.current) }]
                 }}
@@ -12082,7 +12082,7 @@ function App() {
               Open in app
             </Text>
             <BouncyButton
-              style={{ backgroundColor: '#8B5CF6', borderRadius: 99, paddingVertical: 7, paddingHorizontal: 14 }}
+              style={{ backgroundColor: '#7D52DD', borderRadius: 99, paddingVertical: 7, paddingHorizontal: 14 }}
               onPress={handleOpenInAppTap}
             >
               <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>Open</Text>
@@ -12368,7 +12368,7 @@ function App() {
         }}>
           <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', flex: 1 }}>You're offline</Text>
           <BouncyButton
-            style={{ backgroundColor: '#EF4444', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 }}
+            style={{ backgroundColor: '#CF3B3B', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 }}
             onPress={() => {
               NetInfoCompat.fetch().then((state) => {
                 const stillOffline = state.isConnected === false || state.isInternetReachable === false;
@@ -12406,7 +12406,7 @@ function App() {
         }}>
           <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', flex: 1 }}>A new version is available</Text>
           <BouncyButton
-            style={{ backgroundColor: '#8B5CF6', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12, minWidth: 64, alignItems: 'center' }}
+            style={{ backgroundColor: '#7D52DD', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12, minWidth: 64, alignItems: 'center' }}
             onPress={handleApplyUpdate}
             disabled={updateDownloading}
           >
@@ -12542,7 +12542,7 @@ function App() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   width: '100%',
-                  backgroundColor: disableSafeSearchCountdown > 0 ? theme.bg : '#EF4444',
+                  backgroundColor: disableSafeSearchCountdown > 0 ? theme.bg : '#CF3B3B',
                   borderWidth: disableSafeSearchCountdown > 0 ? 1.5 : 0,
                   borderColor: theme.border
                 }}
@@ -12637,7 +12637,7 @@ function App() {
               </Text>
               <TouchableOpacity
                 style={{
-                  backgroundColor: '#8B5CF6',
+                  backgroundColor: '#7D52DD',
                   height: 48,
                   borderRadius: 12,
                   alignItems: 'center',
@@ -12723,7 +12723,7 @@ function App() {
 
           <View style={{ paddingHorizontal: 24, paddingBottom: 24 }}>
             <BouncyButton
-              style={{ backgroundColor: '#8B5CF6', height: 50, borderRadius: 99, alignItems: 'center', justifyContent: 'center' }}
+              style={{ backgroundColor: '#7D52DD', height: 50, borderRadius: 99, alignItems: 'center', justifyContent: 'center' }}
               onPress={() => {
                 if (introPageIndex < INTRO_CAROUSEL_PAGES.length - 1) {
                   const nextIndex = introPageIndex + 1;
@@ -12908,9 +12908,9 @@ function App() {
                   flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end',
                   paddingHorizontal: 8, overflow: 'hidden'
                 },
-                notificationModalVisible && { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
+                notificationModalVisible && { backgroundColor: '#7D52DD', borderColor: '#8B5CF6' },
                 bellFlash && { backgroundColor: theme.accent, borderColor: theme.accent },
-                bellIntroCount > 0 && { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' }
+                bellIntroCount > 0 && { backgroundColor: '#7D52DD', borderColor: '#8B5CF6' }
               ]}
               onPress={() => {
                 if (notificationModalVisible) {
@@ -12952,7 +12952,7 @@ function App() {
           </View>
 
           <BouncyButton
-            style={[styles.headerIconBtn, settingsModalVisible && { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' }]}
+            style={[styles.headerIconBtn, settingsModalVisible && { backgroundColor: '#7D52DD', borderColor: '#8B5CF6' }]}
             onPress={() => {
               playCogSpin();
               if (settingsModalVisible) {
@@ -13392,7 +13392,7 @@ function App() {
                           {circleHasNewPost[des.id] && (
                             <View style={{
                               position: 'absolute', bottom: 0, right: 0, width: 14, height: 14, borderRadius: 7,
-                              backgroundColor: '#EF4444', borderWidth: 2, borderColor: theme.bg
+                              backgroundColor: '#CF3B3B', borderWidth: 2, borderColor: theme.bg
                             }} />
                           )}
                         </View>
@@ -13985,7 +13985,7 @@ function App() {
                   Create an account to build your portfolio, follow designers, and track your activity.
                 </Text>
                 <BouncyButton
-                  style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6', paddingHorizontal: 28, paddingVertical: 12, borderRadius: 99 }}
+                  style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD', paddingHorizontal: 28, paddingVertical: 12, borderRadius: 99 }}
                   onPress={() => setGuestAuthPromptVisible(true)}
                   accessibilityRole="button"
                 >
@@ -14098,7 +14098,7 @@ function App() {
                       top: 4, bottom: 4, left: 4,
                       width: (profileTabBarWidth - 12) / 2,
                       borderRadius: 99,
-                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
                       transform: [{
                         translateX: profileTabSlideAnim.interpolate({
                           inputRange: [0, 1],
@@ -15099,7 +15099,7 @@ function App() {
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
                 onPress={confirmDeletePortfolio}
                 accessibilityRole="button"
               >
@@ -15127,7 +15127,7 @@ function App() {
               Your account profile, location, and preferences have been updated successfully!
             </Text>
             <BouncyButton
-              style={{ backgroundColor: '#8B5CF6', borderRadius: 99, paddingVertical: 14, width: '100%', alignItems: 'center' }}
+              style={{ backgroundColor: '#7D52DD', borderRadius: 99, paddingVertical: 14, width: '100%', alignItems: 'center' }}
               onPress={handleCloseAccountSaveSuccess}
               accessibilityRole="button"
             >
@@ -15363,7 +15363,7 @@ function App() {
                     pointerEvents="none"
                     style={{
                       position: 'absolute', left: 0, right: 0, top: 0, height: 3, borderRadius: 2,
-                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
                       zIndex: 20,
                       transform: [{ translateY: linkDragY.interpolate(linkDropLineInterpRef.current) }]
                     }}
@@ -15708,7 +15708,7 @@ function App() {
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
                 accessibilityRole="button"
                 onPress={async () => {
                   setLogoutConfirmModalVisible(false);
@@ -15812,7 +15812,7 @@ function App() {
               <BouncyButton
                 style={[
                   styles.confirmDeleteBtn,
-                  { flex: 1, backgroundColor: deleteConfirmText.trim().toUpperCase() === 'DELETE' ? '#EF4444' : '#3A2222' }
+                  { flex: 1, backgroundColor: deleteConfirmText.trim().toUpperCase() === 'DELETE' ? '#CF3B3B' : '#3A2222' }
                 ]}
                 onPress={executeAccountDeletion}
                 disabled={deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
@@ -15877,7 +15877,7 @@ function App() {
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Keep Editing</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
                 accessibilityRole="button"
                 onPress={() => {
                   setAccountSettingsDiscardWarningVisible(false);
@@ -15946,7 +15946,7 @@ function App() {
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Keep Editing</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
                 accessibilityRole="button"
                 onPress={() => {
                   setPasswordPageDiscardWarningVisible(false);
@@ -16047,7 +16047,7 @@ function App() {
               </View>
 
               <BouncyButton
-                style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6', borderRadius: 99, paddingVertical: 14, alignItems: 'center', marginTop: 10 }}
+                style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD', borderRadius: 99, paddingVertical: 14, alignItems: 'center', marginTop: 10 }}
                 onPress={() => setAboutModalVisible(false)}
                 accessibilityRole="button"
               >
@@ -17309,7 +17309,7 @@ function App() {
                   <Animated.View
                     style={{
                       position: 'absolute', top: 3, left: 3, width: 30, height: 30, borderRadius: 15,
-                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
                       transform: [{
                         translateX: themeToggleAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 30] })
                       }]
@@ -17661,7 +17661,7 @@ function App() {
                               <Avatar uri={notif.avatar} style={styles.notifAvatar} />
                             )}
                             {!notif.read && (
-                              <View style={{ position: 'absolute', top: 0, right: 0, width: 9, height: 9, borderRadius: 4.5, backgroundColor: '#EF4444', borderWidth: 1.5, borderColor: theme.surface }} />
+                              <View style={{ position: 'absolute', top: 0, right: 0, width: 9, height: 9, borderRadius: 4.5, backgroundColor: '#CF3B3B', borderWidth: 1.5, borderColor: theme.surface }} />
                             )}
                           </BouncyButton>
                           <BouncyButton
@@ -18462,7 +18462,7 @@ function App() {
                       top: 4, bottom: 4, left: 4,
                       width: (designerProfileTabBarWidth - 12) / 2,
                       borderRadius: 99,
-                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
                       transform: [{
                         translateX: designerProfileTabSlideAnim.interpolate({
                           inputRange: [0, 1],
@@ -18710,7 +18710,7 @@ function App() {
                     style={{
                       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
                       paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
-                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD'
                     }}
                     onPress={() => {
                       setSelectedPortfolioType('ui_ux');
@@ -18730,7 +18730,7 @@ function App() {
                     style={{
                       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
                       paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99,
-                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD'
                     }}
                     onPress={() => {
                       setSelectedPortfolioType('ui_ux');
@@ -18788,7 +18788,7 @@ function App() {
                         {/* Remaining preset count, computed rather than
                             hardcoded so this stays correct if the list
                             above ever grows/shrinks. */}
-                        <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
+                        <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#7D52DD', alignItems: 'center', justifyContent: 'center' }}>
                           <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '800' }}>
                             +{Math.max(0, ILLUSTRATION_SOFTWARE_LIST.length - 4)}
                           </Text>
@@ -18798,7 +18798,7 @@ function App() {
                         style={{
                           flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
                           paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99,
-                          backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                          backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD'
                         }}
                         onPress={() => {
                           setSelectedPortfolioType(type.key);
@@ -18816,7 +18816,7 @@ function App() {
                       style={{
                         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, alignSelf: 'flex-end',
                         paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
-                        backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                        backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD'
                       }}
                       onPress={() => {
                         setSelectedPortfolioType(type.key);
@@ -18878,7 +18878,7 @@ function App() {
                   style={{
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-end',
                     paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
-                    backgroundColor: myFeatureInterests.has(type.key) ? '#10B981' : theme.accent
+                    backgroundColor: myFeatureInterests.has(type.key) ? '#0B815A' : theme.accent
                   }}
                   onPress={() => {
                     if (!requireAuth()) return;
@@ -20120,7 +20120,7 @@ function App() {
                             style={{
                               flexDirection: 'row', alignItems: 'center', gap: 6,
                               paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8,
-                              backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                              backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD'
                             }}
                             onPress={() => setFullscreenDescEditorVisible(true)}
                             accessibilityRole="button"
@@ -20137,7 +20137,7 @@ function App() {
                         ) : (
                           <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 12 }}>
                             <BouncyButton
-                              style={{ backgroundColor: '#8B5CF6', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 99 }}
+                              style={{ backgroundColor: '#7D52DD', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 99 }}
                               onPress={() => setFullscreenDescEditorVisible(true)}
                               accessibilityRole="button"
                             >
@@ -20205,7 +20205,7 @@ function App() {
                     <BouncyButton
                       style={{
                         height: 32, paddingHorizontal: 14, borderRadius: 8,
-                        backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+                        backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
                         alignItems: 'center', justifyContent: 'center'
                       }}
                       onPress={() => setFullscreenDescEditorVisible(false)}
@@ -21457,7 +21457,7 @@ function App() {
                     <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Keep Editing</Text>
                   </BouncyButton>
                   <BouncyButton
-                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
+                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
                     accessibilityRole="button"
                     onPress={() => {
                       setDiscardConfirmModalVisible(false);
@@ -22147,7 +22147,7 @@ function App() {
                                 key={idx}
                                 style={{
                                   flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                  backgroundColor: '#8B5CF6', borderRadius: 99, paddingVertical: 10, paddingHorizontal: 16
+                                  backgroundColor: '#7D52DD', borderRadius: 99, paddingVertical: 10, paddingHorizontal: 16
                                 }}
                                 onPress={() => openExternalLinkWithWarning(link.url)}
                               >
@@ -22181,7 +22181,7 @@ function App() {
                               {activeProject.isAiGenerated === true && (
                                 <View style={showAiTooltip ? { position: 'relative', zIndex: 100 } : { position: 'relative' }}>
                                   <BouncyButton
-                                    style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
+                                    style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: '#7D52DD', alignItems: 'center', justifyContent: 'center' }}
                                     onPress={handleAiIconPress}
                                   >
                                     <Text style={{ color: '#E2E8F0', fontSize: 11, fontWeight: '800' }}>{activeProject.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
@@ -22265,7 +22265,7 @@ function App() {
                               only the container needed to match, not the
                               content styling. */}
                           {activeProject.portfolioType === 'illustration' && activeProject.aiDisclosureNote ? (
-                            <View style={{ backgroundColor: '#8B5CF6', borderRadius: 14, padding: 14, marginBottom: 16 }}>
+                            <View style={{ backgroundColor: '#7D52DD', borderRadius: 14, padding: 14, marginBottom: 16 }}>
                               {/* b558: restructured from one BouncyButton
                                   spanning the whole row into three separate
                                   pressables - the "!" info button needs its
@@ -22868,7 +22868,7 @@ function App() {
                             key={idx}
                             style={{
                               flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                              backgroundColor: '#8B5CF6', borderRadius: 99, paddingVertical: 10, paddingHorizontal: 16
+                              backgroundColor: '#7D52DD', borderRadius: 99, paddingVertical: 10, paddingHorizontal: 16
                             }}
                             onPress={() => openExternalLinkWithWarning(link.url)}
                           >
@@ -22899,7 +22899,7 @@ function App() {
                       {activeProject.isAiGenerated === true && (
                         <View style={showAiTooltip ? { position: 'relative', zIndex: 100 } : { position: 'relative' }}>
                           <BouncyButton
-                            style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: '#7D52DD', alignItems: 'center', justifyContent: 'center' }}
                             onPress={handleAiIconPress}
                           >
                             <Text style={{ color: '#E2E8F0', fontSize: 11, fontWeight: '800' }}>{activeProject.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
@@ -23145,7 +23145,7 @@ function App() {
                       version above, just matching this pane's own
                       indentation level. */}
                   {activeProject.portfolioType === 'illustration' && activeProject.aiDisclosureNote ? (
-                    <View style={{ backgroundColor: '#8B5CF6', borderRadius: 14, padding: 14, marginBottom: 16 }}>
+                    <View style={{ backgroundColor: '#7D52DD', borderRadius: 14, padding: 14, marginBottom: 16 }}>
                       {/* b558: same restructuring as the narrow-web
                           version above - see that one's comment for the
                           full reasoning. */}
@@ -23227,7 +23227,7 @@ function App() {
                                         top: 4, bottom: 4, left: 4,
                                         width: (protoTabBarWidth - 12) / 2,
                                         borderRadius: 99,
-                                        backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+                                        backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
                                         transform: [{
                                           translateX: protoTabSlideAnim.interpolate({
                                             inputRange: [0, 1],
@@ -23375,7 +23375,7 @@ function App() {
               onStartShouldSetResponder={() => Platform.OS === 'web'}
               onResponderRelease={() => {}}
             >
-              <View style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
+              <View style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: '#7D52DD', alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
                 <Text style={{ color: '#FFFFFF', fontSize: 26, fontWeight: '800' }}>D</Text>
               </View>
               <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Get the DECENT App</Text>
@@ -23390,7 +23390,7 @@ function App() {
                   <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Not Now</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#8B5CF6' }]}
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#7D52DD' }]}
                   onPress={() => {
                     handleDismissAndroidPromo();
                     openExternalLinkWithWarning(GITHUB_URL);
@@ -23423,7 +23423,7 @@ function App() {
                   <Text style={[styles.confirmDeleteText, { color: theme.text }]}>No</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#8B5CF6' }]}
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#7D52DD' }]}
                   onPress={() => handleIosInterestResponse('yes')}
                 >
                   <Text style={styles.confirmDeleteText}>Yes</Text>
@@ -23502,8 +23502,8 @@ function App() {
                     btn.style === 'cancel'
                       ? { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }
                       : btn.style === 'destructive'
-                      ? { backgroundColor: '#EF4444' }
-                      : { backgroundColor: '#8B5CF6' }
+                      ? { backgroundColor: '#CF3B3B' }
+                      : { backgroundColor: '#7D52DD' }
                   ]}
                   onPress={() => {
                     setAppAlertConfig(null);
@@ -23798,7 +23798,7 @@ function App() {
               </Text>
               <View style={{
                 width: 44, height: 44, alignItems: 'center', justifyContent: 'center',
-                backgroundColor: shareCopied ? '#10B981' : theme.primary, marginLeft: 8
+                backgroundColor: shareCopied ? '#0B815A' : theme.primary, marginLeft: 8
               }}>
                 {shareCopied ? <CheckIconSVG color="#FFFFFF" /> : <CopyIconSVG />}
               </View>
@@ -24121,7 +24121,7 @@ const getStyles = (theme, radiusScale = 1) => {
   headerRightActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerIconBtn: { width: 36, height: 36, borderRadius: 99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
   headerIconBtnWithBadge: { width: 36, height: 36, borderRadius: 99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  unreadRedBadgeDot: { position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444', borderWidth: 1.5, borderColor: theme.bg },
+  unreadRedBadgeDot: { position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#CF3B3B', borderWidth: 1.5, borderColor: theme.bg },
 
   notificationCard: { backgroundColor: theme.bg, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   notifAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: theme.border },
@@ -24131,7 +24131,7 @@ const getStyles = (theme, radiusScale = 1) => {
   notifTimeText: { color: theme.textSecondary, fontSize: 11, marginTop: 3 },
   notifTypeIconBox: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
 
-  notifFollowBackBtn: { backgroundColor: '#8B5CF6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
+  notifFollowBackBtn: { backgroundColor: '#7D52DD', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   notifFollowBackBtnActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#8B5CF6' },
   notifFollowBackText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
   notifFollowBackTextActive: { color: theme.accent },
@@ -24166,11 +24166,11 @@ const getStyles = (theme, radiusScale = 1) => {
     backgroundColor: Platform.OS !== 'web' ? 'transparent' : theme.surface, paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: 99, borderWidth: 1, borderColor: theme.border, marginRight: 8, overflow: 'hidden'
   },
-  topCategoryChipActive: { backgroundColor: Platform.OS !== 'web' ? 'transparent' : '#8B5CF6', borderColor: '#8B5CF6' },
+  topCategoryChipActive: { backgroundColor: Platform.OS !== 'web' ? 'transparent' : '#7D52DD', borderColor: '#8B5CF6' },
   topCategoryText: { color: theme.textSecondary, fontSize: 12, fontWeight: '600' },
   topCategoryTextActive: { color: '#FFFFFF', fontWeight: '700' },
   grid2x2CategoryBtn: {
-    backgroundColor: '#8B5CF6', width: 34, height: 34, borderRadius: 99,
+    backgroundColor: '#7D52DD', width: 34, height: 34, borderRadius: 99,
     alignItems: 'center', justifyContent: 'center', marginRight: 16
   },
 
@@ -24180,7 +24180,7 @@ const getStyles = (theme, radiusScale = 1) => {
   },
   selectedCategoriesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
   selectedCategoryPill: {
-    backgroundColor: '#8B5CF6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99
+    backgroundColor: '#7D52DD', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99
   },
   selectedCategoryText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
   categoryVerticalItem: { paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: theme.border },
@@ -24234,7 +24234,7 @@ const getStyles = (theme, radiusScale = 1) => {
   // collapsing the button down to just its text's natural height with
   // no real vertical padding. Confirmed bug, not just theoretical -
   // found across 7 standalone usages in this file.
-  confirmDeleteBtn: { flex: 1, backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#8B5CF6', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
+  confirmDeleteBtn: { flex: 1, backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#7D52DD', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   confirmDeleteText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 
   overlayModalBg: { flex: 1, backgroundColor: Platform.OS === 'web' ? 'rgba(0, 0, 0, 0.6)' : 'rgba(11, 15, 23, 0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -24244,11 +24244,11 @@ const getStyles = (theme, radiusScale = 1) => {
     ...(Platform.OS === 'web' ? { maxWidth: 480, alignSelf: 'center' } : {})
   },
   accountSettingsScrollContent: { padding: 20, gap: 12 },
-  saveAccountSettingsBtn: { backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#8B5CF6', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
+  saveAccountSettingsBtn: { backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#7D52DD', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
 
   allCategoriesGrid: { padding: 20, flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between' },
   overlayCategoryCard: { width: '48%', backgroundColor: theme.bg, paddingVertical: 14, paddingHorizontal: 10, borderRadius: 14.4, borderWidth: 1, borderColor: theme.border, alignItems: 'center' },
-  overlayCategoryCardActive: { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
+  overlayCategoryCardActive: { backgroundColor: '#7D52DD', borderColor: '#8B5CF6' },
   overlayCategoryText: { color: theme.text, fontSize: 12, fontWeight: '700' },
   overlayCategoryTextActive: { color: '#FFFFFF' },
 
@@ -24261,7 +24261,7 @@ const getStyles = (theme, radiusScale = 1) => {
   emptyFollowedBox: { backgroundColor: theme.surface, borderRadius: 19.2, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center', marginTop: 10 },
   emptyFollowedTitle: { fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 8, textAlign: 'center' },
   emptyFollowedSub: { fontSize: 13, color: theme.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
-  discoverDesignersBtn: { backgroundColor: '#8B5CF6', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 99 },
+  discoverDesignersBtn: { backgroundColor: '#7D52DD', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 99 },
   discoverBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 
   grid: Platform.OS === 'web'
@@ -24301,7 +24301,7 @@ const getStyles = (theme, radiusScale = 1) => {
   // right side of the same row now (see ProjectCard's new top row).
   designerAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: theme.border },
   cardDesignerName: { color: theme.accent, fontSize: 12, fontWeight: '600', flexShrink: 1 },
-  cardFollowBtnRight: { backgroundColor: '#8B5CF6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
+  cardFollowBtnRight: { backgroundColor: '#7D52DD', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
   cardFollowBtnRightActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#8B5CF6' },
   cardFollowBtnText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
   cardFollowBtnTextActive: { color: theme.accent },
@@ -24336,7 +24336,7 @@ const getStyles = (theme, radiusScale = 1) => {
   menuLabel: { fontSize: 10, fontWeight: '600', color: theme.textSecondary, marginTop: 2 },
   menuLabelActive: { color: '#8B5CF6', fontWeight: '700' },
   plusContainerBtn: {
-    width: 44, height: 44, borderRadius: 99, backgroundColor: '#8B5CF6',
+    width: 44, height: 44, borderRadius: 99, backgroundColor: '#7D52DD',
     alignItems: 'center', justifyContent: 'center', marginHorizontal: 4,
     shadowColor: '#8B5CF6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 6
   },
@@ -24355,7 +24355,7 @@ const getStyles = (theme, radiusScale = 1) => {
   emptySearchText: { color: theme.textSecondary, fontSize: 13, marginTop: 20 },
 
   designerCardActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  smallFollowBtn: { flex: 1, backgroundColor: '#8B5CF6', paddingVertical: 6, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
+  smallFollowBtn: { flex: 1, backgroundColor: '#7D52DD', paddingVertical: 6, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   smallFollowBtnActive: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#8B5CF6' },
   smallFollowText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
   smallFollowTextActive: { color: theme.accent },
@@ -24368,7 +24368,7 @@ const getStyles = (theme, radiusScale = 1) => {
   statDivider: { width: 1, height: 24, backgroundColor: theme.border },
 
   designerProfileActionsRow: { flexDirection: 'row', gap: 10, marginTop: 12, width: '100%', alignItems: 'center' },
-  modalFollowBtn: { flex: 1, backgroundColor: '#8B5CF6', paddingVertical: 12, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
+  modalFollowBtn: { flex: 1, backgroundColor: '#7D52DD', paddingVertical: 12, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   modalFollowBtnActive: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#8B5CF6' },
   modalFollowText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   modalFollowTextActive: { color: theme.accent },
@@ -24447,7 +24447,7 @@ const getStyles = (theme, radiusScale = 1) => {
     paddingHorizontal: 16
   },
   uniformWizardBtnPrimary: {
-    height: 44, backgroundColor: '#8B5CF6', flex: 1,
+    height: 44, backgroundColor: '#7D52DD', flex: 1,
     borderRadius: 99, alignItems: 'center', justifyContent: 'center'
   },
   backBtnText: { color: theme.textSecondary, fontSize: 13, fontWeight: '700' },
@@ -24475,7 +24475,7 @@ const getStyles = (theme, radiusScale = 1) => {
   closeBtnText: { color: theme.mode === 'light' ? '#6D28D9' : '#FFF', fontSize: 16, fontWeight: '700' },
   tabBar: { flexDirection: 'row', backgroundColor: theme.surface, padding: 6, marginHorizontal: 16, marginVertical: 10, borderRadius: 14.4, gap: 6 },
   tabBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 99 },
-  tabBtnActive: { backgroundColor: '#8B5CF6' },
+  tabBtnActive: { backgroundColor: '#7D52DD' },
   tabBtnText: { color: theme.textSecondary, fontSize: 12, fontWeight: '700' },
   tabBtnTextActive: { color: '#FFF' },
   // position:'relative' + zIndex establishes this as its own stacking
@@ -24511,7 +24511,7 @@ const getStyles = (theme, radiusScale = 1) => {
   designerAvatarModal: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.border },
   caseDesigner: { fontSize: 14, color: theme.accent, fontWeight: '700' },
   caseDesignerRole: { fontSize: 11, color: theme.textSecondary, fontWeight: '600' },
-  modalDesignerFollowBtnRight: { backgroundColor: '#8B5CF6', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99 },
+  modalDesignerFollowBtnRight: { backgroundColor: '#7D52DD', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99 },
   modalDesignerFollowBtnRightActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#8B5CF6' },
   modalDesignerFollowTextRight: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   modalDesignerFollowTextRightActive: { color: theme.accent },
@@ -24642,7 +24642,7 @@ class CrashFallbackBoundary extends React.Component {
               We've automatically been notified and are looking into it. Try restarting - your data is safe.
             </Text>
             <BouncyButton
-              style={{ backgroundColor: '#8B5CF6', height: 48, paddingHorizontal: 32, borderRadius: 99, alignItems: 'center', justifyContent: 'center' }}
+              style={{ backgroundColor: '#7D52DD', height: 48, paddingHorizontal: 32, borderRadius: 99, alignItems: 'center', justifyContent: 'center' }}
               onPress={this.handleRestart}
             >
               <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>Restart</Text>
