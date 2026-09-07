@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 656;
+const BUILD_NUMBER = 659;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7588,7 +7588,16 @@ function App() {
         setUserDataLoaded(true);
       }
     })();
-  }, [session]);
+    // b658: keyed on the stable user id, not the whole session object -
+    // Supabase issues a brand new session object on every token refresh
+    // (periodic throughout the day, and on every app foreground/resume)
+    // even for the exact same logged-in user. Depending on the whole
+    // object was re-running this entire effect - full profile refetch,
+    // followed-designers reload, and the userDataLoaded flip that gates
+    // several other effects (including the create_password reminder,
+    // which was firing several times a day as a direct result) - far
+    // more often than an actual login/logout ever happens.
+  }, [session?.user?.id]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -8411,35 +8420,51 @@ function App() {
   // shows up - checked once per session load rather than a server cron
   // job, same "no more infrastructure than needed" approach as the
   // notification cleanup elsewhere in this file.
+  const createPasswordReminderInFlightRef = useRef(false);
   useEffect(() => {
     if (!session || !userDataLoaded || hasPasswordAuth) return;
+    if (createPasswordReminderInFlightRef.current) return;
+    createPasswordReminderInFlightRef.current = true;
     (async () => {
-      const { data: last } = await supabase
-        .from('notifications')
-        .select('created_at')
-        .eq('recipient_id', session.user.id)
-        .eq('type', 'create_password')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      try {
+        const { data: last } = await supabase
+          .from('notifications')
+          .select('created_at')
+          .eq('recipient_id', session.user.id)
+          .eq('type', 'create_password')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-      if (!last || new Date(last.created_at).getTime() < sevenDaysAgo) {
-        // b539: see the matching comment at the like-notification insert
-        // in toggleLike - same reasoning, sendPushNotification() call
-        // removed, the Database Webhook on this insert handles it
-        // server-side now.
-        const { error } = await supabase.from('notifications').insert({
-          recipient_id: session.user.id,
-          actor_id: session.user.id,
-          type: 'create_password'
-        });
-        if (!error) {
-          fetchNotifications();
+        const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        if (!last || new Date(last.created_at).getTime() < sevenDaysAgo) {
+          // b539: see the matching comment at the like-notification insert
+          // in toggleLike - same reasoning, sendPushNotification() call
+          // removed, the Database Webhook on this insert handles it
+          // server-side now.
+          const { error } = await supabase.from('notifications').insert({
+            recipient_id: session.user.id,
+            actor_id: session.user.id,
+            type: 'create_password'
+          });
+          if (!error) {
+            fetchNotifications();
+          }
         }
+      } finally {
+        createPasswordReminderInFlightRef.current = false;
       }
     })();
-  }, [session, userDataLoaded, hasPasswordAuth]);
+    // b658: dependency deliberately keyed on the stable user id rather
+    // than the whole session object - Supabase issues a brand new session
+    // object on every token refresh (which happens periodically all day,
+    // and on every app foreground/resume) even when it's the exact same
+    // logged-in user, and that object identity change was re-triggering
+    // this entire effect (including the profile-reload effect gating
+    // userDataLoaded) far more often than "once per real app open," which
+    // is what was producing several reminders in a single day instead of
+    // the intended one per 7 days.
+  }, [session?.user?.id, userDataLoaded, hasPasswordAuth]);
 
   const showStickySaveButton = accountSettingsModalVisible && hasUnsavedAccountChanges();
   const [stickySaveRendered, setStickySaveRendered] = useState(false);
@@ -16359,9 +16384,6 @@ function App() {
           </View>
         </Modal>
       )}
-          message, one button. Conditionally mounted (not toggle-visible)
-          per this file's own documented modal-stacking fix, since it's a
-          brand new modal. */}
       {emailVerifiedModalVisible && (
         <Modal
           animationType="fade"
@@ -19332,88 +19354,108 @@ function App() {
           all IS the agreement, no schema change needed. */}
       {requestPortfolioTypeModalVisible && (
         <Modal
-          animationType="fade"
+          animationType={Platform.OS === 'web' ? 'none' : 'fade'}
           transparent={true}
           visible={true}
           onRequestClose={() => setRequestPortfolioTypeModalVisible(false)}
         >
           <View style={styles.overlayModalBg}>
-            <View style={[styles.customConfirmCard, fancyConfirmCardOverlay, isWebWide && { maxWidth: 420 }]}>
-              <BouncyButton
-                style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 1 }}
-                onPress={() => setRequestPortfolioTypeModalVisible(false)}
-                accessibilityRole="button"
-                accessibilityLabel="Close"
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView
+                  intensity={55}
+                  tint={themeMode === 'light' ? 'light' : 'dark'}
+                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                />
+              )
+            )}
+            <View style={[styles.overlayModalContainer, { maxHeight: Math.min(560, Dimensions.get('window').height - 120) }]}>
+              <View style={styles.modalTopBar}>
+                <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Request a Portfolio Type</Text>
+                <BouncyButton
+                  style={styles.closeBtn}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  onPress={() => setRequestPortfolioTypeModalVisible(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                >
+                  <Text style={styles.closeBtnText}>✕</Text>
+                </BouncyButton>
+              </View>
+
+              <AppKeyboardAwareScrollView
+                contentContainerStyle={{ padding: 20, gap: 12 }}
+                enableOnAndroid={true}
+                extraScrollHeight={140}
+                keyboardShouldPersistTaps="handled"
               >
-                <CrossIconSVG color={theme.textSecondary} size={18} />
-              </BouncyButton>
-
-              <Text style={[styles.confirmTitle, { marginBottom: 10, paddingRight: 28 }]}>Request a Portfolio Type</Text>
-
-              <Text style={[styles.confirmSubText, { textAlign: 'left', marginBottom: 16 }]}>
-                Don't see a category that fits your work? Tell us what you'd want to showcase (e.g. Animation, Motion Design, 3D Art) and we'll factor it into what we build next.
-              </Text>
-
-              <Text style={styles.formGroupLabel}>What type of portfolio? *</Text>
-              <FocusableTextInput
-                style={styles.formInput}
-                placeholder="e.g. Animation, Motion Design, 3D Art..."
-                placeholderTextColor="#94A3B8"
-                value={newPortfolioTypeText}
-                onChangeText={setNewPortfolioTypeText}
-                maxLength={60}
-                accessibilityLabel="Portfolio type requested"
-              />
-
-              <Text style={styles.formGroupLabel}>Tell us more (optional)</Text>
-              <FocusableTextInput
-                style={[styles.formInput, { height: 80, textAlignVertical: 'top' }]}
-                multiline
-                placeholder="What kind of work would you upload? Any examples or references help."
-                placeholderTextColor="#94A3B8"
-                value={newPortfolioTypeDetails}
-                onChangeText={setNewPortfolioTypeDetails}
-                maxLength={500}
-                accessibilityLabel="Additional details"
-              />
-
-              <BouncyButton
-                style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 16 }}
-                onPress={() => setNewPortfolioTypeConsent(!newPortfolioTypeConsent)}
-                accessibilityRole="checkbox"
-                accessibilityLabel="I'm okay being contacted if this request is considered"
-                accessibilityState={{ checked: newPortfolioTypeConsent }}
-              >
-                <View style={{
-                  width: 20, height: 20, borderRadius: 5, marginTop: 1,
-                  borderWidth: 1.5, borderColor: newPortfolioTypeConsent ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                  backgroundColor: newPortfolioTypeConsent ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
-                  alignItems: 'center', justifyContent: 'center'
-                }}>
-                  {newPortfolioTypeConsent && <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '900' }}>✓</Text>}
-                </View>
-                <Text style={{ color: theme.textSecondary, fontSize: 12, flex: 1, lineHeight: 17 }}>
-                  I'm okay being contacted at my account email if this request is considered.
+                <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
+                  Don't see a category that fits your work? Tell us what you'd want to showcase (e.g. Animation, Motion Design, 3D Art) and we'll factor it into what we build next.
                 </Text>
-              </BouncyButton>
 
-              <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 16, backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD', opacity: (newPortfolioTypeText.trim() && newPortfolioTypeConsent) ? 1 : 0.5 }]}
-                onPress={async () => {
-                  const ok = await handleSubmitPortfolioTypeRequest();
-                  if (ok) {
-                    setRequestPortfolioTypeModalVisible(false);
-                    setNewPortfolioTypeText('');
-                    setNewPortfolioTypeDetails('');
-                    setNewPortfolioTypeConsent(false);
-                  }
-                }}
-                disabled={!(newPortfolioTypeText.trim() && newPortfolioTypeConsent)}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: !(newPortfolioTypeText.trim() && newPortfolioTypeConsent) }}
-              >
-                <Text style={styles.confirmDeleteText}>Send Request</Text>
-              </BouncyButton>
+                <Text style={styles.formGroupLabel}>What type of portfolio? *</Text>
+                <FocusableTextInput
+                  style={styles.formInput}
+                  placeholder="e.g. Animation, Motion Design, 3D Art..."
+                  placeholderTextColor="#94A3B8"
+                  value={newPortfolioTypeText}
+                  onChangeText={setNewPortfolioTypeText}
+                  maxLength={60}
+                  accessibilityLabel="Portfolio type requested"
+                />
+
+                <Text style={styles.formGroupLabel}>Tell us more (optional)</Text>
+                <FocusableTextInput
+                  style={[styles.formInput, { height: 80, textAlignVertical: 'top' }]}
+                  multiline
+                  placeholder="What kind of work would you upload? Any examples or references help."
+                  placeholderTextColor="#94A3B8"
+                  value={newPortfolioTypeDetails}
+                  onChangeText={setNewPortfolioTypeDetails}
+                  maxLength={500}
+                  accessibilityLabel="Additional details"
+                />
+
+                <BouncyButton
+                  style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 16 }}
+                  onPress={() => setNewPortfolioTypeConsent(!newPortfolioTypeConsent)}
+                  accessibilityRole="checkbox"
+                  accessibilityLabel="I'm okay being contacted if this request is considered"
+                  accessibilityState={{ checked: newPortfolioTypeConsent }}
+                >
+                  <View style={{
+                    width: 20, height: 20, borderRadius: 5, marginTop: 1,
+                    borderWidth: 1.5, borderColor: newPortfolioTypeConsent ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                    backgroundColor: newPortfolioTypeConsent ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
+                    alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    {newPortfolioTypeConsent && <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '900' }}>✓</Text>}
+                  </View>
+                  <Text style={{ color: theme.textSecondary, fontSize: 12, flex: 1, lineHeight: 17 }}>
+                    I'm okay being contacted at my account email if this request is considered.
+                  </Text>
+                </BouncyButton>
+
+                <BouncyButton
+                  style={[styles.saveAccountSettingsBtn, { opacity: (newPortfolioTypeText.trim() && newPortfolioTypeConsent) ? 1 : 0.5 }]}
+                  onPress={async () => {
+                    const ok = await handleSubmitPortfolioTypeRequest();
+                    if (ok) {
+                      setRequestPortfolioTypeModalVisible(false);
+                      setNewPortfolioTypeText('');
+                      setNewPortfolioTypeDetails('');
+                      setNewPortfolioTypeConsent(false);
+                    }
+                  }}
+                  disabled={!(newPortfolioTypeText.trim() && newPortfolioTypeConsent)}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !(newPortfolioTypeText.trim() && newPortfolioTypeConsent) }}
+                >
+                  <Text style={styles.submitBtnText}>Send Request</Text>
+                </BouncyButton>
+              </AppKeyboardAwareScrollView>
             </View>
           </View>
         </Modal>
