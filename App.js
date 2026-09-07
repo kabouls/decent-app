@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 670;
+const BUILD_NUMBER = 672;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -1999,6 +1999,126 @@ const THEME_LIGHT = {
 const THEME_STORAGE_KEY = '@decent_theme_mode';
 const ThemeContext = React.createContext({ theme: THEME_DARK, themeMode: 'dark', toggleTheme: () => {} });
 const useTheme = () => React.useContext(ThemeContext);
+
+// TOOLS-ONLY localization. Deliberately scoped to just the Tools screens
+// (hub, Image Compressor, QR Generator) - the rest of the app (For You,
+// Search, Account Settings, everything else) stays English-only and is
+// completely untouched by this. Not built on a full i18n library since
+// the scope is small and fixed; a plain dictionary + lookup function is
+// simpler and has zero new dependencies. Missing keys fall back to
+// English rather than showing a raw key string, so this can be filled in
+// incrementally without ever showing broken/missing UI text.
+const TOOLS_TRANSLATIONS = {
+  en: {
+    tools: 'Tools',
+    toolsHubIntro: 'Free utilities to help you prep your portfolio and job applications - no account, no login, no ads, no premium tier, no usage limits. Everything here runs right on your device - nothing you drop in ever gets uploaded anywhere.',
+    imageCompressor: 'Image Compressor',
+    imageCompressorDesc: 'Shrink photos to a target file size, right in your browser or app',
+    qrGenerator: 'QR Code Generator',
+    qrGeneratorDesc: 'URLs, WiFi, contact cards, and more - customizable and free',
+    moreToolsComingSoon: 'More tools coming soon',
+    documentCompressor: 'Document compressor',
+    compressorIntro: "Drop up to 10 images and pick a target file size - useful for application portals with strict upload limits. Nothing leaves your device.",
+    targetFileSize: 'Target File Size',
+    customSizeLabel: 'Custom Size (KB)',
+    customSizePlaceholder: 'Custom target in KB (e.g. 350)',
+    advanced: 'Advanced',
+    maxDimensions: 'Max Dimensions (optional)',
+    maxWidthPlaceholder: 'Max width (px)',
+    maxHeightPlaceholder: 'Max height (px)',
+    lockAspectRatio: 'Lock aspect ratio',
+    outputFormat: 'Output Format',
+    keepOriginal: 'Keep Original',
+    formatNote: "Photo metadata (location, device info) is automatically removed during compression on every format. Defaults to converting to JPEG - pick Keep Original to compress without changing the file type.",
+    chooseImages: 'Choose Images',
+    addMoreImages: 'Add More Images',
+    upTo10: 'Up to 10 at once',
+    compressAll: 'Compress All',
+    compressing: 'Compressing...',
+    compress: 'Compress',
+    downloadAll: 'Download All',
+    download: 'Download',
+    clearAll: 'Clear All',
+    waitingToCompress: 'Waiting to compress',
+    original: 'Original',
+    closestPossible: 'closest possible',
+    qrIntro: 'Generate a QR code for a link, WiFi network, contact card, and more. Fully customizable, nothing ever leaves your device.',
+    contentType: 'Content Type',
+    colors: 'Colors',
+    foreground: 'Foreground',
+    background: 'Background',
+    dotStyle: 'Dot Style',
+    round: 'Round',
+    square: 'Square',
+    logoOptional: 'Logo (optional)',
+    chooseLogo: 'Choose Logo',
+    remove: 'Remove',
+    logoNote: 'A small centered logo is safe to add - this QR code is generated with extra error correction specifically to allow for it.',
+    downloadPng: 'Download PNG',
+    downloadSvg: 'Download SVG',
+    exporting: 'Exporting...',
+    language: 'Language',
+    theme: 'Theme',
+    light: 'Light',
+    dark: 'Dark'
+  },
+  id: {
+    tools: 'Alat',
+    toolsHubIntro: 'Alat gratis untuk membantu Anda menyiapkan portofolio dan lamaran kerja - tanpa akun, tanpa login, tanpa iklan, tanpa versi premium, tanpa batas penggunaan. Semuanya berjalan langsung di perangkat Anda - tidak ada yang pernah diunggah ke mana pun.',
+    imageCompressor: 'Kompres Gambar',
+    imageCompressorDesc: 'Perkecil ukuran file foto sesuai target, langsung di browser atau aplikasi Anda',
+    qrGenerator: 'Pembuat Kode QR',
+    qrGeneratorDesc: 'URL, WiFi, kartu kontak, dan lainnya - dapat disesuaikan dan gratis',
+    moreToolsComingSoon: 'Alat lainnya akan segera hadir',
+    documentCompressor: 'Kompres dokumen',
+    compressorIntro: 'Unggah hingga 10 gambar dan pilih ukuran file target - berguna untuk portal lamaran dengan batas unggah yang ketat. Tidak ada yang meninggalkan perangkat Anda.',
+    targetFileSize: 'Ukuran File Target',
+    customSizeLabel: 'Ukuran Kustom (KB)',
+    customSizePlaceholder: 'Target kustom dalam KB (mis. 350)',
+    advanced: 'Lanjutan',
+    maxDimensions: 'Dimensi Maksimal (opsional)',
+    maxWidthPlaceholder: 'Lebar maksimal (px)',
+    maxHeightPlaceholder: 'Tinggi maksimal (px)',
+    lockAspectRatio: 'Kunci rasio aspek',
+    outputFormat: 'Format Keluaran',
+    keepOriginal: 'Pertahankan Asli',
+    formatNote: 'Metadata foto (lokasi, info perangkat) otomatis dihapus saat kompresi pada semua format. Secara default akan diubah ke JPEG - pilih Pertahankan Asli untuk kompres tanpa mengubah jenis file.',
+    chooseImages: 'Pilih Gambar',
+    addMoreImages: 'Tambah Gambar Lagi',
+    upTo10: 'Hingga 10 sekaligus',
+    compressAll: 'Kompres Semua',
+    compressing: 'Mengompres...',
+    compress: 'Kompres',
+    downloadAll: 'Unduh Semua',
+    download: 'Unduh',
+    clearAll: 'Hapus Semua',
+    waitingToCompress: 'Menunggu untuk dikompres',
+    original: 'Asli',
+    closestPossible: 'sedekat mungkin',
+    qrIntro: 'Buat kode QR untuk tautan, jaringan WiFi, kartu kontak, dan lainnya. Dapat disesuaikan sepenuhnya, tidak ada yang pernah meninggalkan perangkat Anda.',
+    contentType: 'Jenis Konten',
+    colors: 'Warna',
+    foreground: 'Warna Depan',
+    background: 'Warna Latar',
+    dotStyle: 'Gaya Titik',
+    round: 'Bulat',
+    square: 'Kotak',
+    logoOptional: 'Logo (opsional)',
+    chooseLogo: 'Pilih Logo',
+    remove: 'Hapus',
+    logoNote: 'Logo kecil di tengah aman untuk ditambahkan - kode QR ini dibuat dengan koreksi kesalahan ekstra khusus untuk itu.',
+    downloadPng: 'Unduh PNG',
+    downloadSvg: 'Unduh SVG',
+    exporting: 'Mengekspor...',
+    language: 'Bahasa',
+    theme: 'Tema',
+    light: 'Terang',
+    dark: 'Gelap'
+  }
+};
+
+const TOOLS_LANGUAGE_STORAGE_KEY = '@decent_tools_language';
+const TOOLS_THEME_STORAGE_KEY = '@decent_tools_theme_mode';
 
 const ThemeProvider = ({ children }) => {
   const [themeMode, setThemeMode] = useState('dark');
@@ -6630,6 +6750,33 @@ function App() {
   const [qrExporting, setQrExporting] = useState(false);
   const toolsQrExportRef = useRef(null);
   const [clearCompressorConfirmVisible, setClearCompressorConfirmVisible] = useState(false);
+
+  // TOOLS-ONLY language + theme. Both intentionally separate state from
+  // the app's own themeMode (useTheme() above) - toggling either of
+  // these only affects what's rendered inside the Tools screens, nothing
+  // else in the app changes. Persisted so a choice sticks across visits,
+  // loaded once on mount.
+  const [toolsLanguage, setToolsLanguage] = useState('en');
+  const [toolsThemeMode, setToolsThemeMode] = useState('dark');
+  useEffect(() => {
+    AsyncStorage.getItem(TOOLS_LANGUAGE_STORAGE_KEY).then((v) => { if (v) setToolsLanguage(v); }).catch(() => {});
+    AsyncStorage.getItem(TOOLS_THEME_STORAGE_KEY).then((v) => { if (v) setToolsThemeMode(v); }).catch(() => {});
+  }, []);
+  const toolsTheme = toolsThemeMode === 'light' ? THEME_LIGHT : THEME_DARK;
+  // Named tt(), not t() - the Tools JSX already uses .map((t) => ...) in
+  // several places (content type buttons, format pickers), which would
+  // shadow a same-named helper within those callbacks.
+  const tt = (key) => (TOOLS_TRANSLATIONS[toolsLanguage] && TOOLS_TRANSLATIONS[toolsLanguage][key]) || TOOLS_TRANSLATIONS.en[key] || key;
+  const setToolsLanguagePersisted = (lang) => {
+    setToolsLanguage(lang);
+    AsyncStorage.setItem(TOOLS_LANGUAGE_STORAGE_KEY, lang).catch(() => {});
+  };
+  const toggleToolsTheme = () => {
+    const next = toolsThemeMode === 'light' ? 'dark' : 'light';
+    setToolsThemeMode(next);
+    AsyncStorage.setItem(TOOLS_THEME_STORAGE_KEY, next).catch(() => {});
+  };
+
   // b562: which LINK_FIELD_INFO entry is currently shown in the shared
   // link-field info popup, null when closed - see its Modal further down
   // and the renderLinkFieldInfoButton() helper near
@@ -16844,8 +16991,8 @@ function App() {
             else setToolsScreenVisible(false);
           }}
         >
-          <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
-            <View style={[styles.modalTopBar, isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }]}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: toolsTheme.bg }}>
+            <View style={[styles.modalTopBar, { backgroundColor: toolsTheme.surface, borderBottomColor: toolsTheme.border }, isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }]}>
               {activeTool !== 'hub' ? (
                 <BouncyButton
                   style={{ padding: 4 }}
@@ -16853,20 +17000,60 @@ function App() {
                   accessibilityRole="button"
                   accessibilityLabel="Back"
                 >
-                  <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
+                  <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
                 </BouncyButton>
               ) : <View style={{ width: 30 }} />}
-              <Text style={[styles.modalTopTitle, { flex: 1, textAlign: 'center' }, isWebWide && { fontSize: 20 }]}>
-                {activeTool === 'imageCompressor' ? 'Image Compressor' : 'Tools'}
+              <Text style={[styles.modalTopTitle, { flex: 1, textAlign: 'center', color: toolsTheme.text }, isWebWide && { fontSize: 20 }]}>
+                {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : tt('tools')}
               </Text>
               <BouncyButton
-                style={styles.closeBtn}
+                style={[styles.closeBtn, { backgroundColor: toolsTheme.bg, borderColor: toolsTheme.border }]}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 onPress={() => setToolsScreenVisible(false)}
                 accessibilityRole="button"
                 accessibilityLabel="Close"
               >
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Text style={[styles.closeBtnText, { color: toolsTheme.text }]}>✕</Text>
+              </BouncyButton>
+            </View>
+
+            {/* Language + theme controls - Tools-only, scoped entirely to
+                toolsLanguage/toolsThemeMode above. A second thin row
+                rather than crammed into the main header, which is
+                already tight on mobile with back/title/close. */}
+            <View style={[
+              { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8, backgroundColor: toolsTheme.surface, borderBottomWidth: 1, borderBottomColor: toolsTheme.border },
+              isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }
+            ]}>
+              <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, overflow: 'hidden' }}>
+                {['en', 'id'].map((lang) => (
+                  <BouncyButton
+                    key={lang}
+                    style={{
+                      paddingHorizontal: 10, paddingVertical: 4,
+                      backgroundColor: toolsLanguage === lang ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
+                    }}
+                    onPress={() => setToolsLanguagePersisted(lang)}
+                    accessibilityRole="button"
+                    accessibilityLabel={lang === 'en' ? 'English' : 'Indonesian'}
+                    accessibilityState={{ selected: toolsLanguage === lang }}
+                  >
+                    <Text style={{ color: toolsLanguage === lang ? '#FFFFFF' : toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>
+                      {lang.toUpperCase()}
+                    </Text>
+                  </BouncyButton>
+                ))}
+              </View>
+              <BouncyButton
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                onPress={toggleToolsTheme}
+                accessibilityRole="button"
+                accessibilityLabel={toolsThemeMode === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+              >
+                {toolsThemeMode === 'light' ? <SunIconSVG color={toolsTheme.textSecondary} size={13} /> : <MoonIconSVG color={toolsTheme.textSecondary} size={13} />}
+                <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>
+                  {toolsThemeMode === 'light' ? tt('light') : tt('dark')}
+                </Text>
               </BouncyButton>
             </View>
 
@@ -16878,89 +17065,89 @@ function App() {
             >
               {activeTool === 'hub' && (
                 <>
-                  <Text style={{ color: theme.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: 4 }}>
-                    Free utilities to help you prep your portfolio and job applications - no account, no login, no ads, no premium tier, no usage limits. Everything here runs right on your device - nothing you drop in ever gets uploaded anywhere.
+                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: 4 }}>
+                    {tt('toolsHubIntro')}
                   </Text>
 
                   <BouncyButton
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 14,
-                      backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                      backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
                       borderRadius: 16, padding: 16
                     }}
                     onPress={() => setActiveTool('imageCompressor')}
                     accessibilityRole="button"
                   >
-                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                      <ImageIconSVG size={22} color={themeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                      <ImageIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>Image Compressor</Text>
-                      <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>Shrink photos to a target file size, right in your browser or app</Text>
+                      <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('imageCompressor')}</Text>
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('imageCompressorDesc')}</Text>
                     </View>
-                    <ChevronRightSVG color={theme.accent} size={18} />
+                    <ChevronRightSVG color={toolsTheme.accent} size={18} />
                   </BouncyButton>
 
                   <BouncyButton
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 14,
-                      backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                      backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
                       borderRadius: 16, padding: 16
                     }}
                     onPress={() => setActiveTool('qrGenerator')}
                     accessibilityRole="button"
                   >
-                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                      <QrIconSVG size={22} color={themeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                      <QrIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>QR Code Generator</Text>
-                      <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>URLs, WiFi, contact cards, and more - customizable and free</Text>
+                      <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('qrGenerator')}</Text>
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('qrGeneratorDesc')}</Text>
                     </View>
-                    <ChevronRightSVG color={theme.accent} size={18} />
+                    <ChevronRightSVG color={toolsTheme.accent} size={18} />
                   </BouncyButton>
 
                   <View style={{
-                    borderRadius: 16, borderWidth: 1, borderColor: theme.border, borderStyle: 'dashed',
+                    borderRadius: 16, borderWidth: 1, borderColor: toolsTheme.border, borderStyle: 'dashed',
                     padding: 16, alignItems: 'center', opacity: 0.6
                   }}>
-                    <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600' }}>More tools coming soon</Text>
-                    <Text style={{ color: theme.textSecondary, fontSize: 11.5, marginTop: 4, textAlign: 'center' }}>Document compressor</Text>
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 13, fontWeight: '600' }}>{tt('moreToolsComingSoon')}</Text>
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11.5, marginTop: 4, textAlign: 'center' }}>{tt('documentCompressor')}</Text>
                   </View>
                 </>
               )}
 
               {activeTool === 'imageCompressor' && (
                 <>
-                  <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
-                    Drop up to 10 images and pick a target file size - useful for application portals with strict upload limits. Nothing leaves your device.
+                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
+                    {tt('compressorIntro')}
                   </Text>
 
-                  <Text style={styles.formGroupLabel}>Target File Size</Text>
+                  <Text style={styles.formGroupLabel}>{tt('targetFileSize')}</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
                     {[100, 200, 500, 1024].map((kb) => (
                       <BouncyButton
                         key={kb}
                         style={{
                           paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99,
-                          backgroundColor: Number(compressorTargetKB) === kb ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : theme.surface,
-                          borderWidth: 1, borderColor: Number(compressorTargetKB) === kb ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border
+                          backgroundColor: Number(compressorTargetKB) === kb ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : toolsTheme.surface,
+                          borderWidth: 1, borderColor: Number(compressorTargetKB) === kb ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
                         }}
                         onPress={() => setCompressorTargetKB(kb)}
                         accessibilityRole="button"
                         accessibilityLabel={kb >= 1024 ? `${kb / 1024} MB` : `${kb} KB`}
                         accessibilityState={{ selected: Number(compressorTargetKB) === kb }}
                       >
-                        <Text style={{ color: Number(compressorTargetKB) === kb ? '#FFFFFF' : theme.text, fontSize: 12.5, fontWeight: '700' }}>
+                        <Text style={{ color: Number(compressorTargetKB) === kb ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>
                           {kb >= 1024 ? `${kb / 1024} MB` : `${kb} KB`}
                         </Text>
                       </BouncyButton>
                     ))}
                   </View>
-                  <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>Custom Size (KB)</Text>
+                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>{tt('customSizeLabel')}</Text>
                   <FocusableTextInput
                     style={styles.formInput}
-                    placeholder="Custom target in KB (e.g. 350)"
+                    placeholder={tt('customSizePlaceholder')}
                     placeholderTextColor="#94A3B8"
                     value={String(compressorTargetKB)}
                     onChangeText={(t) => setCompressorTargetKB(t.replace(/[^0-9]/g, ''))}
@@ -16975,17 +17162,17 @@ function App() {
                     accessibilityLabel="Advanced options"
                     accessibilityState={{ expanded: compressorAdvancedOpen }}
                   >
-                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Advanced</Text>
-                    {compressorAdvancedOpen ? <ChevronUpSVG color={theme.textSecondary} size={16} /> : <ChevronDownSVG color={theme.textSecondary} size={16} />}
+                    <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>{tt('advanced')}</Text>
+                    {compressorAdvancedOpen ? <ChevronUpSVG color={toolsTheme.textSecondary} size={16} /> : <ChevronDownSVG color={toolsTheme.textSecondary} size={16} />}
                   </BouncyButton>
 
                   {compressorAdvancedOpen && (
-                    <View style={{ backgroundColor: theme.surface, borderRadius: 12, padding: 14, gap: 10 }}>
-                      <Text style={styles.formGroupLabel}>Max Dimensions (optional)</Text>
+                    <View style={{ backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 14, gap: 10 }}>
+                      <Text style={styles.formGroupLabel}>{tt('maxDimensions')}</Text>
                       <View style={{ flexDirection: 'row', gap: 10 }}>
                         <FocusableTextInput
                           style={[styles.formInput, { flex: 1 }]}
-                          placeholder="Max width (px)"
+                          placeholder={tt('maxWidthPlaceholder')}
                           placeholderTextColor="#94A3B8"
                           value={compressorMaxWidth}
                           onChangeText={(t) => setCompressorMaxWidth(t.replace(/[^0-9]/g, ''))}
@@ -16995,7 +17182,7 @@ function App() {
                         {!compressorLockAspect && (
                           <FocusableTextInput
                             style={[styles.formInput, { flex: 1 }]}
-                            placeholder="Max height (px)"
+                            placeholder={tt('maxHeightPlaceholder')}
                             placeholderTextColor="#94A3B8"
                             value={compressorMaxHeight}
                             onChangeText={(t) => setCompressorMaxHeight(t.replace(/[^0-9]/g, ''))}
@@ -17013,96 +17200,96 @@ function App() {
                       >
                         <View style={{
                           width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                          borderWidth: 1.5, borderColor: compressorLockAspect ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                          backgroundColor: compressorLockAspect ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
+                          borderWidth: 1.5, borderColor: compressorLockAspect ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border,
+                          backgroundColor: compressorLockAspect ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
                         }}>
                           {compressorLockAspect && <CheckIconSVG color="#FFFFFF" />}
                         </View>
-                        <Text style={{ color: theme.text, fontSize: 13 }}>Lock aspect ratio</Text>
+                        <Text style={{ color: toolsTheme.text, fontSize: 13 }}>{tt('lockAspectRatio')}</Text>
                       </BouncyButton>
 
-                      <Text style={styles.formGroupLabel}>Output Format</Text>
+                      <Text style={styles.formGroupLabel}>{tt('outputFormat')}</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                        {[{ key: 'ORIGINAL', label: 'Keep Original' }, { key: 'JPEG', label: 'JPEG' }, { key: 'PNG', label: 'PNG' }, { key: 'WEBP', label: 'WEBP' }].map((fmt) => (
+                        {[{ key: 'ORIGINAL', label: tt('keepOriginal') }, { key: 'JPEG', label: 'JPEG' }, { key: 'PNG', label: 'PNG' }, { key: 'WEBP', label: 'WEBP' }].map((fmt) => (
                           <BouncyButton
                             key={fmt.key}
                             style={{
                               paddingHorizontal: 12, paddingVertical: 8, borderRadius: 99,
-                              backgroundColor: compressorFormat === fmt.key ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : theme.bg,
-                              borderWidth: 1, borderColor: compressorFormat === fmt.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border
+                              backgroundColor: compressorFormat === fmt.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : toolsTheme.bg,
+                              borderWidth: 1, borderColor: compressorFormat === fmt.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
                             }}
                             onPress={() => setCompressorFormat(fmt.key)}
                             accessibilityRole="button"
                             accessibilityLabel={fmt.label}
                             accessibilityState={{ selected: compressorFormat === fmt.key }}
                           >
-                            <Text style={{ color: compressorFormat === fmt.key ? '#FFFFFF' : theme.text, fontSize: 12, fontWeight: '700' }}>{fmt.label}</Text>
+                            <Text style={{ color: compressorFormat === fmt.key ? '#FFFFFF' : toolsTheme.text, fontSize: 12, fontWeight: '700' }}>{fmt.label}</Text>
                           </BouncyButton>
                         ))}
                       </View>
-                      <Text style={{ color: theme.textSecondary, fontSize: 11, lineHeight: 15 }}>
-                        Photo metadata (location, device info) is automatically removed during compression on every format. Defaults to converting to JPEG - pick Keep Original to compress without changing the file type.
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, lineHeight: 15 }}>
+                        {tt('formatNote')}
                       </Text>
                     </View>
                   )}
 
                   <BouncyButton
                     style={{
-                      marginTop: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: theme.border,
+                      marginTop: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
                       borderRadius: 14, padding: 20, alignItems: 'center', gap: 8
                     }}
                     onPress={pickCompressorImages}
                     accessibilityRole="button"
                   >
-                    <ImageIconSVG size={26} color={theme.textSecondary} />
-                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>
-                      {compressorFiles.length === 0 ? 'Choose Images' : 'Add More Images'}
+                    <ImageIconSVG size={26} color={toolsTheme.textSecondary} />
+                    <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
+                      {compressorFiles.length === 0 ? tt('chooseImages') : tt('addMoreImages')}
                     </Text>
-                    <Text style={{ color: theme.textSecondary, fontSize: 11 }}>Up to 10 at once</Text>
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>{tt('upTo10')}</Text>
                   </BouncyButton>
 
                   {compressorFiles.map((file) => (
-                    <View key={file.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.surface, borderRadius: 12, padding: 10 }}>
+                    <View key={file.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 10 }}>
                       <Image source={{ uri: file.originalUri }} style={{ width: 48, height: 48, borderRadius: 8 }} />
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
-                          Original: {(file.originalSize / 1024).toFixed(0)} KB
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>
+                          {tt('original')}: {(file.originalSize / 1024).toFixed(0)} KB
                         </Text>
                         {file.status === 'processing' && (
-                          <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '600', marginTop: 2 }}>Compressing...</Text>
+                          <Text style={{ color: toolsTheme.accent, fontSize: 11, fontWeight: '600', marginTop: 2 }}>{tt('compressing')}</Text>
                         )}
                         {file.status === 'done' && (
                           <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '700', marginTop: 2 }}>
-                            {(file.resultSize / 1024).toFixed(0)} KB {!file.hitTarget && '(closest possible)'}
+                            {(file.resultSize / 1024).toFixed(0)} KB {!file.hitTarget && `(${tt('closestPossible')})`}
                           </Text>
                         )}
                         {file.status === 'error' && (
                           <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '600', marginTop: 2 }}>{file.error}</Text>
                         )}
                         {file.status === 'pending' && (
-                          <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>Waiting to compress</Text>
+                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginTop: 2 }}>{tt('waitingToCompress')}</Text>
                         )}
                       </View>
                       {file.status === 'done' ? (
                         <BouncyButton
-                          style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
+                          style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
                           onPress={() => handleSingleCompressedDownload(file)}
                           accessibilityRole="button"
                           accessibilityLabel="Download"
                         >
-                          <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>Download</Text>
+                          <Text style={{ color: toolsTheme.accent, fontSize: 11, fontWeight: '700' }}>{tt('download')}</Text>
                         </BouncyButton>
                       ) : file.status === 'processing' ? (
-                        <ActivityIndicator color={theme.accent} size="small" />
+                        <ActivityIndicator color={toolsTheme.accent} size="small" />
                       ) : (
                         <>
                           <BouncyButton
-                            style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD' }}
+                            style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD' }}
                             onPress={() => compressOneFile(file)}
                             accessibilityRole="button"
                             accessibilityLabel="Compress this image"
                           >
-                            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>Compress</Text>
+                            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>{tt('compress')}</Text>
                           </BouncyButton>
                           <BouncyButton style={{ padding: 6 }} onPress={() => removeCompressorFile(file.id)} accessibilityRole="button" accessibilityLabel="Remove">
                             <TrashIconSVG />
@@ -17122,12 +17309,12 @@ function App() {
                           accessibilityRole="button"
                           accessibilityState={{ disabled: compressorProcessing, busy: compressorProcessing }}
                         >
-                          <Text style={styles.submitBtnText}>{compressorProcessing ? 'Compressing...' : 'Compress All'}</Text>
+                          <Text style={styles.submitBtnText}>{compressorProcessing ? tt('compressing') : tt('compressAll')}</Text>
                         </BouncyButton>
                         <BouncyButton
                           style={[
                             styles.saveAccountSettingsBtn,
-                            { flex: 1, marginTop: 0, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border },
+                            { flex: 1, marginTop: 0, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border },
                             !compressorFiles.every((f) => f.status === 'done') && { opacity: 0.4 }
                           ]}
                           onPress={handleDownloadAllCompressed}
@@ -17135,7 +17322,7 @@ function App() {
                           accessibilityRole="button"
                           accessibilityState={{ disabled: !compressorFiles.every((f) => f.status === 'done') }}
                         >
-                          <Text style={[styles.submitBtnText, { color: theme.text }]}>Download All</Text>
+                          <Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text>
                         </BouncyButton>
                       </View>
                       <BouncyButton
@@ -17143,7 +17330,7 @@ function App() {
                         onPress={() => setClearCompressorConfirmVisible(true)}
                         accessibilityRole="button"
                       >
-                        <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>Clear All</Text>
+                        <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>{tt('clearAll')}</Text>
                       </BouncyButton>
                     </View>
                   )}
@@ -17154,11 +17341,11 @@ function App() {
 
               {activeTool === 'qrGenerator' && (
                 <>
-                  <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
-                    Generate a QR code for a link, WiFi network, contact card, and more. Fully customizable, nothing ever leaves your device.
+                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
+                    {tt('qrIntro')}
                   </Text>
 
-                  <Text style={styles.formGroupLabel}>Content Type</Text>
+                  <Text style={styles.formGroupLabel}>{tt('contentType')}</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {[
                       { key: 'url', label: 'URL' },
@@ -17172,15 +17359,15 @@ function App() {
                         key={t.key}
                         style={{
                           paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99,
-                          backgroundColor: qrContentType === t.key ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : theme.surface,
-                          borderWidth: 1, borderColor: qrContentType === t.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border
+                          backgroundColor: qrContentType === t.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : toolsTheme.surface,
+                          borderWidth: 1, borderColor: qrContentType === t.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
                         }}
                         onPress={() => { setQrContentType(t.key); setQrFields({}); }}
                         accessibilityRole="button"
                         accessibilityLabel={t.label}
                         accessibilityState={{ selected: qrContentType === t.key }}
                       >
-                        <Text style={{ color: qrContentType === t.key ? '#FFFFFF' : theme.text, fontSize: 12.5, fontWeight: '700' }}>{t.label}</Text>
+                        <Text style={{ color: qrContentType === t.key ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{t.label}</Text>
                       </BouncyButton>
                     ))}
                   </View>
@@ -17333,16 +17520,16 @@ function App() {
                     accessibilityLabel="Advanced options"
                     accessibilityState={{ expanded: qrAdvancedOpen }}
                   >
-                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Advanced</Text>
-                    {qrAdvancedOpen ? <ChevronUpSVG color={theme.textSecondary} size={16} /> : <ChevronDownSVG color={theme.textSecondary} size={16} />}
+                    <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>Advanced</Text>
+                    {qrAdvancedOpen ? <ChevronUpSVG color={toolsTheme.textSecondary} size={16} /> : <ChevronDownSVG color={toolsTheme.textSecondary} size={16} />}
                   </BouncyButton>
 
                   {qrAdvancedOpen && (
-                    <View style={{ backgroundColor: theme.surface, borderRadius: 12, padding: 14, gap: 10 }}>
-                      <Text style={styles.formGroupLabel}>Colors</Text>
+                    <View style={{ backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 14, gap: 10 }}>
+                      <Text style={styles.formGroupLabel}>{tt('colors')}</Text>
                       <View style={{ flexDirection: 'row', gap: 10 }}>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: theme.textSecondary, fontSize: 11, marginBottom: 4 }}>Foreground</Text>
+                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginBottom: 4 }}>{tt('foreground')}</Text>
                           <FocusableTextInput
                             style={styles.formInput}
                             placeholder="#000000"
@@ -17354,7 +17541,7 @@ function App() {
                           />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: theme.textSecondary, fontSize: 11, marginBottom: 4 }}>Background</Text>
+                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginBottom: 4 }}>{tt('background')}</Text>
                           <FocusableTextInput
                             style={styles.formInput}
                             placeholder="#FFFFFF"
@@ -17372,32 +17559,32 @@ function App() {
                         </Text>
                       )}
 
-                      <Text style={styles.formGroupLabel}>Dot Style</Text>
+                      <Text style={styles.formGroupLabel}>{tt('dotStyle')}</Text>
                       <View style={{ flexDirection: 'row', gap: 8 }}>
-                        {[{ key: 'round', label: 'Round' }, { key: 'square', label: 'Square' }].map((opt) => (
+                        {[{ key: 'round', label: tt('round') }, { key: 'square', label: tt('square') }].map((opt) => (
                           <BouncyButton
                             key={opt.key}
                             style={{
                               flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99,
-                              backgroundColor: qrDotStyle === opt.key ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : theme.bg,
-                              borderWidth: 1, borderColor: qrDotStyle === opt.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border
+                              backgroundColor: qrDotStyle === opt.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : toolsTheme.bg,
+                              borderWidth: 1, borderColor: qrDotStyle === opt.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
                             }}
                             onPress={() => setQrDotStyle(opt.key)}
                             accessibilityRole="button"
                             accessibilityLabel={opt.label}
                             accessibilityState={{ selected: qrDotStyle === opt.key }}
                           >
-                            <Text style={{ color: qrDotStyle === opt.key ? '#FFFFFF' : theme.text, fontSize: 12, fontWeight: '700' }}>{opt.label}</Text>
+                            <Text style={{ color: qrDotStyle === opt.key ? '#FFFFFF' : toolsTheme.text, fontSize: 12, fontWeight: '700' }}>{opt.label}</Text>
                           </BouncyButton>
                         ))}
                       </View>
 
-                      <Text style={styles.formGroupLabel}>Logo (optional)</Text>
+                      <Text style={styles.formGroupLabel}>{tt('logoOptional')}</Text>
                       {qrLogoUri ? (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                           <Image source={{ uri: qrLogoUri }} style={{ width: 40, height: 40, borderRadius: 8 }} />
                           <BouncyButton
-                            style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
+                            style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
                             onPress={() => setQrLogoUri(null)}
                             accessibilityRole="button"
                           >
@@ -17406,14 +17593,14 @@ function App() {
                         </View>
                       ) : (
                         <BouncyButton
-                          style={{ alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
+                          style={{ alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
                           onPress={pickQrLogo}
                           accessibilityRole="button"
                         >
-                          <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>Choose Logo</Text>
+                          <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '700' }}>{tt('chooseLogo')}</Text>
                         </BouncyButton>
                       )}
-                      <Text style={{ color: theme.textSecondary, fontSize: 11, lineHeight: 15 }}>
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, lineHeight: 15 }}>
                         A small centered logo is safe to add - this QR code is generated with extra error correction specifically to allow for it.
                       </Text>
                     </View>
@@ -17441,15 +17628,15 @@ function App() {
                           accessibilityRole="button"
                           accessibilityState={{ disabled: qrExporting, busy: qrExporting }}
                         >
-                          <Text style={styles.submitBtnText}>{qrExporting ? 'Exporting...' : 'Download PNG'}</Text>
+                          <Text style={styles.submitBtnText}>{qrExporting ? tt('exporting') : tt('downloadPng')}</Text>
                         </BouncyButton>
                         {Platform.OS === 'web' && (
                           <BouncyButton
-                            style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                            style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border }]}
                             onPress={handleDownloadQrSvg}
                             accessibilityRole="button"
                           >
-                            <Text style={[styles.submitBtnText, { color: theme.text }]}>Download SVG</Text>
+                            <Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadSvg')}</Text>
                           </BouncyButton>
                         )}
                       </View>
