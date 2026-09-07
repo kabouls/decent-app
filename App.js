@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 654;
+const BUILD_NUMBER = 655;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -11352,7 +11352,7 @@ function App() {
                   <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={{ flex: 1, backgroundColor: theme.accent, borderRadius: 8, paddingVertical: 10, alignItems: 'center', opacity: newContactValue.trim() ? 1 : 0.5 }}
+                  style={{ flex: 1, backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD', borderRadius: 99, paddingVertical: 10, alignItems: 'center', opacity: newContactValue.trim() ? 1 : 0.5 }}
                   onPress={handleAddContact}
                   disabled={!newContactValue.trim()}
                   accessibilityRole="button"
@@ -16291,7 +16291,7 @@ function App() {
 
               <View style={{ padding: 16, paddingTop: 8, gap: 10 }}>
                 <BouncyButton
-                  style={{ backgroundColor: theme.accent, borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}
+                  style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD', borderRadius: 99, paddingVertical: 13, alignItems: 'center' }}
                   onPress={() => setNewUpdatePopupVisible(false)}
                   accessibilityRole="button"
                 >
@@ -16329,7 +16329,7 @@ function App() {
                 Your email has been confirmed. You're all set to start exploring DECENT.
               </Text>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 20, backgroundColor: theme.accent }]}
+                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 20, backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD' }]}
                 onPress={() => {
                   setEmailVerifiedModalVisible(false);
                   if (Platform.OS === 'web') {
@@ -19251,7 +19251,7 @@ function App() {
               />
 
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 16, backgroundColor: theme.accent }]}
+                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 16, backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD' }]}
                 onPress={async () => {
                   const ok = await handleSubmitUiUxSoftwareInterest();
                   if (ok) setUiUxSoftwareInterestModalVisible(false);
