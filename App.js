@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 668;
+const BUILD_NUMBER = 669;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -690,6 +690,12 @@ const QrIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
     <Rect x="19" y="15" width="2.2" height="2.2" fill={color} />
     <Rect x="15" y="19" width="2.2" height="2.2" fill={color} />
     <Rect x="19" y="19" width="2.2" height="2.2" fill={color} />
+  </Svg>
+));
+
+const ExternalLinkIconSVG = React.memo(({ color = '#94A3B8', size = 12 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M7 17L17 7M17 7H9M17 7V15" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
@@ -3859,6 +3865,17 @@ const getFileSizeBytes = async (uri) => {
   return info.size || 0;
 };
 
+// Used by Keep Original Format - ImageManipulator only outputs JPEG/PNG/
+// WEBP, so anything else (HEIC, GIF, BMP, TIFF...) falls back to JPEG,
+// which is the same thing that already happens for those formats when a
+// fixed format is explicitly chosen instead of "keep original."
+const detectImageFormat = (mimeType, uri) => {
+  const source = (mimeType || uri || '').toLowerCase();
+  if (source.includes('png')) return 'PNG';
+  if (source.includes('webp')) return 'WEBP';
+  return 'JPEG';
+};
+
 const COMPRESSOR_MAX_ITERATIONS = 8;
 const COMPRESSOR_MIN_QUALITY = 0.35;
 const COMPRESSOR_MIN_SCALE = 0.3;
@@ -6541,6 +6558,7 @@ function App() {
   const [qrLogoUri, setQrLogoUri] = useState(null);
   const [qrExporting, setQrExporting] = useState(false);
   const toolsQrExportRef = useRef(null);
+  const [clearCompressorConfirmVisible, setClearCompressorConfirmVisible] = useState(false);
   // b562: which LINK_FIELD_INFO entry is currently shown in the shared
   // link-field info popup, null when closed - see its Modal further down
   // and the renderLinkFieldInfoButton() helper near
@@ -10675,10 +10693,16 @@ function App() {
 
     const newItems = await Promise.all(result.assets.map(async (a) => {
       const size = await getFileSizeBytes(a.uri).catch(() => 0);
+      // Captured per-file at pick time, since a batch can mix formats
+      // (some JPG, some PNG) - needed for the Keep Original Format option,
+      // which has to know each file's own original format individually
+      // rather than assuming one format for the whole batch.
+      const originalFormat = detectImageFormat(a.mimeType, a.uri);
       return {
         id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
         originalUri: a.uri,
         originalSize: size,
+        originalFormat,
         resultUri: null,
         resultSize: null,
         status: 'pending', // 'pending' | 'processing' | 'done' | 'error'
@@ -10692,35 +10716,41 @@ function App() {
     setCompressorFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
+  const clearAllCompressorFiles = () => {
+    setCompressorFiles([]);
+  };
+
+  // Single-file compression, factored out so both the batch "Compress
+  // All" button and the new per-file "Compress" button call the exact
+  // same logic rather than maintaining two copies of it.
+  const compressOneFile = async (file) => {
+    setCompressorFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, status: 'processing', error: null } : f)));
+    const targetBytes = compressorTargetKB ? Math.round(Number(compressorTargetKB) * 1024) : null;
+    const maxWidth = compressorMaxWidth ? Number(compressorMaxWidth) : undefined;
+    const maxHeight = compressorLockAspect ? undefined : (compressorMaxHeight ? Number(compressorMaxHeight) : undefined);
+    const format = compressorFormat === 'ORIGINAL' ? file.originalFormat : compressorFormat;
+
+    try {
+      const result = await compressImageToTarget(file.originalUri, { targetBytes, maxWidth, maxHeight, format });
+      setCompressorFiles((prev) => prev.map((f) => (f.id === file.id ? {
+        ...f,
+        status: 'done',
+        resultUri: result.uri,
+        resultSize: result.size,
+        hitTarget: result.hitTarget
+      } : f)));
+    } catch (e) {
+      console.warn('Image compression failed for', file.id, e);
+      setCompressorFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, status: 'error', error: 'Could not compress this image.' } : f)));
+    }
+  };
+
   const runCompressorBatch = async () => {
     const pending = compressorFiles.filter((f) => f.status === 'pending' || f.status === 'error');
     if (pending.length === 0) return;
     setCompressorProcessing(true);
-
-    const targetBytes = compressorTargetKB ? Math.round(Number(compressorTargetKB) * 1024) : null;
-    const maxWidth = compressorMaxWidth ? Number(compressorMaxWidth) : undefined;
-    const maxHeight = compressorLockAspect ? undefined : (compressorMaxHeight ? Number(compressorMaxHeight) : undefined);
-
     for (const file of pending) {
-      setCompressorFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, status: 'processing', error: null } : f)));
-      try {
-        const result = await compressImageToTarget(file.originalUri, {
-          targetBytes,
-          maxWidth,
-          maxHeight,
-          format: compressorFormat
-        });
-        setCompressorFiles((prev) => prev.map((f) => (f.id === file.id ? {
-          ...f,
-          status: 'done',
-          resultUri: result.uri,
-          resultSize: result.size,
-          hitTarget: result.hitTarget
-        } : f)));
-      } catch (e) {
-        console.warn('Image compression failed for', file.id, e);
-        setCompressorFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, status: 'error', error: 'Could not compress this image.' } : f)));
-      }
+      await compressOneFile(file);
     }
     setCompressorProcessing(false);
   };
@@ -13168,7 +13198,10 @@ function App() {
               >
                 <GitHubIconSVG color={theme.textSecondary} size={18} />
                 {!sidebarCollapsed && (
-                  <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Visit GitHub</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Visit GitHub</Text>
+                    <ExternalLinkIconSVG color={theme.textSecondary} size={11} />
+                  </View>
                 )}
               </BouncyButton>
 
@@ -16845,6 +16878,7 @@ function App() {
                       </BouncyButton>
                     ))}
                   </View>
+                  <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>Custom Size (KB)</Text>
                   <FocusableTextInput
                     style={styles.formInput}
                     placeholder="Custom target in KB (e.g. 350)"
@@ -16909,26 +16943,26 @@ function App() {
                       </BouncyButton>
 
                       <Text style={styles.formGroupLabel}>Output Format</Text>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        {['JPEG', 'PNG', 'WEBP'].map((fmt) => (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                        {[{ key: 'ORIGINAL', label: 'Keep Original' }, { key: 'JPEG', label: 'JPEG' }, { key: 'PNG', label: 'PNG' }, { key: 'WEBP', label: 'WEBP' }].map((fmt) => (
                           <BouncyButton
-                            key={fmt}
+                            key={fmt.key}
                             style={{
-                              flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99,
-                              backgroundColor: compressorFormat === fmt ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : theme.bg,
-                              borderWidth: 1, borderColor: compressorFormat === fmt ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border
+                              paddingHorizontal: 12, paddingVertical: 8, borderRadius: 99,
+                              backgroundColor: compressorFormat === fmt.key ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : theme.bg,
+                              borderWidth: 1, borderColor: compressorFormat === fmt.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border
                             }}
-                            onPress={() => setCompressorFormat(fmt)}
+                            onPress={() => setCompressorFormat(fmt.key)}
                             accessibilityRole="button"
-                            accessibilityLabel={fmt}
-                            accessibilityState={{ selected: compressorFormat === fmt }}
+                            accessibilityLabel={fmt.label}
+                            accessibilityState={{ selected: compressorFormat === fmt.key }}
                           >
-                            <Text style={{ color: compressorFormat === fmt ? '#FFFFFF' : theme.text, fontSize: 12, fontWeight: '700' }}>{fmt}</Text>
+                            <Text style={{ color: compressorFormat === fmt.key ? '#FFFFFF' : theme.text, fontSize: 12, fontWeight: '700' }}>{fmt.label}</Text>
                           </BouncyButton>
                         ))}
                       </View>
                       <Text style={{ color: theme.textSecondary, fontSize: 11, lineHeight: 15 }}>
-                        Photo metadata (location, device info) is automatically removed during compression on every format.
+                        Photo metadata (location, device info) is automatically removed during compression on every format. Defaults to converting to JPEG - pick Keep Original to compress without changing the file type.
                       </Text>
                     </View>
                   )}
@@ -16979,34 +17013,59 @@ function App() {
                         >
                           <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>Download</Text>
                         </BouncyButton>
+                      ) : file.status === 'processing' ? (
+                        <ActivityIndicator color={theme.accent} size="small" />
                       ) : (
-                        <BouncyButton style={{ padding: 6 }} onPress={() => removeCompressorFile(file.id)} accessibilityRole="button" accessibilityLabel="Remove">
-                          <TrashIconSVG />
-                        </BouncyButton>
+                        <>
+                          <BouncyButton
+                            style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD' }}
+                            onPress={() => compressOneFile(file)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Compress this image"
+                          >
+                            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>Compress</Text>
+                          </BouncyButton>
+                          <BouncyButton style={{ padding: 6 }} onPress={() => removeCompressorFile(file.id)} accessibilityRole="button" accessibilityLabel="Remove">
+                            <TrashIconSVG />
+                          </BouncyButton>
+                        </>
                       )}
                     </View>
                   ))}
 
                   {compressorFiles.length > 0 && (
-                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-                      <BouncyButton
-                        style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: compressorProcessing ? 0.6 : 1 }]}
-                        onPress={runCompressorBatch}
-                        disabled={compressorProcessing || !compressorFiles.some((f) => f.status === 'pending' || f.status === 'error')}
-                        accessibilityRole="button"
-                        accessibilityState={{ disabled: compressorProcessing, busy: compressorProcessing }}
-                      >
-                        <Text style={styles.submitBtnText}>{compressorProcessing ? 'Compressing...' : 'Compress All'}</Text>
-                      </BouncyButton>
-                      {compressorFiles.some((f) => f.status === 'done') && (
+                    <View style={{ gap: 10, marginTop: 4 }}>
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
                         <BouncyButton
-                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                          onPress={handleDownloadAllCompressed}
+                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: compressorProcessing ? 0.6 : 1 }]}
+                          onPress={runCompressorBatch}
+                          disabled={compressorProcessing || !compressorFiles.some((f) => f.status === 'pending' || f.status === 'error')}
                           accessibilityRole="button"
+                          accessibilityState={{ disabled: compressorProcessing, busy: compressorProcessing }}
+                        >
+                          <Text style={styles.submitBtnText}>{compressorProcessing ? 'Compressing...' : 'Compress All'}</Text>
+                        </BouncyButton>
+                        <BouncyButton
+                          style={[
+                            styles.saveAccountSettingsBtn,
+                            { flex: 1, marginTop: 0, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border },
+                            !compressorFiles.every((f) => f.status === 'done') && { opacity: 0.4 }
+                          ]}
+                          onPress={handleDownloadAllCompressed}
+                          disabled={!compressorFiles.every((f) => f.status === 'done')}
+                          accessibilityRole="button"
+                          accessibilityState={{ disabled: !compressorFiles.every((f) => f.status === 'done') }}
                         >
                           <Text style={[styles.submitBtnText, { color: theme.text }]}>Download All</Text>
                         </BouncyButton>
-                      )}
+                      </View>
+                      <BouncyButton
+                        style={{ alignSelf: 'center' }}
+                        onPress={() => setClearCompressorConfirmVisible(true)}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>Clear All</Text>
+                      </BouncyButton>
                     </View>
                   )}
 
@@ -17397,6 +17456,60 @@ function App() {
           </SafeAreaView>
         </Modal>
       )}
+
+      {/* CLEAR COMPRESSED IMAGES CONFIRMATION */}
+      <Modal
+        animationType={Platform.OS === 'web' ? 'none' : 'fade'}
+        transparent={true}
+        visible={clearCompressorConfirmVisible}
+        onRequestClose={() => setClearCompressorConfirmVisible(false)}
+      >
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+          onStartShouldSetResponder={() => Platform.OS === 'web'}
+          onResponderRelease={() => setClearCompressorConfirmVisible(false)}
+        >
+          {Platform.OS !== 'web' && (
+            lightweightMode ? (
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+            ) : (
+              <BlurView
+                intensity={55}
+                tint={themeMode === 'light' ? 'light' : 'dark'}
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+              />
+            )
+          )}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => {}}
+          >
+            <View style={[styles.successIconCircle, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+              <TrashIconSVG />
+            </View>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Clear All Images?</Text>
+            <Text style={styles.confirmSubText}>This removes every image from this session, including any you've already compressed. This can't be undone.</Text>
+            <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+              <BouncyButton
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                onPress={() => setClearCompressorConfirmVisible(false)}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                accessibilityRole="button"
+                onPress={() => {
+                  clearAllCompressorFiles();
+                  setClearCompressorConfirmVisible(false);
+                }}
+              >
+                <Text style={styles.confirmDeleteText}>Clear All</Text>
+              </BouncyButton>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* DELETE ACCOUNT - requires typing DELETE, real failsafe for a destructive action */}
       <Modal
@@ -19052,6 +19165,27 @@ function App() {
                     </BouncyButton>
                   )}
 
+                  {/* Tools - native only. Web has its own entry points
+                      already (the wide-web sidebar and the narrow-web
+                      hamburger drawer), so showing it here too would be a
+                      duplicate. Placed directly above Donate, with its own
+                      bottom border removed since it's now the last row in
+                      this list before the visually distinct Donate button. */}
+                  {Platform.OS !== 'web' && (
+                    <BouncyButton
+                      style={[styles.settingItemRow, { marginTop: 4, borderBottomWidth: 0 }]}
+                      onPress={() => { setSettingsModalVisible(false); setOptionsView('root'); setToolsScreenVisible(true); setActiveTool('hub'); }}
+                      accessibilityRole="button"
+                    >
+                      <View style={styles.iconTextInlineRow}>
+                        <WrenchIconSVG color={theme.textSecondary} size={16} />
+                        <Text style={styles.settingItemTitle}>Tools</Text>
+                        <BetaTag themeMode={themeMode} />
+                      </View>
+                      <ChevronRightSVG color={theme.accent} size={16} />
+                    </BouncyButton>
+                  )}
+
                   {/* Contrast Donate Button at Very Bottom */}
                   {DONATIONS_ENABLED && (
                     <BouncyButton
@@ -19062,25 +19196,6 @@ function App() {
                     >
                       <HeartIconSVG liked={true} />
                       <Text style={styles.donateSettingBtnText}>Support & Donate to DECENT</Text>
-                    </BouncyButton>
-                  )}
-
-                  {/* Tools - native only. Web has its own entry points
-                      already (the wide-web sidebar and the narrow-web
-                      hamburger drawer), so showing it here too would be a
-                      duplicate. */}
-                  {Platform.OS !== 'web' && (
-                    <BouncyButton
-                      style={[styles.settingItemRow, { marginTop: 4 }]}
-                      onPress={() => { setSettingsModalVisible(false); setOptionsView('root'); setToolsScreenVisible(true); setActiveTool('hub'); }}
-                      accessibilityRole="button"
-                    >
-                      <View style={styles.iconTextInlineRow}>
-                        <WrenchIconSVG color={theme.textSecondary} size={16} />
-                        <Text style={styles.settingItemTitle}>Tools</Text>
-                        <BetaTag themeMode={themeMode} />
-                      </View>
-                      <ChevronRightSVG color={theme.accent} size={16} />
                     </BouncyButton>
                   )}
                 </>
@@ -19524,7 +19639,10 @@ function App() {
                     onPress={() => openExternalLinkWithWarning(GITHUB_URL)}
                     accessibilityRole="button"
                   >
-                    <Text style={styles.settingItemTitle}>Visit GitHub</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                      <Text style={styles.settingItemTitle}>Visit GitHub</Text>
+                      <ExternalLinkIconSVG color={theme.textSecondary} size={11} />
+                    </View>
                     <View style={styles.iconTextInlineRow}>
                       <GitHubIconSVG color={theme.textSecondary} size={16} />
                       <ChevronRightSVG color={theme.accent} size={16} />
