@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 661;
+const BUILD_NUMBER = 662;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -8424,58 +8424,67 @@ function App() {
   // notification cleanup elsewhere in this file.
   const createPasswordReminderInFlightRef = useRef(false);
   useEffect(() => {
-    if (!session || !userDataLoaded || hasPasswordAuth) return;
+    if (!session || !userDataLoaded) return;
     if (createPasswordReminderInFlightRef.current) return;
     createPasswordReminderInFlightRef.current = true;
     (async () => {
       try {
-        // b659 (follow-up): cooldown now lives on profiles.last_password_
-        // reminder_sent_at instead of "does a create_password notification
-        // still exist" - that approach broke the moment the user cleared
-        // their notifications (a completely normal action), since clearing
-        // deleted the only record of the reminder ever having been sent,
-        // resetting the cooldown to zero and firing again on the very next
-        // app open. A profile-level timestamp can't be touched by Clear.
+        // b661: no longer gates on the hasPasswordAuth/lastPasswordReminderSentAt
+        // React state values at all - after three rounds of fixes (b627,
+        // b659, b660) that each addressed a real staleness/race issue in
+        // that state but still didn't fully stop repeat firings, this does
+        // a direct, fresh read of the actual database columns right before
+        // deciding, every single time. Whatever remaining source of client-
+        // side staleness was causing this, checking the authoritative
+        // source directly sidesteps it entirely rather than chasing it
+        // further.
+        const { data: freshProfile, error: fetchErr } = await supabase
+          .from('profiles')
+          .select('has_password_auth, last_password_reminder_sent_at')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (fetchErr || !freshProfile) return;
+
+        if (freshProfile.has_password_auth) {
+          // Keep local state in sync in case it was somehow out of step
+          // with the DB (e.g. Account Settings still showing "Create
+          // Password" instead of "Change Password").
+          setUserProfile((prev) => (prev.hasPasswordAuth ? prev : { ...prev, hasPasswordAuth: true }));
+          return;
+        }
+
         const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-        const lastSent = userProfile.lastPasswordReminderSentAt
-          ? new Date(userProfile.lastPasswordReminderSentAt).getTime()
+        const lastSent = freshProfile.last_password_reminder_sent_at
+          ? new Date(freshProfile.last_password_reminder_sent_at).getTime()
           : 0;
-        if (lastSent < sevenDaysAgo) {
-          const nowIso = new Date().toISOString();
-          // b539: see the matching comment at the like-notification insert
-          // in toggleLike - same reasoning, sendPushNotification() call
-          // removed, the Database Webhook on this insert handles it
-          // server-side now.
-          const { error } = await supabase.from('notifications').insert({
-            recipient_id: session.user.id,
-            actor_id: session.user.id,
-            type: 'create_password'
-          });
-          if (!error) {
-            fetchNotifications();
-            const { error: stampError } = await supabase
-              .from('profiles')
-              .update({ last_password_reminder_sent_at: nowIso })
-              .eq('id', session.user.id);
-            if (!stampError) {
-              setUserProfile((prev) => ({ ...prev, lastPasswordReminderSentAt: nowIso }));
-            }
+        if (lastSent >= sevenDaysAgo) return;
+
+        const nowIso = new Date().toISOString();
+        // b539: see the matching comment at the like-notification insert
+        // in toggleLike - same reasoning, sendPushNotification() call
+        // removed, the Database Webhook on this insert handles it
+        // server-side now.
+        const { error } = await supabase.from('notifications').insert({
+          recipient_id: session.user.id,
+          actor_id: session.user.id,
+          type: 'create_password'
+        });
+        if (!error) {
+          fetchNotifications();
+          const { error: stampError } = await supabase
+            .from('profiles')
+            .update({ last_password_reminder_sent_at: nowIso })
+            .eq('id', session.user.id);
+          if (!stampError) {
+            setUserProfile((prev) => ({ ...prev, lastPasswordReminderSentAt: nowIso }));
           }
         }
       } finally {
         createPasswordReminderInFlightRef.current = false;
       }
     })();
-    // b658: dependency deliberately keyed on the stable user id rather
-    // than the whole session object - Supabase issues a brand new session
-    // object on every token refresh (which happens periodically all day,
-    // and on every app foreground/resume) even when it's the exact same
-    // logged-in user, and that object identity change was re-triggering
-    // this entire effect (including the profile-reload effect gating
-    // userDataLoaded) far more often than "once per real app open," which
-    // is what was producing several reminders in a single day instead of
-    // the intended one per 7 days.
-  }, [session?.user?.id, userDataLoaded, hasPasswordAuth, userProfile.lastPasswordReminderSentAt]);
+  }, [session?.user?.id, userDataLoaded]);
 
   const showStickySaveButton = accountSettingsModalVisible && hasUnsavedAccountChanges();
   const [stickySaveRendered, setStickySaveRendered] = useState(false);
