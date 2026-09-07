@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 664;
+const BUILD_NUMBER = 665;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -14413,7 +14413,7 @@ function App() {
       {/* STICKY BACK TO TOP FLOATING BUTTON */}
       {showBackToTop && (
         <BouncyButton
-          style={styles.stickyBackToTopBtn}
+          style={[styles.stickyBackToTopBtn, Platform.OS === 'web' && !isWebWide && { bottom: 116 }]}
           activeOpacity={0.85}
           onPress={scrollToTop}
           accessibilityRole="button"
@@ -22388,7 +22388,7 @@ function App() {
                     <ScrollView
                       ref={modalScrollViewRef}
                       style={styles.caseScrollView}
-                      contentContainerStyle={[styles.caseContent, { paddingBottom: 110 }]}
+                      contentContainerStyle={[styles.caseContent, { paddingBottom: Platform.OS === 'web' && !isWebWide ? 32 : 110 }]}
                       onScroll={handleModalScroll}
                       scrollEventThrottle={16}
                     >
