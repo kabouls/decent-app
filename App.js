@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 666;
+const BUILD_NUMBER = 667;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -664,6 +664,30 @@ const GitHubIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
     <Path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.36-3.37-1.36-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.05 1.53 1.05.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.95.68 1.92 0 1.39-.01 2.51-.01 2.85 0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z" />
   </Svg>
+));
+
+const WrenchIconSVG = React.memo(({ color = '#94A3B8', size = 18 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M14.7 6.3a4 4 0 0 0-5.4 4.9L3 17.5 6.5 21l6.3-6.3a4 4 0 0 0 4.9-5.4l-2.6 2.6-2.8-.8-.8-2.8 2.6-2.6z"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+));
+
+// Small pill used next to the Tools label everywhere it appears - a plain
+// reusable component rather than copy-pasting the same View/Text markup
+// at all 3 nav entry points.
+const BetaTag = React.memo(({ themeMode }) => (
+  <View style={{
+    backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
+    borderRadius: 99, paddingHorizontal: 6, paddingVertical: 1.5
+  }}>
+    <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '800', letterSpacing: 0.3 }}>BETA</Text>
+  </View>
 ));
 
 // Brief milestone easter eggs: the heart itself swaps to a meme/emoji for a
@@ -3600,6 +3624,89 @@ const compressVideoForUploadWeb = async (uri, onProgress, mimeTypeOrFileName) =>
   }
 };
 
+// TOOLS: Image Compressor engine. Separate from compressImageForUpload
+// above (that one has fixed, opinionated defaults tuned for portfolio
+// uploads) - this one is driven entirely by what the person using the
+// public tool actually asked for, defaulting to a target file size
+// rather than a fixed quality number.
+//
+// Neither ImageManipulator nor any image codec lets you specify "give me
+// a file under X KB" directly - you can only ask for a quality/dimension
+// and see what comes out. So this iterates: try a quality, measure the
+// real result, back off quality (then dimensions, once quality alone
+// can't get there) and try again, capped at a fixed number of attempts
+// so a stubborn image can't loop forever. Returns the closest result it
+// found even if it never fully got under target, since "as small as
+// reasonably possible" is still useful even short of the exact number.
+const getFileSizeBytes = async (uri) => {
+  if (Platform.OS === 'web') {
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    return blob.size;
+  }
+  const info = await FileSystem.getInfoAsync(uri, { size: true });
+  return info.size || 0;
+};
+
+const COMPRESSOR_MAX_ITERATIONS = 8;
+const COMPRESSOR_MIN_QUALITY = 0.35;
+const COMPRESSOR_MIN_SCALE = 0.3;
+
+const compressImageToTarget = async (uri, { targetBytes, maxWidth, maxHeight, format = 'JPEG' }) => {
+  const saveFormat =
+    format === 'PNG' ? ImageManipulator.SaveFormat.PNG :
+    format === 'WEBP' ? ImageManipulator.SaveFormat.WEBP :
+    ImageManipulator.SaveFormat.JPEG;
+
+  const originalSize = await new Promise((resolve, reject) => {
+    Image.getSize(uri, (w, h) => resolve({ w, h }), reject);
+  });
+
+  let quality = 0.9;
+  let scale = 1;
+  let best = null;
+
+  for (let i = 0; i < COMPRESSOR_MAX_ITERATIONS; i++) {
+    const actions = [];
+    const targetWidth = maxWidth ? Math.min(maxWidth, Math.round(originalSize.w * scale)) : Math.round(originalSize.w * scale);
+    const targetHeight = maxHeight ? Math.min(maxHeight, Math.round(originalSize.h * scale)) : undefined;
+    if (scale < 1 || maxWidth || maxHeight) {
+      actions.push({ resize: maxHeight && !maxWidth ? { height: targetHeight } : { width: targetWidth } });
+    }
+
+    const result = await ImageManipulator.manipulateAsync(uri, actions, {
+      compress: saveFormat === ImageManipulator.SaveFormat.PNG ? 1 : quality,
+      format: saveFormat
+    });
+    const size = await getFileSizeBytes(result.uri);
+
+    if (!best || size < best.size) {
+      best = { uri: result.uri, size, width: result.width, height: result.height };
+    }
+
+    if (!targetBytes || size <= targetBytes) {
+      return { ...best, uri: result.uri, size, width: result.width, height: result.height, hitTarget: !targetBytes || size <= targetBytes };
+    }
+
+    // PNG's "compress" value is ignored by most codecs (it's lossless) -
+    // once we're on PNG, the only lever left is dimensions, so skip
+    // straight to scaling down instead of wasting iterations re-trying
+    // an unchanged quality value.
+    if (saveFormat === ImageManipulator.SaveFormat.PNG) {
+      scale -= 0.15;
+    } else if (quality > COMPRESSOR_MIN_QUALITY) {
+      quality -= 0.12;
+    } else {
+      scale -= 0.15;
+      quality = 0.6;
+    }
+
+    if (scale <= COMPRESSOR_MIN_SCALE) break;
+  }
+
+  return { ...best, hitTarget: false };
+};
+
 // b614: minWidth is optional and new - added after Facebook's Sharing
 // Debugger flagged a real profile's avatar as too small for its og:image
 // requirement (hard minimum 200x200px), which was silently falling back
@@ -6195,6 +6302,23 @@ function App() {
   const [newPortfolioTypeText, setNewPortfolioTypeText] = useState('');
   const [newPortfolioTypeDetails, setNewPortfolioTypeDetails] = useState('');
   const [newPortfolioTypeConsent, setNewPortfolioTypeConsent] = useState(false);
+
+  // TOOLS - free utility pages (Image Compressor, and more later). One
+  // screen, one sub-tab state, rather than a separate modal per tool -
+  // keeps the "which tool is open" question in one place as more get
+  // added. toolsScreenVisible gates the whole thing; activeTool picks
+  // which one renders inside it.
+  const [toolsScreenVisible, setToolsScreenVisible] = useState(false);
+  const [activeTool, setActiveTool] = useState('hub'); // 'hub' | 'imageCompressor'
+  const [compressorFiles, setCompressorFiles] = useState([]); // [{ id, originalUri, originalSize, resultUri, resultSize, status, error }]
+  const [compressorTargetKB, setCompressorTargetKB] = useState(200);
+  const [compressorAdvancedOpen, setCompressorAdvancedOpen] = useState(false);
+  const [compressorMaxWidth, setCompressorMaxWidth] = useState('');
+  const [compressorMaxHeight, setCompressorMaxHeight] = useState('');
+  const [compressorLockAspect, setCompressorLockAspect] = useState(true);
+  const [compressorQuality, setCompressorQuality] = useState(0.8); // only used when a target size isn't the driver - see compressImageToTarget
+  const [compressorFormat, setCompressorFormat] = useState('JPEG'); // 'JPEG' | 'PNG' | 'WEBP'
+  const [compressorProcessing, setCompressorProcessing] = useState(false);
   // b562: which LINK_FIELD_INFO entry is currently shown in the shared
   // link-field info popup, null when closed - see its Modal further down
   // and the renderLinkFieldInfoButton() helper near
@@ -10309,6 +10433,122 @@ function App() {
   // time. Note: expo-image-picker doesn't support the crop/edit step when
   // multiple images are selected at once, so multi-pick images keep their
   // original aspect ratio.
+  // TOOLS: Image Compressor handlers. Picking is intentionally at full
+  // quality (no picker-level compression) since the whole point is to
+  // compress from a real original using the engine above, not from an
+  // already-lossy pick.
+  const pickCompressorImages = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showAppAlert('Permission Denied', 'Media library access is required to pick photos.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
+      quality: 1
+    });
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+    const newItems = await Promise.all(result.assets.map(async (a) => {
+      const size = await getFileSizeBytes(a.uri).catch(() => 0);
+      return {
+        id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        originalUri: a.uri,
+        originalSize: size,
+        resultUri: null,
+        resultSize: null,
+        status: 'pending', // 'pending' | 'processing' | 'done' | 'error'
+        error: null
+      };
+    }));
+    setCompressorFiles((prev) => [...prev, ...newItems].slice(0, 10));
+  };
+
+  const removeCompressorFile = (id) => {
+    setCompressorFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  const runCompressorBatch = async () => {
+    const pending = compressorFiles.filter((f) => f.status === 'pending' || f.status === 'error');
+    if (pending.length === 0) return;
+    setCompressorProcessing(true);
+
+    const targetBytes = compressorTargetKB ? Math.round(Number(compressorTargetKB) * 1024) : null;
+    const maxWidth = compressorMaxWidth ? Number(compressorMaxWidth) : undefined;
+    const maxHeight = compressorLockAspect ? undefined : (compressorMaxHeight ? Number(compressorMaxHeight) : undefined);
+
+    for (const file of pending) {
+      setCompressorFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, status: 'processing', error: null } : f)));
+      try {
+        const result = await compressImageToTarget(file.originalUri, {
+          targetBytes,
+          maxWidth,
+          maxHeight,
+          format: compressorFormat
+        });
+        setCompressorFiles((prev) => prev.map((f) => (f.id === file.id ? {
+          ...f,
+          status: 'done',
+          resultUri: result.uri,
+          resultSize: result.size,
+          hitTarget: result.hitTarget
+        } : f)));
+      } catch (e) {
+        console.warn('Image compression failed for', file.id, e);
+        setCompressorFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, status: 'error', error: 'Could not compress this image.' } : f)));
+      }
+    }
+    setCompressorProcessing(false);
+  };
+
+  // Same fetch-then-save pattern as handleDownloadQrisCode - the result
+  // URI is already a local file (native) or blob/data URI (web) since it
+  // came straight out of ImageManipulator, so no intermediate download
+  // step is needed the way a remote asset would require.
+  const handleDownloadCompressedImage = async (file) => {
+    if (!file.resultUri) return;
+    const ext = compressorFormat === 'PNG' ? 'png' : compressorFormat === 'WEBP' ? 'webp' : 'jpg';
+    if (Platform.OS === 'web') {
+      try {
+        const response = await fetch(file.resultUri);
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = `compressed-${file.id}.${ext}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(objectUrl);
+      } catch (e) {
+        console.warn('Compressed image download failed:', e);
+        showToast('Could not download - try again.');
+      }
+    } else {
+      try {
+        const permission = await MediaLibrary.requestPermissionsAsync();
+        if (!permission.granted) {
+          showToast('Photo library permission needed to save this image.');
+          return;
+        }
+        await MediaLibrary.saveToLibraryAsync(file.resultUri);
+        showToast('Saved to your photos.');
+      } catch (e) {
+        console.warn('Compressed image save failed:', e);
+        showToast('Could not save - try again.');
+      }
+    }
+  };
+
+  const handleDownloadAllCompressed = async () => {
+    const done = compressorFiles.filter((f) => f.status === 'done' && f.resultUri);
+    for (const f of done) {
+      await handleDownloadCompressedImage(f);
+    }
+  };
+
   const pickMultipleShowcaseImages = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -12562,11 +12802,35 @@ function App() {
                 )}
               </BouncyButton>
 
-              {/* GitHub - same placement/behavior pattern as Donate below it. */}
+              {/* Tools - free utility pages, anchored to the bottom
+                  alongside GitHub/Donate below it. marginTop:'auto' lives
+                  here now (moved off the GitHub button right after it)
+                  since this is the first item in that bottom-anchored
+                  cluster - only needs to be set once. */}
               <BouncyButton
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
                   marginTop: 'auto', marginHorizontal: sidebarCollapsed ? 12 : 16, marginBottom: 8,
+                  paddingVertical: 10, paddingHorizontal: sidebarCollapsed ? 0 : 12,
+                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start'
+                }}
+                onPress={() => { setToolsScreenVisible(true); setActiveTool('hub'); }}
+                accessibilityRole="button"
+              >
+                <WrenchIconSVG color={theme.textSecondary} size={18} />
+                {!sidebarCollapsed && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Tools</Text>
+                    <BetaTag themeMode={themeMode} />
+                  </View>
+                )}
+              </BouncyButton>
+
+              {/* GitHub - same placement/behavior pattern as Donate below it. */}
+              <BouncyButton
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10,
+                  marginHorizontal: sidebarCollapsed ? 12 : 16, marginBottom: 8,
                   paddingVertical: 10, paddingHorizontal: sidebarCollapsed ? 0 : 12,
                   justifyContent: sidebarCollapsed ? 'center' : 'flex-start'
                 }}
@@ -14816,6 +15080,28 @@ function App() {
                   </BouncyButton>
                 );
               })}
+
+              <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16, marginTop: 8, marginBottom: 8 }} />
+
+              <BouncyButton
+                accessibilityRole="button"
+                accessibilityLabel="Tools"
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 14,
+                  paddingVertical: 12, paddingHorizontal: 16
+                }}
+                onPress={() => {
+                  setHamburgerMenuVisible(false);
+                  setToolsScreenVisible(true);
+                  setActiveTool('hub');
+                }}
+              >
+                <View style={{ transform: [{ scale: 0.85 }] }}>
+                  <WrenchIconSVG color={theme.text} size={20} />
+                </View>
+                <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600' }}>Tools</Text>
+                <BetaTag themeMode={themeMode} />
+              </BouncyButton>
             </SafeAreaView>
           </Animated.View>
         </View>
@@ -16101,6 +16387,327 @@ function App() {
           </View>
         </View>
       </Modal>
+
+      {/* TOOLS - free utility pages, first up is the Image Compressor.
+          Same top-level Modal pattern as everything else in this file for
+          the same reason: guaranteed own portal/paint surface, never
+          trapped inside another component's local stacking context. */}
+      {toolsScreenVisible && (
+        <Modal
+          animationType={Platform.OS === 'web' ? 'none' : 'slide'}
+          transparent={false}
+          visible={true}
+          onRequestClose={() => {
+            if (activeTool !== 'hub') setActiveTool('hub');
+            else setToolsScreenVisible(false);
+          }}
+        >
+          <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+            <View style={[styles.modalTopBar, isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }]}>
+              {activeTool !== 'hub' ? (
+                <BouncyButton
+                  style={{ padding: 4 }}
+                  onPress={() => setActiveTool('hub')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back"
+                >
+                  <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
+                </BouncyButton>
+              ) : <View style={{ width: 30 }} />}
+              <Text style={[styles.modalTopTitle, { flex: 1, textAlign: 'center' }, isWebWide && { fontSize: 20 }]}>
+                {activeTool === 'imageCompressor' ? 'Image Compressor' : 'Tools'}
+              </Text>
+              <BouncyButton
+                style={styles.closeBtn}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                onPress={() => setToolsScreenVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <Text style={styles.closeBtnText}>✕</Text>
+              </BouncyButton>
+            </View>
+
+            <AppKeyboardAwareScrollView
+              contentContainerStyle={[{ padding: 20, gap: 14 }, isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }]}
+              enableOnAndroid={true}
+              extraScrollHeight={140}
+              keyboardShouldPersistTaps="handled"
+            >
+              {activeTool === 'hub' && (
+                <>
+                  <Text style={{ color: theme.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: 4 }}>
+                    Free, no-signup utilities to help you prep your portfolio and job applications. Everything here runs right on your device - nothing you drop in ever gets uploaded anywhere.
+                  </Text>
+
+                  <BouncyButton
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 14,
+                      backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                      borderRadius: 16, padding: 16
+                    }}
+                    onPress={() => setActiveTool('imageCompressor')}
+                    accessibilityRole="button"
+                  >
+                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                      <ImageIconSVG size={22} color={themeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>Image Compressor</Text>
+                      <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>Shrink photos to a target file size, right in your browser or app</Text>
+                    </View>
+                    <ChevronRightSVG color={theme.accent} size={18} />
+                  </BouncyButton>
+
+                  <View style={{
+                    borderRadius: 16, borderWidth: 1, borderColor: theme.border, borderStyle: 'dashed',
+                    padding: 16, alignItems: 'center', opacity: 0.6
+                  }}>
+                    <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600' }}>More tools coming soon</Text>
+                    <Text style={{ color: theme.textSecondary, fontSize: 11.5, marginTop: 4, textAlign: 'center' }}>QR code generator, document compressor</Text>
+                  </View>
+                </>
+              )}
+
+              {activeTool === 'imageCompressor' && (
+                <>
+                  <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
+                    Drop up to 10 images and pick a target file size - useful for application portals with strict upload limits. Nothing leaves your device.
+                  </Text>
+
+                  <Text style={styles.formGroupLabel}>Target File Size</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+                    {[100, 200, 500, 1024].map((kb) => (
+                      <BouncyButton
+                        key={kb}
+                        style={{
+                          paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99,
+                          backgroundColor: Number(compressorTargetKB) === kb ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : theme.surface,
+                          borderWidth: 1, borderColor: Number(compressorTargetKB) === kb ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border
+                        }}
+                        onPress={() => setCompressorTargetKB(kb)}
+                        accessibilityRole="button"
+                        accessibilityLabel={kb >= 1024 ? `${kb / 1024} MB` : `${kb} KB`}
+                        accessibilityState={{ selected: Number(compressorTargetKB) === kb }}
+                      >
+                        <Text style={{ color: Number(compressorTargetKB) === kb ? '#FFFFFF' : theme.text, fontSize: 12.5, fontWeight: '700' }}>
+                          {kb >= 1024 ? `${kb / 1024} MB` : `${kb} KB`}
+                        </Text>
+                      </BouncyButton>
+                    ))}
+                  </View>
+                  <FocusableTextInput
+                    style={styles.formInput}
+                    placeholder="Custom target in KB (e.g. 350)"
+                    placeholderTextColor="#94A3B8"
+                    value={String(compressorTargetKB)}
+                    onChangeText={(t) => setCompressorTargetKB(t.replace(/[^0-9]/g, ''))}
+                    keyboardType="number-pad"
+                    accessibilityLabel="Custom target file size in KB"
+                  />
+
+                  <BouncyButton
+                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
+                    onPress={() => setCompressorAdvancedOpen((v) => !v)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Advanced options"
+                    accessibilityState={{ expanded: compressorAdvancedOpen }}
+                  >
+                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Advanced</Text>
+                    {compressorAdvancedOpen ? <ChevronUpSVG color={theme.textSecondary} size={16} /> : <ChevronDownSVG color={theme.textSecondary} size={16} />}
+                  </BouncyButton>
+
+                  {compressorAdvancedOpen && (
+                    <View style={{ backgroundColor: theme.surface, borderRadius: 12, padding: 14, gap: 10 }}>
+                      <Text style={styles.formGroupLabel}>Max Dimensions (optional)</Text>
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <FocusableTextInput
+                          style={[styles.formInput, { flex: 1 }]}
+                          placeholder="Max width (px)"
+                          placeholderTextColor="#94A3B8"
+                          value={compressorMaxWidth}
+                          onChangeText={(t) => setCompressorMaxWidth(t.replace(/[^0-9]/g, ''))}
+                          keyboardType="number-pad"
+                          accessibilityLabel="Max width in pixels"
+                        />
+                        {!compressorLockAspect && (
+                          <FocusableTextInput
+                            style={[styles.formInput, { flex: 1 }]}
+                            placeholder="Max height (px)"
+                            placeholderTextColor="#94A3B8"
+                            value={compressorMaxHeight}
+                            onChangeText={(t) => setCompressorMaxHeight(t.replace(/[^0-9]/g, ''))}
+                            keyboardType="number-pad"
+                            accessibilityLabel="Max height in pixels"
+                          />
+                        )}
+                      </View>
+                      <BouncyButton
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                        onPress={() => setCompressorLockAspect((v) => !v)}
+                        accessibilityRole="checkbox"
+                        accessibilityLabel="Lock aspect ratio"
+                        accessibilityState={{ checked: compressorLockAspect }}
+                      >
+                        <View style={{
+                          width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
+                          borderWidth: 1.5, borderColor: compressorLockAspect ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                          backgroundColor: compressorLockAspect ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
+                        }}>
+                          {compressorLockAspect && <CheckIconSVG color="#FFFFFF" />}
+                        </View>
+                        <Text style={{ color: theme.text, fontSize: 13 }}>Lock aspect ratio</Text>
+                      </BouncyButton>
+
+                      <Text style={styles.formGroupLabel}>Output Format</Text>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {['JPEG', 'PNG', 'WEBP'].map((fmt) => (
+                          <BouncyButton
+                            key={fmt}
+                            style={{
+                              flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99,
+                              backgroundColor: compressorFormat === fmt ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : theme.bg,
+                              borderWidth: 1, borderColor: compressorFormat === fmt ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border
+                            }}
+                            onPress={() => setCompressorFormat(fmt)}
+                            accessibilityRole="button"
+                            accessibilityLabel={fmt}
+                            accessibilityState={{ selected: compressorFormat === fmt }}
+                          >
+                            <Text style={{ color: compressorFormat === fmt ? '#FFFFFF' : theme.text, fontSize: 12, fontWeight: '700' }}>{fmt}</Text>
+                          </BouncyButton>
+                        ))}
+                      </View>
+                      <Text style={{ color: theme.textSecondary, fontSize: 11, lineHeight: 15 }}>
+                        Photo metadata (location, device info) is automatically removed during compression on every format.
+                      </Text>
+                    </View>
+                  )}
+
+                  <BouncyButton
+                    style={{
+                      marginTop: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: theme.border,
+                      borderRadius: 14, padding: 20, alignItems: 'center', gap: 8
+                    }}
+                    onPress={pickCompressorImages}
+                    accessibilityRole="button"
+                  >
+                    <ImageIconSVG size={26} color={theme.textSecondary} />
+                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>
+                      {compressorFiles.length === 0 ? 'Choose Images' : 'Add More Images'}
+                    </Text>
+                    <Text style={{ color: theme.textSecondary, fontSize: 11 }}>Up to 10 at once</Text>
+                  </BouncyButton>
+
+                  {compressorFiles.map((file) => (
+                    <View key={file.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.surface, borderRadius: 12, padding: 10 }}>
+                      <Image source={{ uri: file.originalUri }} style={{ width: 48, height: 48, borderRadius: 8 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
+                          Original: {(file.originalSize / 1024).toFixed(0)} KB
+                        </Text>
+                        {file.status === 'processing' && (
+                          <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '600', marginTop: 2 }}>Compressing...</Text>
+                        )}
+                        {file.status === 'done' && (
+                          <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '700', marginTop: 2 }}>
+                            {(file.resultSize / 1024).toFixed(0)} KB {!file.hitTarget && '(closest possible)'}
+                          </Text>
+                        )}
+                        {file.status === 'error' && (
+                          <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '600', marginTop: 2 }}>{file.error}</Text>
+                        )}
+                        {file.status === 'pending' && (
+                          <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>Waiting to compress</Text>
+                        )}
+                      </View>
+                      {file.status === 'done' ? (
+                        <BouncyButton
+                          style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
+                          onPress={() => handleDownloadCompressedImage(file)}
+                          accessibilityRole="button"
+                          accessibilityLabel="Download"
+                        >
+                          <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>Download</Text>
+                        </BouncyButton>
+                      ) : (
+                        <BouncyButton style={{ padding: 6 }} onPress={() => removeCompressorFile(file.id)} accessibilityRole="button" accessibilityLabel="Remove">
+                          <TrashIconSVG />
+                        </BouncyButton>
+                      )}
+                    </View>
+                  ))}
+
+                  {compressorFiles.length > 0 && (
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                      <BouncyButton
+                        style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: compressorProcessing ? 0.6 : 1 }]}
+                        onPress={runCompressorBatch}
+                        disabled={compressorProcessing || !compressorFiles.some((f) => f.status === 'pending' || f.status === 'error')}
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: compressorProcessing, busy: compressorProcessing }}
+                      >
+                        <Text style={styles.submitBtnText}>{compressorProcessing ? 'Compressing...' : 'Compress All'}</Text>
+                      </BouncyButton>
+                      {compressorFiles.some((f) => f.status === 'done') && (
+                        <BouncyButton
+                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                          onPress={handleDownloadAllCompressed}
+                          accessibilityRole="button"
+                        >
+                          <Text style={[styles.submitBtnText, { color: theme.text }]}>Download All</Text>
+                        </BouncyButton>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Post-success CTA - web keeps the existing Donate link
+                      (Ko-fi/GitHub Sponsors), same as everywhere else in
+                      the app. Native swaps this for a store review prompt
+                      instead - a real "if you found this helpful" tip-jar
+                      style CTA connected to the app's own content/features
+                      is exactly what gets iOS apps rejected under
+                      Guideline 3.1.1 unless it goes through In-App
+                      Purchase, so this sidesteps that entirely rather than
+                      risk it. */}
+                  {compressorFiles.some((f) => f.status === 'done') && (
+                    <View style={{ marginTop: 10, alignItems: 'center' }}>
+                      {Platform.OS === 'web' ? (
+                        DONATIONS_ENABLED && (
+                          <BouncyButton
+                            onPress={() => { setDonateTermsAgreed(false); setDonateModalVisible(true); }}
+                            accessibilityRole="button"
+                          >
+                            <Text style={{ color: theme.textSecondary, fontSize: 12, textDecorationLine: 'underline' }}>
+                              Found this helpful? Support DECENT
+                            </Text>
+                          </BouncyButton>
+                        )
+                      ) : (
+                        <BouncyButton
+                          onPress={async () => {
+                            try {
+                              const StoreReview = require('expo-store-review');
+                              if (await StoreReview.hasAction()) await StoreReview.requestReview();
+                            } catch (e) {
+                              console.warn('Store review prompt unavailable:', e);
+                            }
+                          }}
+                          accessibilityRole="button"
+                        >
+                          <Text style={{ color: theme.textSecondary, fontSize: 12, textDecorationLine: 'underline' }}>
+                            Enjoying DECENT? Leave a review
+                          </Text>
+                        </BouncyButton>
+                      )}
+                    </View>
+                  )}
+                </>
+              )}
+            </AppKeyboardAwareScrollView>
+          </SafeAreaView>
+        </Modal>
+      )}
 
       {/* DELETE ACCOUNT - requires typing DELETE, real failsafe for a destructive action */}
       <Modal
@@ -17766,6 +18373,25 @@ function App() {
                     >
                       <HeartIconSVG liked={true} />
                       <Text style={styles.donateSettingBtnText}>Support & Donate to DECENT</Text>
+                    </BouncyButton>
+                  )}
+
+                  {/* Tools - native only. Web has its own entry points
+                      already (the wide-web sidebar and the narrow-web
+                      hamburger drawer), so showing it here too would be a
+                      duplicate. */}
+                  {Platform.OS !== 'web' && (
+                    <BouncyButton
+                      style={[styles.settingItemRow, { marginTop: 4 }]}
+                      onPress={() => { setSettingsModalVisible(false); setOptionsView('root'); setToolsScreenVisible(true); setActiveTool('hub'); }}
+                      accessibilityRole="button"
+                    >
+                      <View style={styles.iconTextInlineRow}>
+                        <WrenchIconSVG color={theme.textSecondary} size={16} />
+                        <Text style={styles.settingItemTitle}>Tools</Text>
+                        <BetaTag themeMode={themeMode} />
+                      </View>
+                      <ChevronRightSVG color={theme.accent} size={16} />
                     </BouncyButton>
                   )}
                 </>
