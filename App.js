@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 660;
+const BUILD_NUMBER = 661;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -182,7 +182,8 @@ const CONTACT_TYPES = [
   { key: 'linkedin', label: 'LinkedIn', placeholder: 'https://linkedin.com/in/you', keyboardType: 'url' },
   { key: 'twitter', label: 'Twitter / X', placeholder: 'https://x.com/you', keyboardType: 'url' },
   { key: 'telegram', label: 'Telegram', placeholder: 'https://t.me/you', keyboardType: 'url' },
-  { key: 'discord', label: 'Discord', placeholder: 'username or discord.gg link', keyboardType: 'default' }
+  { key: 'discord', label: 'Discord', placeholder: 'username or discord.gg link', keyboardType: 'default' },
+  { key: 'other', label: 'Other', placeholder: 'Anything you want people to see or copy', keyboardType: 'default' }
 ];
 
 const getContactTypeLabel = (key) => CONTACT_TYPES.find((t) => t.key === key)?.label || key;
@@ -4424,8 +4425,8 @@ const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, t
             >
               <View style={{
                 width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                borderWidth: 1.5, borderColor: allSelected ? theme.accent : theme.border,
-                backgroundColor: allSelected ? theme.accent : 'transparent'
+                borderWidth: 1.5, borderColor: allSelected ? (theme.mode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                backgroundColor: allSelected ? (theme.mode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
               }}>
                 {allSelected && <CheckIconSVG color="#FFFFFF" />}
               </View>
@@ -4449,8 +4450,8 @@ const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, t
               >
                 <View style={{
                   width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                  borderWidth: 1.5, borderColor: selected.has(type.key) ? theme.accent : theme.border,
-                  backgroundColor: selected.has(type.key) ? theme.accent : 'transparent'
+                  borderWidth: 1.5, borderColor: selected.has(type.key) ? (theme.mode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                  backgroundColor: selected.has(type.key) ? (theme.mode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
                 }}>
                   {selected.has(type.key) && <CheckIconSVG color="#FFFFFF" />}
                 </View>
@@ -11369,9 +11370,9 @@ function App() {
                   <BouncyButton
                     key={t.key}
                     style={{
-                      paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8,
-                      backgroundColor: addingContactType === t.key ? theme.accent : theme.bg,
-                      borderWidth: 1, borderColor: addingContactType === t.key ? theme.accent : theme.border
+                      paddingHorizontal: 12, paddingVertical: 7, borderRadius: 99,
+                      backgroundColor: addingContactType === t.key ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : theme.bg,
+                      borderWidth: 1, borderColor: addingContactType === t.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border
                     }}
                     onPress={() => setAddingContactType(t.key)}
                     accessibilityRole="button"
@@ -13445,8 +13446,8 @@ function App() {
                       >
                         <View style={{
                           width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                          borderWidth: 1.5, borderColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? theme.accent : theme.border,
-                          backgroundColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? theme.accent : 'transparent'
+                          borderWidth: 1.5, borderColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                          backgroundColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
                         }}>
                           {forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length && <CheckIconSVG color="#FFFFFF" />}
                         </View>
@@ -13473,8 +13474,8 @@ function App() {
                         >
                           <View style={{
                             width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                            borderWidth: 1.5, borderColor: forYouTypeFilter.has(type.key) ? theme.accent : theme.border,
-                            backgroundColor: forYouTypeFilter.has(type.key) ? theme.accent : 'transparent'
+                            borderWidth: 1.5, borderColor: forYouTypeFilter.has(type.key) ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                            backgroundColor: forYouTypeFilter.has(type.key) ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
                           }}>
                             {forYouTypeFilter.has(type.key) && <CheckIconSVG color="#FFFFFF" />}
                           </View>
@@ -19049,7 +19050,7 @@ function App() {
                   style={{
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-end',
                     paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
-                    backgroundColor: myFeatureInterests.has(type.key) ? '#0B815A' : theme.accent
+                    backgroundColor: myFeatureInterests.has(type.key) ? '#0B815A' : (themeMode === 'light' ? '#6D28D9' : '#7D52DD')
                   }}
                   onPress={() => {
                     if (!requireAuth()) return;
@@ -23979,8 +23980,8 @@ function App() {
                       >
                         <View style={{
                           width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                          borderWidth: 1.5, borderColor: shareTypeFilters.size === 0 ? theme.accent : theme.border,
-                          backgroundColor: shareTypeFilters.size === 0 ? theme.accent : 'transparent'
+                          borderWidth: 1.5, borderColor: shareTypeFilters.size === 0 ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                          backgroundColor: shareTypeFilters.size === 0 ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
                         }}>
                           {shareTypeFilters.size === 0 && <CheckIconSVG color="#FFFFFF" />}
                         </View>
@@ -24006,8 +24007,8 @@ function App() {
                           >
                             <View style={{
                               width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                              borderWidth: 1.5, borderColor: selected ? theme.accent : theme.border,
-                              backgroundColor: selected ? theme.accent : 'transparent'
+                              borderWidth: 1.5, borderColor: selected ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                              backgroundColor: selected ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
                             }}>
                               {selected && <CheckIconSVG color="#FFFFFF" />}
                             </View>
