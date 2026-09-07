@@ -155,13 +155,13 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 659;
+const BUILD_NUMBER = 660;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
 // legitimate self-read exception). Any new broad profiles read should use
 // this instead of select('*') or it will error at the DB level.
-const PROFILE_SAFE_COLUMNS = 'id, name, role, location, bio, avatar_url, email, created_at, is_admin, handle, handle_changed_at, links, updated_at, onboarding_completed, last_active_at, last_platform, last_app_version, is_banned, suspended_until, has_password_auth, contacts, contact_consent';
+const PROFILE_SAFE_COLUMNS = 'id, name, role, location, bio, avatar_url, email, created_at, is_admin, handle, handle_changed_at, links, updated_at, onboarding_completed, last_active_at, last_platform, last_app_version, is_banned, suspended_until, has_password_auth, contacts, contact_consent, last_password_reminder_sent_at';
 
 // b627: contact info feature - designers can optionally list up to 5 ways
 // to reach them, only visible to others once they've explicitly turned on
@@ -7496,7 +7496,8 @@ function App() {
             links: cloudProfile.links || [],
             contacts: cloudProfile.contacts || [],
             contactConsent: !!cloudProfile.contact_consent,
-            hasPasswordAuth: !!cloudProfile.has_password_auth
+            hasPasswordAuth: !!cloudProfile.has_password_auth,
+            lastPasswordReminderSentAt: cloudProfile.last_password_reminder_sent_at || null
           };
           setUserProfile(parsed);
           setEditName(parsed.name);
@@ -8427,17 +8428,19 @@ function App() {
     createPasswordReminderInFlightRef.current = true;
     (async () => {
       try {
-        const { data: last } = await supabase
-          .from('notifications')
-          .select('created_at')
-          .eq('recipient_id', session.user.id)
-          .eq('type', 'create_password')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
+        // b659 (follow-up): cooldown now lives on profiles.last_password_
+        // reminder_sent_at instead of "does a create_password notification
+        // still exist" - that approach broke the moment the user cleared
+        // their notifications (a completely normal action), since clearing
+        // deleted the only record of the reminder ever having been sent,
+        // resetting the cooldown to zero and firing again on the very next
+        // app open. A profile-level timestamp can't be touched by Clear.
         const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-        if (!last || new Date(last.created_at).getTime() < sevenDaysAgo) {
+        const lastSent = userProfile.lastPasswordReminderSentAt
+          ? new Date(userProfile.lastPasswordReminderSentAt).getTime()
+          : 0;
+        if (lastSent < sevenDaysAgo) {
+          const nowIso = new Date().toISOString();
           // b539: see the matching comment at the like-notification insert
           // in toggleLike - same reasoning, sendPushNotification() call
           // removed, the Database Webhook on this insert handles it
@@ -8449,6 +8452,13 @@ function App() {
           });
           if (!error) {
             fetchNotifications();
+            const { error: stampError } = await supabase
+              .from('profiles')
+              .update({ last_password_reminder_sent_at: nowIso })
+              .eq('id', session.user.id);
+            if (!stampError) {
+              setUserProfile((prev) => ({ ...prev, lastPasswordReminderSentAt: nowIso }));
+            }
           }
         }
       } finally {
@@ -8464,7 +8474,7 @@ function App() {
     // userDataLoaded) far more often than "once per real app open," which
     // is what was producing several reminders in a single day instead of
     // the intended one per 7 days.
-  }, [session?.user?.id, userDataLoaded, hasPasswordAuth]);
+  }, [session?.user?.id, userDataLoaded, hasPasswordAuth, userProfile.lastPasswordReminderSentAt]);
 
   const showStickySaveButton = accountSettingsModalVisible && hasUnsavedAccountChanges();
   const [stickySaveRendered, setStickySaveRendered] = useState(false);
