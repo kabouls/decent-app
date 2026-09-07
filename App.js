@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 652;
+const BUILD_NUMBER = 653;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -5463,6 +5463,40 @@ function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [imageViewerState]);
+
+  // Escape-to-close for the media viewer - RN-Web's real <Modal> gets this
+  // for free via its own built-in keydown handling (wired to
+  // onRequestClose), but the media viewer isn't a Modal, it's a plain
+  // absolutely-positioned overlay, so it needs its own listener.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !imageViewerState) return;
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') setImageViewerState(null);
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [imageViewerState]);
+
+  // Escape-to-close for the portfolio detail and designer profile pages,
+  // web only. Both render as a real <Modal> on native (which handles
+  // Escape/back-button automatically via onRequestClose), but on web they
+  // deliberately render as a plain View instead (see the comments at each
+  // page's own web branch further down) to fix an unrelated white-flash
+  // portal timing bug - a plain View gets none of a real Modal's built-in
+  // keyboard wiring, so it has to be added back explicitly here.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handleEscape = (e) => {
+      if (e.key !== 'Escape') return;
+      if (designerModalVisible) {
+        handleBackFromDesignerProfile();
+      } else if (modalVisible) {
+        handleBackFromPortfolioDetail();
+      }
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [modalVisible, designerModalVisible]);
   const galleryScrollContentWidthRef = useRef(0);
   const galleryScrollContainerWidthRef = useRef(0);
   const galleryScrollXRef = useRef(0);
