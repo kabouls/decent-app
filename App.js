@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 628;
+const BUILD_NUMBER = 649;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -1952,6 +1952,16 @@ const MARKDOWN_TOOLBAR_BUTTONS = [
   { label: 'U', markup: '__', mode: 'wrap' }
 ];
 
+// Screen-reader labels for the toolbar above - the visible glyphs (B, I, U)
+// are fine sighted shorthand but ambiguous read aloud on their own.
+const MARKDOWN_BTN_A11Y_LABELS = {
+  H1: 'Heading 1',
+  H2: 'Heading 2',
+  B: 'Bold',
+  I: 'Italic',
+  U: 'Underline'
+};
+
 const isLocalMediaUri = (uri) =>
   !!uri && (uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('ph://') || uri.startsWith('blob:') || uri.startsWith('data:'));
 
@@ -2254,6 +2264,7 @@ const LinkedInLogoSVG = React.memo(() => (
 
 const GitHubLogoSVG = React.memo(() => (
   <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <Circle cx="12" cy="12" r="12" fill="#181717" />
     <Path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.258-1.11-1.594-1.11-1.594-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" fill="#FFFFFF" />
   </Svg>
 ));
@@ -2723,6 +2734,9 @@ const ProjectCard = React.memo(({
             backgroundColor: 'rgba(11, 15, 23, 0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10
           }}
           onPress={() => onTogglePin && onTogglePin(item.id)}
+          accessibilityRole="button"
+          accessibilityLabel={item.pinned ? 'Unpin from profile' : 'Pin to profile'}
+          accessibilityState={{ selected: !!item.pinned }}
         >
           <PinIconSVG pinned={!!item.pinned} size={15} color={item.pinned ? '#C084FC' : '#FFFFFF'} />
         </BouncyButton>
@@ -2784,6 +2798,9 @@ const ProjectCard = React.memo(({
             <BouncyButton
               style={[styles.cardFollowBtnRight, isFollowing && styles.cardFollowBtnRightActive]}
               onPress={() => onToggleFollow(item.ownerId)}
+              accessibilityRole="button"
+              accessibilityLabel={isFollowing ? `Following ${item.designer}` : (followsMe ? `Follow back ${item.designer}` : `Follow ${item.designer}`)}
+              accessibilityState={{ selected: isFollowing }}
             >
               <Text style={[styles.cardFollowBtnText, isFollowing && styles.cardFollowBtnTextActive]}>
                 {isFollowing ? 'Followed' : (followsMe ? 'Follow Back' : 'Follow')}
@@ -4293,6 +4310,9 @@ const AnimatedPillTabBar = ({ tabs, activeKey, onChange, theme, themeMode, fontS
           key={tab.key}
           style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 99 }}
           onPress={() => onChange(tab.key)}
+          accessibilityRole="tab"
+          accessibilityLabel={tab.label}
+          accessibilityState={{ selected: activeKey === tab.key }}
         >
           <Text style={{ color: activeKey === tab.key ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize }}>
             {tab.label}
@@ -4320,6 +4340,9 @@ const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, t
           borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
         }}
         onPress={() => setOpen((v) => !v)}
+        accessibilityRole="button"
+        accessibilityLabel="Filter by portfolio type"
+        accessibilityState={{ expanded: open }}
       >
         <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
           {allSelected
@@ -4337,6 +4360,8 @@ const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, t
             style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
             activeOpacity={1}
             onPress={() => setOpen(false)}
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
           />
           <View style={{
             position: 'absolute', top: 34, left: 0, width: 200, height: dropdownHeight, zIndex: 100,
@@ -4346,6 +4371,9 @@ const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, t
             <BouncyButton
               style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
               onPress={() => onChange(allSelected ? new Set() : new Set(availableTypes.map((t) => t.key)))}
+              accessibilityRole="checkbox"
+              accessibilityLabel="All Portfolios"
+              accessibilityState={{ checked: allSelected }}
             >
               <View style={{
                 width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
@@ -4368,6 +4396,9 @@ const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, t
                   if (next.has(type.key)) next.delete(type.key); else next.add(type.key);
                   onChange(next);
                 }}
+                accessibilityRole="checkbox"
+                accessibilityLabel={type.label}
+                accessibilityState={{ checked: selected.has(type.key) }}
               >
                 <View style={{
                   width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
@@ -11145,6 +11176,8 @@ function App() {
       style={{ height: 13, aspectRatio: 1, borderRadius: 999, borderWidth: 1.5, borderColor: theme.textSecondary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       onPress={() => setLinkFieldInfoKey(key)}
+      accessibilityRole="button"
+      accessibilityLabel="More info"
     >
       <Text style={{ color: theme.textSecondary, fontSize: 9, fontWeight: '800', lineHeight: 12 }}>!</Text>
     </BouncyButton>
@@ -11182,6 +11215,9 @@ function App() {
           onValueChange={setEditContactConsent}
           trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
           theme={theme}
+          accessibilityRole="switch"
+          accessibilityLabel="Show my contact info on my profile"
+          accessibilityState={{ checked: editContactConsent }}
         />
       </View>
 
@@ -11193,7 +11229,7 @@ function App() {
                 <Text style={{ color: theme.textSecondary, fontSize: 10, marginBottom: 2 }}>{getContactTypeLabel(c.type)}</Text>
                 <Text style={{ color: theme.text, fontSize: 13 }} numberOfLines={1}>{c.value}</Text>
               </View>
-              <BouncyButton style={{ padding: 8 }} onPress={() => handleRemoveContact(idx)}>
+              <BouncyButton style={{ padding: 8 }} onPress={() => handleRemoveContact(idx)} accessibilityRole="button" accessibilityLabel={`Remove ${getContactTypeLabel(c.type)}`}>
                 <TrashIconSVG />
               </BouncyButton>
             </View>
@@ -11212,6 +11248,9 @@ function App() {
                       borderWidth: 1, borderColor: addingContactType === t.key ? theme.accent : theme.border
                     }}
                     onPress={() => setAddingContactType(t.key)}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.label}
+                    accessibilityState={{ selected: addingContactType === t.key }}
                   >
                     <Text style={{ color: addingContactType === t.key ? '#FFFFFF' : theme.text, fontSize: 12, fontWeight: '600' }}>{t.label}</Text>
                   </BouncyButton>
@@ -11225,15 +11264,18 @@ function App() {
                 placeholderTextColor="#94A3B8"
                 autoCapitalize="none"
                 keyboardType={CONTACT_TYPES.find((t) => t.key === addingContactType)?.keyboardType || 'default'}
+                accessibilityLabel={CONTACT_TYPES.find((t) => t.key === addingContactType)?.label || 'Contact value'}
               />
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-                <BouncyButton style={{ flex: 1, paddingVertical: 10, alignItems: 'center' }} onPress={() => { setAddingContactType(null); setNewContactValue(''); }}>
+                <BouncyButton style={{ flex: 1, paddingVertical: 10, alignItems: 'center' }} onPress={() => { setAddingContactType(null); setNewContactValue(''); }} accessibilityRole="button">
                   <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
                 </BouncyButton>
                 <BouncyButton
                   style={{ flex: 1, backgroundColor: theme.accent, borderRadius: 8, paddingVertical: 10, alignItems: 'center', opacity: newContactValue.trim() ? 1 : 0.5 }}
                   onPress={handleAddContact}
                   disabled={!newContactValue.trim()}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !newContactValue.trim() }}
                 >
                   <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Add</Text>
                 </BouncyButton>
@@ -11244,6 +11286,7 @@ function App() {
               <BouncyButton
                 style={styles.addMoreVideoBtn}
                 onPress={() => setAddingContactType(CONTACT_TYPES.find((t) => !editContacts.some((c) => c.type === t.key))?.key)}
+                accessibilityRole="button"
               >
                 <Text style={styles.addMoreVideoText}>+ Add Contact ({editContacts.length}/5)</Text>
               </BouncyButton>
@@ -13338,6 +13381,9 @@ function App() {
                             setSelectedFollowedDesigner(des.id);
                           }
                         }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Filter by ${des.name || des.handle}${circleHasNewPost[des.id] ? ', new post' : ''}`}
+                        accessibilityState={{ selected: isSelected }}
                       >
                         <View style={{ position: 'relative' }}>
                           <View style={[styles.storyRing, isSelected && styles.storyRingActive]}>
@@ -13370,6 +13416,8 @@ function App() {
                         }
                       }, 300);
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Discover designers to follow"
                   >
                     <View style={[styles.storyRing, { alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed' }]}>
                       <Text style={{ color: theme.accent, fontSize: 24, fontWeight: '700', lineHeight: 26 }}>+</Text>
@@ -13428,6 +13476,7 @@ function App() {
                         }
                       }, 300);
                     }}
+                    accessibilityRole="button"
                   >
                     <View style={styles.iconTextInlineRow}>
                       <Text style={styles.discoverBtnText}>
@@ -13459,7 +13508,7 @@ function App() {
                   autoFocus={true}
                 />
                 {searchQuery.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setSearchQuery('')}>
+                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setSearchQuery('')} accessibilityRole="button" accessibilityLabel="Clear search">
                     <ClearTextXSVG />
                   </BouncyButton>
                 )}
@@ -13473,6 +13522,8 @@ function App() {
                       <BouncyButton
                         style={[styles.designerItemCard, { borderColor: '#8B5CF6', borderWidth: 1.5 }]}
                         onPress={() => openDesignerModal(exactMatch.item)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${exactMatch.item.name}, ${exactMatch.item.role}`}
                       >
                         <Avatar uri={exactMatch.item.avatar} style={styles.designerListAvatar} />
                         <View style={styles.designerInfoCol}>
@@ -13511,7 +13562,7 @@ function App() {
                     <View>
                       <Text style={styles.emptySearchText}>No exact match for "{searchQuery}".</Text>
                       {didYouMeanSuggestion && (
-                        <BouncyButton style={{ marginTop: 6 }} onPress={() => setSearchQuery(didYouMeanSuggestion)}>
+                        <BouncyButton style={{ marginTop: 6 }} onPress={() => setSearchQuery(didYouMeanSuggestion)} accessibilityRole="button" accessibilityLabel={`Did you mean ${didYouMeanSuggestion}`}>
                           <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
                             Did you mean <Text style={{ color: theme.accent, fontWeight: '700' }}>"{didYouMeanSuggestion}"</Text>?
                           </Text>
@@ -13530,6 +13581,9 @@ function App() {
                         key={tab.key}
                         style={[styles.topCategoryChip, searchFilterTab === tab.key && styles.topCategoryChipActive]}
                         onPress={() => setSearchFilterTab(tab.key)}
+                        accessibilityRole="tab"
+                        accessibilityLabel={tab.label}
+                        accessibilityState={{ selected: searchFilterTab === tab.key }}
                       >
                         <Text style={[styles.topCategoryText, searchFilterTab === tab.key && styles.topCategoryTextActive]}>
                           {tab.label}
@@ -13598,6 +13652,9 @@ function App() {
                               <BouncyButton
                                 style={[styles.smallFollowBtn, isFollowing && styles.smallFollowBtnActive]}
                                 onPress={() => toggleFollowDesigner(des.id)}
+                                accessibilityRole="button"
+                                accessibilityLabel={isFollowing ? `Following ${des.name}` : (des.followsMe ? `Follow back ${des.name}` : `Follow ${des.name}`)}
+                                accessibilityState={{ selected: isFollowing }}
                               >
                                 <Text style={[styles.smallFollowText, isFollowing && styles.smallFollowTextActive]}>
                                   {isFollowing ? 'Following' : (des.followsMe ? 'Follow Back' : '+ Follow')}
@@ -13607,6 +13664,8 @@ function App() {
                               <BouncyButton
                                 style={styles.smallShareBtnIconOnly}
                                 onPress={() => handleShareDesigner(des)}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Share ${des.name}'s profile`}
                               >
                                 <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
                               </BouncyButton>
@@ -13620,6 +13679,7 @@ function App() {
                       <BouncyButton
                         style={{ alignSelf: 'flex-start', marginTop: 12, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
                         onPress={() => setSearchFilterTab('designers')}
+                        accessibilityRole="button"
                       >
                         <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>
                           Show more designers ({relatedDesigners.length - 3} more)
@@ -13654,7 +13714,7 @@ function App() {
                     <View>
                       <Text style={styles.emptySearchText}>No related results found.</Text>
                       {didYouMeanSuggestion && (
-                        <BouncyButton style={{ marginTop: 6 }} onPress={() => setSearchQuery(didYouMeanSuggestion)}>
+                        <BouncyButton style={{ marginTop: 6 }} onPress={() => setSearchQuery(didYouMeanSuggestion)} accessibilityRole="button" accessibilityLabel={`Did you mean ${didYouMeanSuggestion}`}>
                           <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
                             Did you mean <Text style={{ color: theme.accent, fontWeight: '700' }}>"{didYouMeanSuggestion}"</Text>?
                           </Text>
@@ -13699,6 +13759,8 @@ function App() {
                           key={kw}
                           style={styles.keywordChip}
                           onPress={() => setSearchQuery(kw)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Search for ${kw}`}
                         >
                           <View style={styles.iconTextInlineRow}>
                             <SearchChipSVG />
@@ -13793,6 +13855,9 @@ function App() {
                             <BouncyButton
                               style={[styles.smallFollowBtn, isFollowing && styles.smallFollowBtnActive]}
                               onPress={() => toggleFollowDesigner(des.id)}
+                              accessibilityRole="button"
+                              accessibilityLabel={isFollowing ? `Following ${des.name}` : (des.followsMe ? `Follow back ${des.name}` : `Follow ${des.name}`)}
+                              accessibilityState={{ selected: isFollowing }}
                             >
                               <Text style={[styles.smallFollowText, isFollowing && styles.smallFollowTextActive]}>
                                 {isFollowing ? 'Following' : (des.followsMe ? 'Follow Back' : '+ Follow')}
@@ -13802,6 +13867,8 @@ function App() {
                             <BouncyButton
                               style={styles.smallShareBtnIconOnly}
                               onPress={() => handleShareDesigner(des)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Share ${des.name}'s profile`}
                             >
                               <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
                             </BouncyButton>
@@ -13819,6 +13886,9 @@ function App() {
                                   }
                                   setDiscoverDotsMenuOpenId(next);
                                 }}
+                                accessibilityRole="button"
+                                accessibilityLabel={`More options for ${des.name}`}
+                                accessibilityState={{ expanded: discoverDotsMenuOpenId === des.id }}
                               >
                                 <Text style={{ color: theme.accentLight, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
                               </BouncyButton>
@@ -13834,6 +13904,8 @@ function App() {
                                     style={{ flex: 1 }}
                                     activeOpacity={1}
                                     onPress={() => setDiscoverDotsMenuOpenId(null)}
+                                    accessible={false}
+                                    importantForAccessibility="no-hide-descendants"
                                   />
                                   <View style={{
                                     position: 'absolute', top: discoverDotsMenuPos.top, right: discoverDotsMenuPos.right, width: 220,
@@ -13847,6 +13919,7 @@ function App() {
                                         setDiscoverDotsMenuOpenId(null);
                                         handleReportContent('user', des.id, des.name);
                                       }}
+                                      accessibilityRole="button"
                                     >
                                       <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
                                     </BouncyButton>
@@ -13858,6 +13931,7 @@ function App() {
                                           ? handleUnmuteDesigner(des.id, des.name)
                                           : handleMuteDesigner(des.id, des.name);
                                       }}
+                                      accessibilityRole="button"
                                     >
                                       <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
                                         {mutedIds.has(des.id) ? 'Unmute Posts' : 'Mute Posts'}
@@ -13869,6 +13943,7 @@ function App() {
                                         setDiscoverDotsMenuOpenId(null);
                                         handleBlockUser(des.id, des.name);
                                       }}
+                                      accessibilityRole="button"
                                     >
                                       <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
                                     </BouncyButton>
@@ -13886,6 +13961,7 @@ function App() {
                     <BouncyButton
                       style={{ marginTop: 14, marginBottom: 10, alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 24, backgroundColor: theme.surface, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
                       onPress={() => setDiscoverDesignersLimit((prev) => prev + DISCOVER_PAGE_SIZE)}
+                      accessibilityRole="button"
                     >
                       <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 13 }}>Show More</Text>
                     </BouncyButton>
@@ -13911,6 +13987,7 @@ function App() {
                 <BouncyButton
                   style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6', paddingHorizontal: 28, paddingVertical: 12, borderRadius: 99 }}
                   onPress={() => setGuestAuthPromptVisible(true)}
+                  accessibilityRole="button"
                 >
                   <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14 }}>Sign In / Register</Text>
                 </BouncyButton>
@@ -13928,11 +14005,13 @@ function App() {
                 <BouncyButton
                   style={{ position: 'absolute', top: 16, right: 16, width: 36, height: 36, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}
                   onPress={() => handleShareDesigner({ id: session.user.id, name: userProfile.name, handle: userProfile.handle })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Share your profile"
                 >
                   <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
                 </BouncyButton>
 
-                <BouncyButton activeOpacity={0.9} onPress={() => setLightboxImageUri(userProfile.avatar)}>
+                <BouncyButton activeOpacity={0.9} onPress={() => setLightboxImageUri(userProfile.avatar)} accessibilityRole="button" accessibilityLabel="View profile photo">
                   <Avatar
                     uri={userProfile.avatar}
                     style={styles.profileLargeAvatar}
@@ -13955,6 +14034,8 @@ function App() {
                   <BouncyButton
                     style={styles.statItem}
                     onPress={() => openFollowersModal({ id: session ? session.user.id : null, name: userProfile.name })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${myFollowStats.followersCount} Followers`}
                   >
                     <Text style={styles.statNum}>{myFollowStats.followersCount}</Text>
                     <Text style={styles.statLabel}>Followers</Text>
@@ -13965,6 +14046,8 @@ function App() {
                   <BouncyButton
                     style={styles.statItem}
                     onPress={() => openFollowingModal({ id: session ? session.user.id : null, name: userProfile.name })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${myFollowStats.followingCount} Following`}
                   >
                     <Text style={styles.statNum}>{myFollowStats.followingCount}</Text>
                     <Text style={styles.statLabel}>Following</Text>
@@ -13994,6 +14077,8 @@ function App() {
                           ownerLabel: userProfile.name
                         })}
                         delayLongPress={350}
+                        accessibilityRole="link"
+                        accessibilityLabel={getFriendlyLinkName(linkUrl)}
                       >
                         {getSocialLogoSVG(linkUrl)}
                       </BouncyButton>
@@ -14026,6 +14111,9 @@ function App() {
                 <BouncyButton
                   style={styles.profileTabBtn}
                   onPress={() => switchProfileTab('myWork')}
+                  accessibilityRole="tab"
+                  accessibilityLabel={`My Portfolios, ${myUploadedProjects.length}`}
+                  accessibilityState={{ selected: profileTab === 'myWork' }}
                 >
                   <Text style={[styles.profileTabBtnText, profileTab === 'myWork' && styles.profileTabBtnTextActive]}>
                     My Portfolios ({myUploadedProjects.length})
@@ -14035,6 +14123,9 @@ function App() {
                 <BouncyButton
                   style={styles.profileTabBtn}
                   onPress={() => switchProfileTab('likedWork')}
+                  accessibilityRole="tab"
+                  accessibilityLabel={`Liked Portfolios, ${myLikedProjects.length}`}
+                  accessibilityState={{ selected: profileTab === 'likedWork' }}
                 >
                   <Text style={[styles.profileTabBtnText, profileTab === 'likedWork' && styles.profileTabBtnTextActive]}>
                     Liked Portfolios ({myLikedProjects.length})
@@ -14064,6 +14155,8 @@ function App() {
                   <BouncyButton
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
                     onPress={() => setPortfolioLayoutMode(portfolioLayoutMode === 'compact' ? 'full' : 'compact')}
+                    accessibilityRole="button"
+                    accessibilityLabel={portfolioLayoutMode === 'compact' ? 'Switch to full width view' : 'Switch to compact view'}
                   >
                     <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
                       {portfolioLayoutMode === 'compact' ? 'Compact View' : 'Full Width View'}
@@ -14139,6 +14232,8 @@ function App() {
           style={styles.stickyBackToTopBtn}
           activeOpacity={0.85}
           onPress={scrollToTop}
+          accessibilityRole="button"
+          accessibilityLabel="Scroll to top"
         >
           <ChevronUpSVG color="#8B5CF6" />
         </BouncyButton>
@@ -14174,7 +14269,7 @@ function App() {
         >
           <Defs>
             <LinearGradient id="feedBottomScrim" x1="0" y1="1" x2="0" y2="0">
-              <Stop offset="0%" stopColor={themeMode === 'light' ? '#FFFFFF' : '#000000'} stopOpacity={1} />
+              <Stop offset="0%" stopColor={themeMode === 'light' ? '#FFFFFF' : '#000000'} stopOpacity={0.75} />
               <Stop offset="100%" stopColor={themeMode === 'light' ? '#FFFFFF' : '#000000'} stopOpacity={0} />
             </LinearGradient>
           </Defs>
@@ -14336,6 +14431,8 @@ function App() {
             disabled={!hamburgerMenuVisible}
             pointerEvents={hamburgerMenuVisible ? 'auto' : 'none'}
             onPress={() => setHamburgerMenuVisible(false)}
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
           >
             <Animated.View
               style={{
@@ -14369,6 +14466,8 @@ function App() {
                 <BouncyButton
                   style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
                   onPress={() => setHamburgerMenuVisible(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close menu"
                 >
                   <ChevronLeftSVG color={theme.accentLight} size={22} />
                 </BouncyButton>
@@ -14391,6 +14490,7 @@ function App() {
                   setHamburgerMenuVisible(false);
                   handleOpenAddPortfolio();
                 }}
+                accessibilityRole="button"
               >
                 <View style={[styles.plusContainerBtn, { width: 38, height: 38, borderRadius: 12, marginHorizontal: 0, backgroundColor: 'transparent', shadowColor: 'transparent', elevation: 0 }]}>
                   <View style={{ position: 'absolute', top: 0, left: 0 }}>
@@ -14497,6 +14597,7 @@ function App() {
               <BouncyButton
                 style={styles.confirmCancelBtn}
                 onPress={() => setExternalLinkModalVisible(false)}
+                accessibilityRole="button"
               >
                 <Text style={styles.confirmCancelText}>Cancel</Text>
               </BouncyButton>
@@ -14504,6 +14605,8 @@ function App() {
               <BouncyButton
                 style={styles.confirmDeleteBtn}
                 onPress={confirmProceedToExternalLink}
+                accessibilityRole="button"
+                accessibilityLabel="Continue"
               >
                 <View style={styles.iconTextInlineRow}>
                   <Text style={styles.confirmDeleteText}>Continue</Text>
@@ -14513,7 +14616,7 @@ function App() {
             </View>
 
             {!isTrustedExternalLink && (
-              <BouncyButton style={{ marginTop: 14, alignItems: 'center' }} onPress={handleReportExternalLink}>
+              <BouncyButton style={{ marginTop: 14, alignItems: 'center' }} onPress={handleReportExternalLink} accessibilityRole="button">
                 <Text style={{ color: '#F87171', fontSize: 12, fontWeight: '700' }}>Report this link as suspicious</Text>
               </BouncyButton>
             )}
@@ -14529,6 +14632,8 @@ function App() {
             style={{ position: 'absolute', top: isWebWide ? 0 : Math.max(notifDropdownPos.top - 8, 0), left: 0, right: 0, bottom: 0 }}
             activeOpacity={1}
             onPress={() => setNotificationModalVisible(false)}
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
           >
             {/* On tablet/desktop web the full mobile dim/blur covered the
                 sidebar and rest of the wide layout too, which read as too
@@ -14597,6 +14702,9 @@ function App() {
                 }}
                 onPress={handleClearAllNotifications}
                 disabled={notificationsList.length === 0}
+                accessibilityRole="button"
+                accessibilityLabel="Clear all notifications"
+                accessibilityState={{ disabled: notificationsList.length === 0 }}
               >
                 <Animated.View style={{ transform: [{ scale: clearBtnAnim }] }}>
                   {notificationsJustCleared ? (
@@ -14630,6 +14738,8 @@ function App() {
                               openDesignerProfileById(notif.actorId);
                             }
                           }}
+                          accessible={false}
+                          importantForAccessibility="no-hide-descendants"
                         >
                           {notif.type === 'create_password' ? (
                             <View style={[styles.notifAvatar, { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }]}>
@@ -14653,6 +14763,8 @@ function App() {
                               setChangePasswordPageVisible(true);
                             }
                           }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${notif.user} ${notif.action}${notif.target ? ` "${notif.target}"` : ''}, ${notif.time}`}
                         >
                           <Text style={styles.notifText}>
                             <Text style={styles.notifUserBold}>{notif.user}</Text> {notif.action}{' '}
@@ -14665,6 +14777,9 @@ function App() {
                           <BouncyButton
                             style={[styles.notifFollowBackBtn, isFollowingUser && styles.notifFollowBackBtnActive]}
                             onPress={() => toggleFollowDesigner(notif.actorId)}
+                            accessibilityRole="button"
+                            accessibilityLabel={isFollowingUser ? `Following ${notif.user}` : `Follow back ${notif.user}`}
+                            accessibilityState={{ selected: isFollowingUser }}
                           >
                             <Text style={[styles.notifFollowBackText, isFollowingUser && styles.notifFollowBackTextActive]}>
                               {isFollowingUser ? 'Following' : 'Follow Back'}
@@ -14691,6 +14806,7 @@ function App() {
                 setOptionsView('notificationHistory');
                 setSettingsModalVisible(true);
               }}
+              accessibilityRole="button"
             >
               <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>Notification History</Text>
             </BouncyButton>
@@ -14729,6 +14845,8 @@ function App() {
           <BouncyButton
             style={{ position: 'absolute', top: 50, right: 20, width: 40, height: 40, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
             onPress={() => setLightboxImageUri(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
           >
             <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>✕</Text>
           </BouncyButton>
@@ -14814,6 +14932,8 @@ function App() {
           <BouncyButton
             style={{ position: 'absolute', top: 50, right: 20, width: 40, height: 40, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
             onPress={() => setImageViewerState(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
           >
             <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>✕</Text>
           </BouncyButton>
@@ -14835,6 +14955,8 @@ function App() {
                 // above - scrollTo alone isn't enough to rely on here.
                 setImageViewerState((prev) => (prev ? { ...prev, index: nextIndex } : prev));
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Previous"
             >
               <ChevronLeftSVG color="#FFFFFF" size={20} />
             </BouncyButton>
@@ -14848,6 +14970,8 @@ function App() {
                 imageViewerScrollRef.current?.scrollTo({ x: target, y: 0, animated: true });
                 setImageViewerState((prev) => (prev ? { ...prev, index: nextIndex } : prev));
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Next"
             >
               <ChevronRightSVG color="#FFFFFF" size={20} />
             </BouncyButton>
@@ -14970,12 +15094,14 @@ function App() {
                   setDeleteConfirmModalVisible(false);
                   setProjectToDelete(null);
                 }}
+                accessibilityRole="button"
               >
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
                 style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
                 onPress={confirmDeletePortfolio}
+                accessibilityRole="button"
               >
                 <Text style={styles.confirmDeleteText}>Delete</Text>
               </BouncyButton>
@@ -15003,6 +15129,7 @@ function App() {
             <BouncyButton
               style={{ backgroundColor: '#8B5CF6', borderRadius: 99, paddingVertical: 14, width: '100%', alignItems: 'center' }}
               onPress={handleCloseAccountSaveSuccess}
+              accessibilityRole="button"
             >
               <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>Continue</Text>
             </BouncyButton>
@@ -15059,7 +15186,7 @@ function App() {
           <SafeAreaView style={[styles.overlayModalContainer, { maxHeight: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}>
             <View style={[styles.modalTopBar, { justifyContent: 'flex-start', gap: 10 }]}>
               {!isWebWide && (
-                <BouncyButton style={{ padding: 4 }} onPress={handleCloseAccountSettings}>
+                <BouncyButton style={{ padding: 4 }} onPress={handleCloseAccountSettings} accessibilityRole="button" accessibilityLabel="Back">
                   <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
                 </BouncyButton>
               )}
@@ -15074,6 +15201,8 @@ function App() {
                     setSettingsModalVisible(false);
                   }
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
               >
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
@@ -15087,7 +15216,7 @@ function App() {
               keyboardShouldPersistTaps="handled"
             >
               <Text style={styles.formGroupLabel}>Profile Picture</Text>
-              <BouncyButton style={styles.avatarEditPickerBtn} activeOpacity={0.85} onPress={pickAvatarImage}>
+              <BouncyButton style={styles.avatarEditPickerBtn} activeOpacity={0.85} onPress={pickAvatarImage} accessibilityRole="button" accessibilityLabel="Change profile picture">
                 <Image source={{ uri: editAvatar }} style={styles.avatarEditPreview} />
                 <View style={styles.avatarEditOverlay}>
                   <CameraIconSVG />
@@ -15104,9 +15233,10 @@ function App() {
                   placeholder="Full Name"
                   placeholderTextColor="#94A3B8"
                   maxLength={60}
+                  accessibilityLabel="Full Name"
                 />
                 {editName.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditName('')}>
+                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditName('')} accessibilityRole="button" accessibilityLabel="Clear">
                     <ClearTextXSVG />
                   </BouncyButton>
                 )}
@@ -15123,9 +15253,10 @@ function App() {
                   placeholderTextColor="#94A3B8"
                   autoCapitalize="none"
                   maxLength={20}
+                  accessibilityLabel="Unique ID / Handle"
                 />
                 {editHandle.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditHandle('')}>
+                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditHandle('')} accessibilityRole="button" accessibilityLabel="Clear">
                     <ClearTextXSVG />
                   </BouncyButton>
                 )}
@@ -15156,9 +15287,10 @@ function App() {
                   placeholder="Specialties / Role"
                   placeholderTextColor="#94A3B8"
                   maxLength={60}
+                  accessibilityLabel="Specialties / Position"
                 />
                 {editRole.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditRole('')}>
+                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditRole('')} accessibilityRole="button" accessibilityLabel="Clear">
                     <ClearTextXSVG />
                   </BouncyButton>
                 )}
@@ -15174,9 +15306,10 @@ function App() {
                   placeholder="South Jakarta, Jakarta, Indonesia"
                   placeholderTextColor="#94A3B8"
                   maxLength={80}
+                  accessibilityLabel="Location / City"
                 />
                 {editLocation.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditLocation('')}>
+                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditLocation('')} accessibilityRole="button" accessibilityLabel="Clear">
                     <ClearTextXSVG />
                   </BouncyButton>
                 )}
@@ -15191,6 +15324,7 @@ function App() {
                 placeholder="Short bio..."
                 placeholderTextColor="#94A3B8"
                 maxLength={500}
+                accessibilityLabel="Short Brief / Bio"
               />
               <Text style={{ color: '#64748B', fontSize: 11, marginTop: -4, marginBottom: 4, textAlign: 'right' }}>
                 {editBio.length}/500
@@ -15208,9 +15342,10 @@ function App() {
                   autoComplete="email"
                   importantForAutofill="yes"
                   textContentType="emailAddress"
+                  accessibilityLabel="Email Address"
                 />
                 {editEmail.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditEmail('')}>
+                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditEmail('')} accessibilityRole="button" accessibilityLabel="Clear">
                     <ClearTextXSVG />
                   </BouncyButton>
                 )}
@@ -15247,7 +15382,7 @@ function App() {
                   ]}
                 >
                   {editLinks.length > 1 && (
-                    <View {...dragResponder.panHandlers} style={{ padding: 6 }}>
+                    <View {...dragResponder.panHandlers} style={{ padding: 6 }} accessibilityRole="adjustable" accessibilityLabel={`Reorder link ${idx + 1}`}>
                       <GripDotsIconSVG color={theme.textSecondary} />
                     </View>
                   )}
@@ -15262,9 +15397,10 @@ function App() {
                       placeholder={`https://www.figma.com/@username (${idx + 1})`}
                       placeholderTextColor="#94A3B8"
                       autoCapitalize="none"
+                      accessibilityLabel={`Profile link ${idx + 1}`}
                     />
                     {lnk.length > 0 && (
-                      <BouncyButton style={styles.clearFieldBtn} onPress={() => handleLinkTextChange('', idx)}>
+                      <BouncyButton style={styles.clearFieldBtn} onPress={() => handleLinkTextChange('', idx)} accessibilityRole="button" accessibilityLabel="Clear">
                         <ClearTextXSVG />
                       </BouncyButton>
                     )}
@@ -15272,6 +15408,8 @@ function App() {
                   <BouncyButton
                     style={{ padding: 8 }}
                     onPress={() => handleRemoveAccountLink(idx)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove link ${idx + 1}`}
                   >
                     <TrashIconSVG />
                   </BouncyButton>
@@ -15281,7 +15419,7 @@ function App() {
               </View>
 
               {editLinks.length < 5 && (
-                <BouncyButton style={styles.addMoreVideoBtn} onPress={handleAddAccountLink}>
+                <BouncyButton style={styles.addMoreVideoBtn} onPress={handleAddAccountLink} accessibilityRole="button">
                   <Text style={styles.addMoreVideoText}>+ Add Profile Link ({editLinks.length}/5)</Text>
                 </BouncyButton>
               )}
@@ -15292,6 +15430,7 @@ function App() {
                 <BouncyButton
                   style={[styles.saveAccountSettingsBtn, { paddingHorizontal: 20, backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#EF4444', marginTop: 0 }]}
                   onPress={() => setLogoutConfirmModalVisible(true)}
+                  accessibilityRole="button"
                 >
                   <Text style={[styles.submitBtnText, { color: '#EF4444' }]}>Log Out</Text>
                 </BouncyButton>
@@ -15303,6 +15442,7 @@ function App() {
                     setConfirmNewPassword('');
                     setChangePasswordPageVisible(true);
                   }}
+                  accessibilityRole="button"
                 >
                   <Text style={[styles.submitBtnText, { color: theme.accent }]}>{hasPasswordAuth ? 'Change Password' : 'Create Password'}</Text>
                 </BouncyButton>
@@ -15311,6 +15451,7 @@ function App() {
               <BouncyButton
                 style={{ marginTop: 20, alignItems: 'center' }}
                 onPress={handleDeleteAccount}
+                accessibilityRole="button"
               >
                 <Text style={{ color: '#F87171', fontWeight: '700', fontSize: 13 }}>Delete Account</Text>
               </BouncyButton>
@@ -15340,6 +15481,8 @@ function App() {
                   }}
                   activeOpacity={0.85}
                   onPress={handleRevertAccountChanges}
+                  accessibilityRole="button"
+                  accessibilityLabel="Revert changes"
                 >
                   <RevertIconSVG color={themeMode === 'light' ? '#6D28D9' : '#8B5CF6'} size={19} />
                 </BouncyButton>
@@ -15351,6 +15494,7 @@ function App() {
                   ]}
                   activeOpacity={0.85}
                   onPress={handleSaveAccountSettings}
+                  accessibilityRole="button"
                 >
                   <Text style={styles.submitBtnText}>Save Changes</Text>
                 </BouncyButton>
@@ -15399,7 +15543,7 @@ function App() {
             onResponderRelease={() => {}}
           >
             <View style={[styles.modalTopBar, { justifyContent: 'flex-start', gap: 10 }]}>
-              <BouncyButton style={{ padding: 4 }} onPress={handleCloseChangePasswordPage}>
+              <BouncyButton style={{ padding: 4 }} onPress={handleCloseChangePasswordPage} accessibilityRole="button" accessibilityLabel="Back">
                 <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
               </BouncyButton>
               <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>{hasPasswordAuth ? 'Change Password' : 'Create Password'}</Text>
@@ -15413,6 +15557,8 @@ function App() {
                     setSettingsModalVisible(false);
                   }
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
               >
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
@@ -15440,10 +15586,13 @@ function App() {
                     importantForAutofill="yes"
                     textContentType="newPassword"
                     autoFocus
+                    accessibilityLabel="New Password"
                   />
                   <BouncyButton
                     style={{ position: 'absolute', right: 12, top: 12 }}
                     onPress={() => setShowNewPassword(!showNewPassword)}
+                    accessibilityRole="button"
+                    accessibilityLabel={showNewPassword ? 'Hide password' : 'Show password'}
                   >
                     {showNewPassword ? <EyeOpenSVG color={theme.textSecondary} size={18} /> : <EyeClosedSVG color={theme.textSecondary} size={18} />}
                   </BouncyButton>
@@ -15470,10 +15619,13 @@ function App() {
                     autoComplete="new-password"
                     importantForAutofill="yes"
                     textContentType="newPassword"
+                    accessibilityLabel="Confirm New Password"
                   />
                   <BouncyButton
                     style={{ position: 'absolute', right: 12, top: 12 }}
                     onPress={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                    accessibilityRole="button"
+                    accessibilityLabel={showConfirmNewPassword ? 'Hide password' : 'Show password'}
                   >
                     {showConfirmNewPassword ? <EyeOpenSVG color={theme.textSecondary} size={18} /> : <EyeClosedSVG color={theme.textSecondary} size={18} />}
                   </BouncyButton>
@@ -15488,6 +15640,8 @@ function App() {
                     }
                   }}
                   disabled={changingPassword || !newPassword}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: changingPassword || !newPassword, busy: changingPassword }}
                 >
                   {changingPassword ? (
                     <ActivityIndicator color="#FFFFFF" />
@@ -15549,11 +15703,13 @@ function App() {
               <BouncyButton
                 style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
                 onPress={() => setLogoutConfirmModalVisible(false)}
+                accessibilityRole="button"
               >
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
                 style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
+                accessibilityRole="button"
                 onPress={async () => {
                   setLogoutConfirmModalVisible(false);
                   await supabase.auth.signOut();
@@ -15643,11 +15799,13 @@ function App() {
               placeholder="Type DELETE"
               placeholderTextColor="#94A3B8"
               autoCapitalize="characters"
+              accessibilityLabel="Type DELETE to confirm"
             />
             <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
               <BouncyButton
                 style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
                 onPress={() => setDeleteAccountModalVisible(false)}
+                accessibilityRole="button"
               >
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
               </BouncyButton>
@@ -15658,6 +15816,8 @@ function App() {
                 ]}
                 onPress={executeAccountDeletion}
                 disabled={deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: deleteConfirmText.trim().toUpperCase() !== 'DELETE' }}
               >
                 <Text style={styles.confirmDeleteText}>Delete</Text>
               </BouncyButton>
@@ -15712,11 +15872,13 @@ function App() {
               <BouncyButton
                 style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
                 onPress={() => setAccountSettingsDiscardWarningVisible(false)}
+                accessibilityRole="button"
               >
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Keep Editing</Text>
               </BouncyButton>
               <BouncyButton
                 style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
+                accessibilityRole="button"
                 onPress={() => {
                   setAccountSettingsDiscardWarningVisible(false);
                   setAccountSettingsModalVisible(false);
@@ -15779,11 +15941,13 @@ function App() {
               <BouncyButton
                 style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
                 onPress={() => setPasswordPageDiscardWarningVisible(false)}
+                accessibilityRole="button"
               >
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Keep Editing</Text>
               </BouncyButton>
               <BouncyButton
                 style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
+                accessibilityRole="button"
                 onPress={() => {
                   setPasswordPageDiscardWarningVisible(false);
                   setNewPassword('');
@@ -15841,12 +16005,12 @@ function App() {
           <SafeAreaView style={[styles.overlayModalContainer, { maxHeight: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}>
             <View style={[styles.modalTopBar, { justifyContent: 'flex-start', gap: 10 }]}>
               {!isWebWide && (
-                <BouncyButton style={{ padding: 4 }} onPress={() => setAboutModalVisible(false)}>
+                <BouncyButton style={{ padding: 4 }} onPress={() => setAboutModalVisible(false)} accessibilityRole="button" accessibilityLabel="Back">
                   <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
                 </BouncyButton>
               )}
               <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>About DECENT</Text>
-              <BouncyButton style={styles.closeBtn} onPress={() => {
+              <BouncyButton style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close" onPress={() => {
                 setAboutModalVisible(false);
                 if (Platform.OS !== 'web' && returnToOptionsOnClose) {
                   setSettingsModalVisible(true);
@@ -15885,6 +16049,7 @@ function App() {
               <BouncyButton
                 style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6', borderRadius: 99, paddingVertical: 14, alignItems: 'center', marginTop: 10 }}
                 onPress={() => setAboutModalVisible(false)}
+                accessibilityRole="button"
               >
                 <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Close</Text>
               </BouncyButton>
@@ -15926,7 +16091,7 @@ function App() {
           >
             <View style={styles.modalTopBar}>
               <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>What's New</Text>
-              <BouncyButton style={styles.closeBtn} onPress={() => setChangelogModalVisible(false)}>
+              <BouncyButton style={styles.closeBtn} onPress={() => setChangelogModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
             </View>
@@ -16037,6 +16202,7 @@ function App() {
                 <BouncyButton
                   style={{ backgroundColor: theme.accent, borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}
                   onPress={() => setNewUpdatePopupVisible(false)}
+                  accessibilityRole="button"
                 >
                   <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Got it</Text>
                 </BouncyButton>
@@ -16045,6 +16211,7 @@ function App() {
                     setNewUpdatePopupVisible(false);
                     setChangelogModalVisible(true);
                   }}
+                  accessibilityRole="button"
                 >
                   <Text style={{ color: theme.textSecondary, fontSize: 13, textAlign: 'center' }}>See full changelog</Text>
                 </BouncyButton>
@@ -16078,6 +16245,7 @@ function App() {
                     window.history.replaceState({}, document.title, '/for-you');
                   }
                 }}
+                accessibilityRole="button"
               >
                 <Text style={styles.confirmDeleteText}>Continue to DECENT</Text>
               </BouncyButton>
@@ -16122,7 +16290,7 @@ function App() {
                 <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]} numberOfLines={1}>
                   Contact {selectedDesigner.name}
                 </Text>
-                <BouncyButton onPress={() => setContactInfoModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <BouncyButton onPress={() => setContactInfoModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Close">
                   <CrossIconSVG />
                 </BouncyButton>
               </View>
@@ -16148,6 +16316,8 @@ function App() {
                           showToast('Copied to clipboard');
                         }
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${getContactTypeLabel(c.type)}, ${c.value}, ${action.kind === 'copy' ? 'Copy' : 'Open'}`}
                     >
                       <View style={{ flex: 1, marginRight: 12 }}>
                         <Text style={{ color: theme.textSecondary, fontSize: 11 }}>{getContactTypeLabel(c.type)}</Text>
@@ -16207,12 +16377,12 @@ function App() {
           <SafeAreaView style={[styles.overlayModalContainer, { backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', maxHeight: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}>
             <View style={[styles.modalTopBar, { backgroundColor: '#FFFFFF', borderBottomColor: '#E2E8F0', justifyContent: 'flex-start', gap: 10 }]}>
               {!isWebWide && (
-                <BouncyButton style={{ padding: 4 }} onPress={() => setPrivacyModalVisible(false)}>
+                <BouncyButton style={{ padding: 4 }} onPress={() => setPrivacyModalVisible(false)} accessibilityRole="button" accessibilityLabel="Back">
                   <ChevronLeftSVG color="#6D28D9" size={22} />
                 </BouncyButton>
               )}
               <Text style={[styles.modalTopTitle, { color: '#0F172A', flex: 1 }, isWebWide && { fontSize: 20 }]}>Privacy Policy</Text>
-              <BouncyButton style={[styles.closeBtn, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]} onPress={() => {
+              <BouncyButton style={[styles.closeBtn, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]} accessibilityRole="button" accessibilityLabel="Close" onPress={() => {
                 setPrivacyModalVisible(false);
                 if (Platform.OS !== 'web' && returnToOptionsOnClose) {
                   setSettingsModalVisible(true);
@@ -16419,12 +16589,12 @@ function App() {
           <SafeAreaView style={[styles.overlayModalContainer, { backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', maxHeight: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}>
             <View style={[styles.modalTopBar, { backgroundColor: '#FFFFFF', borderBottomColor: '#E2E8F0', justifyContent: 'flex-start', gap: 10 }]}>
               {!isWebWide && (
-                <BouncyButton style={{ padding: 4 }} onPress={() => setTermsModalVisible(false)}>
+                <BouncyButton style={{ padding: 4 }} onPress={() => setTermsModalVisible(false)} accessibilityRole="button" accessibilityLabel="Back">
                   <ChevronLeftSVG color="#6D28D9" size={22} />
                 </BouncyButton>
               )}
               <Text style={[styles.modalTopTitle, { color: '#0F172A', flex: 1 }, isWebWide && { fontSize: 20 }]}>Terms of Service</Text>
-              <BouncyButton style={[styles.closeBtn, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]} onPress={() => {
+              <BouncyButton style={[styles.closeBtn, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]} accessibilityRole="button" accessibilityLabel="Close" onPress={() => {
                 setTermsModalVisible(false);
                 if (Platform.OS !== 'web' && returnToOptionsOnClose) {
                   setSettingsModalVisible(true);
@@ -16581,12 +16751,12 @@ function App() {
           <SafeAreaView style={[styles.overlayModalContainer, { maxHeight: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}>
             <View style={[styles.modalTopBar, { justifyContent: 'flex-start', gap: 10 }]}>
               {!isWebWide && (
-                <BouncyButton style={{ padding: 4 }} onPress={() => setFeedbackModalVisible(false)}>
+                <BouncyButton style={{ padding: 4 }} onPress={() => setFeedbackModalVisible(false)} accessibilityRole="button" accessibilityLabel="Back">
                   <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
                 </BouncyButton>
               )}
               <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>Feedback & Support</Text>
-              <BouncyButton style={styles.closeBtn} onPress={() => {
+              <BouncyButton style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close" onPress={() => {
                 setFeedbackModalVisible(false);
                 if (Platform.OS !== 'web' && returnToOptionsOnClose) {
                   setSettingsModalVisible(true);
@@ -16632,6 +16802,7 @@ function App() {
                     placeholderTextColor="#94A3B8"
                     value={feedbackEmail}
                     onChangeText={setFeedbackEmail}
+                    accessibilityLabel="Your Email Address"
                   />
 
                   <Text style={styles.formGroupLabel}>Feedback Message or Issue Description *</Text>
@@ -16643,6 +16814,7 @@ function App() {
                     value={feedbackMessage}
                     onChangeText={setFeedbackMessage}
                     maxLength={1000}
+                    accessibilityLabel="Feedback Message or Issue Description"
                   />
 
                   <View style={styles.feedbackNotifyToggleRow}>
@@ -16658,12 +16830,16 @@ function App() {
                       trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                       thumbColor="#FFFFFF"
                       theme={theme}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Send Email Notification"
+                      accessibilityState={{ checked: feedbackNotifyEmail }}
                     />
                   </View>
 
                   <BouncyButton
                     style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 10 }]}
                     onPress={handleSubmitFeedback}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.confirmDeleteText}>Submit Feedback</Text>
                   </BouncyButton>
@@ -16684,6 +16860,7 @@ function App() {
                     value={featureRequestTitle}
                     onChangeText={setFeatureRequestTitle}
                     maxLength={80}
+                    accessibilityLabel="Title"
                   />
 
                   <Text style={styles.formGroupLabel}>Description *</Text>
@@ -16695,11 +16872,15 @@ function App() {
                     value={featureRequestDescription}
                     onChangeText={setFeatureRequestDescription}
                     maxLength={1000}
+                    accessibilityLabel="Description"
                   />
 
                   <BouncyButton
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}
                     onPress={() => setFeatureRequestHasLink(!featureRequestHasLink)}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel="I have a reference link"
+                    accessibilityState={{ checked: featureRequestHasLink }}
                   >
                     <View style={{
                       width: 20, height: 20, borderRadius: 5, borderWidth: 1.5,
@@ -16720,12 +16901,14 @@ function App() {
                       autoCapitalize="none"
                       value={featureRequestLink}
                       onChangeText={setFeatureRequestLink}
+                      accessibilityLabel="Reference link"
                     />
                   )}
 
                   <BouncyButton
                     style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 10 }]}
                     onPress={handleSubmitFeatureRequest}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.confirmDeleteText}>Submit Feature Request</Text>
                   </BouncyButton>
@@ -16784,6 +16967,7 @@ function App() {
             <BouncyButton
               style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 8 }]}
               onPress={() => setFeedbackSuccessModalVisible(false)}
+              accessibilityRole="button"
             >
               <Text style={styles.confirmDeleteText}>Continue</Text>
             </BouncyButton>
@@ -16830,7 +17014,7 @@ function App() {
           >
             <View style={styles.modalTopBar}>
               <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Support DECENT</Text>
-              <BouncyButton style={styles.closeBtn} onPress={handleCloseDonateModal}>
+              <BouncyButton style={styles.closeBtn} onPress={handleCloseDonateModal} accessibilityRole="button" accessibilityLabel="Close">
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
             </View>
@@ -16856,6 +17040,9 @@ function App() {
                 <BouncyButton
                   style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 16 }}
                   onPress={() => setDonateTermsAgreed(!donateTermsAgreed)}
+                  accessibilityRole="checkbox"
+                  accessibilityLabel="I agree to the Terms of Service, donations are voluntary and non-refundable"
+                  accessibilityState={{ checked: donateTermsAgreed }}
                 >
                   <View style={{
                     width: 20, height: 20, borderRadius: 5, marginTop: 1,
@@ -16905,6 +17092,8 @@ function App() {
                             onPress={() => {
                               showAppAlert('Agreement Required', 'Please check the box agreeing to the Terms of Service above to reveal the QR code.');
                             }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Tap to Reveal QR Code"
                           >
                             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(139,92,246,0.85)', alignItems: 'center', justifyContent: 'center' }}>
                               <EyeViewIconSVG color="#FFFFFF" size={20} />
@@ -16927,6 +17116,8 @@ function App() {
                       }}
                       disabled={!donateTermsAgreed}
                       onPress={handleDownloadQrisCode}
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: !donateTermsAgreed }}
                     >
                       <DownloadIconSVG color={theme.accent} size={16} />
                       <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 12.5 }}>Download QRIS</Text>
@@ -16944,6 +17135,7 @@ function App() {
                         }
                         openExternalLinkWithWarning(KO_FI_URL);
                       }}
+                      accessibilityRole="button"
                     >
                       <Text style={styles.contrastDonateBtnText}>Donate via Ko-fi</Text>
                     </BouncyButton>
@@ -16971,6 +17163,7 @@ function App() {
                         }
                         openExternalLinkWithWarning('https://github.com/sponsors/kabouls');
                       }}
+                      accessibilityRole="button"
                     >
                       <Text style={[styles.contrastDonateBtnText, { color: '#FFFFFF' }]}>Sponsor on GitHub</Text>
                     </BouncyButton>
@@ -17029,6 +17222,7 @@ function App() {
             <BouncyButton
               style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 8 }]}
               onPress={handleCloseDonateSuccess}
+              accessibilityRole="button"
             >
               <Text style={styles.confirmDeleteText}>Continue</Text>
             </BouncyButton>
@@ -17043,6 +17237,8 @@ function App() {
             style={{ position: 'absolute', top: isWebWide ? 0 : headerBottomY, left: 0, right: 0, bottom: 0 }}
             activeOpacity={1}
             onPress={() => { setSettingsModalVisible(false); setOptionsView('root'); }}
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
           >
             {isWebWide ? (
               <Animated.View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.12)', opacity: settingsPopupAnim }} />
@@ -17089,6 +17285,8 @@ function App() {
                 <BouncyButton
                   style={{ padding: 4 }}
                   onPress={() => setOptionsView(optionsView === 'blockedUsers' || optionsView === 'notificationHistory' || optionsView === 'postNotifications' ? 'privacy' : optionsView === 'tutorialLibrary' ? 'aboutApp' : 'root')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back"
                 >
                   <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
                 </BouncyButton>
@@ -17100,6 +17298,8 @@ function App() {
                 <BouncyButton
                   activeOpacity={0.8}
                   onPress={toggleTheme}
+                  accessibilityRole="button"
+                  accessibilityLabel={themeMode === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
                   style={{
                     flexDirection: 'row', alignItems: 'center', position: 'relative',
                     backgroundColor: theme.bg, borderRadius: 20, borderWidth: 1, borderColor: theme.border,
@@ -17150,6 +17350,7 @@ function App() {
                       }
                       handleOpenAccountSettingsModal();
                     }}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>{session ? 'Account' : 'Sign In'}</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17161,6 +17362,7 @@ function App() {
                   <BouncyButton
                     style={styles.settingItemRow}
                     onPress={() => setOptionsView('privacy')}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>Privacy</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17171,6 +17373,7 @@ function App() {
                   <BouncyButton
                     style={styles.settingItemRow}
                     onPress={() => setOptionsView('supportLegal')}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>Support & Legal</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17181,6 +17384,7 @@ function App() {
                   <BouncyButton
                     style={styles.settingItemRow}
                     onPress={() => setOptionsView('aboutApp')}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>About App</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17192,6 +17396,7 @@ function App() {
                     <BouncyButton
                       style={styles.settingItemRow}
                       onPress={() => setLogoutConfirmModalVisible(true)}
+                      accessibilityRole="button"
                     >
                       <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Sign Out</Text>
                     </BouncyButton>
@@ -17203,6 +17408,7 @@ function App() {
                       style={[styles.donateSettingBtn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }]}
                       activeOpacity={0.88}
                       onPress={() => { setDonateTermsAgreed(false); setDonateModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                      accessibilityRole="button"
                     >
                       <HeartIconSVG liked={true} />
                       <Text style={styles.donateSettingBtnText}>Support & Donate to DECENT</Text>
@@ -17219,6 +17425,7 @@ function App() {
                       fetchBlockedUsers();
                       setOptionsView('blockedUsers');
                     }}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>Blocked Users</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17234,6 +17441,7 @@ function App() {
                       cleanupOldNotifications();
                       setOptionsView('notificationHistory');
                     }}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>Notification History</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17248,6 +17456,7 @@ function App() {
                       fetchPostNotifyList();
                       setOptionsView('postNotifications');
                     }}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>Post Notifications</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17273,6 +17482,9 @@ function App() {
                         trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                         thumbColor="#FFFFFF"
                         theme={theme}
+                        accessibilityRole="switch"
+                        accessibilityLabel="Hide Liked Portfolios from Public"
+                        accessibilityState={{ checked: hideLikedPortfolios }}
                       />
                     </View>
 
@@ -17297,6 +17509,9 @@ function App() {
                         trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                         thumbColor="#FFFFFF"
                         theme={theme}
+                        accessibilityRole="switch"
+                        accessibilityLabel="Safe Search"
+                        accessibilityState={{ checked: safeSearchEnabled }}
                       />
                     </View>
                     )}
@@ -17314,6 +17529,9 @@ function App() {
                         trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                         thumbColor="#FFFFFF"
                         theme={theme}
+                        accessibilityRole="switch"
+                        accessibilityLabel="Exclude AI-Generated Content"
+                        accessibilityState={{ checked: excludeAiGeneratedContent }}
                       />
                     </View>
                   </View>
@@ -17321,6 +17539,7 @@ function App() {
                   <BouncyButton
                     style={[styles.settingItemRow, { borderBottomWidth: 0 }]}
                     onPress={handleExportMyData}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>Export My Data</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17345,6 +17564,8 @@ function App() {
                         <BouncyButton
                           style={styles.notifFollowBackBtn}
                           onPress={() => handleUnblockUser(u.id)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Unblock ${u.name}`}
                         >
                           <Text style={styles.notifFollowBackText}>Unblock</Text>
                         </BouncyButton>
@@ -17374,6 +17595,8 @@ function App() {
                         <BouncyButton
                           style={styles.notifFollowBackBtn}
                           onPress={() => handleQuickTurnOffNotify(d.id)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Turn off post notifications for ${d.name}`}
                         >
                           <Text style={styles.notifFollowBackText}>Turn Off</Text>
                         </BouncyButton>
@@ -17398,6 +17621,7 @@ function App() {
                           ]
                         );
                       }}
+                      accessibilityRole="button"
                     >
                       <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700' }}>Clear All</Text>
                     </BouncyButton>
@@ -17426,6 +17650,8 @@ function App() {
                                 openDesignerProfileById(notif.actorId);
                               }
                             }}
+                            accessible={false}
+                            importantForAccessibility="no-hide-descendants"
                           >
                             {notif.type === 'create_password' ? (
                               <View style={[styles.notifAvatar, { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }]}>
@@ -17452,6 +17678,8 @@ function App() {
                                 setChangePasswordPageVisible(true);
                               }
                             }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${notif.user} ${notif.action}${notif.target ? ` "${notif.target}"` : ''}, ${notif.time}${!notif.read ? ', unread' : ''}`}
                           >
                             <Text style={styles.notifText}>
                               <Text style={styles.notifUserBold}>{notif.user}</Text> {notif.action}{' '}
@@ -17466,6 +17694,8 @@ function App() {
                           style={{ paddingVertical: 14, alignItems: 'center' }}
                           onPress={loadMoreNotificationHistory}
                           disabled={notificationHistoryLoadingMore}
+                          accessibilityRole="button"
+                          accessibilityState={{ disabled: notificationHistoryLoadingMore, busy: notificationHistoryLoadingMore }}
                         >
                           {notificationHistoryLoadingMore ? (
                             <ActivityIndicator size="small" color={theme.accent} />
@@ -17484,6 +17714,7 @@ function App() {
                   <BouncyButton
                     style={styles.settingItemRow}
                     onPress={() => { setPrivacyModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>Privacy Policy</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17495,6 +17726,7 @@ function App() {
                   <BouncyButton
                     style={styles.settingItemRow}
                     onPress={() => { setTermsModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>Terms of Service</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17506,6 +17738,7 @@ function App() {
                   <BouncyButton
                     style={styles.settingItemRow}
                     onPress={() => { setFeedbackModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>Feedback & Support</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17521,6 +17754,7 @@ function App() {
                   <BouncyButton
                     style={styles.settingItemRow}
                     onPress={() => { setAboutModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>About DECENT</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17537,6 +17771,7 @@ function App() {
                   <BouncyButton
                     style={styles.settingItemRow}
                     onPress={() => { handleOpenChangelog(); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>What's New</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17548,6 +17783,7 @@ function App() {
                   <BouncyButton
                     style={styles.settingItemRow}
                     onPress={() => openExternalLinkWithWarning(GITHUB_URL)}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>Visit GitHub</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17559,6 +17795,7 @@ function App() {
                   <BouncyButton
                     style={styles.settingItemRow}
                     onPress={() => setOptionsView('tutorialLibrary')}
+                    accessibilityRole="button"
                   >
                     <Text style={styles.settingItemTitle}>Tutorials</Text>
                     <View style={styles.iconTextInlineRow}>
@@ -17598,6 +17835,7 @@ function App() {
                                 : 'Unknown error.')
                         );
                       }}
+                      accessibilityRole="button"
                     >
                       <Text style={styles.settingItemTitle}>Send Test Push Notification</Text>
                       <View style={styles.iconTextInlineRow}>
@@ -17623,6 +17861,9 @@ function App() {
                       trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                       thumbColor="#FFFFFF"
                       theme={theme}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Show Tutorials Automatically"
+                      accessibilityState={{ checked: !tutorialsSkippedAll }}
                     />
                   </View>
 
@@ -17631,6 +17872,7 @@ function App() {
                       key={tutorial.id}
                       style={styles.settingItemRow}
                       onPress={() => { setSettingsModalVisible(false); setOptionsView('root'); replayTutorial(tutorial.id); }}
+                      accessibilityRole="button"
                     >
                       <Text style={styles.settingItemTitle}>{tutorial.title}</Text>
                       <View style={styles.iconTextInlineRow}>
@@ -17697,7 +17939,7 @@ function App() {
           >
             <View style={styles.modalTopBar}>
               <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>All Categories</Text>
-              <BouncyButton style={styles.closeBtn} onPress={() => setAllCategoriesModalVisible(false)}>
+              <BouncyButton style={styles.closeBtn} onPress={() => setAllCategoriesModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
             </View>
@@ -17709,6 +17951,7 @@ function App() {
                 placeholderTextColor="#94A3B8"
                 value={allCategoriesSearchQuery}
                 onChangeText={setAllCategoriesSearchQuery}
+                accessibilityLabel="Search categories"
               />
 
               <View style={{ marginTop: 12, marginBottom: 4 }}>
@@ -17744,6 +17987,9 @@ function App() {
                     setCategoryFilter(cat);
                     setAllCategoriesModalVisible(false);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={cat}
+                  accessibilityState={{ selected: categoryFilter === cat }}
                 >
                   <Text style={[styles.overlayCategoryText, categoryFilter === cat && styles.overlayCategoryTextActive]}>
                     {cat}
@@ -17803,6 +18049,9 @@ function App() {
                       }
                       setDesignerOptionsMenuVisible(next);
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel="More options"
+                    accessibilityState={{ expanded: designerOptionsMenuVisible }}
                   >
                     <Text style={{ color: theme.accentLight, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
                   </BouncyButton>
@@ -17821,6 +18070,8 @@ function App() {
                         style={{ flex: 1 }}
                         activeOpacity={1}
                         onPress={() => setDesignerOptionsMenuVisible(false)}
+                        accessible={false}
+                        importantForAccessibility="no-hide-descendants"
                       />
                       <View style={{
                         position: 'absolute', top: designerMenuPos.top, right: designerMenuPos.right, width: 220,
@@ -17834,6 +18085,7 @@ function App() {
                             setDesignerOptionsMenuVisible(false);
                             handleReportContent('user', selectedDesigner.id, selectedDesigner.name);
                           }}
+                          accessibilityRole="button"
                         >
                           <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
                         </BouncyButton>
@@ -17845,6 +18097,7 @@ function App() {
                               ? handleUnmuteDesigner(selectedDesigner.id, selectedDesigner.name)
                               : handleMuteDesigner(selectedDesigner.id, selectedDesigner.name);
                           }}
+                          accessibilityRole="button"
                         >
                           <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
                             {mutedIds.has(selectedDesigner.id) ? 'Unmute Posts' : 'Mute Posts'}
@@ -17856,6 +18109,7 @@ function App() {
                             setDesignerOptionsMenuVisible(false);
                             handleBlockUser(selectedDesigner.id, selectedDesigner.name);
                           }}
+                          accessibilityRole="button"
                         >
                           <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
                         </BouncyButton>
@@ -17864,7 +18118,7 @@ function App() {
                   </Modal>
                 </View>
               )}
-              <BouncyButton style={styles.closeBtn} onPress={handleBackFromDesignerProfile}>
+              <BouncyButton style={styles.closeBtn} onPress={handleBackFromDesignerProfile} accessibilityRole="button" accessibilityLabel="Close">
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
             </View>
@@ -17893,6 +18147,8 @@ function App() {
                   <BouncyButton
                     style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
                     onPress={handleBackFromDesignerProfile}
+                    accessibilityRole="button"
+                    accessibilityLabel="Back"
                   >
                     <ChevronLeftSVG color={theme.accentLight} size={22} />
                   </BouncyButton>
@@ -17901,6 +18157,8 @@ function App() {
                     <BouncyButton
                       style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
                       onPress={() => handleShareDesigner(selectedDesigner)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Share profile"
                     >
                       <ShareIconSVG color={theme.accentLight} />
                     </BouncyButton>
@@ -17918,6 +18176,9 @@ function App() {
                             }
                             setDesignerOptionsMenuVisible(next);
                           }}
+                          accessibilityRole="button"
+                          accessibilityLabel="More options"
+                          accessibilityState={{ expanded: designerOptionsMenuVisible }}
                         >
                           <Text style={{ color: theme.accentLight, fontSize: 20, fontWeight: '900', lineHeight: 20 }}>⋮</Text>
                         </BouncyButton>
@@ -17936,6 +18197,8 @@ function App() {
                               style={{ flex: 1 }}
                               activeOpacity={1}
                               onPress={() => setDesignerOptionsMenuVisible(false)}
+                              accessible={false}
+                              importantForAccessibility="no-hide-descendants"
                             />
                             <View style={{
                               position: 'absolute', top: designerMenuPos.top, right: designerMenuPos.right, width: 220,
@@ -17949,6 +18212,7 @@ function App() {
                                   setDesignerOptionsMenuVisible(false);
                                   handleReportContent('user', selectedDesigner.id, selectedDesigner.name);
                                 }}
+                                accessibilityRole="button"
                               >
                                 <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
                               </BouncyButton>
@@ -17960,6 +18224,7 @@ function App() {
                                     ? handleUnmuteDesigner(selectedDesigner.id, selectedDesigner.name)
                                     : handleMuteDesigner(selectedDesigner.id, selectedDesigner.name);
                                 }}
+                                accessibilityRole="button"
                               >
                                 <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
                                   {mutedIds.has(selectedDesigner.id) ? 'Unmute Posts' : 'Mute Posts'}
@@ -17971,6 +18236,7 @@ function App() {
                                   setDesignerOptionsMenuVisible(false);
                                   handleBlockUser(selectedDesigner.id, selectedDesigner.name);
                                 }}
+                                accessibilityRole="button"
                               >
                                 <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
                               </BouncyButton>
@@ -18013,6 +18279,8 @@ function App() {
                     <BouncyButton
                       style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}
                       onPress={() => setSharedTypeFilterBannerVisible(false)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Dismiss"
                     >
                       <Text style={{ color: theme.accent, fontSize: 16, fontWeight: '700' }}>×</Text>
                     </BouncyButton>
@@ -18032,6 +18300,7 @@ function App() {
                       setDesignerTypeFilter(new Set(selectedDesignerProjectTypes.map((t) => t.key)));
                       setSharedTypeFilterBannerVisible(false);
                     }}
+                    accessibilityRole="button"
                   >
                     <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>See all portfolio type</Text>
                   </BouncyButton>
@@ -18043,12 +18312,14 @@ function App() {
                     <BouncyButton
                       style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
                       onPress={() => handleShareDesigner(selectedDesigner)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Share profile"
                     >
                       <ShareIconSVG color={theme.accentLight} />
                     </BouncyButton>
                   </View>
                 )}
-                <BouncyButton activeOpacity={0.9} onPress={() => setLightboxImageUri(selectedDesigner.avatar)}>
+                <BouncyButton activeOpacity={0.9} onPress={() => setLightboxImageUri(selectedDesigner.avatar)} accessibilityRole="button" accessibilityLabel="View profile photo">
                   <Avatar uri={selectedDesigner.avatar} style={styles.profileLargeAvatar} />
                 </BouncyButton>
                 <Text style={[styles.profileName, isWebWide && { fontSize: 24 }]}>{selectedDesigner.name}</Text>
@@ -18068,6 +18339,8 @@ function App() {
                   <BouncyButton
                     style={styles.statItem}
                     onPress={() => openFollowersModal(selectedDesigner)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${selectedDesigner.followersCount ?? 0} Followers`}
                   >
                     <Text style={styles.statNum}>{selectedDesigner.followersCount ?? 0}</Text>
                     <Text style={styles.statLabel}>Followers</Text>
@@ -18078,6 +18351,8 @@ function App() {
                   <BouncyButton
                     style={styles.statItem}
                     onPress={() => openFollowingModal(selectedDesigner)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${selectedDesigner.followingCount ?? 0} Following`}
                   >
                     <Text style={styles.statNum}>{selectedDesigner.followingCount ?? 0}</Text>
                     <Text style={styles.statLabel}>Following</Text>
@@ -18098,6 +18373,8 @@ function App() {
                           ownerLabel: selectedDesigner.name
                         })}
                         delayLongPress={350}
+                        accessibilityRole="link"
+                        accessibilityLabel={getFriendlyLinkName(linkUrl)}
                       >
                         {getSocialLogoSVG(linkUrl)}
                       </BouncyButton>
@@ -18114,6 +18391,8 @@ function App() {
                           followedDesigners.includes(selectedDesigner.id) && styles.modalFollowBtnActive
                         ]}
                         onPress={() => toggleFollowDesigner(selectedDesigner.id)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: followedDesigners.includes(selectedDesigner.id) }}
                       >
                         <Text style={[
                           styles.modalFollowText,
@@ -18135,6 +18414,8 @@ function App() {
                             backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center'
                           }}
                           onPress={() => setContactInfoModalVisible(true)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Contact ${selectedDesigner.name}`}
                         >
                           <ContactCardIconSVG size={20} color={theme.accentLight} />
                         </BouncyButton>
@@ -18155,6 +18436,9 @@ function App() {
                             alignItems: 'center', justifyContent: 'center'
                           }}
                           onPress={() => toggleNotifySubscription(selectedDesigner.id, selectedDesigner.name)}
+                          accessibilityRole="button"
+                          accessibilityLabel={postNotifySubscriptions.includes(selectedDesigner.id) ? `Turn off post notifications for ${selectedDesigner.name}` : `Turn on post notifications for ${selectedDesigner.name}`}
+                          accessibilityState={{ selected: postNotifySubscriptions.includes(selectedDesigner.id) }}
                         >
                           <BellOutlineSVG
                             size={20}
@@ -18191,6 +18475,9 @@ function App() {
                 <BouncyButton
                   style={styles.profileTabBtn}
                   onPress={() => switchDesignerProfileTab('myWork')}
+                  accessibilityRole="tab"
+                  accessibilityLabel={`Portfolios, ${selectedDesignerProjects.length}`}
+                  accessibilityState={{ selected: designerProfileTab === 'myWork' }}
                 >
                   <Text style={[styles.profileTabBtnText, designerProfileTab === 'myWork' && styles.profileTabBtnTextActive]}>
                     Portfolios ({selectedDesignerProjects.length})
@@ -18200,6 +18487,9 @@ function App() {
                 <BouncyButton
                   style={styles.profileTabBtn}
                   onPress={() => switchDesignerProfileTab('likedWork')}
+                  accessibilityRole="tab"
+                  accessibilityLabel={`Liked Portfolios, ${designerLikedProjects.length}`}
+                  accessibilityState={{ selected: designerProfileTab === 'likedWork' }}
                 >
                   <Text style={[styles.profileTabBtnText, designerProfileTab === 'likedWork' && styles.profileTabBtnTextActive]}>
                     Liked Portfolios ({designerLikedProjects.length})
@@ -18226,6 +18516,8 @@ function App() {
                   <BouncyButton
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
                     onPress={() => setPortfolioLayoutMode(portfolioLayoutMode === 'compact' ? 'full' : 'compact')}
+                    accessibilityRole="button"
+                    accessibilityLabel={portfolioLayoutMode === 'compact' ? 'Switch to full width view' : 'Switch to compact view'}
                   >
                     <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
                       {portfolioLayoutMode === 'compact' ? 'Compact View' : 'Full Width View'}
@@ -18373,7 +18665,7 @@ function App() {
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
           <View style={styles.modalTopBar}>
             <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>What are you sharing?</Text>
-            <BouncyButton style={styles.closeBtn} onPress={() => setPortfolioTypeModalVisible(false)}>
+            <BouncyButton style={styles.closeBtn} onPress={() => setPortfolioTypeModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
               <Text style={styles.closeBtnText}>✕</Text>
             </BouncyButton>
           </View>
@@ -18424,6 +18716,8 @@ function App() {
                       setSelectedPortfolioType('ui_ux');
                       proceedToPortfolioWizard();
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Continue with UI/UX Design"
                   >
                     <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
                     <ChevronRightSVG color="#FFFFFF" size={15} />
@@ -18442,6 +18736,8 @@ function App() {
                       setSelectedPortfolioType('ui_ux');
                       proceedToPortfolioWizard();
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Continue with UI/UX Design"
                   >
                     <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
                     <ChevronRightSVG color="#FFFFFF" size={15} />
@@ -18508,6 +18804,8 @@ function App() {
                           setSelectedPortfolioType(type.key);
                           proceedToPortfolioWizard();
                         }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Continue with ${type.title}`}
                       >
                         <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
                         <ChevronRightSVG color="#FFFFFF" size={15} />
@@ -18524,6 +18822,8 @@ function App() {
                         setSelectedPortfolioType(type.key);
                         proceedToPortfolioWizard();
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Continue with ${type.title}`}
                     >
                       <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
                       <ChevronRightSVG color="#FFFFFF" size={15} />
@@ -18585,6 +18885,9 @@ function App() {
                     setInterestConfirmMode(myFeatureInterests.has(type.key) ? 'remove' : 'add');
                     setInterestConfirmTarget(type.key);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={myFeatureInterests.has(type.key) ? `Interested in ${type.title}` : `Register interest in ${type.title}`}
+                  accessibilityState={{ selected: myFeatureInterests.has(type.key) }}
                 >
                   {myFeatureInterests.has(type.key) ? (
                     <>
@@ -18647,12 +18950,14 @@ function App() {
                 // it working correctly.
                 style={[styles.confirmCancelBtn, { flex: 0, flexShrink: 0, minWidth: 90, paddingHorizontal: 20 }]}
                 onPress={() => setInterestConfirmTarget(null)}
+                accessibilityRole="button"
               >
                 <Text style={styles.confirmCancelText} numberOfLines={1}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
                 style={[styles.confirmDeleteBtn, { flex: 0, flexShrink: 0, minWidth: 160, paddingHorizontal: 20 }]}
                 onPress={handleConfirmFeatureInterest}
+                accessibilityRole="button"
               >
                 <View style={styles.iconTextInlineRow}>
                   <CheckIconSVG color="#FFFFFF" />
@@ -18692,6 +18997,9 @@ function App() {
                   backgroundColor: portfolioReportSelectedReason === 'ai_undisclosed' ? (themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)') : 'transparent'
                 }}
                 onPress={() => setPortfolioReportSelectedReason('ai_undisclosed')}
+                accessibilityRole="radio"
+                accessibilityLabel="Undisclosed AI Use"
+                accessibilityState={{ checked: portfolioReportSelectedReason === 'ai_undisclosed' }}
               >
                 <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13.5, marginBottom: 2 }}>Undisclosed AI Use</Text>
                 <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16 }}>
@@ -18706,6 +19014,9 @@ function App() {
                   backgroundColor: portfolioReportSelectedReason === 'nsfw_misuse' ? (themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)') : 'transparent'
                 }}
                 onPress={() => setPortfolioReportSelectedReason('nsfw_misuse')}
+                accessibilityRole="radio"
+                accessibilityLabel="NSFW Tag Misuse"
+                accessibilityState={{ checked: portfolioReportSelectedReason === 'nsfw_misuse' }}
               >
                 <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13.5, marginBottom: 2 }}>NSFW Tag Misuse</Text>
                 <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16 }}>
@@ -18720,6 +19031,9 @@ function App() {
                   backgroundColor: portfolioReportSelectedReason === 'other' ? (themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)') : 'transparent'
                 }}
                 onPress={() => setPortfolioReportSelectedReason('other')}
+                accessibilityRole="radio"
+                accessibilityLabel="Something Else"
+                accessibilityState={{ checked: portfolioReportSelectedReason === 'other' }}
               >
                 <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13.5 }}>Something Else</Text>
                 {portfolioReportSelectedReason === 'other' && (
@@ -18731,6 +19045,7 @@ function App() {
                     onChangeText={setPortfolioReportOtherText}
                     multiline
                     maxLength={300}
+                    accessibilityLabel="Describe the issue"
                   />
                 )}
               </BouncyButton>
@@ -18740,6 +19055,7 @@ function App() {
               <BouncyButton
                 style={[styles.confirmCancelBtn, { flex: 0, paddingHorizontal: 20 }]}
                 onPress={() => { setPortfolioReportModalVisible(false); setPortfolioReportSelectedReason(null); setPortfolioReportOtherText(''); }}
+                accessibilityRole="button"
               >
                 <Text style={styles.confirmCancelText}>Cancel</Text>
               </BouncyButton>
@@ -18747,6 +19063,8 @@ function App() {
                 style={[styles.confirmDeleteBtn, { flex: 0, paddingHorizontal: 20, opacity: portfolioReportSelectedReason ? 1 : 0.4 }]}
                 disabled={!portfolioReportSelectedReason}
                 onPress={handleSubmitPortfolioReport}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: !portfolioReportSelectedReason }}
               >
                 <Text style={styles.confirmDeleteText}>Submit Report</Text>
               </BouncyButton>
@@ -18776,6 +19094,8 @@ function App() {
             <BouncyButton
               style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 1 }}
               onPress={() => setAiDisclosureInfoModalVisible(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
               <CrossIconSVG color={theme.textSecondary} size={18} />
             </BouncyButton>
@@ -18789,6 +19109,7 @@ function App() {
             <BouncyButton
               style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', backgroundColor: '#DC2626' }]}
               onPress={handleReportFullyAiGenerated}
+              accessibilityRole="button"
             >
               <Text style={styles.confirmDeleteText}>Report as Fully AI-Generated</Text>
             </BouncyButton>
@@ -18816,6 +19137,8 @@ function App() {
               <BouncyButton
                 style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', zIndex: 1 }}
                 onPress={() => setUiUxSoftwareInterestModalVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
               >
                 <CrossIconSVG color={theme.textSecondary} size={18} />
               </BouncyButton>
@@ -18833,6 +19156,7 @@ function App() {
                 value={fUiUxSoftwareInterestText}
                 onChangeText={setFUiUxSoftwareInterestText}
                 maxLength={60}
+                accessibilityLabel="Software name"
               />
 
               <BouncyButton
@@ -18841,6 +19165,7 @@ function App() {
                   const ok = await handleSubmitUiUxSoftwareInterest();
                   if (ok) setUiUxSoftwareInterestModalVisible(false);
                 }}
+                accessibilityRole="button"
               >
                 <Text style={styles.confirmDeleteText}>Confirm</Text>
               </BouncyButton>
@@ -19022,6 +19347,8 @@ function App() {
                   borderWidth: 1.5, borderColor: theme.border,
                   alignItems: 'center', justifyContent: 'center'
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
               >
                 <CrossIconSVG color={theme.textSecondary} size={14} />
               </BouncyButton>
@@ -19050,6 +19377,7 @@ function App() {
                     value={fTitle}
                     onChangeText={(t) => { setFTitle(t); setErrors({ ...errors, fTitle: null }); }}
                     maxLength={100}
+                    accessibilityLabel="Project Title"
                   />
                   <Text style={{ color: '#64748B', fontSize: 11, marginTop: 4, textAlign: 'right' }}>
                     {fTitle.length}/100
@@ -19071,6 +19399,8 @@ function App() {
                         setCategorySearchQuery('');
                         setCategoryPickerModalVisible(true);
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Select categories and tags"
                     >
                       <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
                         {fCategories.length > 0 ? 'Tap to edit selection' : 'Tap to select categories & tags'}
@@ -19085,6 +19415,8 @@ function App() {
                             key={cat}
                             style={styles.selectedCategoryPill}
                             onPress={() => toggleCategorySelection(cat)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove ${cat}`}
                           >
                             <Text style={styles.selectedCategoryText}>{cat} ✕</Text>
                           </BouncyButton>
@@ -19120,6 +19452,9 @@ function App() {
                         trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                         thumbColor="#FFFFFF"
                         theme={theme}
+                        accessibilityRole="switch"
+                        accessibilityLabel="Mark as NSFW"
+                        accessibilityState={{ checked: fIsNsfw }}
                       />
                     </View>
                     <Text style={{ color: theme.textSecondary, fontSize: 11, lineHeight: 15, marginTop: 4 }}>
@@ -19147,7 +19482,7 @@ function App() {
                   <View style={{ marginTop: 10, zIndex: aiDisclosureDropdownOpen ? 100 : 'auto' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                       <Text style={styles.settingItemTitle}>AI Disclosure</Text>
-                      <BouncyButton style={{ padding: 2 }} onPress={() => setAiDisclosureTooltipVisible(true)}>
+                      <BouncyButton style={{ padding: 2 }} onPress={() => setAiDisclosureTooltipVisible(true)} accessibilityRole="button" accessibilityLabel="What is AI Disclosure">
                         <InfoCircleSVG size={15} color={theme.textSecondary} />
                       </BouncyButton>
                     </View>
@@ -19161,6 +19496,9 @@ function App() {
                           backgroundColor: theme.surface
                         }}
                         onPress={() => setAiDisclosureDropdownOpen((v) => !v)}
+                        accessibilityRole="button"
+                        accessibilityLabel="AI Disclosure selection"
+                        accessibilityState={{ expanded: aiDisclosureDropdownOpen }}
                       >
                         <Text
                           style={{
@@ -19184,6 +19522,8 @@ function App() {
                             style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
                             activeOpacity={1}
                             onPress={() => setAiDisclosureDropdownOpen(false)}
+                            accessible={false}
+                            importantForAccessibility="no-hide-descendants"
                           />
                           <View style={{
                             position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 100,
@@ -19214,6 +19554,8 @@ function App() {
                             <BouncyButton
                               style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
                               onPress={() => { setFIsAiGenerated(true); setAiDisclosureDropdownOpen(false); }}
+                              accessibilityRole="radio"
+                              accessibilityState={{ checked: fIsAiGenerated === true }}
                             >
                               <Text style={{ color: theme.text, fontSize: 13, fontWeight: fIsAiGenerated === true ? '700' : '500' }}>
                                 {selectedPortfolioType === 'illustration' ? 'This content is AI assisted' : 'This content is AI assisted/generated'}
@@ -19222,6 +19564,8 @@ function App() {
                             <BouncyButton
                               style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
                               onPress={() => { setFIsAiGenerated(false); setAiDisclosureDropdownOpen(false); }}
+                              accessibilityRole="radio"
+                              accessibilityState={{ checked: fIsAiGenerated === false }}
                             >
                               <Text style={{ color: theme.text, fontSize: 13, fontWeight: fIsAiGenerated === false ? '700' : '500' }}>
                                 {selectedPortfolioType === 'illustration' ? 'This content is NOT AI assisted' : 'This content is NOT AI assisted/generated'}
@@ -19271,6 +19615,7 @@ function App() {
                           multiline
                           numberOfLines={3}
                           maxLength={200}
+                          accessibilityLabel="How was AI used"
                         />
                         <Text style={{ color: fAiDisclosureNote.trim().length >= 20 ? theme.textSecondary : '#EF4444', fontSize: 11, marginTop: 4 }}>
                           {fAiDisclosureNote.trim().length}/20 characters minimum
@@ -19297,6 +19642,9 @@ function App() {
                           backgroundColor: theme.surface, marginTop: 6
                         }}
                         onPress={() => setSoftwareDropdownOpen((v) => !v)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Software Used"
+                        accessibilityState={{ expanded: softwareDropdownOpen }}
                       >
                         <Text style={{ color: theme.text, fontSize: 13, fontWeight: fSoftwareUsed.length > 0 ? '700' : '500', flex: 1, marginRight: 8 }} numberOfLines={1}>
                           {fSoftwareUsed.length === 0 ? 'No selection' : fSoftwareUsed.join(', ')}
@@ -19313,6 +19661,8 @@ function App() {
                                 <BouncyButton
                                   style={{ padding: 2 }}
                                   onPress={() => setFSoftwareUsed(fSoftwareUsed.filter((s) => s !== sw))}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Remove ${sw}`}
                                 >
                                   <CrossIconSVG color={theme.textSecondary} size={11} />
                                 </BouncyButton>
@@ -19327,6 +19677,8 @@ function App() {
                             style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
                             activeOpacity={1}
                             onPress={() => setSoftwareDropdownOpen(false)}
+                            accessible={false}
+                            importantForAccessibility="no-hide-descendants"
                           />
                           <View style={{
                             position: 'relative', marginTop: 4, zIndex: 100,
@@ -19355,6 +19707,9 @@ function App() {
                                       onPress={() => {
                                         setFSoftwareUsed(selected ? fSoftwareUsed.filter((s) => s !== sw.name) : [...fSoftwareUsed, sw.name]);
                                       }}
+                                      accessibilityRole="checkbox"
+                                      accessibilityLabel={sw.name}
+                                      accessibilityState={{ checked: selected }}
                                     >
                                       <SoftwareIconSVG name={sw.name} size={18} />
                                       <Text style={{ color: theme.text, fontSize: 13, fontWeight: selected ? '700' : '500', flex: 1 }}>{sw.name}</Text>
@@ -19382,6 +19737,7 @@ function App() {
                                     }
                                     setSoftwareCustomInput('');
                                   }}
+                                  accessibilityLabel="Add custom software"
                                 />
                                 <BouncyButton
                                   style={{ width: 40, height: 40, borderRadius: 10, borderWidth: 1.5, borderColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
@@ -19392,6 +19748,8 @@ function App() {
                                     }
                                     setSoftwareCustomInput('');
                                   }}
+                                  accessibilityRole="button"
+                                  accessibilityLabel="Add software"
                                 >
                                   <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                                     <Path d="M12 5V19M5 12H19" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round" />
@@ -19424,6 +19782,7 @@ function App() {
                         <BouncyButton
                           style={[styles.confirmDeleteBtn, { flex: 0, marginTop: 16, width: '100%' }]}
                           onPress={() => setAiDisclosureTooltipVisible(false)}
+                          accessibilityRole="button"
                         >
                           <Text style={styles.confirmDeleteText}>Got it</Text>
                         </BouncyButton>
@@ -19485,6 +19844,8 @@ function App() {
                             <BouncyButton
                               style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}
                               onPress={() => { setCategoryImportViewOpen(false); setSelectedImportPortfolioIds(new Set()); }}
+                              accessibilityRole="button"
+                              accessibilityLabel="Back"
                             >
                               <ChevronLeftSVG color={theme.text} size={18} />
                               <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]} numberOfLines={1}>Copy Tags From</Text>
@@ -19492,7 +19853,7 @@ function App() {
                           ) : (
                             <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Categories & Tags</Text>
                           )}
-                          <BouncyButton style={styles.closeBtn} onPress={() => { setCategoryPickerModalVisible(false); setCategoryImportViewOpen(false); setSelectedImportPortfolioIds(new Set()); }}>
+                          <BouncyButton style={styles.closeBtn} onPress={() => { setCategoryPickerModalVisible(false); setCategoryImportViewOpen(false); setSelectedImportPortfolioIds(new Set()); }} accessibilityRole="button" accessibilityLabel="Close">
                             <Text style={styles.closeBtnText}>✕</Text>
                           </BouncyButton>
                         </View>
@@ -19513,6 +19874,7 @@ function App() {
                                 marginBottom: 10
                               }}
                               onPress={() => setCategoryImportViewOpen(true)}
+                              accessibilityRole="button"
                             >
                               <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '600' }}>Copy tags from another portfolio</Text>
                               <ChevronRightSVG color={theme.accent} size={14} />
@@ -19526,6 +19888,7 @@ function App() {
                             value={categorySearchQuery}
                             onChangeText={setCategorySearchQuery}
                             maxLength={40}
+                            accessibilityLabel="Search or add custom category or tag"
                           />
 
                           <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 10 }}>
@@ -19539,6 +19902,8 @@ function App() {
                                   key={cat}
                                   style={styles.selectedCategoryPill}
                                   onPress={() => toggleCategorySelection(cat)}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Remove ${cat}`}
                                 >
                                   <Text style={styles.selectedCategoryText}>{cat} ✕</Text>
                                 </BouncyButton>
@@ -19569,6 +19934,9 @@ function App() {
                                       }
                                     ]}
                                     onPress={() => toggleImportPortfolioSelection(p.id)}
+                                    accessibilityRole="checkbox"
+                                    accessibilityLabel={p.title || 'Untitled'}
+                                    accessibilityState={{ checked: isSelected }}
                                   >
                                     <View style={{
                                       width: 20, height: 20, borderRadius: 5, marginTop: 2,
@@ -19596,6 +19964,8 @@ function App() {
                                 style={[styles.saveAccountSettingsBtn, { opacity: selectedImportPortfolioIds.size > 0 ? 1 : 0.4 }]}
                                 disabled={selectedImportPortfolioIds.size === 0}
                                 onPress={handleReviewImportTags}
+                                accessibilityRole="button"
+                                accessibilityState={{ disabled: selectedImportPortfolioIds.size === 0 }}
                               >
                                 <Text style={styles.submitBtnText}>
                                   Import Tags{selectedImportPortfolioIds.size > 0 ? ` (${selectedImportPortfolioIds.size} portfolio${selectedImportPortfolioIds.size === 1 ? '' : 's'})` : ''}
@@ -19616,6 +19986,9 @@ function App() {
                                   isSelected && styles.categoryVerticalItemActive
                                 ]}
                                 onPress={() => toggleCategorySelection(cat)}
+                                accessibilityRole="checkbox"
+                                accessibilityLabel={cat}
+                                accessibilityState={{ checked: isSelected }}
                               >
                                 <Text style={[
                                   styles.categoryVerticalText,
@@ -19631,6 +20004,7 @@ function App() {
                             <BouncyButton
                               style={styles.addCustomCategoryItemBtn}
                               onPress={handleAddCustomCategory}
+                              accessibilityRole="button"
                             >
                               <Text style={styles.addCustomCategoryItemText}>
                                 + Create Custom Tag "{categorySearchQuery.trim()}"
@@ -19643,6 +20017,7 @@ function App() {
                           <BouncyButton
                             style={styles.saveAccountSettingsBtn}
                             onPress={() => setCategoryPickerModalVisible(false)}
+                            accessibilityRole="button"
                           >
                             <Text style={styles.submitBtnText}>Done ({fCategories.length} selected)</Text>
                           </BouncyButton>
@@ -19690,12 +20065,14 @@ function App() {
                           <BouncyButton
                             style={[styles.confirmCancelBtn]}
                             onPress={() => setImportConfirmModalVisible(false)}
+                            accessibilityRole="button"
                           >
                             <Text style={styles.confirmCancelText}>Cancel</Text>
                           </BouncyButton>
                           <BouncyButton
                             style={[styles.confirmDeleteBtn]}
                             onPress={handleFinalizeImportTags}
+                            accessibilityRole="button"
                           >
                             <Text style={styles.confirmDeleteText}>Continue</Text>
                           </BouncyButton>
@@ -19713,6 +20090,7 @@ function App() {
                     value={fBrief}
                     onChangeText={(t) => { setFBrief(t); setErrors({ ...errors, fBrief: null }); }}
                     maxLength={300}
+                    accessibilityLabel="Short Brief / Summary"
                   />
                   {errors.fBrief ? <Text style={styles.errorText}>{errors.fBrief}</Text> : null}
 
@@ -19724,6 +20102,9 @@ function App() {
                       trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
                       thumbColor="#FFFFFF"
                       theme={theme}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Detailed Description"
+                      accessibilityState={{ checked: fDetailedDescriptionEnabled }}
                     />
                   </View>
                   <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 8, marginTop: 4 }}>
@@ -19742,6 +20123,7 @@ function App() {
                               backgroundColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
                             }}
                             onPress={() => setFullscreenDescEditorVisible(true)}
+                            accessibilityRole="button"
                           >
                             <EditIconSVG color="#FFFFFF" />
                             <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Edit</Text>
@@ -19757,6 +20139,7 @@ function App() {
                             <BouncyButton
                               style={{ backgroundColor: '#8B5CF6', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 99 }}
                               onPress={() => setFullscreenDescEditorVisible(true)}
+                              accessibilityRole="button"
                             >
                               <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Start Editing</Text>
                             </BouncyButton>
@@ -19779,7 +20162,7 @@ function App() {
                 <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
                   <View style={[styles.modalTopBar, { justifyContent: 'space-between' }]}>
                     <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Detailed Description</Text>
-                    <BouncyButton onPress={() => setFormattingGuideVisible(true)}>
+                    <BouncyButton onPress={() => setFormattingGuideVisible(true)} accessibilityRole="button" accessibilityLabel="Formatting help">
                       <HelpCircleIconSVG />
                     </BouncyButton>
                   </View>
@@ -19800,6 +20183,9 @@ function App() {
                         backgroundColor: descEditorMode === 'preview' ? '#8B5CF6' : 'transparent'
                       }}
                       onPress={() => setDescEditorMode(descEditorMode === 'edit' ? 'preview' : 'edit')}
+                      accessibilityRole="button"
+                      accessibilityLabel={descEditorMode === 'preview' ? 'Switch to edit mode' : 'Preview'}
+                      accessibilityState={{ selected: descEditorMode === 'preview' }}
                     >
                       {descEditorMode === 'preview' ? <EyeOpenSVG color="#FFFFFF" /> : <EyeClosedSVG />}
                     </BouncyButton>
@@ -19823,6 +20209,7 @@ function App() {
                         alignItems: 'center', justifyContent: 'center'
                       }}
                       onPress={() => setFullscreenDescEditorVisible(false)}
+                      accessibilityRole="button"
                     >
                       <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Done</Text>
                     </BouncyButton>
@@ -19876,6 +20263,9 @@ function App() {
                                 style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', opacity: idx === 0 ? 0.35 : 1 }}
                                 disabled={idx === 0}
                                 onPress={() => moveBlockToIndex(idx, idx - 1)}
+                                accessibilityRole="button"
+                                accessibilityLabel="Move block up"
+                                accessibilityState={{ disabled: idx === 0 }}
                               >
                                 <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>▲</Text>
                               </BouncyButton>
@@ -19890,18 +20280,22 @@ function App() {
                                   setOrderInputDrafts((prev) => ({ ...prev, [block.id]: t.replace(/[^0-9]/g, '') }))
                                 }
                                 onEndEditing={() => commitOrderInputDraft(block.id)}
+                                accessibilityLabel="Block position"
                               />
                               <BouncyButton
                                 style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', opacity: idx === fContentBlocks.length - 1 ? 0.35 : 1 }}
                                 disabled={idx === fContentBlocks.length - 1}
                                 onPress={() => moveBlockToIndex(idx, idx + 1)}
+                                accessibilityRole="button"
+                                accessibilityLabel="Move block down"
+                                accessibilityState={{ disabled: idx === fContentBlocks.length - 1 }}
                               >
                                 <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>▼</Text>
                               </BouncyButton>
                               <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginLeft: 4 }}>
                                 {block.type === 'text' ? 'Text' : block.type === 'image' ? 'Image' : 'Row (2-up)'}
                               </Text>
-                              <BouncyButton style={{ marginLeft: 'auto', padding: 4 }} onPress={() => deleteBlock(block.id)}>
+                              <BouncyButton style={{ marginLeft: 'auto', padding: 4 }} onPress={() => deleteBlock(block.id)} accessibilityRole="button">
                                 <Text style={{ color: '#F87171', fontSize: 12, fontWeight: '700' }}>Remove</Text>
                               </BouncyButton>
                             </View>
@@ -19926,6 +20320,7 @@ function App() {
                                   }}
                                   dataDetectorTypes="none"
                                   autoCorrect={false}
+                                  accessibilityLabel="Block text"
                                 />
                                 <Text style={{
                                   color: (block.markdown || '').length >= MAX_TEXT_BLOCK_CHARS ? '#F87171' : theme.textSecondary,
@@ -19939,6 +20334,8 @@ function App() {
                                       key={btn.label}
                                       style={{ backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 }}
                                       onPress={() => applyMarkdownToBlock(block.id, btn)}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={MARKDOWN_BTN_A11Y_LABELS[btn.label] || btn.label}
                                     >
                                       <Text style={{
                                         color: theme.accent,
@@ -19958,6 +20355,9 @@ function App() {
                                         borderWidth: 1, borderColor: theme.border, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12
                                       }}
                                       onPress={() => setTextBlockAlign(block.id, alignOpt)}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`Align ${alignOpt}`}
+                                      accessibilityState={{ selected: (block.align || 'left') === alignOpt }}
                                     >
                                       <AlignIconSVG align={alignOpt} color={(block.align || 'left') === alignOpt ? '#FFFFFF' : theme.textSecondary} size={15} />
                                     </BouncyButton>
@@ -19987,6 +20387,8 @@ function App() {
                                           alignItems: 'center', justifyContent: 'center'
                                         }}
                                         onPress={() => recropImageBlock(block.id)}
+                                        accessibilityRole="button"
+                                        accessibilityLabel="Crop image"
                                       >
                                         <CropIconSVG color="#FFFFFF" size={16} />
                                       </BouncyButton>
@@ -20004,6 +20406,7 @@ function App() {
                                   <BouncyButton
                                     style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: '#8B5CF6' }}
                                     onPress={() => replaceImageBlock(block.id)}
+                                    accessibilityRole="button"
                                   >
                                     <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>
                                       {block.uri ? 'Replace Image' : 'Choose Image'}
@@ -20023,6 +20426,8 @@ function App() {
                                     borderWidth: 1, borderColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
                                   }}
                                   onPress={() => swapRowColumns(block.id)}
+                                  accessibilityRole="button"
+                                  accessibilityLabel="Swap columns"
                                 >
                                   <Text style={{ color: themeMode === 'light' ? '#6D28D9' : theme.accent, fontSize: 12, fontWeight: '700' }}>⇄ Swap</Text>
                                 </BouncyButton>
@@ -20036,6 +20441,8 @@ function App() {
                                           <BouncyButton
                                             style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99 }}
                                             onPress={() => addTextToRowColumn(block.id, colIdx)}
+                                            accessibilityRole="button"
+                                            accessibilityLabel="Add text"
                                           >
                                             <TextBlockIconSVG size={26} />
                                             <Text style={{ color: theme.accent, fontSize: 10, fontWeight: '700', marginTop: 4 }}>Text</Text>
@@ -20043,6 +20450,8 @@ function App() {
                                           <BouncyButton
                                             style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99 }}
                                             onPress={() => addImageToRowColumn(block.id, colIdx)}
+                                            accessibilityRole="button"
+                                            accessibilityLabel="Add image"
                                           >
                                             <ImageIconSVG size={26} />
                                             <Text style={{ color: theme.accent, fontSize: 10, fontWeight: '700', marginTop: 4 }}>Image</Text>
@@ -20068,6 +20477,7 @@ function App() {
                                             }}
                                             dataDetectorTypes="none"
                                             autoCorrect={false}
+                                            accessibilityLabel="Column text"
                                           />
                                           <Text style={{
                                             color: (col.markdown || '').length >= MAX_TEXT_BLOCK_CHARS ? '#F87171' : theme.textSecondary,
@@ -20081,6 +20491,8 @@ function App() {
                                                 key={btn.label}
                                                 style={{ flex: 1, marginRight: 3, alignItems: 'center', backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingVertical: 5 }}
                                                 onPress={() => applyMarkdownToRowColumn(block.id, colIdx, btn)}
+                                                accessibilityRole="button"
+                                                accessibilityLabel={MARKDOWN_BTN_A11Y_LABELS[btn.label] || btn.label}
                                               >
                                                 <Text style={{
                                                   color: theme.accent,
@@ -20101,11 +20513,14 @@ function App() {
                                                   borderWidth: 1, borderColor: theme.border, borderRadius: 6, paddingVertical: 5, paddingHorizontal: 8
                                                 }}
                                                 onPress={() => setRowColumnAlign(block.id, colIdx, alignOpt)}
+                                                accessibilityRole="button"
+                                                accessibilityLabel={`Align ${alignOpt}`}
+                                                accessibilityState={{ selected: (col.align || 'left') === alignOpt }}
                                               >
                                                 <AlignIconSVG align={alignOpt} color={(col.align || 'left') === alignOpt ? '#FFFFFF' : theme.textSecondary} size={13} />
                                               </BouncyButton>
                                             ))}
-                                            <BouncyButton style={{ marginLeft: 'auto', padding: 2 }} onPress={() => clearRowColumn(block.id, colIdx)}>
+                                            <BouncyButton style={{ marginLeft: 'auto', padding: 2 }} onPress={() => clearRowColumn(block.id, colIdx)} accessibilityRole="button" accessibilityLabel="Clear column">
                                               <Text style={{ color: '#F87171', fontSize: 12, fontWeight: '700' }}>✕</Text>
                                             </BouncyButton>
                                           </View>
@@ -20128,6 +20543,8 @@ function App() {
                                                     alignItems: 'center', justifyContent: 'center'
                                                   }}
                                                   onPress={() => recropRowColumnImage(block.id, colIdx)}
+                                                  accessibilityRole="button"
+                                                  accessibilityLabel="Crop image"
                                                 >
                                                   <CropIconSVG color="#FFFFFF" size={12} />
                                                 </BouncyButton>
@@ -20142,12 +20559,12 @@ function App() {
                                               images are always square
                                               everywhere now. */}
                                           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 }}>
-                                            <BouncyButton onPress={() => replaceRowColumnImage(block.id, colIdx)}>
+                                            <BouncyButton onPress={() => replaceRowColumnImage(block.id, colIdx)} accessibilityRole="button">
                                               <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>
                                                 {col.uri ? 'Replace' : 'Choose Image'}
                                               </Text>
                                             </BouncyButton>
-                                            <BouncyButton style={{ marginLeft: 'auto', padding: 2 }} onPress={() => clearRowColumn(block.id, colIdx)}>
+                                            <BouncyButton style={{ marginLeft: 'auto', padding: 2 }} onPress={() => clearRowColumn(block.id, colIdx)} accessibilityRole="button" accessibilityLabel="Clear column">
                                               <Text style={{ color: '#F87171', fontSize: 12, fontWeight: '700' }}>✕</Text>
                                             </BouncyButton>
                                           </View>
@@ -20180,6 +20597,7 @@ function App() {
                                 alignItems: 'center', justifyContent: 'center'
                               }}
                               onPress={addTextBlock}
+                              accessibilityRole="button"
                             >
                               <TextBlockIconSVG size={24} color={theme.accent} />
                               <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '600', marginTop: 6 }}>Add Text</Text>
@@ -20192,6 +20610,7 @@ function App() {
                                 alignItems: 'center', justifyContent: 'center'
                               }}
                               onPress={addImageBlock}
+                              accessibilityRole="button"
                             >
                               <ImageIconSVG size={24} color={theme.accent} />
                               <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '600', marginTop: 6 }}>Add Image</Text>
@@ -20204,6 +20623,7 @@ function App() {
                                 alignItems: 'center', justifyContent: 'center'
                               }}
                               onPress={addRowBlock}
+                              accessibilityRole="button"
                             >
                               <RowBlockIconSVG size={24} color={theme.accent} filled />
                               <Text style={{ color: theme.textSecondary, fontSize: 10, fontWeight: '600', marginTop: 6, textAlign: 'center' }}>Add 2 Row</Text>
@@ -20235,6 +20655,9 @@ function App() {
                       backgroundColor: theme.surface, marginTop: 6
                     }}
                     onPress={() => setSoftwareDropdownOpen((v) => !v)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Software Used"
+                    accessibilityState={{ expanded: softwareDropdownOpen }}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
                       {fSoftwareUsed.length > 0 && <SoftwareIconSVG name={fSoftwareUsed[0]} size={18} />}
@@ -20251,6 +20674,8 @@ function App() {
                         style={{ position: 'absolute', top: -1000, left: -1000, right: -1000, bottom: -1000, zIndex: 99 }}
                         activeOpacity={1}
                         onPress={() => setSoftwareDropdownOpen(false)}
+                        accessible={false}
+                        importantForAccessibility="no-hide-descendants"
                       />
                       <View style={{
                         position: 'relative', marginTop: 4, zIndex: 100,
@@ -20286,6 +20711,9 @@ function App() {
                                     setFSoftwareUsed(selected ? [] : [sw.name]);
                                     setSoftwareDropdownOpen(false);
                                   }}
+                                  accessibilityRole="radio"
+                                  accessibilityLabel={sw.name}
+                                  accessibilityState={{ checked: selected }}
                                 >
                                   <SoftwareIconSVG name={sw.name} size={18} />
                                   <Text style={{ color: theme.text, fontSize: 13, fontWeight: selected ? '700' : '500', flex: 1 }}>{sw.name}</Text>
@@ -20317,6 +20745,7 @@ function App() {
                                 }
                                 setSoftwareCustomInput('');
                               }}
+                              accessibilityLabel="Add custom software"
                             />
                             <BouncyButton
                               style={{ width: 40, height: 40, borderRadius: 10, borderWidth: 1.5, borderColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
@@ -20328,6 +20757,8 @@ function App() {
                                 }
                                 setSoftwareCustomInput('');
                               }}
+                              accessibilityRole="button"
+                              accessibilityLabel="Add software"
                             >
                               <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                                 <Path d="M12 5V19M5 12H19" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round" />
@@ -20367,6 +20798,7 @@ function App() {
                           autoCapitalize="none"
                           value={fFigmaProto}
                           onChangeText={setFFigmaProto}
+                          accessibilityLabel="Figma Mobile Prototype Share Link"
                         />
 
                         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
@@ -20380,6 +20812,7 @@ function App() {
                           autoCapitalize="none"
                           value={fDesktopProto}
                           onChangeText={setFDesktopProto}
+                          accessibilityLabel="Figma Desktop Prototype Share Link"
                         />
 
                         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
@@ -20396,6 +20829,7 @@ function App() {
                           autoCapitalize="none"
                           value={fComponentProto}
                           onChangeText={setFComponentProto}
+                          accessibilityLabel="Component Prototype Link"
                         />
 
                         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
@@ -20409,6 +20843,7 @@ function App() {
                           autoCapitalize="none"
                           value={fFigmaProfile}
                           onChangeText={setFFigmaProfile}
+                          accessibilityLabel="Figma Profile Link"
                         />
                       </>
                     ) : (
@@ -20417,6 +20852,9 @@ function App() {
                           <BouncyButton
                             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
                             onPress={() => setUiUxDisclaimerExpanded((prev) => !prev)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Figma-Only Prototype Support (For Now)"
+                            accessibilityState={{ expanded: uiUxDisclaimerExpanded }}
                           >
                             <View style={[styles.iconTextInlineRow, { flex: 1 }]}>
                               <WarningTriangleSVG />
@@ -20442,6 +20880,7 @@ function App() {
                                 <BouncyButton
                                   style={{ alignSelf: 'flex-start', marginTop: 8 }}
                                   onPress={() => setUiUxSoftwareInterestModalVisible(true)}
+                                  accessibilityRole="button"
                                 >
                                   <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' }}>
                                     Let us know if you'd like another tool supported
@@ -20475,11 +20914,15 @@ function App() {
                     autoCapitalize="none"
                     value={fFigmaFile}
                     onChangeText={setFFigmaFile}
+                    accessibilityLabel="Project Canvas Link"
                   />
 
                   <BouncyButton
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 20 }}
                     onPress={() => setFHasLiveLink(!fHasLiveLink)}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel="I have finished product for this portfolio"
+                    accessibilityState={{ checked: fHasLiveLink }}
                   >
                     <View style={{
                       width: 22, height: 22, borderRadius: 6, borderWidth: 2,
@@ -20503,6 +20946,8 @@ function App() {
                             {fLiveLinks.length > 1 && (
                               <BouncyButton
                                 onPress={() => setFLiveLinks(fLiveLinks.filter((_, i) => i !== idx))}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Remove Link ${idx + 1}`}
                               >
                                 <TrashIconSVG />
                               </BouncyButton>
@@ -20520,6 +20965,7 @@ function App() {
                               setFLiveLinks(updated);
                             }}
                             maxLength={60}
+                            accessibilityLabel={`Link ${idx + 1} Button Label`}
                           />
                           <Text style={styles.formGroupLabel}>Link URL</Text>
                           <View style={{ position: 'relative' }}>
@@ -20537,6 +20983,7 @@ function App() {
                                 updated[idx] = { ...updated[idx], url: t };
                                 setFLiveLinks(updated);
                               }}
+                              accessibilityLabel={`Link ${idx + 1} URL`}
                             />
                           </View>
                         </View>
@@ -20546,6 +20993,7 @@ function App() {
                         <BouncyButton
                           style={styles.addMoreVideoBtn}
                           onPress={() => setFLiveLinks([...fLiveLinks, { label: '', url: '' }])}
+                          accessibilityRole="button"
                         >
                           <Text style={styles.addMoreVideoText}>+ Add Another Link ({fLiveLinks.length}/5)</Text>
                         </BouncyButton>
@@ -20562,6 +21010,8 @@ function App() {
                     style={[styles.bigRectanglePicker, isWebWide && { maxWidth: 420, alignSelf: 'flex-start' }, errors.fCover && styles.inputErrorBorder]}
                     activeOpacity={0.8}
                     onPress={pickCoverImage}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cover Thumbnail Photo"
                   >
                     {fCover ? (
                       <Image source={{ uri: fCover }} style={styles.bigRectanglePreview} />
@@ -20591,6 +21041,9 @@ function App() {
                         backgroundColor: fShowcaseAspectRatio === '16:9' ? (themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.15)') : 'transparent'
                       }}
                       onPress={() => setFShowcaseAspectRatio('16:9')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Landscape"
+                      accessibilityState={{ selected: fShowcaseAspectRatio === '16:9' }}
                     >
                       <View style={{ width: 18, height: 10.1, borderRadius: 2, borderWidth: 1.5, borderColor: fShowcaseAspectRatio === '16:9' ? theme.accent : theme.textSecondary }} />
                       <Text style={{ color: fShowcaseAspectRatio === '16:9' ? theme.accent : theme.textSecondary, fontSize: 13, fontWeight: '700' }}>Landscape</Text>
@@ -20603,6 +21056,9 @@ function App() {
                         backgroundColor: fShowcaseAspectRatio === '9:16' ? (themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.15)') : 'transparent'
                       }}
                       onPress={() => setFShowcaseAspectRatio('9:16')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Portrait"
+                      accessibilityState={{ selected: fShowcaseAspectRatio === '9:16' }}
                     >
                       <View style={{ width: 10.1, height: 18, borderRadius: 2, borderWidth: 1.5, borderColor: fShowcaseAspectRatio === '9:16' ? theme.accent : theme.textSecondary }} />
                       <Text style={{ color: fShowcaseAspectRatio === '9:16' ? theme.accent : theme.textSecondary, fontSize: 13, fontWeight: '700' }}>Portrait</Text>
@@ -20614,6 +21070,8 @@ function App() {
                       <BouncyButton
                         style={[styles.smallSquarePicker, isWebWide && { width: 110, height: 110 }, errors.showcaseImages && styles.inputErrorBorder]}
                         onPress={pickMultipleShowcaseImages}
+                        accessibilityRole="button"
+                        accessibilityLabel="Add showcase images"
                       >
                         <View style={styles.pickerPlaceholderCol}>
                           <CameraIconSVG />
@@ -20637,6 +21095,8 @@ function App() {
                             }}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             onPress={() => handleRemoveShowcaseImage(index)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove image ${index + 1}`}
                           >
                             <DashCircleIconSVG size={16} />
                           </BouncyButton>
@@ -20659,6 +21119,7 @@ function App() {
                           onChangeText={(t) => handleShowcaseCaptionChange(index, t)}
                           maxLength={150}
                           multiline
+                          accessibilityLabel={`Caption for image ${index + 1}`}
                         />
                       </View>
                     ))}
@@ -20668,6 +21129,8 @@ function App() {
                       <BouncyButton
                         style={[styles.smallSquarePicker, isWebWide && { width: 110, height: 110 }]}
                         onPress={pickMultipleShowcaseImages}
+                        accessibilityRole="button"
+                        accessibilityLabel="Add more images"
                       >
                         <PlusSVG />
                       </BouncyButton>
@@ -20719,7 +21182,7 @@ function App() {
                           const vid = fUploadedVideos[slotIdx];
                           if (!vid) {
                             return (
-                              <BouncyButton key={slotIdx} style={[styles.smallSquarePicker, isWebWide && { width: 110, height: 110 }]} onPress={pickUploadedVideo}>
+                              <BouncyButton key={slotIdx} style={[styles.smallSquarePicker, isWebWide && { width: 110, height: 110 }]} onPress={pickUploadedVideo} accessibilityRole="button" accessibilityLabel="Add video">
                                 <View style={styles.pickerPlaceholderCol}>
                                   <VideoFilledIconSVG size={20} color={theme.textSecondary} />
                                   <Text style={styles.squarePickerText}>Add Video</Text>
@@ -20762,6 +21225,8 @@ function App() {
                                       alignItems: 'center', justifyContent: 'center', gap: 4
                                     }}
                                     onPress={() => handleRetryVideoCompression(slotIdx)}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Retry compression"
                                   >
                                     <Text style={{ color: '#FFFFFF', fontSize: 16 }}>↻</Text>
                                     <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '600' }}>Retry</Text>
@@ -20777,6 +21242,8 @@ function App() {
                                 }}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                 onPress={() => handleRemoveUploadedVideo(slotIdx)}
+                                accessibilityRole="button"
+                                accessibilityLabel="Remove video"
                               >
                                 <DashCircleIconSVG size={16} />
                               </BouncyButton>
@@ -20794,6 +21261,7 @@ function App() {
                                 onChangeText={(t) => setFUploadedVideos((prev) => prev.map((v, i) => (i === slotIdx ? { ...v, caption: t } : v)))}
                                 maxLength={150}
                                 multiline
+                                accessibilityLabel="Video caption"
                               />
                             </View>
                           );
@@ -20811,11 +21279,14 @@ function App() {
                         placeholderTextColor="#94A3B8"
                         value={vid}
                         onChangeText={(t) => handleVideoUrlChange(t, idx)}
+                        accessibilityLabel={`Video Demo Link ${idx + 1}`}
                       />
                       {fVideoLinks.length > 1 && (
                         <BouncyButton
                           style={styles.removeVideoBtn}
                           onPress={() => handleRemoveVideoLink(idx)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove video link ${idx + 1}`}
                         >
                           <TrashIconSVG />
                         </BouncyButton>
@@ -20823,7 +21294,7 @@ function App() {
                     </View>
                   ))}
 
-                  <BouncyButton style={styles.addMoreVideoBtn} onPress={handleAddMoreVideo}>
+                  <BouncyButton style={styles.addMoreVideoBtn} onPress={handleAddMoreVideo} accessibilityRole="button">
                     <Text style={styles.addMoreVideoText}>+ Add More Video Links</Text>
                   </BouncyButton>
                 </View>
@@ -20901,6 +21372,7 @@ function App() {
                       setFormStep(formStep - 1);
                     }
                   }}
+                  accessibilityRole="button"
                 >
                   <View style={styles.iconTextInlineRow}>
                     <ChevronLeftSVG color="#94A3B8" size={16} />
@@ -20918,6 +21390,8 @@ function App() {
                   else if (formStep === 3) handleNextFromStep3();
                   else if (formStep === 4) handleFinalPostPackage();
                 }}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: isSubmittingPortfolio, busy: isSubmittingPortfolio }}
               >
                 {formStep === 4 && isSubmittingPortfolio ? (
                   <View style={styles.iconTextInlineRow}>
@@ -20978,11 +21452,13 @@ function App() {
                   <BouncyButton
                     style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
                     onPress={() => setDiscardConfirmModalVisible(false)}
+                    accessibilityRole="button"
                   >
                     <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Keep Editing</Text>
                   </BouncyButton>
                   <BouncyButton
                     style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
+                    accessibilityRole="button"
                     onPress={() => {
                       setDiscardConfirmModalVisible(false);
                       setAddModalVisible(false);
@@ -23393,7 +23869,7 @@ function App() {
           >
             <View style={styles.modalTopBar}>
               <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>{userListTargetDesigner ? userListTargetDesigner.name : ''}</Text>
-              <BouncyButton style={styles.closeBtn} onPress={() => setUserListModalVisible(false)}>
+              <BouncyButton style={styles.closeBtn} onPress={() => setUserListModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
             </View>
@@ -23432,6 +23908,8 @@ function App() {
                       setUserListModalVisible(false);
                       openDesignerModal(usr);
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${usr.name}, ${usr.role}`}
                   >
                     <Avatar uri={usr.avatar} style={styles.designerListAvatar} />
                     <View style={styles.designerInfoCol}>
@@ -23443,6 +23921,9 @@ function App() {
                       <BouncyButton
                         style={[styles.smallFollowBtn, isFollowing && styles.smallFollowBtnActive]}
                         onPress={() => toggleFollowDesigner(usr.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={isFollowing ? `Following ${usr.name}` : (usr.followsMe ? `Follow back ${usr.name}` : `Follow ${usr.name}`)}
+                        accessibilityState={{ selected: isFollowing }}
                       >
                         <Text style={[styles.smallFollowText, isFollowing && styles.smallFollowTextActive]}>
                           {isFollowing ? 'Following' : (usr.followsMe ? 'Follow Back' : '+ Follow')}
