@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 669;
+const BUILD_NUMBER = 670;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -1475,6 +1475,16 @@ const DShapeSVG = React.memo(({ size = 44, color = '#8B5CF6' }) => (
 const ChevronLeftSVG = React.memo(({ color = "#94A3B8", size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M15 18l-6-6 6-6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
+// Used specifically for the wide-web sidebar's collapse toggle - two
+// chevrons rather than one is the more standard "collapse this panel"
+// convention (vs. a single chevron, which reads more like "go back").
+const DoubleChevronLeftSVG = React.memo(({ color = "#94A3B8", size = 18 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M18 18l-6-6 6-6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M11 18l-6-6 6-6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
@@ -5460,6 +5470,67 @@ function App() {
   const [donateSuccessModalVisible, setDonateSuccessModalVisible] = useState(false);
   const [donateRegion, setDonateRegion] = useState('id');
   const [donateTermsAgreed, setDonateTermsAgreed] = useState(false);
+  const donateRegionUserChangedRef = useRef(false);
+
+  // Defaults the Indonesia/International tab based on a best-effort,
+  // IP-based country lookup - not GPS (no permission prompt needed, and
+  // this is only ever a starting-point default, never enforced). Runs
+  // once per app session. Guarded by the ref above so it can never
+  // clobber a selection the person actually made themselves, even if
+  // detection happens to resolve after they've already switched tabs.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('https://ipapi.co/json/')
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled || donateRegionUserChangedRef.current) return;
+        if (data && data.country_code && data.country_code !== 'ID') {
+          setDonateRegion('intl');
+        }
+      })
+      .catch(() => {}); // silent - 'id' (the existing hardcoded default) stands if this fails
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleDonateRegionChange = (key) => {
+    donateRegionUserChangedRef.current = true;
+    setDonateRegion(key);
+  };
+
+  // TOOLS DOWNLOAD INTERSTITIAL - shown after a Tools download completes,
+  // reusing the same Donate modal UI (region tabs, QRIS/Ko-fi/GitHub
+  // Sponsors, terms checkbox) but with different intro copy via
+  // donateModalContext, plus its own Dismiss/"Don't show again today"
+  // controls that the portfolio-context Donate modal doesn't need (that
+  // one is always a deliberate, user-initiated open from Settings, never
+  // auto-triggered).
+  const [donateModalContext, setDonateModalContext] = useState('portfolio'); // 'portfolio' | 'tools'
+  const [toolsInterstitialOfferCompress, setToolsInterstitialOfferCompress] = useState(false);
+  const TOOLS_INTERSTITIAL_DISMISSED_KEY = 'tools_interstitial_dismissed_date';
+
+  const maybeShowToolsDownloadInterstitial = async (offerCompress = false) => {
+    try {
+      const dismissedDate = await AsyncStorage.getItem(TOOLS_INTERSTITIAL_DISMISSED_KEY);
+      const today = new Date().toDateString();
+      if (dismissedDate === today) return; // already dismissed for today, skip silently
+    } catch (e) {
+      // If AsyncStorage itself fails, fail open (show the interstitial)
+      // rather than silently never showing it again.
+    }
+    setDonateModalContext('tools');
+    setToolsInterstitialOfferCompress(offerCompress);
+    setDonateTermsAgreed(false);
+    setDonateModalVisible(true);
+  };
+
+  const handleDismissToolsInterstitialToday = async () => {
+    try {
+      await AsyncStorage.setItem(TOOLS_INTERSTITIAL_DISMISSED_KEY, new Date().toDateString());
+    } catch (e) {
+      console.warn('Could not persist interstitial dismissal:', e);
+    }
+    setDonateModalVisible(false);
+  };
 
   const [selectedFollowedDesigner, setSelectedFollowedDesigner] = useState(null);
   const selectedFollowedDesignerRef = useRef(selectedFollowedDesigner);
@@ -10799,6 +10870,12 @@ function App() {
     for (const f of done) {
       await handleDownloadCompressedImage(f);
     }
+    if (done.length > 0) maybeShowToolsDownloadInterstitial(false);
+  };
+
+  const handleSingleCompressedDownload = async (file) => {
+    await handleDownloadCompressedImage(file);
+    maybeShowToolsDownloadInterstitial(false);
   };
 
   // TOOLS: QR Code Generator handlers.
@@ -10871,6 +10948,7 @@ function App() {
       showToast('Could not download QR code - try again.');
     } finally {
       setQrExporting(false);
+      maybeShowToolsDownloadInterstitial(false);
     }
   };
 
@@ -10903,6 +10981,7 @@ function App() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(objectUrl);
+      maybeShowToolsDownloadInterstitial(false);
     } catch (e) {
       console.warn('QR SVG export failed:', e);
       showToast('Could not download SVG - try again.');
@@ -12992,7 +13071,7 @@ function App() {
                   {sidebarCollapsed ? (
                     <HamburgerSVG inactiveColor={theme.accentLight} size={18} />
                   ) : (
-                    <ChevronLeftSVG color={theme.accentLight} size={18} />
+                    <DoubleChevronLeftSVG color={theme.accentLight} size={18} />
                   )}
                 </BouncyButton>
                 {!sidebarCollapsed && (
@@ -13219,7 +13298,7 @@ function App() {
                     justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
                     borderRadius: 10, backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.12)'
                   }}
-                  onPress={() => { setDonateTermsAgreed(false); setDonateModalVisible(true); }}
+                  onPress={() => { setDonateModalContext('portfolio'); setDonateTermsAgreed(false); setDonateModalVisible(true); }}
                 >
                   <HeartIconSVG liked={true} />
                   {!sidebarCollapsed && (
@@ -16800,7 +16879,7 @@ function App() {
               {activeTool === 'hub' && (
                 <>
                   <Text style={{ color: theme.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: 4 }}>
-                    Free, no-signup utilities to help you prep your portfolio and job applications. Everything here runs right on your device - nothing you drop in ever gets uploaded anywhere.
+                    Free utilities to help you prep your portfolio and job applications - no account, no login, no ads, no premium tier, no usage limits. Everything here runs right on your device - nothing you drop in ever gets uploaded anywhere.
                   </Text>
 
                   <BouncyButton
@@ -17007,7 +17086,7 @@ function App() {
                       {file.status === 'done' ? (
                         <BouncyButton
                           style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
-                          onPress={() => handleDownloadCompressedImage(file)}
+                          onPress={() => handleSingleCompressedDownload(file)}
                           accessibilityRole="button"
                           accessibilityLabel="Download"
                         >
@@ -17069,46 +17148,6 @@ function App() {
                     </View>
                   )}
 
-                  {/* Post-success CTA - web keeps the existing Donate link
-                      (Ko-fi/GitHub Sponsors), same as everywhere else in
-                      the app. Native swaps this for a store review prompt
-                      instead - a real "if you found this helpful" tip-jar
-                      style CTA connected to the app's own content/features
-                      is exactly what gets iOS apps rejected under
-                      Guideline 3.1.1 unless it goes through In-App
-                      Purchase, so this sidesteps that entirely rather than
-                      risk it. */}
-                  {compressorFiles.some((f) => f.status === 'done') && (
-                    <View style={{ marginTop: 10, alignItems: 'center' }}>
-                      {Platform.OS === 'web' ? (
-                        DONATIONS_ENABLED && (
-                          <BouncyButton
-                            onPress={() => { setDonateTermsAgreed(false); setDonateModalVisible(true); }}
-                            accessibilityRole="button"
-                          >
-                            <Text style={{ color: theme.textSecondary, fontSize: 12, textDecorationLine: 'underline' }}>
-                              Found this helpful? Support DECENT
-                            </Text>
-                          </BouncyButton>
-                        )
-                      ) : (
-                        <BouncyButton
-                          onPress={async () => {
-                            try {
-                              const StoreReview = require('expo-store-review');
-                              if (await StoreReview.hasAction()) await StoreReview.requestReview();
-                            } catch (e) {
-                              console.warn('Store review prompt unavailable:', e);
-                            }
-                          }}
-                          accessibilityRole="button"
-                        >
-                          <Text style={{ color: theme.textSecondary, fontSize: 12, textDecorationLine: 'underline' }}>
-                            Enjoying DECENT? Leave a review
-                          </Text>
-                        </BouncyButton>
-                      )}
-                    </View>
                   )}
                 </>
               )}
@@ -17411,40 +17450,6 @@ function App() {
                             accessibilityRole="button"
                           >
                             <Text style={[styles.submitBtnText, { color: theme.text }]}>Download SVG</Text>
-                          </BouncyButton>
-                        )}
-                      </View>
-
-                      {/* Same platform-split post-success CTA as the Image
-                          Compressor above, same reasoning (App Store 3.1.1
-                          risk on a donation link tied to the app itself). */}
-                      <View style={{ marginTop: 4 }}>
-                        {Platform.OS === 'web' ? (
-                          DONATIONS_ENABLED && (
-                            <BouncyButton
-                              onPress={() => { setDonateTermsAgreed(false); setDonateModalVisible(true); }}
-                              accessibilityRole="button"
-                            >
-                              <Text style={{ color: theme.textSecondary, fontSize: 12, textDecorationLine: 'underline' }}>
-                                Found this helpful? Support DECENT
-                              </Text>
-                            </BouncyButton>
-                          )
-                        ) : (
-                          <BouncyButton
-                            onPress={async () => {
-                              try {
-                                const StoreReview = require('expo-store-review');
-                                if (await StoreReview.hasAction()) await StoreReview.requestReview();
-                              } catch (e) {
-                                console.warn('Store review prompt unavailable:', e);
-                              }
-                            }}
-                            accessibilityRole="button"
-                          >
-                            <Text style={{ color: theme.textSecondary, fontSize: 12, textDecorationLine: 'underline' }}>
-                              Enjoying DECENT? Leave a review
-                            </Text>
                           </BouncyButton>
                         )}
                       </View>
@@ -18776,7 +18781,9 @@ function App() {
             onResponderRelease={() => {}}
           >
             <View style={styles.modalTopBar}>
-              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Support DECENT</Text>
+              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>
+                {donateModalContext === 'tools' ? 'Thanks for Using Tools' : 'Support DECENT'}
+              </Text>
               <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} onPress={handleCloseDonateModal} accessibilityRole="button" accessibilityLabel="Close">
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
@@ -18785,14 +18792,16 @@ function App() {
             <View style={{ padding: 18 }}>
               <View>
                 <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 18, marginBottom: 16 }}>
-                  Hi, I'm Iqbal — a UI/UX designer focused on Figma prototyping and clean handovers for HR and dev teams. I built DECENT to give designers a simple place to showcase real, interactive portfolios instead of static screenshots. If it's been useful to you, a donation helps keep it running and improving.
+                  {donateModalContext === 'tools'
+                    ? "This tool is completely free, with every feature included - no premium tier, no locked features, no account required. If it saved you some time, a donation helps keep it free for everyone."
+                    : "Hi, I'm Iqbal — a UI/UX designer focused on Figma prototyping and clean handovers for HR and dev teams. I built DECENT to give designers a simple place to showcase real, interactive portfolios instead of static screenshots. If it's been useful to you, a donation helps keep it running and improving."}
                 </Text>
 
                 <AnimatedPillTabs
                   theme={theme}
                   themeMode={themeMode}
                   activeKey={donateRegion}
-                  onChange={setDonateRegion}
+                  onChange={handleDonateRegionChange}
                   containerStyle={{ marginBottom: 16 }}
                   tabs={[
                     { key: 'id', label: 'Indonesia', icon: (color) => <LocationPinSVG color={color} /> },
@@ -18931,6 +18940,31 @@ function App() {
                       <Text style={[styles.contrastDonateBtnText, { color: '#FFFFFF' }]}>Sponsor on GitHub</Text>
                     </BouncyButton>
                   </View>
+                )}
+
+                {donateModalContext === 'tools' && (
+                  <>
+                    {toolsInterstitialOfferCompress && (
+                      <BouncyButton
+                        style={{ marginTop: 16, alignItems: 'center', paddingVertical: 10, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
+                        onPress={() => {
+                          setDonateModalVisible(false);
+                          setActiveTool('imageCompressor');
+                        }}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: theme.accent, fontSize: 12.5, fontWeight: '700' }}>Want to compress this image too?</Text>
+                      </BouncyButton>
+                    )}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 }}>
+                      <BouncyButton onPress={handleCloseDonateModal} accessibilityRole="button">
+                        <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Dismiss</Text>
+                      </BouncyButton>
+                      <BouncyButton onPress={handleDismissToolsInterstitialToday} accessibilityRole="button">
+                        <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Don't show again today</Text>
+                      </BouncyButton>
+                    </View>
+                  </>
                 )}
               </View>
             </View>
@@ -19191,7 +19225,7 @@ function App() {
                     <BouncyButton
                       style={[styles.donateSettingBtn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }]}
                       activeOpacity={0.88}
-                      onPress={() => { setDonateTermsAgreed(false); setDonateModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                      onPress={() => { setDonateModalContext('portfolio'); setDonateTermsAgreed(false); setDonateModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
                       accessibilityRole="button"
                     >
                       <HeartIconSVG liked={true} />
