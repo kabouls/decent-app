@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 672;
+const BUILD_NUMBER = 673;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -16992,70 +16992,192 @@ function App() {
           }}
         >
           <SafeAreaView style={{ flex: 1, backgroundColor: toolsTheme.bg }}>
-            <View style={[styles.modalTopBar, { backgroundColor: toolsTheme.surface, borderBottomColor: toolsTheme.border }, isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }]}>
-              {activeTool !== 'hub' ? (
-                <BouncyButton
-                  style={{ padding: 4 }}
-                  onPress={() => setActiveTool('hub')}
-                  accessibilityRole="button"
-                  accessibilityLabel="Back"
-                >
-                  <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
-                </BouncyButton>
-              ) : <View style={{ width: 30 }} />}
-              <Text style={[styles.modalTopTitle, { flex: 1, textAlign: 'center', color: toolsTheme.text }, isWebWide && { fontSize: 20 }]}>
-                {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : tt('tools')}
-              </Text>
-              <BouncyButton
-                style={[styles.closeBtn, { backgroundColor: toolsTheme.bg, borderColor: toolsTheme.border }]}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                onPress={() => setToolsScreenVisible(false)}
-                accessibilityRole="button"
-                accessibilityLabel="Close"
-              >
-                <Text style={[styles.closeBtnText, { color: toolsTheme.text }]}>✕</Text>
-              </BouncyButton>
-            </View>
-
-            {/* Language + theme controls - Tools-only, scoped entirely to
-                toolsLanguage/toolsThemeMode above. A second thin row
-                rather than crammed into the main header, which is
-                already tight on mobile with back/title/close. */}
-            <View style={[
-              { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8, backgroundColor: toolsTheme.surface, borderBottomWidth: 1, borderBottomColor: toolsTheme.border },
-              isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }
-            ]}>
-              <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, overflow: 'hidden' }}>
-                {['en', 'id'].map((lang) => (
+            {Platform.OS === 'web' ? (
+              <>
+                {/* WEB - genuine page-style header, not a modal chrome.
+                    "Back to DECENT" always exits Tools entirely (same
+                    action the ✕ used to do) - the hub<->tool navigation
+                    lives in its own breadcrumb row below instead, so the
+                    two navigation levels don't get conflated into one
+                    button. */}
+                <View style={[
+                  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: toolsTheme.surface, borderBottomWidth: 1, borderBottomColor: toolsTheme.border },
+                  isWebWide && { maxWidth: 960, width: '100%', alignSelf: 'center' }
+                ]}>
                   <BouncyButton
-                    key={lang}
-                    style={{
-                      paddingHorizontal: 10, paddingVertical: 4,
-                      backgroundColor: toolsLanguage === lang ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
-                    }}
-                    onPress={() => setToolsLanguagePersisted(lang)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    onPress={() => setToolsScreenVisible(false)}
                     accessibilityRole="button"
-                    accessibilityLabel={lang === 'en' ? 'English' : 'Indonesian'}
-                    accessibilityState={{ selected: toolsLanguage === lang }}
+                    accessibilityLabel="Back to DECENT"
                   >
-                    <Text style={{ color: toolsLanguage === lang ? '#FFFFFF' : toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>
-                      {lang.toUpperCase()}
+                    <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={18} />
+                    <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Back to DECENT</Text>
+                  </BouncyButton>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ color: toolsTheme.text, fontSize: isWebWide ? 18 : 15, fontWeight: '800' }}>DECENT Tools</Text>
+                    <BetaTag themeMode={toolsThemeMode} />
+                  </View>
+
+                  {isWebWide ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                      {DONATIONS_ENABLED && (
+                        <BouncyButton
+                          onPress={() => { setDonateModalContext('tools'); setToolsInterstitialOfferCompress(false); setDonateTermsAgreed(false); setDonateModalVisible(true); }}
+                          accessibilityRole="button"
+                        >
+                          <Text style={{ color: toolsTheme.accent, fontSize: 12.5, fontWeight: '700' }}>Donate</Text>
+                        </BouncyButton>
+                      )}
+                      <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, overflow: 'hidden' }}>
+                        {['en', 'id'].map((lang) => (
+                          <BouncyButton
+                            key={lang}
+                            style={{ paddingHorizontal: 10, paddingVertical: 5, backgroundColor: toolsLanguage === lang ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent' }}
+                            onPress={() => setToolsLanguagePersisted(lang)}
+                            accessibilityRole="button"
+                            accessibilityLabel={lang === 'en' ? 'English' : 'Indonesian'}
+                            accessibilityState={{ selected: toolsLanguage === lang }}
+                          >
+                            <Text style={{ color: toolsLanguage === lang ? '#FFFFFF' : toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>{lang.toUpperCase()}</Text>
+                          </BouncyButton>
+                        ))}
+                      </View>
+                      <BouncyButton
+                        style={{ width: 30, height: 30, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
+                        onPress={toggleToolsTheme}
+                        accessibilityRole="button"
+                        accessibilityLabel={toolsThemeMode === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+                      >
+                        {toolsThemeMode === 'light' ? <SunIconSVG color={toolsTheme.textSecondary} size={14} /> : <MoonIconSVG color={toolsTheme.textSecondary} size={14} />}
+                      </BouncyButton>
+                    </View>
+                  ) : (
+                    // Balances the "Back to DECENT" button's width so the
+                    // centered title stays visually centered on narrow web.
+                    <View style={{ width: 90 }} />
+                  )}
+                </View>
+
+                {activeTool !== 'hub' && (
+                  <View style={[
+                    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: toolsTheme.bg, borderBottomWidth: 1, borderBottomColor: toolsTheme.border },
+                    isWebWide && { maxWidth: 960, width: '100%', alignSelf: 'center' }
+                  ]}>
+                    <BouncyButton
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                      onPress={() => setActiveTool('hub')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Back to Tools"
+                    >
+                      <ChevronLeftSVG color={toolsTheme.textSecondary} size={14} />
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, fontWeight: '600' }}>{tt('tools')}</Text>
+                    </BouncyButton>
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 12 }}>/</Text>
+                    <Text style={{ color: toolsTheme.text, fontSize: 12, fontWeight: '700' }}>
+                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : tt('qrGenerator')}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Narrow web only - wide web already fit these into the
+                    top-right of the main header row above. */}
+                {!isWebWide && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8, backgroundColor: toolsTheme.surface, borderBottomWidth: 1, borderBottomColor: toolsTheme.border }}>
+                    {DONATIONS_ENABLED && (
+                      <BouncyButton
+                        onPress={() => { setDonateModalContext('tools'); setToolsInterstitialOfferCompress(false); setDonateTermsAgreed(false); setDonateModalVisible(true); }}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '700' }}>Donate</Text>
+                      </BouncyButton>
+                    )}
+                    <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, overflow: 'hidden' }}>
+                      {['en', 'id'].map((lang) => (
+                        <BouncyButton
+                          key={lang}
+                          style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: toolsLanguage === lang ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent' }}
+                          onPress={() => setToolsLanguagePersisted(lang)}
+                          accessibilityRole="button"
+                          accessibilityLabel={lang === 'en' ? 'English' : 'Indonesian'}
+                          accessibilityState={{ selected: toolsLanguage === lang }}
+                        >
+                          <Text style={{ color: toolsLanguage === lang ? '#FFFFFF' : toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>{lang.toUpperCase()}</Text>
+                        </BouncyButton>
+                      ))}
+                    </View>
+                    <BouncyButton
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                      onPress={toggleToolsTheme}
+                      accessibilityRole="button"
+                      accessibilityLabel={toolsThemeMode === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+                    >
+                      {toolsThemeMode === 'light' ? <SunIconSVG color={toolsTheme.textSecondary} size={13} /> : <MoonIconSVG color={toolsTheme.textSecondary} size={13} />}
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>{toolsThemeMode === 'light' ? tt('light') : tt('dark')}</Text>
+                    </BouncyButton>
+                  </View>
+                )}
+              </>
+            ) : (
+              <>
+                {/* NATIVE - existing modal-style header, unchanged in
+                    structure (back-within-tools / centered tool name /
+                    close). The "fully separate page" treatment above is
+                    explicitly a web-only request. */}
+                <View style={[styles.modalTopBar, { backgroundColor: toolsTheme.surface, borderBottomColor: toolsTheme.border }]}>
+                  {activeTool !== 'hub' ? (
+                    <BouncyButton
+                      style={{ padding: 4 }}
+                      onPress={() => setActiveTool('hub')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Back"
+                    >
+                      <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
+                    </BouncyButton>
+                  ) : <View style={{ width: 30 }} />}
+                  <Text style={[styles.modalTopTitle, { flex: 1, textAlign: 'center', color: toolsTheme.text }]}>
+                    {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : tt('tools')}
+                  </Text>
+                  <BouncyButton
+                    style={[styles.closeBtn, { backgroundColor: toolsTheme.bg, borderColor: toolsTheme.border }]}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    onPress={() => setToolsScreenVisible(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close"
+                  >
+                    <Text style={[styles.closeBtnText, { color: toolsTheme.text }]}>✕</Text>
+                  </BouncyButton>
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8, backgroundColor: toolsTheme.surface, borderBottomWidth: 1, borderBottomColor: toolsTheme.border }}>
+                  <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, overflow: 'hidden' }}>
+                    {['en', 'id'].map((lang) => (
+                      <BouncyButton
+                        key={lang}
+                        style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: toolsLanguage === lang ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent' }}
+                        onPress={() => setToolsLanguagePersisted(lang)}
+                        accessibilityRole="button"
+                        accessibilityLabel={lang === 'en' ? 'English' : 'Indonesian'}
+                        accessibilityState={{ selected: toolsLanguage === lang }}
+                      >
+                        <Text style={{ color: toolsLanguage === lang ? '#FFFFFF' : toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>{lang.toUpperCase()}</Text>
+                      </BouncyButton>
+                    ))}
+                  </View>
+                  <BouncyButton
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                    onPress={toggleToolsTheme}
+                    accessibilityRole="button"
+                    accessibilityLabel={toolsThemeMode === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+                  >
+                    {toolsThemeMode === 'light' ? <SunIconSVG color={toolsTheme.textSecondary} size={13} /> : <MoonIconSVG color={toolsTheme.textSecondary} size={13} />}
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>
+                      {toolsThemeMode === 'light' ? tt('light') : tt('dark')}
                     </Text>
                   </BouncyButton>
-                ))}
-              </View>
-              <BouncyButton
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                onPress={toggleToolsTheme}
-                accessibilityRole="button"
-                accessibilityLabel={toolsThemeMode === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
-              >
-                {toolsThemeMode === 'light' ? <SunIconSVG color={toolsTheme.textSecondary} size={13} /> : <MoonIconSVG color={toolsTheme.textSecondary} size={13} />}
-                <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>
-                  {toolsThemeMode === 'light' ? tt('light') : tt('dark')}
-                </Text>
-              </BouncyButton>
-            </View>
+                </View>
+              </>
+            )}
 
             <AppKeyboardAwareScrollView
               contentContainerStyle={[{ padding: 20, gap: 14 }, isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }]}
