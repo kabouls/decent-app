@@ -154,7 +154,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 650;
+const BUILD_NUMBER = 651;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -12016,7 +12016,7 @@ function App() {
                   autoCapitalize="none"
                 />
                 {lnk.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} onPress={() => handleLinkTextChange('', idx)}>
+                  <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => handleLinkTextChange('', idx)}>
                     <ClearTextXSVG />
                   </BouncyButton>
                 )}
@@ -12810,6 +12810,7 @@ function App() {
           {Platform.OS === 'web' && !isWebWide && (
             <BouncyButton
               style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               onPress={() => setHamburgerMenuVisible(true)}
             >
               <HamburgerSVG active={hamburgerMenuVisible} inactiveColor={theme.accentLight} size={headerIconSize} />
@@ -13508,7 +13509,7 @@ function App() {
                   autoFocus={true}
                 />
                 {searchQuery.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setSearchQuery('')} accessibilityRole="button" accessibilityLabel="Clear search">
+                  <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => setSearchQuery('')} accessibilityRole="button" accessibilityLabel="Clear search">
                     <ClearTextXSVG />
                   </BouncyButton>
                 )}
@@ -13662,7 +13663,7 @@ function App() {
                               </BouncyButton>
 
                               <BouncyButton
-                                style={styles.smallShareBtnIconOnly}
+                                style={styles.smallShareBtnIconOnly} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                                 onPress={() => handleShareDesigner(des)}
                                 accessibilityRole="button"
                                 accessibilityLabel={`Share ${des.name}'s profile`}
@@ -13865,7 +13866,7 @@ function App() {
                             </BouncyButton>
 
                             <BouncyButton
-                              style={styles.smallShareBtnIconOnly}
+                              style={styles.smallShareBtnIconOnly} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                               onPress={() => handleShareDesigner(des)}
                               accessibilityRole="button"
                               accessibilityLabel={`Share ${des.name}'s profile`}
@@ -13876,6 +13877,7 @@ function App() {
                             <View ref={(el) => { discoverDotsRefsMap[des.id] = el; }} style={{ zIndex: 100 }}>
                               <BouncyButton
                                 style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                                hitSlop={{ top: 6, bottom: 6, left: 2, right: 6 }}
                                 onPress={() => {
                                   const next = discoverDotsMenuOpenId === des.id ? null : des.id;
                                   if (next && discoverDotsRefsMap[des.id]) {
@@ -14068,7 +14070,7 @@ function App() {
                     {userProfile.links.map((linkUrl, idx) => (
                       <BouncyButton
                         key={idx}
-                        style={styles.socialCircleBtn}
+                        style={styles.socialCircleBtn} hitSlop={{ top: 3, bottom: 3, left: 3, right: 3 }}
                         onPress={() => openExternalLinkWithWarning(linkUrl)}
                         onLongPress={() => setLinkPreview({
                           url: linkUrl,
@@ -14465,6 +14467,7 @@ function App() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, marginBottom: 16 }}>
                 <BouncyButton
                   style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   onPress={() => setHamburgerMenuVisible(false)}
                   accessibilityRole="button"
                   accessibilityLabel="Close menu"
@@ -15192,7 +15195,7 @@ function App() {
               )}
               <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>Account Settings</Text>
               <BouncyButton
-                style={styles.closeBtn}
+                style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 onPress={() => {
                   if (hasUnsavedAccountChanges()) {
                     setAccountSettingsDiscardWarningVisible(true);
@@ -15236,7 +15239,7 @@ function App() {
                   accessibilityLabel="Full Name"
                 />
                 {editName.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditName('')} accessibilityRole="button" accessibilityLabel="Clear">
+                  <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => setEditName('')} accessibilityRole="button" accessibilityLabel="Clear">
                     <ClearTextXSVG />
                   </BouncyButton>
                 )}
@@ -15256,7 +15259,7 @@ function App() {
                   accessibilityLabel="Unique ID / Handle"
                 />
                 {editHandle.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditHandle('')} accessibilityRole="button" accessibilityLabel="Clear">
+                  <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => setEditHandle('')} accessibilityRole="button" accessibilityLabel="Clear">
                     <ClearTextXSVG />
                   </BouncyButton>
                 )}
@@ -15290,7 +15293,7 @@ function App() {
                   accessibilityLabel="Specialties / Position"
                 />
                 {editRole.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditRole('')} accessibilityRole="button" accessibilityLabel="Clear">
+                  <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => setEditRole('')} accessibilityRole="button" accessibilityLabel="Clear">
                     <ClearTextXSVG />
                   </BouncyButton>
                 )}
@@ -15309,7 +15312,7 @@ function App() {
                   accessibilityLabel="Location / City"
                 />
                 {editLocation.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditLocation('')} accessibilityRole="button" accessibilityLabel="Clear">
+                  <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => setEditLocation('')} accessibilityRole="button" accessibilityLabel="Clear">
                     <ClearTextXSVG />
                   </BouncyButton>
                 )}
@@ -15345,7 +15348,7 @@ function App() {
                   accessibilityLabel="Email Address"
                 />
                 {editEmail.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} onPress={() => setEditEmail('')} accessibilityRole="button" accessibilityLabel="Clear">
+                  <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => setEditEmail('')} accessibilityRole="button" accessibilityLabel="Clear">
                     <ClearTextXSVG />
                   </BouncyButton>
                 )}
@@ -15400,7 +15403,7 @@ function App() {
                       accessibilityLabel={`Profile link ${idx + 1}`}
                     />
                     {lnk.length > 0 && (
-                      <BouncyButton style={styles.clearFieldBtn} onPress={() => handleLinkTextChange('', idx)} accessibilityRole="button" accessibilityLabel="Clear">
+                      <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => handleLinkTextChange('', idx)} accessibilityRole="button" accessibilityLabel="Clear">
                         <ClearTextXSVG />
                       </BouncyButton>
                     )}
@@ -15548,7 +15551,7 @@ function App() {
               </BouncyButton>
               <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>{hasPasswordAuth ? 'Change Password' : 'Create Password'}</Text>
               <BouncyButton
-                style={styles.closeBtn}
+                style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 onPress={() => {
                   if (newPassword.trim() !== '' || confirmNewPassword.trim() !== '') {
                     setPasswordPageDiscardWarningVisible(true);
@@ -16010,7 +16013,7 @@ function App() {
                 </BouncyButton>
               )}
               <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>About DECENT</Text>
-              <BouncyButton style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close" onPress={() => {
+              <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Close" onPress={() => {
                 setAboutModalVisible(false);
                 if (Platform.OS !== 'web' && returnToOptionsOnClose) {
                   setSettingsModalVisible(true);
@@ -16091,7 +16094,7 @@ function App() {
           >
             <View style={styles.modalTopBar}>
               <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>What's New</Text>
-              <BouncyButton style={styles.closeBtn} onPress={() => setChangelogModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
+              <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} onPress={() => setChangelogModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
             </View>
@@ -16756,7 +16759,7 @@ function App() {
                 </BouncyButton>
               )}
               <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>Feedback & Support</Text>
-              <BouncyButton style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close" onPress={() => {
+              <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Close" onPress={() => {
                 setFeedbackModalVisible(false);
                 if (Platform.OS !== 'web' && returnToOptionsOnClose) {
                   setSettingsModalVisible(true);
@@ -17014,7 +17017,7 @@ function App() {
           >
             <View style={styles.modalTopBar}>
               <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Support DECENT</Text>
-              <BouncyButton style={styles.closeBtn} onPress={handleCloseDonateModal} accessibilityRole="button" accessibilityLabel="Close">
+              <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} onPress={handleCloseDonateModal} accessibilityRole="button" accessibilityLabel="Close">
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
             </View>
@@ -17939,7 +17942,7 @@ function App() {
           >
             <View style={styles.modalTopBar}>
               <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>All Categories</Text>
-              <BouncyButton style={styles.closeBtn} onPress={() => setAllCategoriesModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
+              <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} onPress={() => setAllCategoriesModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
             </View>
@@ -18118,7 +18121,7 @@ function App() {
                   </Modal>
                 </View>
               )}
-              <BouncyButton style={styles.closeBtn} onPress={handleBackFromDesignerProfile} accessibilityRole="button" accessibilityLabel="Close">
+              <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} onPress={handleBackFromDesignerProfile} accessibilityRole="button" accessibilityLabel="Close">
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
             </View>
@@ -18364,7 +18367,7 @@ function App() {
                     {selectedDesigner.links.map((linkUrl, idx) => (
                       <BouncyButton
                         key={idx}
-                        style={styles.socialCircleBtn}
+                        style={styles.socialCircleBtn} hitSlop={{ top: 3, bottom: 3, left: 3, right: 3 }}
                         onPress={() => openExternalLinkWithWarning(linkUrl)}
                         onLongPress={() => setLinkPreview({
                           url: linkUrl,
@@ -18665,7 +18668,7 @@ function App() {
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
           <View style={styles.modalTopBar}>
             <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>What are you sharing?</Text>
-            <BouncyButton style={styles.closeBtn} onPress={() => setPortfolioTypeModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
+            <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} onPress={() => setPortfolioTypeModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
               <Text style={styles.closeBtnText}>✕</Text>
             </BouncyButton>
           </View>
@@ -19853,7 +19856,7 @@ function App() {
                           ) : (
                             <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Categories & Tags</Text>
                           )}
-                          <BouncyButton style={styles.closeBtn} onPress={() => { setCategoryPickerModalVisible(false); setCategoryImportViewOpen(false); setSelectedImportPortfolioIds(new Set()); }} accessibilityRole="button" accessibilityLabel="Close">
+                          <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} onPress={() => { setCategoryPickerModalVisible(false); setCategoryImportViewOpen(false); setSelectedImportPortfolioIds(new Set()); }} accessibilityRole="button" accessibilityLabel="Close">
                             <Text style={styles.closeBtnText}>✕</Text>
                           </BouncyButton>
                         </View>
@@ -21283,7 +21286,7 @@ function App() {
                       />
                       {fVideoLinks.length > 1 && (
                         <BouncyButton
-                          style={styles.removeVideoBtn}
+                          style={styles.removeVideoBtn} hitSlop={{ top: 1, bottom: 1, left: 1, right: 1 }}
                           onPress={() => handleRemoveVideoLink(idx)}
                           accessibilityRole="button"
                           accessibilityLabel={`Remove video link ${idx + 1}`}
@@ -21787,6 +21790,7 @@ function App() {
                   <View ref={portfolioDotsWrapRef} style={{ zIndex: 100 }}>
                     <BouncyButton
                       style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                       onPress={() => {
                         const next = !portfolioOptionsMenuVisible;
                         if (next && portfolioDotsWrapRef.current) {
@@ -21823,13 +21827,14 @@ function App() {
                 {isWebWide ? (
                   // Replaces the old chevron - same circle-stroke close
                   // button style already used on narrow web, not a new one.
-                  <BouncyButton style={styles.closeBtn} onPress={handleBackFromPortfolioDetail}>
+                  <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} onPress={handleBackFromPortfolioDetail}>
                     <Text style={styles.closeBtnText}>✕</Text>
                   </BouncyButton>
                 ) : (
                   <>
                     <BouncyButton
                       style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                       onPress={() => handleSharePortfolio(activeProject)}
                     >
                       <ShareIconSVG color={theme.accentLight} />
@@ -21838,7 +21843,7 @@ function App() {
                         web, replacing the back chevron that used to sit on
                         the left there (see the isWebWide-gated chevron
                         further up). Wide web is unaffected either way. */}
-                    <BouncyButton style={styles.closeBtn} onPress={handleBackFromPortfolioDetail}>
+                    <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} onPress={handleBackFromPortfolioDetail}>
                       <Text style={styles.closeBtnText}>✕</Text>
                     </BouncyButton>
                   </>
@@ -23869,7 +23874,7 @@ function App() {
           >
             <View style={styles.modalTopBar}>
               <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>{userListTargetDesigner ? userListTargetDesigner.name : ''}</Text>
-              <BouncyButton style={styles.closeBtn} onPress={() => setUserListModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
+              <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} onPress={() => setUserListModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
                 <Text style={styles.closeBtnText}>✕</Text>
               </BouncyButton>
             </View>
