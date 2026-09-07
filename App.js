@@ -44,7 +44,7 @@ import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts, Inter_300Light, Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
 import { WebView as NativeWebView } from 'react-native-webview';
 import { KeyboardAwareScrollView as NativeKeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import Svg, { Rect, Path, Circle, G, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Rect, Path, Circle, G, Defs, LinearGradient, Stop, Image as SvgImage } from 'react-native-svg';
 import qrcodeGenerator from 'qrcode-generator';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -155,7 +155,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 667;
+const BUILD_NUMBER = 668;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -678,6 +678,21 @@ const WrenchIconSVG = React.memo(({ color = '#94A3B8', size = 18 }) => (
   </Svg>
 ));
 
+// Simplified 3-corner-square + center-dots glyph, standing in for a real
+// QR code visually rather than literally encoding anything - used only
+// as a hub-card icon.
+const QrIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Rect x="3" y="3" width="7" height="7" rx="1.5" stroke={color} strokeWidth="2" />
+    <Rect x="14" y="3" width="7" height="7" rx="1.5" stroke={color} strokeWidth="2" />
+    <Rect x="3" y="14" width="7" height="7" rx="1.5" stroke={color} strokeWidth="2" />
+    <Rect x="15" y="15" width="2.2" height="2.2" fill={color} />
+    <Rect x="19" y="15" width="2.2" height="2.2" fill={color} />
+    <Rect x="15" y="19" width="2.2" height="2.2" fill={color} />
+    <Rect x="19" y="19" width="2.2" height="2.2" fill={color} />
+  </Svg>
+));
+
 // Small pill used next to the Tools label everywhere it appears - a plain
 // reusable component rather than copy-pasting the same View/Text markup
 // at all 3 nav entry points.
@@ -1044,15 +1059,15 @@ const isQrFinderZone = (row, col, count) => {
 // are preserved exactly, only the corners are softened - scanners key off
 // that ratio along their scan lines, not corner sharpness, so this stays
 // safe unlike making the eyes fully circular would be.
-const QrFinderEye = ({ gridX, gridY, cellSize, color, backgroundColor }) => {
+const QrFinderEye = ({ gridX, gridY, cellSize, color, backgroundColor, square = false }) => {
   const outerSize = cellSize * 7;
-  const outerRadius = outerSize * 0.22;
+  const outerRadius = square ? 0 : outerSize * 0.22;
   const gapInset = cellSize * 1;
   const gapSize = outerSize - gapInset * 2;
-  const gapRadius = gapSize * 0.22;
+  const gapRadius = square ? 0 : gapSize * 0.22;
   const centerInset = cellSize * 2;
   const centerSize = outerSize - centerInset * 2;
-  const centerRadius = centerSize * 0.28;
+  const centerRadius = square ? 0 : centerSize * 0.28;
   const x0 = gridX * cellSize;
   const y0 = gridY * cellSize;
 
@@ -1063,6 +1078,202 @@ const QrFinderEye = ({ gridX, gridY, cellSize, color, backgroundColor }) => {
       <Rect x={x0 + centerInset} y={y0 + centerInset} width={centerSize} height={centerSize} rx={centerRadius} fill={color} />
     </>
   );
+};
+
+// TOOLS QR GENERATOR - deliberately a separate component from
+// CircularQRCode above rather than adding a pile of new optional props to
+// it. CircularQRCode is load-bearing for the existing portfolio/profile
+// share feature; keeping this fully separate means nothing here can ever
+// risk changing that component's behavior, even by accident.
+const ToolsQRCode = React.memo(React.forwardRef(({ value, size = 240, color = '#000000', backgroundColor = '#FFFFFF', dotStyle = 'round', logoUri = null }, ref) => {
+  const matrix = useMemo(() => buildQrMatrix(value), [value]);
+  if (!matrix) return null;
+  const { grid, count } = matrix;
+  const cellSize = size / count;
+  const square = dotStyle === 'square';
+
+  const dots = [];
+  for (let row = 0; row < count; row++) {
+    for (let col = 0; col < count; col++) {
+      if (!grid[row][col]) continue;
+      if (isQrFinderZone(row, col, count)) continue;
+      const cx = col * cellSize;
+      const cy = row * cellSize;
+      dots.push(
+        square ? (
+          <Rect key={`d-${row}-${col}`} x={cx + cellSize * 0.06} y={cy + cellSize * 0.06} width={cellSize * 0.88} height={cellSize * 0.88} fill={color} />
+        ) : (
+          <Circle key={`d-${row}-${col}`} cx={cx + cellSize / 2} cy={cy + cellSize / 2} r={cellSize * 0.42} fill={color} />
+        )
+      );
+    }
+  }
+
+  const eyePositions = [
+    { gridX: 0, gridY: 0 },
+    { gridX: count - 7, gridY: 0 },
+    { gridX: 0, gridY: count - 7 }
+  ];
+
+  const logoBadgeSize = size * 0.22;
+  const logoCenter = size / 2;
+
+  return (
+    <Svg ref={ref} width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Rect x={0} y={0} width={size} height={size} fill={backgroundColor} />
+      {dots}
+      {eyePositions.map((pos, i) => (
+        <QrFinderEye key={`eye-${i}`} gridX={pos.gridX} gridY={pos.gridY} cellSize={cellSize} color={color} backgroundColor={backgroundColor} square={square} />
+      ))}
+      {logoUri && (
+        <>
+          <Rect
+            x={logoCenter - logoBadgeSize / 2}
+            y={logoCenter - logoBadgeSize / 2}
+            width={logoBadgeSize}
+            height={logoBadgeSize}
+            rx={square ? logoBadgeSize * 0.1 : logoBadgeSize * 0.27}
+            fill={backgroundColor}
+          />
+          <SvgImage
+            x={logoCenter - logoBadgeSize * 0.4}
+            y={logoCenter - logoBadgeSize * 0.4}
+            width={logoBadgeSize * 0.8}
+            height={logoBadgeSize * 0.8}
+            href={logoUri}
+            preserveAspectRatio="xMidYMid slice"
+          />
+        </>
+      )}
+    </Svg>
+  );
+}));
+
+// Turns whatever the person filled in for the selected content type into
+// the actual string that gets encoded - most scanners recognize these
+// specific formats (WIFI:/BEGIN:VCARD/SMSTO:) as structured data rather
+// than plain text, which is what triggers the "connect to network" /
+// "add contact" / "compose message" prompts instead of just showing text.
+// Web PNG export for the Tools QR generator - same Canvas2D approach as
+// the existing DECENT-branded renderStyledQrToCanvas (kept as its own
+// function rather than generalizing that one, so neither risks affecting
+// the other), but parametrized by whatever the person actually chose
+// instead of hardcoded colors/logo. Returns a Promise since drawing a
+// custom logo requires waiting for that image to actually load first -
+// Canvas2D throws if you try to drawImage() before that.
+const renderToolsQrToCanvasAsync = (value, size, { color, backgroundColor, dotStyle, logoUri }) => {
+  return new Promise((resolve, reject) => {
+    const matrix = buildQrMatrix(value);
+    if (!matrix) { reject(new Error('QR encoding failed')); return; }
+    const { grid, count } = matrix;
+    const cellSize = size / count;
+    const square = dotStyle === 'square';
+
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+
+    const fillRoundedRect = (x, y, w, h, r, fillColor) => {
+      ctx.fillStyle = fillColor;
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+      ctx.fill();
+    };
+
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(0, 0, size, size);
+
+    ctx.fillStyle = color;
+    for (let row = 0; row < count; row++) {
+      for (let col = 0; col < count; col++) {
+        if (!grid[row][col]) continue;
+        if (isQrFinderZone(row, col, count)) continue;
+        if (square) {
+          ctx.fillRect(col * cellSize + cellSize * 0.06, row * cellSize + cellSize * 0.06, cellSize * 0.88, cellSize * 0.88);
+        } else {
+          ctx.beginPath();
+          ctx.arc(col * cellSize + cellSize / 2, row * cellSize + cellSize / 2, cellSize * 0.42, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    [[0, 0], [count - 7, 0], [0, count - 7]].forEach(([gridX, gridY]) => {
+      const x0 = gridX * cellSize;
+      const y0 = gridY * cellSize;
+      const outerSize = cellSize * 7;
+      const r1 = square ? 0 : outerSize * 0.22;
+      fillRoundedRect(x0, y0, outerSize, outerSize, r1, color);
+      const gapInset = cellSize;
+      const gapSize = outerSize - gapInset * 2;
+      const r2 = square ? 0 : gapSize * 0.22;
+      fillRoundedRect(x0 + gapInset, y0 + gapInset, gapSize, gapSize, r2, backgroundColor);
+      const centerInset = cellSize * 2;
+      const centerSize = outerSize - centerInset * 2;
+      const r3 = square ? 0 : centerSize * 0.28;
+      fillRoundedRect(x0 + centerInset, y0 + centerInset, centerSize, centerSize, r3, color);
+    });
+
+    const finish = () => resolve(canvas);
+
+    if (!logoUri) { finish(); return; }
+
+    const logoBadgeSize = size * 0.22;
+    const center = size / 2;
+    const badgeRadius = square ? logoBadgeSize * 0.1 : logoBadgeSize * 0.27;
+    fillRoundedRect(center - logoBadgeSize / 2, center - logoBadgeSize / 2, logoBadgeSize, logoBadgeSize, badgeRadius, backgroundColor);
+
+    const img = new window.Image();
+    img.onload = () => {
+      const drawSize = logoBadgeSize * 0.8;
+      ctx.drawImage(img, center - drawSize / 2, center - drawSize / 2, drawSize, drawSize);
+      finish();
+    };
+    img.onerror = () => finish(); // ship the QR without the logo rather than fail the whole export
+    img.src = logoUri;
+  });
+};
+
+const buildQrContentString = (type, fields) => {
+  switch (type) {
+    case 'wifi': {
+      // Colons/semicolons/backslashes in the SSID or password would break
+      // the WIFI: format's own field delimiters if left unescaped.
+      const esc = (s = '') => s.replace(/([\\;,:"])/g, '\\$1');
+      return `WIFI:T:${fields.security || 'WPA'};S:${esc(fields.ssid)};P:${esc(fields.password)};;`;
+    }
+    case 'vcard': {
+      const lines = ['BEGIN:VCARD', 'VERSION:3.0'];
+      if (fields.name) lines.push(`FN:${fields.name}`);
+      if (fields.phone) lines.push(`TEL:${fields.phone}`);
+      if (fields.email) lines.push(`EMAIL:${fields.email}`);
+      if (fields.org) lines.push(`ORG:${fields.org}`);
+      lines.push('END:VCARD');
+      return lines.join('\n');
+    }
+    case 'email': {
+      const params = [];
+      if (fields.subject) params.push(`subject=${encodeURIComponent(fields.subject)}`);
+      if (fields.body) params.push(`body=${encodeURIComponent(fields.body)}`);
+      return `mailto:${fields.to || ''}${params.length ? '?' + params.join('&') : ''}`;
+    }
+    case 'sms':
+      return `SMSTO:${fields.number || ''}:${fields.message || ''}`;
+    case 'text':
+      return fields.text || '';
+    case 'url':
+    default: {
+      let url = (fields.url || '').trim();
+      if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+      return url;
+    }
+  }
 };
 
 // Renders a QR code with circular data dots instead of the default square
@@ -6319,6 +6530,17 @@ function App() {
   const [compressorQuality, setCompressorQuality] = useState(0.8); // only used when a target size isn't the driver - see compressImageToTarget
   const [compressorFormat, setCompressorFormat] = useState('JPEG'); // 'JPEG' | 'PNG' | 'WEBP'
   const [compressorProcessing, setCompressorProcessing] = useState(false);
+
+  // TOOLS: QR Code Generator state.
+  const [qrContentType, setQrContentType] = useState('url'); // 'url' | 'text' | 'wifi' | 'vcard' | 'email' | 'sms'
+  const [qrFields, setQrFields] = useState({});
+  const [qrAdvancedOpen, setQrAdvancedOpen] = useState(false);
+  const [qrColor, setQrColor] = useState('#000000');
+  const [qrBackgroundColor, setQrBackgroundColor] = useState('#FFFFFF');
+  const [qrDotStyle, setQrDotStyle] = useState('round'); // 'round' | 'square'
+  const [qrLogoUri, setQrLogoUri] = useState(null);
+  const [qrExporting, setQrExporting] = useState(false);
+  const toolsQrExportRef = useRef(null);
   // b562: which LINK_FIELD_INFO entry is currently shown in the shared
   // link-field info popup, null when closed - see its Modal further down
   // and the renderLinkFieldInfoButton() helper near
@@ -10546,6 +10768,114 @@ function App() {
     const done = compressorFiles.filter((f) => f.status === 'done' && f.resultUri);
     for (const f of done) {
       await handleDownloadCompressedImage(f);
+    }
+  };
+
+  // TOOLS: QR Code Generator handlers.
+  const pickQrLogo = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showAppAlert('Permission Denied', 'Media library access is required to pick a logo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.9
+    });
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setQrLogoUri(result.assets[0].uri);
+    }
+  };
+
+  const currentQrValue = () => buildQrContentString(qrContentType, qrFields);
+
+  const handleDownloadQrPng = async () => {
+    const value = currentQrValue();
+    if (!value) {
+      showToast('Fill in the fields first.');
+      return;
+    }
+    setQrExporting(true);
+    try {
+      if (Platform.OS === 'web') {
+        const canvas = await renderToolsQrToCanvasAsync(value, 1000, {
+          color: qrColor, backgroundColor: qrBackgroundColor, dotStyle: qrDotStyle, logoUri: qrLogoUri
+        });
+        canvas.toBlob((blob) => {
+          if (!blob) { showToast('Could not download QR code - try again.'); return; }
+          const objectUrl = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = objectUrl;
+          link.download = 'qr-code.png';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(objectUrl);
+        }, 'image/png');
+      } else {
+        if (!toolsQrExportRef.current) {
+          showToast('QR code not ready yet - try again in a moment.');
+          return;
+        }
+        const permission = await MediaLibrary.requestPermissionsAsync();
+        if (!permission.granted) {
+          showToast('Photo library permission needed to save the QR code.');
+          return;
+        }
+        toolsQrExportRef.current.toDataURL(async (base64) => {
+          try {
+            const localUri = `${FileSystem.cacheDirectory}qr-code-${Date.now()}.png`;
+            await FileSystem.writeAsStringAsync(localUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+            await MediaLibrary.saveToLibraryAsync(localUri);
+            showToast('QR code saved to your photos.');
+          } catch (innerErr) {
+            console.warn('QR save failed:', innerErr);
+            showToast('Could not save QR code - try again.');
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('QR PNG export failed:', e);
+      showToast('Could not download QR code - try again.');
+    } finally {
+      setQrExporting(false);
+    }
+  };
+
+  // SVG export is web-only - react-native-svg renders genuine DOM <svg>
+  // elements on web, so the on-screen ref can be serialized directly via
+  // XMLSerializer (guaranteed pixel-identical to what's shown, since it
+  // IS what's shown, not a rebuilt approximation). Native's react-native-
+  // svg doesn't render to DOM at all, so there's no equivalent to grab -
+  // vector export stays a web-only feature, which matches its real use
+  // case anyway (printing at any size), not something native users
+  // typically need.
+  const handleDownloadQrSvg = () => {
+    const value = currentQrValue();
+    if (!value) {
+      showToast('Fill in the fields first.');
+      return;
+    }
+    if (!toolsQrExportRef.current) {
+      showToast('QR code not ready yet - try again in a moment.');
+      return;
+    }
+    try {
+      const svgString = new XMLSerializer().serializeToString(toolsQrExportRef.current);
+      const blob = new Blob([svgString], { type: 'image/svg+xml' });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = 'qr-code.svg';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch (e) {
+      console.warn('QR SVG export failed:', e);
+      showToast('Could not download SVG - try again.');
     }
   };
 
@@ -16459,12 +16789,31 @@ function App() {
                     <ChevronRightSVG color={theme.accent} size={18} />
                   </BouncyButton>
 
+                  <BouncyButton
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 14,
+                      backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                      borderRadius: 16, padding: 16
+                    }}
+                    onPress={() => setActiveTool('qrGenerator')}
+                    accessibilityRole="button"
+                  >
+                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                      <QrIconSVG size={22} color={themeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>QR Code Generator</Text>
+                      <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>URLs, WiFi, contact cards, and more - customizable and free</Text>
+                    </View>
+                    <ChevronRightSVG color={theme.accent} size={18} />
+                  </BouncyButton>
+
                   <View style={{
                     borderRadius: 16, borderWidth: 1, borderColor: theme.border, borderStyle: 'dashed',
                     padding: 16, alignItems: 'center', opacity: 0.6
                   }}>
                     <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600' }}>More tools coming soon</Text>
-                    <Text style={{ color: theme.textSecondary, fontSize: 11.5, marginTop: 4, textAlign: 'center' }}>QR code generator, document compressor</Text>
+                    <Text style={{ color: theme.textSecondary, fontSize: 11.5, marginTop: 4, textAlign: 'center' }}>Document compressor</Text>
                   </View>
                 </>
               )}
@@ -16700,6 +17049,346 @@ function App() {
                           </Text>
                         </BouncyButton>
                       )}
+                    </View>
+                  )}
+                </>
+              )}
+
+              {activeTool === 'qrGenerator' && (
+                <>
+                  <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
+                    Generate a QR code for a link, WiFi network, contact card, and more. Fully customizable, nothing ever leaves your device.
+                  </Text>
+
+                  <Text style={styles.formGroupLabel}>Content Type</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {[
+                      { key: 'url', label: 'URL' },
+                      { key: 'text', label: 'Text' },
+                      { key: 'wifi', label: 'WiFi' },
+                      { key: 'vcard', label: 'Contact Card' },
+                      { key: 'email', label: 'Email' },
+                      { key: 'sms', label: 'SMS' }
+                    ].map((t) => (
+                      <BouncyButton
+                        key={t.key}
+                        style={{
+                          paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99,
+                          backgroundColor: qrContentType === t.key ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : theme.surface,
+                          borderWidth: 1, borderColor: qrContentType === t.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border
+                        }}
+                        onPress={() => { setQrContentType(t.key); setQrFields({}); }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t.label}
+                        accessibilityState={{ selected: qrContentType === t.key }}
+                      >
+                        <Text style={{ color: qrContentType === t.key ? '#FFFFFF' : theme.text, fontSize: 12.5, fontWeight: '700' }}>{t.label}</Text>
+                      </BouncyButton>
+                    ))}
+                  </View>
+
+                  {qrContentType === 'url' && (
+                    <FocusableTextInput
+                      style={styles.formInput}
+                      placeholder="https://yoursite.com"
+                      placeholderTextColor="#94A3B8"
+                      autoCapitalize="none"
+                      value={qrFields.url || ''}
+                      onChangeText={(t) => setQrFields((p) => ({ ...p, url: t }))}
+                      accessibilityLabel="URL"
+                    />
+                  )}
+
+                  {qrContentType === 'text' && (
+                    <FocusableTextInput
+                      style={[styles.formInput, { height: 80, textAlignVertical: 'top' }]}
+                      multiline
+                      placeholder="Any text..."
+                      placeholderTextColor="#94A3B8"
+                      value={qrFields.text || ''}
+                      onChangeText={(t) => setQrFields((p) => ({ ...p, text: t }))}
+                      accessibilityLabel="Text"
+                    />
+                  )}
+
+                  {qrContentType === 'wifi' && (
+                    <>
+                      <FocusableTextInput
+                        style={styles.formInput}
+                        placeholder="Network name (SSID)"
+                        placeholderTextColor="#94A3B8"
+                        value={qrFields.ssid || ''}
+                        onChangeText={(t) => setQrFields((p) => ({ ...p, ssid: t }))}
+                        accessibilityLabel="WiFi network name"
+                      />
+                      <FocusableTextInput
+                        style={styles.formInput}
+                        placeholder="Password"
+                        placeholderTextColor="#94A3B8"
+                        secureTextEntry
+                        value={qrFields.password || ''}
+                        onChangeText={(t) => setQrFields((p) => ({ ...p, password: t }))}
+                        accessibilityLabel="WiFi password"
+                      />
+                    </>
+                  )}
+
+                  {qrContentType === 'vcard' && (
+                    <>
+                      <FocusableTextInput
+                        style={styles.formInput}
+                        placeholder="Full name"
+                        placeholderTextColor="#94A3B8"
+                        value={qrFields.name || ''}
+                        onChangeText={(t) => setQrFields((p) => ({ ...p, name: t }))}
+                        accessibilityLabel="Full name"
+                      />
+                      <FocusableTextInput
+                        style={styles.formInput}
+                        placeholder="Phone number"
+                        placeholderTextColor="#94A3B8"
+                        keyboardType="phone-pad"
+                        value={qrFields.phone || ''}
+                        onChangeText={(t) => setQrFields((p) => ({ ...p, phone: t }))}
+                        accessibilityLabel="Phone number"
+                      />
+                      <FocusableTextInput
+                        style={styles.formInput}
+                        placeholder="Email"
+                        placeholderTextColor="#94A3B8"
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        value={qrFields.email || ''}
+                        onChangeText={(t) => setQrFields((p) => ({ ...p, email: t }))}
+                        accessibilityLabel="Email"
+                      />
+                      <FocusableTextInput
+                        style={styles.formInput}
+                        placeholder="Company (optional)"
+                        placeholderTextColor="#94A3B8"
+                        value={qrFields.org || ''}
+                        onChangeText={(t) => setQrFields((p) => ({ ...p, org: t }))}
+                        accessibilityLabel="Company"
+                      />
+                    </>
+                  )}
+
+                  {qrContentType === 'email' && (
+                    <>
+                      <FocusableTextInput
+                        style={styles.formInput}
+                        placeholder="Recipient email"
+                        placeholderTextColor="#94A3B8"
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        value={qrFields.to || ''}
+                        onChangeText={(t) => setQrFields((p) => ({ ...p, to: t }))}
+                        accessibilityLabel="Recipient email"
+                      />
+                      <FocusableTextInput
+                        style={styles.formInput}
+                        placeholder="Subject (optional)"
+                        placeholderTextColor="#94A3B8"
+                        value={qrFields.subject || ''}
+                        onChangeText={(t) => setQrFields((p) => ({ ...p, subject: t }))}
+                        accessibilityLabel="Subject"
+                      />
+                      <FocusableTextInput
+                        style={[styles.formInput, { height: 70, textAlignVertical: 'top' }]}
+                        multiline
+                        placeholder="Message body (optional)"
+                        placeholderTextColor="#94A3B8"
+                        value={qrFields.body || ''}
+                        onChangeText={(t) => setQrFields((p) => ({ ...p, body: t }))}
+                        accessibilityLabel="Message body"
+                      />
+                    </>
+                  )}
+
+                  {qrContentType === 'sms' && (
+                    <>
+                      <FocusableTextInput
+                        style={styles.formInput}
+                        placeholder="Phone number"
+                        placeholderTextColor="#94A3B8"
+                        keyboardType="phone-pad"
+                        value={qrFields.number || ''}
+                        onChangeText={(t) => setQrFields((p) => ({ ...p, number: t }))}
+                        accessibilityLabel="Phone number"
+                      />
+                      <FocusableTextInput
+                        style={[styles.formInput, { height: 70, textAlignVertical: 'top' }]}
+                        multiline
+                        placeholder="Message (optional)"
+                        placeholderTextColor="#94A3B8"
+                        value={qrFields.message || ''}
+                        onChangeText={(t) => setQrFields((p) => ({ ...p, message: t }))}
+                        accessibilityLabel="Message"
+                      />
+                    </>
+                  )}
+
+                  <BouncyButton
+                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}
+                    onPress={() => setQrAdvancedOpen((v) => !v)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Advanced options"
+                    accessibilityState={{ expanded: qrAdvancedOpen }}
+                  >
+                    <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Advanced</Text>
+                    {qrAdvancedOpen ? <ChevronUpSVG color={theme.textSecondary} size={16} /> : <ChevronDownSVG color={theme.textSecondary} size={16} />}
+                  </BouncyButton>
+
+                  {qrAdvancedOpen && (
+                    <View style={{ backgroundColor: theme.surface, borderRadius: 12, padding: 14, gap: 10 }}>
+                      <Text style={styles.formGroupLabel}>Colors</Text>
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: theme.textSecondary, fontSize: 11, marginBottom: 4 }}>Foreground</Text>
+                          <FocusableTextInput
+                            style={styles.formInput}
+                            placeholder="#000000"
+                            placeholderTextColor="#94A3B8"
+                            autoCapitalize="characters"
+                            value={qrColor}
+                            onChangeText={setQrColor}
+                            accessibilityLabel="Foreground color"
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: theme.textSecondary, fontSize: 11, marginBottom: 4 }}>Background</Text>
+                          <FocusableTextInput
+                            style={styles.formInput}
+                            placeholder="#FFFFFF"
+                            placeholderTextColor="#94A3B8"
+                            autoCapitalize="characters"
+                            value={qrBackgroundColor}
+                            onChangeText={setQrBackgroundColor}
+                            accessibilityLabel="Background color"
+                          />
+                        </View>
+                      </View>
+                      {qrColor.toUpperCase() === qrBackgroundColor.toUpperCase() && (
+                        <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '600' }}>
+                          Foreground and background are the same color - this won't scan.
+                        </Text>
+                      )}
+
+                      <Text style={styles.formGroupLabel}>Dot Style</Text>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {[{ key: 'round', label: 'Round' }, { key: 'square', label: 'Square' }].map((opt) => (
+                          <BouncyButton
+                            key={opt.key}
+                            style={{
+                              flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99,
+                              backgroundColor: qrDotStyle === opt.key ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : theme.bg,
+                              borderWidth: 1, borderColor: qrDotStyle === opt.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border
+                            }}
+                            onPress={() => setQrDotStyle(opt.key)}
+                            accessibilityRole="button"
+                            accessibilityLabel={opt.label}
+                            accessibilityState={{ selected: qrDotStyle === opt.key }}
+                          >
+                            <Text style={{ color: qrDotStyle === opt.key ? '#FFFFFF' : theme.text, fontSize: 12, fontWeight: '700' }}>{opt.label}</Text>
+                          </BouncyButton>
+                        ))}
+                      </View>
+
+                      <Text style={styles.formGroupLabel}>Logo (optional)</Text>
+                      {qrLogoUri ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <Image source={{ uri: qrLogoUri }} style={{ width: 40, height: 40, borderRadius: 8 }} />
+                          <BouncyButton
+                            style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
+                            onPress={() => setQrLogoUri(null)}
+                            accessibilityRole="button"
+                          >
+                            <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '700' }}>Remove</Text>
+                          </BouncyButton>
+                        </View>
+                      ) : (
+                        <BouncyButton
+                          style={{ alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
+                          onPress={pickQrLogo}
+                          accessibilityRole="button"
+                        >
+                          <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>Choose Logo</Text>
+                        </BouncyButton>
+                      )}
+                      <Text style={{ color: theme.textSecondary, fontSize: 11, lineHeight: 15 }}>
+                        A small centered logo is safe to add - this QR code is generated with extra error correction specifically to allow for it.
+                      </Text>
+                    </View>
+                  )}
+
+                  {!!currentQrValue() && (
+                    <View style={{ alignItems: 'center', marginTop: 18, gap: 14 }}>
+                      <View style={{ padding: 16, backgroundColor: '#FFFFFF', borderRadius: 16 }}>
+                        <ToolsQRCode
+                          ref={toolsQrExportRef}
+                          value={currentQrValue()}
+                          size={220}
+                          color={qrColor || '#000000'}
+                          backgroundColor={qrBackgroundColor || '#FFFFFF'}
+                          dotStyle={qrDotStyle}
+                          logoUri={qrLogoUri}
+                        />
+                      </View>
+
+                      <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+                        <BouncyButton
+                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: qrExporting ? 0.6 : 1 }]}
+                          onPress={handleDownloadQrPng}
+                          disabled={qrExporting}
+                          accessibilityRole="button"
+                          accessibilityState={{ disabled: qrExporting, busy: qrExporting }}
+                        >
+                          <Text style={styles.submitBtnText}>{qrExporting ? 'Exporting...' : 'Download PNG'}</Text>
+                        </BouncyButton>
+                        {Platform.OS === 'web' && (
+                          <BouncyButton
+                            style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                            onPress={handleDownloadQrSvg}
+                            accessibilityRole="button"
+                          >
+                            <Text style={[styles.submitBtnText, { color: theme.text }]}>Download SVG</Text>
+                          </BouncyButton>
+                        )}
+                      </View>
+
+                      {/* Same platform-split post-success CTA as the Image
+                          Compressor above, same reasoning (App Store 3.1.1
+                          risk on a donation link tied to the app itself). */}
+                      <View style={{ marginTop: 4 }}>
+                        {Platform.OS === 'web' ? (
+                          DONATIONS_ENABLED && (
+                            <BouncyButton
+                              onPress={() => { setDonateTermsAgreed(false); setDonateModalVisible(true); }}
+                              accessibilityRole="button"
+                            >
+                              <Text style={{ color: theme.textSecondary, fontSize: 12, textDecorationLine: 'underline' }}>
+                                Found this helpful? Support DECENT
+                              </Text>
+                            </BouncyButton>
+                          )
+                        ) : (
+                          <BouncyButton
+                            onPress={async () => {
+                              try {
+                                const StoreReview = require('expo-store-review');
+                                if (await StoreReview.hasAction()) await StoreReview.requestReview();
+                              } catch (e) {
+                                console.warn('Store review prompt unavailable:', e);
+                              }
+                            }}
+                            accessibilityRole="button"
+                          >
+                            <Text style={{ color: theme.textSecondary, fontSize: 12, textDecorationLine: 'underline' }}>
+                              Enjoying DECENT? Leave a review
+                            </Text>
+                          </BouncyButton>
+                        )}
+                      </View>
                     </View>
                   )}
                 </>
