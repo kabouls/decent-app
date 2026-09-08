@@ -53,6 +53,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { PDFDocument, degrees } from 'pdf-lib';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
+import { generateWebPdfThumbnails, generateNativePdfThumbnails } from './pdfThumbnails';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { decode } from 'base64-arraybuffer';
 import { BlurView } from 'expo-blur';
@@ -158,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 679;
+const BUILD_NUMBER = 680;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -4144,47 +4145,6 @@ const assemblePdfFromPages = async (sourceDocs, pages) => {
     outDoc.addPage(copiedPage);
   }
   return outDoc.save();
-};
-
-// Thumbnail generation - deliberately separate from the pdf-lib
-// manipulation logic above, and deliberately NOT statically imported at
-// the top of the file. pdfjs-dist is web-only (would bloat or break the
-// native bundle if forced in); react-native-pdf-thumbnail is native-only
-// and needs a real native rebuild before it actually works even once
-// installed - same class of gap as expo-store-review earlier this
-// project. Dynamic import/require + try/catch means a missing or not-
-// yet-linked module fails gracefully (no thumbnail, not a crash).
-const generateWebPdfThumbnails = async (uri) => {
-  try {
-    const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-    const pdf = await pdfjsLib.getDocument(uri).promise;
-    const thumbnails = [];
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 0.4 });
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-      thumbnails.push(canvas.toDataURL('image/jpeg', 0.7));
-    }
-    return thumbnails;
-  } catch (e) {
-    console.warn('Web PDF thumbnail generation failed:', e);
-    return null;
-  }
-};
-
-const generateNativePdfThumbnails = async (uri) => {
-  try {
-    const PdfThumbnail = require('react-native-pdf-thumbnail').default;
-    const results = await PdfThumbnail.generateAllPages(uri, 70);
-    return results.map((r) => r.uri);
-  } catch (e) {
-    console.warn('Native PDF thumbnail generation failed (needs a native rebuild if the dependency was just added):', e);
-    return null;
-  }
 };
 
 const convertImageFormat = async (uri, format) => {
