@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 683;
+const BUILD_NUMBER = 684;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -17564,7 +17564,7 @@ function App() {
                     button. */}
                 <View style={[
                   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: toolsTheme.bg, borderBottomWidth: 1, borderBottomColor: toolsTheme.border },
-                  isWebWide && { width: '100%' }
+                  isWebWide && { maxWidth: 1600, width: '100%', alignSelf: 'center' }
                 ]}>
                   <BouncyButton
                     style={{
@@ -17631,7 +17631,7 @@ function App() {
                 {activeTool !== 'hub' && (
                   <View style={[
                     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: toolsTheme.bg, borderBottomWidth: 1, borderBottomColor: toolsTheme.border },
-                    isWebWide && { width: '100%' }
+                    isWebWide && { maxWidth: 1600, width: '100%', alignSelf: 'center' }
                   ]}>
                     <BouncyButton
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
@@ -17737,7 +17737,7 @@ function App() {
                 { padding: 20, gap: 14 },
                 activeTool === 'imageCompressor' && compressorFiles.length > 0 && { paddingBottom: 90 },
                 activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && { paddingBottom: 90 },
-                isWebWide && { width: '100%' }
+                isWebWide && { maxWidth: 1600, width: '100%', alignSelf: 'center' }
               ]}
               enableOnAndroid={true}
               extraScrollHeight={140}
@@ -18684,7 +18684,7 @@ function App() {
             {activeTool === 'imageCompressor' && compressorFiles.length > 0 && (
               <View style={[
                 { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 10, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border },
-                isWebWide && { width: '100%' }
+                isWebWide && { maxWidth: 1600, width: '100%', alignSelf: 'center' }
               ]}>
                 <BouncyButton
                   style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: compressorProcessing ? 0.6 : 1 }]}
@@ -18714,7 +18714,7 @@ function App() {
             {activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && (
               <View style={[
                 { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border },
-                isWebWide && { width: '100%' }
+                isWebWide && { maxWidth: 1600, width: '100%', alignSelf: 'center' }
               ]}>
                 <BouncyButton
                   style={[styles.saveAccountSettingsBtn, { marginTop: 0, opacity: pdfEditorExporting ? 0.6 : 1 }]}
