@@ -14,15 +14,28 @@
 // needing its own platform branching at the call site - only the
 // function matching the actual running platform ever does real work.
 
-export const generateWebPdfThumbnails = async (uri) => {
+// scale is a pdf.js viewport scale factor - defaults to the small grid-
+// tile render, but PDF compression needs a much larger render (the whole
+// point is a readable page, not a thumbnail), so it's a parameter rather
+// than hardcoded.
+export const generateWebPdfThumbnails = async (uri, scale = 0.4) => {
   try {
     const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    // unpkg mirrors npm directly, so this always matches whatever version
+    // is actually installed - cdnjs requires manual curation per package
+    // and may lag behind or simply not carry every patch version. The
+    // worker file itself is also .mjs, not .js, as of pdfjs-dist v4+ -
+    // the old .js filename this pointed to no longer exists, which was
+    // silently failing every thumbnail generation (caught, fell through
+    // to the null fallback, one 'PDF' icon per page instead of a real
+    // preview - functionally invisible unless you go looking at exactly
+    // this failure mode).
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
     const pdf = await pdfjsLib.getDocument(uri).promise;
     const thumbnails = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 0.4 });
+      const viewport = page.getViewport({ scale });
       const canvas = document.createElement('canvas');
       canvas.width = viewport.width;
       canvas.height = viewport.height;

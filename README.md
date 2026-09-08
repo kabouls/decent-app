@@ -62,6 +62,15 @@ Every other portfolio tool makes you choose: a boring PDF, a screenshot gallery 
 - 🛡️ Reporting and moderation tools, with a full audit trail admins can review or undo
 - 🏗️ One single-file React Native/Expo app powering web *and* native from the same codebase
 
+## 🛠️ Tools <sub>(BETA)</sub>
+
+A free companion toolkit at [decent.ink/tools](https://decent.ink/tools) (also built into the app) for prepping your portfolio and job applications. **Genuinely free** — no account, no login, no ads, no premium tier, no usage limits, no gotcha. Everything runs entirely on your own device; nothing you drop in ever gets uploaded anywhere.
+
+- 🗜️ **Image Compressor** — shrink a photo to a target file size (handy for application portals with strict upload limits), with format conversion and batch support
+- 🔳 **QR Code Generator** — URLs, WiFi networks, contact cards, email, SMS — fully customizable (colors, dot style, logo), export as PNG or SVG
+- 🌐 Available in English and Indonesian, with its own light/dark theme, independent of the main app
+- 📄 More tools on the way
+
 ## Support the project
 
 DECENT is a solo-built, self-funded project. If it's useful to you, throwing a few dollars my way keeps the servers on and the updates coming — genuinely appreciated, never expected.
