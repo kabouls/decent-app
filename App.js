@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 700;
+const BUILD_NUMBER = 701;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -2075,6 +2075,10 @@ const TOOLS_TRANSLATIONS = {
     popularTools: 'Popular Tools',
     allTools: 'All Tools',
     moreTools: 'More Tools',
+    nothingHereYet: 'Nothing here yet',
+    addFilesToStart: 'Add files on the left to get started',
+    qrWillAppearHere: 'Your QR code will appear here',
+    fillInDetailsToStart: 'Fill in the details on the left to get started',
     documentCompressor: 'Document compressor',
     compressorIntro: "Drop up to 10 images and pick a target file size - useful for application portals with strict upload limits. Nothing leaves your device.",
     targetFileSize: 'Target File Size',
@@ -2155,6 +2159,10 @@ const TOOLS_TRANSLATIONS = {
     popularTools: 'Alat Populer',
     allTools: 'Semua Alat',
     moreTools: 'Alat Lainnya',
+    nothingHereYet: 'Belum ada apa-apa di sini',
+    addFilesToStart: 'Tambahkan file di sebelah kiri untuk memulai',
+    qrWillAppearHere: 'Kode QR Anda akan muncul di sini',
+    fillInDetailsToStart: 'Isi detail di sebelah kiri untuk memulai',
     documentCompressor: 'Kompres dokumen',
     compressorIntro: 'Unggah hingga 10 gambar dan pilih ukuran file target - berguna untuk portal lamaran dengan batas unggah yang ketat. Tidak ada yang meninggalkan perangkat Anda.',
     targetFileSize: 'Ukuran File Target',
@@ -18187,6 +18195,18 @@ function App() {
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>{tt('upTo10')}</Text>
                   </BouncyButton>
                   )}
+
+                  {isWebWide && compressorFiles.length === 0 && (
+                    <View style={{
+                      flex: 1, minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 10,
+                      borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border, borderRadius: 14, padding: 40
+                    }}>
+                      <ImageIconSVG size={36} color={toolsTheme.textSecondary} />
+                      <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>{tt('nothingHereYet')}</Text>
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>{tt('addFilesToStart')}</Text>
+                    </View>
+                  )}
+
                   {compressorFiles.length > 0 && (
                     <BouncyButton
                       style={{ alignSelf: 'flex-start', marginTop: 4 }}
@@ -18316,7 +18336,7 @@ function App() {
               {activeTool === 'qrGenerator' && (() => {
                 const previewBlock = (
                   <>
-                  {!!currentQrValue() && (
+                  {!!currentQrValue() ? (
                     <View style={{ alignItems: 'center', marginVertical: 14, gap: 6 }}>
                       <View style={{ padding: 16, backgroundColor: '#FFFFFF', borderRadius: 16 }}>
                         <ToolsQRCode
@@ -18332,6 +18352,16 @@ function App() {
                       <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontStyle: 'italic', textAlign: 'center' }}>
                         {tt('qrScanCaution')}
                       </Text>
+                    </View>
+                  ) : isWebWide && (
+                    <View style={{
+                      alignItems: 'center', justifyContent: 'center', marginVertical: 14, gap: 10,
+                      minHeight: 252, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
+                      borderRadius: 16, padding: 40
+                    }}>
+                      <QrIconSVG size={36} color={toolsTheme.textSecondary} />
+                      <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700', textAlign: 'center' }}>{tt('qrWillAppearHere')}</Text>
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>{tt('fillInDetailsToStart')}</Text>
                     </View>
                   )}
                   </>
@@ -18638,23 +18668,25 @@ function App() {
 
                 const downloadButtonsBlock = (
                   <>
-                  {!!currentQrValue() && (
+                  {(!!currentQrValue() || isWebWide) && (
                     <View style={{ marginTop: 14, width: '100%' }}>
                       <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
                         <BouncyButton
-                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: qrExporting ? 0.6 : 1 }]}
+                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: (qrExporting || !currentQrValue()) ? 0.4 : 1 }]}
                           onPress={handleDownloadQrPng}
-                          disabled={qrExporting}
+                          disabled={qrExporting || !currentQrValue()}
                           accessibilityRole="button"
-                          accessibilityState={{ disabled: qrExporting, busy: qrExporting }}
+                          accessibilityState={{ disabled: qrExporting || !currentQrValue(), busy: qrExporting }}
                         >
                           <Text style={styles.submitBtnText}>{qrExporting ? tt('exporting') : tt('downloadPng')}</Text>
                         </BouncyButton>
                         {Platform.OS === 'web' && (
                           <BouncyButton
-                            style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border }]}
+                            style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, opacity: !currentQrValue() ? 0.4 : 1 }]}
                             onPress={handleDownloadQrSvg}
+                            disabled={!currentQrValue()}
                             accessibilityRole="button"
+                            accessibilityState={{ disabled: !currentQrValue() }}
                           >
                             <Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadSvg')}</Text>
                           </BouncyButton>
@@ -18810,6 +18842,18 @@ function App() {
                     </BouncyButton>
                   </View>
                   )}
+
+                  {isWebWide && converterFiles.length === 0 && (
+                    <View style={{
+                      flex: 1, minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 10,
+                      borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border, borderRadius: 14, padding: 40
+                    }}>
+                      <ImageIconSVG size={36} color={toolsTheme.textSecondary} />
+                      <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>{tt('nothingHereYet')}</Text>
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>{tt('addFilesToStart')}</Text>
+                    </View>
+                  )}
+
                   {converterFiles.map((file, fileIndex) => (
                     <View key={file.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 10 }}>
                       <BouncyButton
@@ -18993,6 +19037,17 @@ function App() {
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginTop: pdfEditorPages.length > 0 ? 8 : 0 }}>
                       {pdfEditorPages.length} {tt('pageCount')}
                     </Text>
+                  )}
+
+                  {isWebWide && pdfEditorPages.length === 0 && (
+                    <View style={{
+                      flex: 1, minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 10,
+                      borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border, borderRadius: 14, padding: 40
+                    }}>
+                      <PdfIconSVG size={36} color={toolsTheme.textSecondary} />
+                      <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>{tt('nothingHereYet')}</Text>
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>{tt('addFilesToStart')}</Text>
+                    </View>
                   )}
 
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
