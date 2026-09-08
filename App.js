@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 704;
+const BUILD_NUMBER = 710;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7091,11 +7091,123 @@ function App() {
   // going back to the source URI, not the already-parsed pdf-lib object.
   const [pdfEditorSourceMeta, setPdfEditorSourceMeta] = useState([]); // [{ uri, isImage }]
   const [pdfCompressing, setPdfCompressing] = useState(false);
+  const [pdfReorderModeActive, setPdfReorderModeActive] = useState(false);
+  const [pdfMoreToolsMenuVisible, setPdfMoreToolsMenuVisible] = useState(false);
+  // Generic multi-select mode for per-page tools (Crop is the first,
+  // built so future per-page tools reuse the same selection UI rather
+  // than each inventing their own). null when inactive; a string tool
+  // name ('crop') while active, so the grid/toolbar know both THAT
+  // selection is happening and WHICH tool it's for.
+  const [pdfSelectModeTool, setPdfSelectModeTool] = useState(null);
+  const [pdfSelectedPageIds, setPdfSelectedPageIds] = useState([]);
+  // Crop-specific: once selection is confirmed, this drives the one-
+  // page-at-a-time popup - null when the popup isn't open, otherwise an
+  // index into pdfSelectedPageIds for which selected page is showing.
+  const [pdfCropQueueIndex, setPdfCropQueueIndex] = useState(null);
+  const [pdfCropInsets, setPdfCropInsets] = useState({ top: 0, bottom: 0, left: 0, right: 0 }); // 0-1 fractions
+  const [pdfCropInsetsByPageId, setPdfCropInsetsByPageId] = useState({}); // accumulates as the user advances through the queue
   const [pdfEditorPages, setPdfEditorPages] = useState([]);
   const [pdfEditorLoading, setPdfEditorLoading] = useState(false);
   const [pdfEditorExporting, setPdfEditorExporting] = useState(false);
   const [pdfDragIndex, setPdfDragIndex] = useState(null);
   const [pdfFullscreenIndex, setPdfFullscreenIndex] = useState(null); // null | index into pdfEditorPages
+  // Cache of high-res page renders for the full-screen viewer, keyed by
+  // sourceFileIndex -> array of image URIs (one per page in that
+  // source). The grid thumbnails are deliberately low-res (0.4 scale,
+  // fine for a small tile) - full-screen needs something sharp, so this
+  // renders each source at a much higher scale on demand, once per
+  // source, cached so paging between pages already in the same document
+  // doesn't re-render.
+  const [pdfFullscreenHighResCache, setPdfFullscreenHighResCache] = useState({});
+  const [pdfFullscreenHighResLoading, setPdfFullscreenHighResLoading] = useState(false);
+
+  useEffect(() => {
+    if (pdfFullscreenIndex === null) return;
+    const page = pdfEditorPages[pdfFullscreenIndex];
+    if (!page) return;
+    if (pdfFullscreenHighResCache[page.sourceFileIndex]) return; // already rendered this source
+    const meta = pdfEditorSourceMeta[page.sourceFileIndex];
+    if (!meta || meta.isImage) return; // images are already full-res, nothing to render
+
+    let cancelled = false;
+    setPdfFullscreenHighResLoading(true);
+    const render = Platform.OS === 'web'
+      ? generateWebPdfThumbnails(meta.uri, 2.5)
+      : generateNativePdfThumbnails(meta.uri, 1600);
+    render.then((result) => {
+      if (cancelled) return;
+      if (result) {
+        setPdfFullscreenHighResCache((prev) => ({ ...prev, [page.sourceFileIndex]: result }));
+      }
+      setPdfFullscreenHighResLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [pdfFullscreenIndex]);
+
+  // PDF EDITOR STAGING ENGINE. Every tool (rotate, delete, compress, add
+  // pages, page numbers...) already applies directly to
+  // pdfEditorSourceDocs/pdfEditorSourceMeta/pdfEditorPages - that live
+  // state IS the working draft. What's added here is a snapshot taken
+  // immediately before each operation runs, so Undo can restore exactly
+  // what came before it, and a separate "last saved baseline" so Revert
+  // can throw away everything since the last Save Changes. All three
+  // pieces of state get snapshotted together, not just pdfEditorPages,
+  // because Compress and Page Numbers rebuild the underlying documents
+  // entirely (not just page-level metadata like rotation/order do) - a
+  // snapshot that only captured pages would be wrong for those two.
+  const [pdfEditorHistory, setPdfEditorHistory] = useState([]); // stack of { sourceDocs, sourceMeta, pages, label }
+  const [pdfEditorSavedSnapshot, setPdfEditorSavedSnapshot] = useState(null); // last Save Changes baseline, for Revert
+  const [pdfReviewChangesVisible, setPdfReviewChangesVisible] = useState(false);
+
+  const pdfEditorHasPendingChanges = pdfEditorHistory.length > 0;
+
+  // Call this at the very start of any operation that mutates
+  // pdfEditorSourceDocs/pdfEditorSourceMeta/pdfEditorPages, before making
+  // the actual change - label is what shows up in the Review Changes list.
+  const pushPdfHistorySnapshot = (label) => {
+    setPdfEditorHistory((prev) => [...prev, {
+      sourceDocs: pdfEditorSourceDocs,
+      sourceMeta: pdfEditorSourceMeta,
+      pages: pdfEditorPages,
+      label
+    }]);
+  };
+
+  const handleUndoPdfEdit = () => {
+    setPdfEditorHistory((prev) => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      setPdfEditorSourceDocs(last.sourceDocs);
+      setPdfEditorSourceMeta(last.sourceMeta);
+      setPdfEditorPages(last.pages);
+      setPdfFullscreenHighResCache({});
+      triggerHaptic('light');
+      return prev.slice(0, -1);
+    });
+  };
+
+  const handleSavePdfChanges = () => {
+    setPdfEditorSavedSnapshot({
+      sourceDocs: pdfEditorSourceDocs,
+      sourceMeta: pdfEditorSourceMeta,
+      pages: pdfEditorPages
+    });
+    setPdfEditorHistory([]);
+    setPdfReviewChangesVisible(false);
+    triggerHaptic('success');
+  };
+
+  const handleRevertPdfChanges = () => {
+    if (pdfEditorSavedSnapshot) {
+      setPdfEditorSourceDocs(pdfEditorSavedSnapshot.sourceDocs);
+      setPdfEditorSourceMeta(pdfEditorSavedSnapshot.sourceMeta);
+      setPdfEditorPages(pdfEditorSavedSnapshot.pages);
+    }
+    setPdfEditorHistory([]);
+    setPdfFullscreenHighResCache({});
+    triggerHaptic('warning');
+  };
+
   const [toolsMenuVisible, setToolsMenuVisible] = useState(false);
   const [leaveToolsConfirmVisible, setLeaveToolsConfirmVisible] = useState(false);
 
@@ -11666,11 +11778,13 @@ function App() {
   };
 
   const removePdfEditorPage = (pageId) => {
+    pushPdfHistorySnapshot('Delete page');
     triggerHaptic('light');
     setPdfEditorPages((prev) => prev.filter((p) => p.id !== pageId));
   };
 
   const rotatePdfEditorPage = (pageId) => {
+    pushPdfHistorySnapshot('Rotate page');
     triggerHaptic('light');
     setPdfEditorPages((prev) => prev.map((p) => (p.id === pageId ? { ...p, rotation: (p.rotation + 90) % 360 } : p)));
   };
@@ -11681,11 +11795,12 @@ function App() {
   // and-drop instead (see the HTML5 drag events used directly in the
   // grid UI), since that's free on web with no new dependency.
   const movePdfEditorPage = (pageId, direction) => {
+    const index = pdfEditorPages.findIndex((p) => p.id === pageId);
+    const targetIndex = index + direction;
+    if (index === -1 || targetIndex < 0 || targetIndex >= pdfEditorPages.length) return;
+    pushPdfHistorySnapshot('Reorder pages');
+    triggerHaptic('light');
     setPdfEditorPages((prev) => {
-      const index = prev.findIndex((p) => p.id === pageId);
-      const targetIndex = index + direction;
-      if (index === -1 || targetIndex < 0 || targetIndex >= prev.length) return prev;
-      triggerHaptic('light');
       const next = [...prev];
       [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
       return next;
@@ -11693,8 +11808,9 @@ function App() {
   };
 
   const reorderPdfEditorPages = (fromIndex, toIndex) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= pdfEditorPages.length || toIndex >= pdfEditorPages.length) return;
+    pushPdfHistorySnapshot('Reorder pages');
     setPdfEditorPages((prev) => {
-      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= prev.length || toIndex >= prev.length) return prev;
       const next = [...prev];
       const [moved] = next.splice(fromIndex, 1);
       next.splice(toIndex, 0, moved);
@@ -11702,11 +11818,24 @@ function App() {
     });
   };
 
+  // Reorder mode's typeable page number field - "move page 5 to position
+  // 3" is exactly a splice-out/splice-in, which reorderPdfEditorPages
+  // already implements correctly (everything between the two positions
+  // naturally shifts). This just translates a typed 1-indexed position
+  // into the from/to indices that function expects.
+  const handleReorderByTypedPosition = (pageId, typedPosition) => {
+    const currentIndex = pdfEditorPages.findIndex((p) => p.id === pageId);
+    if (currentIndex === -1 || !typedPosition) return;
+    const targetIndex = Math.max(0, Math.min(pdfEditorPages.length - 1, typedPosition - 1));
+    reorderPdfEditorPages(currentIndex, targetIndex);
+  };
+
   const clearAllPdfEditorPages = () => {
     triggerHaptic('warning');
     setPdfEditorSourceDocs([]);
     setPdfEditorSourceMeta([]);
     setPdfEditorPages([]);
+    setPdfFullscreenHighResCache({});
   };
 
   // Renders every page at a real, readable resolution (not the small
@@ -11721,6 +11850,7 @@ function App() {
   // as any other rasterize-based compressor.
   const handleCompressPdf = async () => {
     if (pdfEditorPages.length === 0) return;
+    pushPdfHistorySnapshot('Compress PDF');
     setPdfCompressing(true);
     triggerHaptic('light');
     try {
@@ -11778,6 +11908,7 @@ function App() {
         rotation: 0,
         thumbnailLoading: false
       })));
+      setPdfFullscreenHighResCache({});
 
       showToast('PDF compressed.');
       triggerHaptic('success');
@@ -11857,6 +11988,7 @@ function App() {
   // splicing its pages into the middle of the array, rather than just
   // appending, which is all the existing Add PDF/Add Images buttons do).
   const handleInsertBlankPage = async (afterIndex) => {
+    pushPdfHistorySnapshot('Add page');
     triggerHaptic('light');
     try {
       const blankDoc = await PDFDocument.create();
@@ -11897,6 +12029,7 @@ function App() {
   // every rotation case perfectly.
   const handleAddPageNumbers = async () => {
     if (pdfEditorPages.length === 0) return;
+    pushPdfHistorySnapshot('Add page numbers');
     triggerHaptic('light');
     try {
       const outDoc = await PDFDocument.create();
@@ -11936,6 +12069,90 @@ function App() {
       console.warn('Add page numbers failed:', e);
       showToast('Could not add page numbers - try again.');
       triggerHaptic('error');
+    }
+  };
+
+  // Select mode - generic multi-select for per-page tools, Crop is the
+  // first user of it.
+  const togglePdfPageSelected = (pageId) => {
+    setPdfSelectedPageIds((prev) => (prev.includes(pageId) ? prev.filter((id) => id !== pageId) : [...prev, pageId]));
+  };
+
+  const startPdfCropQueue = () => {
+    if (pdfSelectedPageIds.length === 0) return;
+    setPdfCropInsets({ top: 0, bottom: 0, left: 0, right: 0 });
+    setPdfCropInsetsByPageId({});
+    setPdfCropQueueIndex(0);
+  };
+
+  // Called by both "Next" and "Done" - saves the current page's insets
+  // into the accumulator, then either advances to the next selected
+  // page (resetting the live sliders for it) or, on the last page,
+  // triggers the actual crop with everything collected so far.
+  const advancePdfCropQueue = () => {
+    const currentPageId = pdfSelectedPageIds[pdfCropQueueIndex];
+    const updatedInsets = { ...pdfCropInsetsByPageId, [currentPageId]: pdfCropInsets };
+    setPdfCropInsetsByPageId(updatedInsets);
+
+    if (pdfCropQueueIndex >= pdfSelectedPageIds.length - 1) {
+      applyPdfCropAndFinish(updatedInsets);
+    } else {
+      setPdfCropInsets({ top: 0, bottom: 0, left: 0, right: 0 });
+      setPdfCropQueueIndex((i) => i + 1);
+    }
+  };
+
+  // Applies crop to every page that was actually adjusted, in one pass -
+  // rebuilds the whole document (same pattern as Compress/Page Numbers
+  // above) rather than mutating pdfEditorSourceDocs' page objects in
+  // place. Direct mutation would corrupt Undo: a history snapshot only
+  // stores a reference to the sourceDocs array, not a deep clone, so
+  // mutating a PDFPage object in place would silently change what the
+  // "before" snapshot points to as well.
+  const applyPdfCropAndFinish = async (insetsByPageId) => {
+    pushPdfHistorySnapshot('Crop pages');
+    triggerHaptic('light');
+    try {
+      const outDoc = await PDFDocument.create();
+      for (const page of pdfEditorPages) {
+        const [copiedPage] = await outDoc.copyPages(pdfEditorSourceDocs[page.sourceFileIndex], [page.sourcePageIndex]);
+        if (page.rotation) {
+          const current = copiedPage.getRotation().angle || 0;
+          copiedPage.setRotation(degrees((current + page.rotation) % 360));
+        }
+        const insets = insetsByPageId[page.id];
+        if (insets && (insets.top || insets.bottom || insets.left || insets.right)) {
+          const { width, height } = copiedPage.getSize();
+          copiedPage.setCropBox(
+            insets.left * width,
+            insets.bottom * height,
+            width * (1 - insets.left - insets.right),
+            height * (1 - insets.top - insets.bottom)
+          );
+        }
+        outDoc.addPage(copiedPage);
+      }
+
+      setPdfEditorSourceDocs([outDoc]);
+      setPdfEditorSourceMeta([{ uri: null, isImage: false }]);
+      setPdfEditorPages(pdfEditorPages.map((p, i) => ({
+        ...p,
+        sourceFileIndex: 0,
+        sourcePageIndex: i,
+        rotation: 0 // already baked into the copied page itself above
+      })));
+      setPdfFullscreenHighResCache({});
+
+      showToast('Crop applied.');
+      triggerHaptic('success');
+    } catch (e) {
+      console.warn('Crop failed:', e);
+      showToast('Could not apply crop - try again.');
+      triggerHaptic('error');
+    } finally {
+      setPdfSelectModeTool(null);
+      setPdfSelectedPageIds([]);
+      setPdfCropQueueIndex(null);
     }
   };
 
@@ -19192,38 +19409,38 @@ function App() {
 
               {activeTool === 'pdfEditor' && (
                 <View style={{ gap: 20 }}>
-                <View style={[{ gap: 14 }, isWebWide && { flexDirection: 'row', alignItems: 'flex-start', gap: 24 }]}>
-                  <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
+                <View style={{ gap: 14 }}>
+                  <View style={{ gap: 14 }}>
                   <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
                     {tt('pdfEditorIntro')}
                   </Text>
 
-                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
-                    <BouncyButton
-                      style={{
-                        flex: 1, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
-                        borderRadius: 14, padding: 16, alignItems: 'center', gap: 6
-                      }}
-                      onPress={pickPdfEditorPdfs}
-                      disabled={pdfEditorLoading}
-                      accessibilityRole="button"
-                    >
-                      <PdfIconSVG size={22} color={toolsTheme.textSecondary} />
-                      <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addPdf')}</Text>
-                    </BouncyButton>
-                    <BouncyButton
-                      style={{
-                        flex: 1, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
-                        borderRadius: 14, padding: 16, alignItems: 'center', gap: 6
-                      }}
-                      onPress={pickPdfEditorImages}
-                      disabled={pdfEditorLoading}
-                      accessibilityRole="button"
-                    >
-                      <ImageIconSVG size={22} color={toolsTheme.textSecondary} />
-                      <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addImages')}</Text>
-                    </BouncyButton>
-                  </View>
+                  <BouncyButton
+                    style={{
+                      marginTop: 14, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                      borderRadius: 16, padding: 28, alignItems: 'center', gap: 10
+                    }}
+                    onPress={pickPdfEditorPdfs}
+                    disabled={pdfEditorLoading}
+                    accessibilityRole="button"
+                  >
+                    <PdfIconSVG size={32} color="#FFFFFF" />
+                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>{tt('addPdf')}</Text>
+                  </BouncyButton>
+
+                  <BouncyButton
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      marginTop: 10, borderWidth: 1, borderColor: toolsTheme.border,
+                      borderRadius: 12, paddingVertical: 10
+                    }}
+                    onPress={pickPdfEditorImages}
+                    disabled={pdfEditorLoading}
+                    accessibilityRole="button"
+                  >
+                    <ImageIconSVG size={16} color={toolsTheme.textSecondary} />
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{tt('addImages')}</Text>
+                  </BouncyButton>
 
                   {pdfEditorLoading && (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 }}>
@@ -19233,15 +19450,114 @@ function App() {
                   )}
                   </View>
 
-                  <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
+                  <View style={{ gap: 14 }}>
+                  {pdfEditorPages.length > 0 && pdfSelectModeTool && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 12 }}>
+                      <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
+                        {pdfSelectedPageIds.length} page{pdfSelectedPageIds.length === 1 ? '' : 's'} selected
+                      </Text>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <BouncyButton
+                          style={{ paddingVertical: 6, paddingHorizontal: 12 }}
+                          onPress={() => { setPdfSelectModeTool(null); setPdfSelectedPageIds([]); }}
+                          accessibilityRole="button"
+                        >
+                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Cancel</Text>
+                        </BouncyButton>
+                        <BouncyButton
+                          style={{
+                            paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
+                            backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                            opacity: pdfSelectedPageIds.length === 0 ? 0.5 : 1
+                          }}
+                          onPress={startPdfCropQueue}
+                          disabled={pdfSelectedPageIds.length === 0}
+                          accessibilityRole="button"
+                          accessibilityState={{ disabled: pdfSelectedPageIds.length === 0 }}
+                        >
+                          <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>Confirm</Text>
+                        </BouncyButton>
+                      </View>
+                    </View>
+                  )}
+                  {pdfEditorPages.length > 0 && !pdfSelectModeTool && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+                      <BouncyButton
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
+                          borderRadius: 99, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD', opacity: pdfCompressing ? 0.6 : 1
+                        }}
+                        onPress={handleCompressPdf}
+                        disabled={pdfCompressing}
+                        accessibilityRole="button"
+                        accessibilityLabel="Compress this PDF"
+                        accessibilityState={{ disabled: pdfCompressing, busy: pdfCompressing }}
+                      >
+                        {pdfCompressing ? (
+                          <ActivityIndicator color="#FFFFFF" size="small" />
+                        ) : (
+                          <>
+                            <CompressIconSVG color="#FFFFFF" size={14} />
+                            <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>Compress</Text>
+                          </>
+                        )}
+                      </BouncyButton>
+                      <BouncyButton
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
+                          borderRadius: 99, borderWidth: 1,
+                          borderColor: pdfReorderModeActive ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border,
+                          backgroundColor: pdfReorderModeActive ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.1)' : 'rgba(139,92,246,0.15)') : 'transparent'
+                        }}
+                        onPress={() => {
+                          setPdfSelectModeTool(null);
+                          setPdfSelectedPageIds([]);
+                          setPdfReorderModeActive((v) => !v);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Reorder pages"
+                        accessibilityState={{ selected: pdfReorderModeActive }}
+                      >
+                        <Text style={{ color: pdfReorderModeActive ? toolsTheme.accent : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>
+                          {pdfReorderModeActive ? 'Done Reordering' : 'Reorder'}
+                        </Text>
+                      </BouncyButton>
+                      <BouncyButton
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 14,
+                          borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border
+                        }}
+                        onPress={() => setPdfMoreToolsMenuVisible(true)}
+                        accessibilityRole="button"
+                        accessibilityLabel="More PDF tools"
+                      >
+                        <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>More Tools</Text>
+                        <ChevronDownSVG color={toolsTheme.textSecondary} size={13} />
+                      </BouncyButton>
+                    </View>
+                  )}
+
                   {pdfEditorPages.length > 0 && (
-                    <BouncyButton
-                      style={{ alignSelf: 'flex-start', marginTop: 14 }}
-                      onPress={() => setClearFilesConfirmTarget('pdfEditor')}
-                      accessibilityRole="button"
-                    >
-                      <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>{tt('clearAll')}</Text>
-                    </BouncyButton>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 4 }}>
+                      <BouncyButton
+                        style={{ alignSelf: 'flex-start' }}
+                        onPress={() => setClearFilesConfirmTarget('pdfEditor')}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>{tt('clearAll')}</Text>
+                      </BouncyButton>
+                      {pdfEditorHasPendingChanges && (
+                        <BouncyButton
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                          onPress={handleUndoPdfEdit}
+                          accessibilityRole="button"
+                          accessibilityLabel="Undo last change"
+                        >
+                          <RevertIconSVG color={toolsTheme.accent} size={14} />
+                          <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '600' }}>Undo</Text>
+                        </BouncyButton>
+                      )}
+                    </View>
                   )}
 
                   {pdfEditorPages.length > 0 && (
@@ -19262,13 +19578,18 @@ function App() {
                   )}
 
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
-                    {pdfEditorPages.map((page, index) => (
+                    {pdfEditorPages.map((page, index) => {
+                      const isNewSourceBoundary = index > 0 && page.sourceFileIndex !== pdfEditorPages[index - 1].sourceFileIndex;
+                      return (
                       <View
                         key={page.id}
                         style={{
                           width: 100, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 8,
-                          borderWidth: pdfDragIndex === index ? 2 : 1,
-                          borderColor: pdfDragIndex === index ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
+                          borderWidth: pdfDragIndex === index ? 2 : (isNewSourceBoundary ? 2 : 1),
+                          borderColor: pdfDragIndex === index
+                            ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6')
+                            : (isNewSourceBoundary ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border),
+                          borderStyle: isNewSourceBoundary && pdfDragIndex !== index ? 'dashed' : 'solid'
                         }}
                         {...(Platform.OS === 'web' ? {
                           draggable: true,
@@ -19282,10 +19603,16 @@ function App() {
                           onDragEnd: () => setPdfDragIndex(null)
                         } : {})}
                       >
+                        {isNewSourceBoundary && (
+                          <Text style={{ color: toolsTheme.accent, fontSize: 9, fontWeight: '700', textAlign: 'center', marginBottom: 4 }}>
+                            NEW FILE
+                          </Text>
+                        )}
                         <BouncyButton
-                          onPress={() => setPdfFullscreenIndex(index)}
+                          onPress={() => (pdfSelectModeTool ? togglePdfPageSelected(page.id) : setPdfFullscreenIndex(index))}
                           accessibilityRole="button"
-                          accessibilityLabel={`Open page ${index + 1}`}
+                          accessibilityLabel={pdfSelectModeTool ? `Select page ${index + 1}` : `Open page ${index + 1}`}
+                          accessibilityState={pdfSelectModeTool ? { selected: pdfSelectedPageIds.includes(page.id) } : undefined}
                         >
                         <View style={{
                           width: '100%', aspectRatio: 0.75, borderRadius: 8, backgroundColor: toolsTheme.bg,
@@ -19302,21 +19629,40 @@ function App() {
                           ) : (
                             <PdfIconSVG size={28} color={toolsTheme.textSecondary} />
                           )}
+                          {pdfSelectModeTool && (
+                            <View style={{
+                              position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11,
+                              alignItems: 'center', justifyContent: 'center',
+                              backgroundColor: pdfSelectedPageIds.includes(page.id) ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'rgba(0,0,0,0.4)',
+                              borderWidth: pdfSelectedPageIds.includes(page.id) ? 0 : 1.5, borderColor: '#FFFFFF'
+                            }}>
+                              {pdfSelectedPageIds.includes(page.id) && (
+                                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '800' }}>✓</Text>
+                              )}
+                            </View>
+                          )}
                         </View>
                         </BouncyButton>
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 10, textAlign: 'center', marginTop: 4 }}>
-                          {index + 1}
-                        </Text>
-                        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 4 }}>
-                          <BouncyButton onPress={() => rotatePdfEditorPage(page.id)} accessibilityRole="button" accessibilityLabel="Rotate page">
-                            <RotateIconSVG size={15} color={toolsTheme.textSecondary} />
-                          </BouncyButton>
-                          <BouncyButton onPress={() => removePdfEditorPage(page.id)} accessibilityRole="button" accessibilityLabel="Remove page">
-                            <TrashIconSVG />
-                          </BouncyButton>
-                        </View>
-                        {Platform.OS !== 'web' && (
-                          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+                        {pdfReorderModeActive ? (
+                          <FocusableTextInput
+                            style={{
+                              color: toolsTheme.text, fontSize: 12, fontWeight: '700', textAlign: 'center',
+                              marginTop: 4, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 6,
+                              paddingVertical: 2
+                            }}
+                            defaultValue={String(index + 1)}
+                            keyboardType="number-pad"
+                            selectTextOnFocus
+                            onSubmitEditing={(e) => handleReorderByTypedPosition(page.id, parseInt(e.nativeEvent.text, 10))}
+                            accessibilityLabel={`Move page to position, currently ${index + 1}`}
+                          />
+                        ) : (
+                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 10, textAlign: 'center', marginTop: 4 }}>
+                            {index + 1}
+                          </Text>
+                        )}
+                        {pdfReorderModeActive ? (
+                          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 4 }}>
                             <BouncyButton
                               onPress={() => movePdfEditorPage(page.id, -1)}
                               disabled={index === 0}
@@ -19324,7 +19670,7 @@ function App() {
                               accessibilityLabel="Move page earlier"
                               style={{ opacity: index === 0 ? 0.3 : 1 }}
                             >
-                              <ChevronUpSVG size={14} color={toolsTheme.textSecondary} />
+                              <ChevronUpSVG size={16} color={toolsTheme.textSecondary} />
                             </BouncyButton>
                             <BouncyButton
                               onPress={() => movePdfEditorPage(page.id, 1)}
@@ -19333,24 +19679,83 @@ function App() {
                               accessibilityLabel="Move page later"
                               style={{ opacity: index === pdfEditorPages.length - 1 ? 0.3 : 1 }}
                             >
-                              <ChevronDownSVG size={14} color={toolsTheme.textSecondary} />
+                              <ChevronDownSVG size={16} color={toolsTheme.textSecondary} />
                             </BouncyButton>
                           </View>
+                        ) : (
+                          <>
+                            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+                              <BouncyButton onPress={() => rotatePdfEditorPage(page.id)} accessibilityRole="button" accessibilityLabel="Rotate page">
+                                <RotateIconSVG size={15} color={toolsTheme.textSecondary} />
+                              </BouncyButton>
+                              <BouncyButton onPress={() => removePdfEditorPage(page.id)} accessibilityRole="button" accessibilityLabel="Remove page">
+                                <TrashIconSVG />
+                              </BouncyButton>
+                            </View>
+                            {Platform.OS !== 'web' && (
+                              <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+                                <BouncyButton
+                                  onPress={() => movePdfEditorPage(page.id, -1)}
+                                  disabled={index === 0}
+                                  accessibilityRole="button"
+                                  accessibilityLabel="Move page earlier"
+                                  style={{ opacity: index === 0 ? 0.3 : 1 }}
+                                >
+                                  <ChevronUpSVG size={14} color={toolsTheme.textSecondary} />
+                                </BouncyButton>
+                                <BouncyButton
+                                  onPress={() => movePdfEditorPage(page.id, 1)}
+                                  disabled={index === pdfEditorPages.length - 1}
+                                  accessibilityRole="button"
+                                  accessibilityLabel="Move page later"
+                                  style={{ opacity: index === pdfEditorPages.length - 1 ? 0.3 : 1 }}
+                                >
+                                  <ChevronDownSVG size={14} color={toolsTheme.textSecondary} />
+                                </BouncyButton>
+                              </View>
+                            )}
+                          </>
                         )}
                       </View>
-                    ))}
+                      );
+                    })}
                   </View>
 
                   {isWebWide && pdfEditorPages.length > 0 && (
-                    <BouncyButton
-                      style={[styles.saveAccountSettingsBtn, { marginTop: 4, opacity: pdfEditorExporting ? 0.6 : 1 }]}
-                      onPress={handleExportPdf}
-                      disabled={pdfEditorExporting}
-                      accessibilityRole="button"
-                      accessibilityState={{ disabled: pdfEditorExporting, busy: pdfEditorExporting }}
-                    >
-                      <Text style={styles.submitBtnText}>{pdfEditorExporting ? tt('exportingPdf') : tt('exportPdf')}</Text>
-                    </BouncyButton>
+                    pdfEditorHasPendingChanges ? (
+                      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 4 }}>
+                        <BouncyButton
+                          style={{
+                            width: 44, height: 44, borderRadius: 99,
+                            backgroundColor: '#FFFFFF',
+                            borderWidth: 1.5, borderColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+                            alignItems: 'center', justifyContent: 'center'
+                          }}
+                          onPress={handleRevertPdfChanges}
+                          accessibilityRole="button"
+                          accessibilityLabel="Revert changes"
+                        >
+                          <RevertIconSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} size={19} />
+                        </BouncyButton>
+                        <BouncyButton
+                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0 }]}
+                          onPress={() => setPdfReviewChangesVisible(true)}
+                          accessibilityRole="button"
+                        >
+                          <Text style={styles.submitBtnText}>Save Changes</Text>
+                        </BouncyButton>
+                      </View>
+                    ) : (
+                      <BouncyButton
+                        style={[styles.saveAccountSettingsBtn, { marginTop: 4, opacity: pdfEditorExporting ? 0.6 : 1 }]}
+                        onPress={handleExportPdf}
+                        disabled={pdfEditorExporting}
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: pdfEditorExporting, busy: pdfEditorExporting }}
+                      >
+                        <Text style={styles.submitBtnText}>{pdfEditorExporting ? tt('exportingPdf') : tt('exportPdf')}</Text>
+                      </BouncyButton>
+                    )
                   )}
                   </View>
                 </View>
@@ -19419,15 +19824,40 @@ function App() {
 
             {activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && !isWebWide && (
               <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border }}>
-                <BouncyButton
-                  style={[styles.saveAccountSettingsBtn, { marginTop: 0, opacity: pdfEditorExporting ? 0.6 : 1 }]}
-                  onPress={handleExportPdf}
-                  disabled={pdfEditorExporting}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: pdfEditorExporting, busy: pdfEditorExporting }}
-                >
-                  <Text style={styles.submitBtnText}>{pdfEditorExporting ? tt('exportingPdf') : tt('exportPdf')}</Text>
-                </BouncyButton>
+                {pdfEditorHasPendingChanges ? (
+                  <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                    <BouncyButton
+                      style={{
+                        width: 44, height: 44, borderRadius: 99,
+                        backgroundColor: '#FFFFFF',
+                        borderWidth: 1.5, borderColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+                        alignItems: 'center', justifyContent: 'center'
+                      }}
+                      onPress={handleRevertPdfChanges}
+                      accessibilityRole="button"
+                      accessibilityLabel="Revert changes"
+                    >
+                      <RevertIconSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} size={19} />
+                    </BouncyButton>
+                    <BouncyButton
+                      style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0 }]}
+                      onPress={() => setPdfReviewChangesVisible(true)}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.submitBtnText}>Save Changes</Text>
+                    </BouncyButton>
+                  </View>
+                ) : (
+                  <BouncyButton
+                    style={[styles.saveAccountSettingsBtn, { marginTop: 0, opacity: pdfEditorExporting ? 0.6 : 1 }]}
+                    onPress={handleExportPdf}
+                    disabled={pdfEditorExporting}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: pdfEditorExporting, busy: pdfEditorExporting }}
+                  >
+                    <Text style={styles.submitBtnText}>{pdfEditorExporting ? tt('exportingPdf') : tt('exportPdf')}</Text>
+                  </BouncyButton>
+                )}
               </View>
             )}
           </SafeAreaView>
@@ -19460,46 +19890,33 @@ function App() {
               <Text style={{ color: '#F8FAFC', fontSize: 14, fontWeight: '700' }}>
                 {pdfFullscreenIndex + 1} / {pdfEditorPages.length}
               </Text>
-              <BouncyButton
-                style={{ padding: 6 }}
-                onPress={() => {
-                  const page = pdfEditorPages[pdfFullscreenIndex];
-                  if (page) removePdfEditorPage(page.id);
-                  setPdfFullscreenIndex((i) => (pdfEditorPages.length <= 1 ? null : Math.min(i, pdfEditorPages.length - 2)));
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Delete this page"
-              >
-                <TrashIconSVG />
-              </BouncyButton>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                {pdfEditorHasPendingChanges && (
+                  <BouncyButton
+                    style={{ padding: 6 }}
+                    onPress={handleUndoPdfEdit}
+                    accessibilityRole="button"
+                    accessibilityLabel="Undo last change"
+                  >
+                    <RevertIconSVG color="#F8FAFC" size={18} />
+                  </BouncyButton>
+                )}
+                <BouncyButton
+                  style={{ padding: 6 }}
+                  onPress={() => {
+                    const page = pdfEditorPages[pdfFullscreenIndex];
+                    if (page) removePdfEditorPage(page.id);
+                    setPdfFullscreenIndex((i) => (pdfEditorPages.length <= 1 ? null : Math.min(i, pdfEditorPages.length - 2)));
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete this page"
+                >
+                  <TrashIconSVG />
+                </BouncyButton>
+              </View>
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 12 }}>
-              <BouncyButton
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', opacity: pdfCompressing ? 0.5 : 1 }}
-                onPress={handleCompressPdf}
-                disabled={pdfCompressing}
-                accessibilityRole="button"
-                accessibilityLabel="Compress this PDF"
-                accessibilityState={{ disabled: pdfCompressing, busy: pdfCompressing }}
-              >
-                {pdfCompressing ? (
-                  <ActivityIndicator color="#F8FAFC" size="small" />
-                ) : (
-                  <>
-                    <CompressIconSVG color="#F8FAFC" size={15} />
-                    <Text style={{ color: '#F8FAFC', fontSize: 12, fontWeight: '600' }}>Compress</Text>
-                  </>
-                )}
-              </BouncyButton>
-              <BouncyButton
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
-                onPress={handleAddPageNumbers}
-                accessibilityRole="button"
-                accessibilityLabel="Add page numbers"
-              >
-                <Text style={{ color: '#F8FAFC', fontSize: 12, fontWeight: '600' }}>Page Numbers</Text>
-              </BouncyButton>
               <BouncyButton
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
                 onPress={() => handleExtractPage(pdfFullscreenIndex)}
@@ -19511,18 +19928,32 @@ function App() {
             </View>
 
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-              {pdfEditorPages[pdfFullscreenIndex].thumbnailUri ? (
-                <Image
-                  source={{ uri: pdfEditorPages[pdfFullscreenIndex].thumbnailUri }}
-                  style={{
-                    width: '100%', height: '100%',
-                    transform: [{ rotate: `${pdfEditorPages[pdfFullscreenIndex].rotation}deg` }]
-                  }}
-                  resizeMode="contain"
-                />
-              ) : (
-                <PdfIconSVG size={64} color="#64748B" />
-              )}
+              {(() => {
+                const currentPage = pdfEditorPages[pdfFullscreenIndex];
+                const highResPages = pdfFullscreenHighResCache[currentPage.sourceFileIndex];
+                const highResUri = highResPages ? highResPages[currentPage.sourcePageIndex] : null;
+                const displayUri = highResUri || currentPage.thumbnailUri;
+                return displayUri ? (
+                  <>
+                    <Image
+                      source={{ uri: displayUri }}
+                      style={{
+                        width: '100%', height: '100%',
+                        transform: [{ rotate: `${currentPage.rotation}deg` }]
+                      }}
+                      resizeMode="contain"
+                    />
+                    {pdfFullscreenHighResLoading && !highResUri && (
+                      <View style={{ position: 'absolute', bottom: 12, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 }}>
+                        <ActivityIndicator color="#F8FAFC" size="small" />
+                        <Text style={{ color: '#F8FAFC', fontSize: 11 }}>Sharpening...</Text>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <PdfIconSVG size={64} color="#64748B" />
+                );
+              })()}
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 16 }}>
@@ -19707,6 +20138,196 @@ function App() {
           </View>
         </View>
       </Modal>
+
+      {/* PDF EDITOR - CROP POPUP. One selected page at a time, live
+          preview with the crop boundary overlaid, numeric inset
+          controls rather than drag-handles (a full interactive slider
+          would mean repeating the Compressor's whole web/native
+          PanResponder pattern four times over - numeric fields give the
+          same real control and live preview with far less risk). */}
+      {pdfCropQueueIndex !== null && pdfSelectedPageIds[pdfCropQueueIndex] && (() => {
+        const currentPageId = pdfSelectedPageIds[pdfCropQueueIndex];
+        const currentPage = pdfEditorPages.find((p) => p.id === currentPageId);
+        if (!currentPage) return null;
+        const highResPages = pdfFullscreenHighResCache[currentPage.sourceFileIndex];
+        const previewUri = (highResPages && highResPages[currentPage.sourcePageIndex]) || currentPage.thumbnailUri;
+        const isLastInQueue = pdfCropQueueIndex >= pdfSelectedPageIds.length - 1;
+
+        const insetField = (label, key) => (
+          <View style={{ flex: 1, minWidth: 90 }}>
+            <Text style={{ color: '#94A3B8', fontSize: 10.5, marginBottom: 3 }}>{label}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 8 }}>
+              <FocusableTextInput
+                style={{ flex: 1, color: '#F8FAFC', fontSize: 13, paddingVertical: 6, paddingHorizontal: 8 }}
+                value={String(Math.round(pdfCropInsets[key] * 100))}
+                keyboardType="number-pad"
+                onChangeText={(t) => {
+                  const pct = Math.max(0, Math.min(90, parseInt(t.replace(/[^0-9]/g, ''), 10) || 0));
+                  setPdfCropInsets((prev) => ({ ...prev, [key]: pct / 100 }));
+                }}
+                accessibilityLabel={`${label} crop percent`}
+              />
+              <Text style={{ color: '#94A3B8', fontSize: 12, paddingRight: 8 }}>%</Text>
+            </View>
+          </View>
+        );
+
+        return (
+          <Modal animationType={Platform.OS === 'web' ? 'none' : 'fade'} transparent={false} visible={true} onRequestClose={() => setPdfCropQueueIndex(null)}>
+            <SafeAreaView style={{ flex: 1, backgroundColor: '#0B0F17' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }}>
+                <BouncyButton style={{ padding: 6 }} onPress={() => setPdfCropQueueIndex(null)} accessibilityRole="button" accessibilityLabel="Cancel crop">
+                  <Text style={{ color: '#F8FAFC', fontSize: 22 }}>✕</Text>
+                </BouncyButton>
+                <Text style={{ color: '#F8FAFC', fontSize: 14, fontWeight: '700' }}>
+                  Crop - Page {pdfCropQueueIndex + 1} of {pdfSelectedPageIds.length}
+                </Text>
+                <View style={{ width: 34 }} />
+              </View>
+
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+                <View style={{ width: '100%', maxWidth: 360, aspectRatio: 0.75, position: 'relative' }}>
+                  {previewUri ? (
+                    <Image source={{ uri: previewUri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+                  ) : (
+                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                      <PdfIconSVG size={48} color="#64748B" />
+                    </View>
+                  )}
+                  {/* Dark mask over the four excluded edges - what's left
+                      uncovered in the middle is what the crop will keep. */}
+                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: `${pdfCropInsets.top * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
+                  <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${pdfCropInsets.bottom * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
+                  <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${pdfCropInsets.left * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
+                  <View style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: `${pdfCropInsets.right * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
+                </View>
+              </View>
+
+              <View style={{ paddingHorizontal: 20, paddingBottom: 12 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+                  {insetField('Top', 'top')}
+                  {insetField('Bottom', 'bottom')}
+                  {insetField('Left', 'left')}
+                  {insetField('Right', 'right')}
+                </View>
+              </View>
+
+              <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
+                <BouncyButton
+                  style={[styles.saveAccountSettingsBtn, { marginTop: 0 }]}
+                  onPress={advancePdfCropQueue}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.submitBtnText}>{isLastInQueue ? 'Done - Apply Crop' : 'Next Page'}</Text>
+                </BouncyButton>
+              </View>
+            </SafeAreaView>
+          </Modal>
+        );
+      })()}
+
+      {/* PDF EDITOR - MORE TOOLS popup, secondary/less-common tools that
+          don't warrant a primary toolbar slot. Conditionally mounted
+          from the start, matching every other Tools popup this session -
+          no reason to risk the stacking bug on a brand new modal when
+          the safe pattern is already established. */}
+      {pdfMoreToolsMenuVisible && (
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfMoreToolsMenuVisible(false)}>
+          <View
+            style={{ flex: 1 }}
+            onStartShouldSetResponder={() => true}
+            onResponderRelease={() => setPdfMoreToolsMenuVisible(false)}
+          >
+            <View style={{
+              position: 'absolute', top: Platform.OS === 'web' ? 140 : 160, alignSelf: 'center',
+              backgroundColor: toolsTheme.surface, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border,
+              minWidth: 200, paddingVertical: 6, overflow: 'hidden'
+            }}>
+              <BouncyButton
+                style={{ paddingHorizontal: 16, paddingVertical: 12 }}
+                onPress={() => { setPdfMoreToolsMenuVisible(false); handleAddPageNumbers(); }}
+                accessibilityRole="button"
+              >
+                <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Add Page Numbers</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={{ paddingHorizontal: 16, paddingVertical: 12 }}
+                onPress={() => {
+                  setPdfMoreToolsMenuVisible(false);
+                  setPdfReorderModeActive(false);
+                  setPdfSelectedPageIds([]);
+                  setPdfSelectModeTool('crop');
+                }}
+                accessibilityRole="button"
+              >
+                <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Crop Pages</Text>
+              </BouncyButton>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* PDF EDITOR - REVIEW CHANGES. Lists every pending operation
+          before it actually gets committed - nothing in pdfEditorHistory
+          has been "final" until this confirms it. */}
+      {pdfReviewChangesVisible && (
+        <Modal
+          animationType={Platform.OS === 'web' ? 'none' : 'fade'}
+          transparent={true}
+          visible={true}
+          onRequestClose={() => setPdfReviewChangesVisible(false)}
+        >
+          <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => setPdfReviewChangesVisible(false)}
+          >
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView
+                  intensity={55}
+                  tint={themeMode === 'light' ? 'light' : 'dark'}
+                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                />
+              )
+            )}
+            <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+              onStartShouldSetResponder={() => Platform.OS === 'web'}
+              onResponderRelease={() => {}}
+            >
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Review Changes</Text>
+              <Text style={styles.confirmSubText}>
+                {pdfEditorHistory.length} {pdfEditorHistory.length === 1 ? 'change' : 'changes'} ready to save:
+              </Text>
+              <View style={{ width: '100%', gap: 6, marginBottom: 16 }}>
+                {pdfEditorHistory.map((h, i) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: theme.accent }} />
+                    <Text style={{ color: theme.text, fontSize: 13 }}>{h.label}</Text>
+                  </View>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                  onPress={() => setPdfReviewChangesVisible(false)}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+                </BouncyButton>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.accent }]}
+                  onPress={handleSavePdfChanges}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.confirmDeleteText}>Save Changes</Text>
+                </BouncyButton>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* LEAVE TOOLS CONFIRMATION - only shown when the active tool has
           unsaved work (see toolsHasUnsavedWork), styled to match the

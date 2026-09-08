@@ -13,25 +13,22 @@
 // so App.js can import both names from the same module path without
 // needing its own platform branching at the call site - only the
 // function matching the actual running platform ever does real work.
-
-// scale is a pdf.js viewport scale factor - defaults to the small grid-
-// tile render, but PDF compression needs a much larger render (the whole
-// point is a readable page, not a thumbnail), so it's a parameter rather
-// than hardcoded.
+//
+// pdfjs-dist is imported dynamically here, not as a static top-level
+// import - tried static once already, and without the babel.config.js
+// unstable_transformImportMeta fix in place, that made things strictly
+// worse (crashed the whole app on load instead of just this feature,
+// since App.js imports this file at startup). With that babel fix now
+// in place, static *should* be safe and is arguably cleaner, but
+// keeping this dynamic for now means even if the babel fix turns out to
+// be incomplete for some edge case, the failure stays contained to "no
+// thumbnail" rather than "nothing works" - a deliberately conservative
+// choice until the babel fix is confirmed working end-to-end.
 export const generateWebPdfThumbnails = async (uri, scale = 0.4) => {
   try {
     const pdfjsLib = await import('pdfjs-dist');
-    // unpkg mirrors npm directly, so this always matches whatever version
-    // is actually installed - cdnjs requires manual curation per package
-    // and may lag behind or simply not carry every patch version. The
-    // worker file itself is also .mjs, not .js, as of pdfjs-dist v4+ -
-    // the old .js filename this pointed to no longer exists, which was
-    // silently failing every thumbnail generation (caught, fell through
-    // to the null fallback, one 'PDF' icon per page instead of a real
-    // preview - functionally invisible unless you go looking at exactly
-    // this failure mode).
     pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
-    const pdf = await pdfjsLib.getDocument(uri).promise;
+    const pdf = await pdfjsLib.getDocument({ url: uri }).promise;
     const thumbnails = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
