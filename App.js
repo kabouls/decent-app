@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 686;
+const BUILD_NUMBER = 698;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -717,6 +717,18 @@ const RotateIconSVG = React.memo(({ color = '#94A3B8', size = 15 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M4 12a8 8 0 1 1 2.5 5.8" stroke={color} strokeWidth="2" strokeLinecap="round" />
     <Path d="M4 17v-5h5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
+// Three vertical dots - the Tools header's overflow menu trigger, used
+// on mobile web (where the header is too narrow for inline Donate/
+// language/theme controls) and on native (which has no inline controls
+// at all, just Donate/Feedback tucked away here instead).
+const MoreIconSVG = React.memo(({ color = '#94A3B8', size = 18 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Circle cx="12" cy="5" r="1.8" fill={color} />
+    <Circle cx="12" cy="12" r="1.8" fill={color} />
+    <Circle cx="12" cy="19" r="1.8" fill={color} />
   </Svg>
 ));
 
@@ -2060,11 +2072,16 @@ const TOOLS_TRANSLATIONS = {
     convertAll: 'Convert All',
     converting: 'Converting...',
     moreToolsComingSoon: 'More tools coming soon',
+    popularTools: 'Popular Tools',
+    allTools: 'All Tools',
+    moreTools: 'More Tools',
     documentCompressor: 'Document compressor',
     compressorIntro: "Drop up to 10 images and pick a target file size - useful for application portals with strict upload limits. Nothing leaves your device.",
     targetFileSize: 'Target File Size',
     customSizeLabel: 'Custom Size (KB)',
     customSizePlaceholder: 'Custom target in KB (e.g. 350)',
+    ofOriginal: 'of original size',
+    addImagesForPreview: 'Add images to see size preview',
     advanced: 'Advanced',
     customization: 'Customization',
     maxDimensions: 'Max Dimensions (optional)',
@@ -2135,11 +2152,16 @@ const TOOLS_TRANSLATIONS = {
     convertAll: 'Konversi Semua',
     converting: 'Mengonversi...',
     moreToolsComingSoon: 'Alat lainnya akan segera hadir',
+    popularTools: 'Alat Populer',
+    allTools: 'Semua Alat',
+    moreTools: 'Alat Lainnya',
     documentCompressor: 'Kompres dokumen',
     compressorIntro: 'Unggah hingga 10 gambar dan pilih ukuran file target - berguna untuk portal lamaran dengan batas unggah yang ketat. Tidak ada yang meninggalkan perangkat Anda.',
     targetFileSize: 'Ukuran File Target',
     customSizeLabel: 'Ukuran Kustom (KB)',
     customSizePlaceholder: 'Target kustom dalam KB (mis. 350)',
+    ofOriginal: 'dari ukuran asli',
+    addImagesForPreview: 'Tambah gambar untuk melihat pratinjau ukuran',
     advanced: 'Lanjutan',
     customization: 'Kustomisasi',
     maxDimensions: 'Dimensi Maksimal (opsional)',
@@ -4054,6 +4076,29 @@ const compressVideoForUploadWeb = async (uri, onProgress, mimeTypeOrFileName) =>
 // so a stubborn image can't loop forever. Returns the closest result it
 // found even if it never fully got under target, since "as small as
 // reasonably possible" is still useful even short of the exact number.
+// Haptic feedback helper - lazy-required and try/caught rather than a
+// top-level static import, for the exact same reason expo-document-picker
+// and expo-sharing had to be converted to lazy requires earlier: a new
+// native dependency shipped via eas update (JS only, no rebuild yet)
+// crashes the whole app on launch if its JS entry accesses the native
+// binding eagerly. Native-only - there's no real haptics equivalent on
+// web worth reaching for here.
+const triggerHaptic = (type = 'selection') => {
+  if (Platform.OS === 'web') return;
+  try {
+    const Haptics = require('expo-haptics');
+    if (type === 'selection') Haptics.selectionAsync();
+    else if (type === 'light') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    else if (type === 'medium') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    else if (type === 'success') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    else if (type === 'warning') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    else if (type === 'error') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+  } catch (e) {
+    // expo-haptics not linked yet (needs a native rebuild if just added) -
+    // fail silently rather than crash or spam a warning on every drag tick.
+  }
+};
+
 const getFileSizeBytes = async (uri) => {
   if (Platform.OS === 'web') {
     const res = await fetch(uri);
@@ -6956,6 +7001,40 @@ function App() {
 
   const [compressorFiles, setCompressorFiles] = useState([]); // [{ id, originalUri, originalSize, resultUri, resultSize, status, error }]
   const [compressorTargetKB, setCompressorTargetKB] = useState(200);
+  const [compressorSizePercentage, setCompressorSizePercentage] = useState(50);
+  // Percentage is relative to the largest currently-loaded original file
+  // - with multiple files of different sizes, that's the most useful
+  // reference point (guarantees every file ends up at or under the
+  // percentage shown, rather than picking an average that could still
+  // leave a big file oversized). Returns null when nothing's loaded yet,
+  // since there's nothing real to compute a percentage against.
+  const compressorReferenceKB = compressorFiles.length > 0
+    ? Math.max(...compressorFiles.map((f) => f.originalSize)) / 1024
+    : null;
+  const setCompressorSizeFromPercentage = (pct) => {
+    setCompressorSizePercentage(pct);
+    if (compressorReferenceKB) {
+      setCompressorTargetKB(String(Math.max(1, Math.round(compressorReferenceKB * (pct / 100)))));
+    }
+  };
+  // Native-only slider drag state. Deliberately NOT wrapped in useRef(...).current
+  // for the PanResponder itself - that would cache its callbacks' closures
+  // from the first render only, permanently stale against compressorReferenceKB
+  // (which changes the moment files get added). Recreating it each render is
+  // cheap and keeps every callback closing over the current render's values.
+  const compressorSliderWidthRef = useRef(280);
+  const compressorGestureStartPct = useRef(compressorSizePercentage);
+  const compressorPanResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderGrant: () => { compressorGestureStartPct.current = compressorSizePercentage; },
+    onPanResponderMove: (evt, gestureState) => {
+      const deltaPct = (gestureState.dx / compressorSliderWidthRef.current) * 100;
+      const rawPct = Math.min(100, Math.max(0, compressorGestureStartPct.current + deltaPct));
+      const snapped = Math.round(rawPct / 5) * 5;
+      if (snapped !== compressorSizePercentage) triggerHaptic('selection');
+      setCompressorSizeFromPercentage(snapped);
+    },
+  });
   const [compressorAdvancedOpen, setCompressorAdvancedOpen] = useState(false);
   const [compressorMaxWidth, setCompressorMaxWidth] = useState('');
   const [compressorMaxHeight, setCompressorMaxHeight] = useState('');
@@ -6992,6 +7071,28 @@ function App() {
   const [pdfEditorLoading, setPdfEditorLoading] = useState(false);
   const [pdfEditorExporting, setPdfEditorExporting] = useState(false);
   const [pdfDragIndex, setPdfDragIndex] = useState(null);
+  const [toolsMenuVisible, setToolsMenuVisible] = useState(false);
+  const [leaveToolsConfirmVisible, setLeaveToolsConfirmVisible] = useState(false);
+
+  // Only warns about the ACTIVE tool's own content - someone with 3 old
+  // Compressor files sitting around but currently on the PDF Editor with
+  // nothing loaded there shouldn't get a confirmation dialog quoting
+  // Compressor state they're not even looking at.
+  const toolsHasUnsavedWork = () => {
+    if (activeTool === 'imageCompressor') return compressorFiles.length > 0;
+    if (activeTool === 'imageConverter') return converterFiles.length > 0;
+    if (activeTool === 'pdfEditor') return pdfEditorPages.length > 0;
+    return false;
+  };
+
+  const handleLeaveTools = () => {
+    if (toolsHasUnsavedWork()) {
+      setLeaveToolsConfirmVisible(true);
+    } else {
+      setToolsScreenVisible(false);
+    }
+  };
+
 
   // TOOLS-ONLY language + theme, WEB ONLY. On native, Tools follows the
   // app's own global theme/language instead of an independent toggle -
@@ -7021,6 +7122,16 @@ function App() {
     const lang = Platform.OS === 'web' ? toolsLanguage : 'en';
     return (TOOLS_TRANSLATIONS[lang] && TOOLS_TRANSLATIONS[lang][key]) || TOOLS_TRANSLATIONS.en[key] || key;
   };
+  // Shared between the hub's "All Tools" grid and each individual tool's
+  // "More Tools" footer (which filters this down to everything except
+  // whichever tool is currently open) - one definition, so adding a
+  // future tool only means updating this list once.
+  const ALL_TOOLS_LIST = [
+    { key: 'imageCompressor', label: tt('imageCompressor'), Icon: ImageIconSVG },
+    { key: 'qrGenerator', label: tt('qrGenerator'), Icon: QrIconSVG },
+    { key: 'imageConverter', label: tt('imageConverter'), Icon: SwapIconSVG },
+    { key: 'pdfEditor', label: tt('pdfEditor'), Icon: PdfIconSVG }
+  ];
   const setToolsLanguagePersisted = (lang) => {
     setToolsLanguage(lang);
     AsyncStorage.setItem(TOOLS_LANGUAGE_STORAGE_KEY, lang).catch(() => {});
@@ -17550,7 +17661,7 @@ function App() {
           visible={true}
           onRequestClose={() => {
             if (activeTool !== 'hub') setActiveTool('hub');
-            else setToolsScreenVisible(false);
+            else handleLeaveTools();
           }}
         >
           <SafeAreaView style={{ flex: 1, backgroundColor: toolsTheme.bg }}>
@@ -17563,21 +17674,21 @@ function App() {
                     two navigation levels don't get conflated into one
                     button. */}
                 <View style={[
-                  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: toolsTheme.bg, borderBottomWidth: 1, borderBottomColor: toolsTheme.border },
+                  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: toolsTheme.bg },
                   isWebWide && { paddingHorizontal: 32 }
                 ]}>
                   <BouncyButton
-                    style={{
+                    style={isWebWide ? {
                       flexDirection: 'row', alignItems: 'center', gap: 8,
                       paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12,
                       borderWidth: 1, borderColor: toolsTheme.border, backgroundColor: 'transparent'
-                    }}
-                    onPress={() => setToolsScreenVisible(false)}
+                    } : { padding: 6 }}
+                    onPress={handleLeaveTools}
                     accessibilityRole="button"
                     accessibilityLabel="Back to DECENT"
                   >
-                    <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={16} />
-                    <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Back to DECENT</Text>
+                    <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={isWebWide ? 16 : 22} />
+                    {isWebWide && <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Back to DECENT</Text>}
                   </BouncyButton>
 
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -17622,16 +17733,21 @@ function App() {
                       </BouncyButton>
                     </View>
                   ) : (
-                    // Balances the "Back to DECENT" button's width so the
-                    // centered title stays visually centered on narrow web.
-                    <View style={{ width: 90 }} />
+                    <BouncyButton
+                      style={{ padding: 6 }}
+                      onPress={() => setToolsMenuVisible(true)}
+                      accessibilityRole="button"
+                      accessibilityLabel="More options"
+                    >
+                      <MoreIconSVG color={toolsTheme.textSecondary} size={18} />
+                    </BouncyButton>
                   )}
                 </View>
 
                 {activeTool !== 'hub' && (
                   <View style={[
-                    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: toolsTheme.bg, borderBottomWidth: 1, borderBottomColor: toolsTheme.border },
-                    isWebWide && { paddingHorizontal: 32 }
+                    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: toolsTheme.bg },
+                    isWebWide && { maxWidth: 1400, width: '100%', alignSelf: 'center' }
                   ]}>
                     <BouncyButton
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
@@ -17643,49 +17759,12 @@ function App() {
                       <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, fontWeight: '600' }}>{tt('tools')}</Text>
                     </BouncyButton>
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 12 }}>/</Text>
-                    <Text style={{ color: toolsTheme.text, fontSize: 12, fontWeight: '700' }}>
+                    <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '800' }}>
                       {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : tt('pdfEditor')}
                     </Text>
                   </View>
                 )}
 
-                {/* Narrow web only - wide web already fit these into the
-                    top-right of the main header row above. */}
-                {!isWebWide && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8, backgroundColor: toolsTheme.bg, borderBottomWidth: 1, borderBottomColor: toolsTheme.border }}>
-                    {DONATIONS_ENABLED && (
-                      <BouncyButton
-                        onPress={() => { setDonateModalContext('tools'); setToolsInterstitialOfferCompress(false); setDonateTermsAgreed(false); setDonateModalVisible(true); }}
-                        accessibilityRole="button"
-                      >
-                        <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '700' }}>Donate</Text>
-                      </BouncyButton>
-                    )}
-                    <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, overflow: 'hidden' }}>
-                      {['en', 'id'].map((lang) => (
-                        <BouncyButton
-                          key={lang}
-                          style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: toolsLanguage === lang ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent' }}
-                          onPress={() => setToolsLanguagePersisted(lang)}
-                          accessibilityRole="button"
-                          accessibilityLabel={lang === 'en' ? 'English' : 'Indonesian'}
-                          accessibilityState={{ selected: toolsLanguage === lang }}
-                        >
-                          <Text style={{ color: toolsLanguage === lang ? '#FFFFFF' : toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>{lang.toUpperCase()}</Text>
-                        </BouncyButton>
-                      ))}
-                    </View>
-                    <BouncyButton
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                      onPress={toggleToolsTheme}
-                      accessibilityRole="button"
-                      accessibilityLabel={toolsThemeMode === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
-                    >
-                      {toolsThemeMode === 'light' ? <SunIconSVG color={toolsTheme.textSecondary} size={13} /> : <MoonIconSVG color={toolsTheme.textSecondary} size={13} />}
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>{toolsThemeMode === 'light' ? tt('light') : tt('dark')}</Text>
-                    </BouncyButton>
-                  </View>
-                )}
               </>
             ) : (
               <>
@@ -17712,9 +17791,17 @@ function App() {
                     <BetaTag themeMode={toolsThemeMode} />
                   </View>
                   <BouncyButton
+                    style={{ padding: 6, marginRight: 4 }}
+                    onPress={() => setToolsMenuVisible(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="More options"
+                  >
+                    <MoreIconSVG color={toolsTheme.textSecondary} size={18} />
+                  </BouncyButton>
+                  <BouncyButton
                     style={[styles.closeBtn, { backgroundColor: toolsTheme.bg, borderColor: toolsTheme.border }]}
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                    onPress={() => setToolsScreenVisible(false)}
+                    onPress={handleLeaveTools}
                     accessibilityRole="button"
                     accessibilityLabel="Close"
                   >
@@ -17723,8 +17810,8 @@ function App() {
                 </View>
 
                 {activeTool !== 'hub' && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 6, backgroundColor: toolsTheme.bg, borderBottomWidth: 1, borderBottomColor: toolsTheme.border }}>
-                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: toolsTheme.bg }}>
+                    <Text style={{ color: toolsTheme.text, fontSize: 17, fontWeight: '800' }}>
                       {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : tt('pdfEditor')}
                     </Text>
                   </View>
@@ -17735,8 +17822,8 @@ function App() {
             <AppKeyboardAwareScrollView
               contentContainerStyle={[
                 { padding: 20, gap: 14 },
-                activeTool === 'imageCompressor' && compressorFiles.length > 0 && { paddingBottom: 90 },
-                activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && { paddingBottom: 90 },
+                activeTool === 'imageCompressor' && compressorFiles.length > 0 && !isWebWide && { paddingBottom: 90 },
+                activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && !isWebWide && { paddingBottom: 90 },
                 isWebWide && { maxWidth: 1400, width: '100%', alignSelf: 'center' }
               ]}
               enableOnAndroid={true}
@@ -17747,6 +17834,10 @@ function App() {
                 <>
                   <Text style={{ color: toolsTheme.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: 4 }}>
                     {tt('toolsHubIntro')}
+                  </Text>
+
+                  <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '800', marginTop: 10 }}>
+                    {tt('popularTools')}
                   </Text>
 
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
@@ -17838,11 +17929,40 @@ function App() {
                       <ChevronRightSVG color={toolsTheme.accent} size={18} />
                     </BouncyButton>
                   </View>
+
+                  <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '800', marginTop: 22 }}>
+                    {tt('allTools')}
+                  </Text>
+
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                    {ALL_TOOLS_LIST.map(({ key, label, Icon }) => (
+                      <BouncyButton
+                        key={key}
+                        style={[
+                          {
+                            alignItems: 'center', gap: 8,
+                            backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
+                            borderRadius: 14, padding: 14
+                          },
+                          isWebWide ? { width: '23%' } : { width: '48%' }
+                        ]}
+                        onPress={() => setActiveTool(key)}
+                        accessibilityRole="button"
+                      >
+                        <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                          <Icon size={18} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                        </View>
+                        <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700', textAlign: 'center' }}>{label}</Text>
+                      </BouncyButton>
+                    ))}
+                  </View>
                 </>
               )}
 
               {activeTool === 'imageCompressor' && (
-                <>
+                <View style={{ gap: 20 }}>
+                <View style={[{ gap: 14 }, isWebWide && { flexDirection: 'row', alignItems: 'flex-start', gap: 24 }]}>
+                  <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
                   <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
                     {tt('compressorIntro')}
                   </Text>
@@ -17878,6 +17998,54 @@ function App() {
                     keyboardType="number-pad"
                     accessibilityLabel="Custom target file size in KB"
                   />
+
+                  <View style={{ marginTop: 10 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                        {compressorSizePercentage}% {tt('ofOriginal')}
+                      </Text>
+                      {compressorReferenceKB ? (
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>
+                          ≈ {Math.round(compressorReferenceKB * (compressorSizePercentage / 100))} KB
+                        </Text>
+                      ) : (
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontStyle: 'italic' }}>{tt('addImagesForPreview')}</Text>
+                      )}
+                    </View>
+                    {Platform.OS === 'web' ? (
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={compressorSizePercentage}
+                        onChange={(e) => setCompressorSizeFromPercentage(Number(e.target.value))}
+                        style={{ width: '100%', accentColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+                        aria-label="Target size percentage"
+                      />
+                    ) : (
+                      <View
+                        onLayout={(e) => { compressorSliderWidthRef.current = e.nativeEvent.layout.width; }}
+                        style={{ height: 26, justifyContent: 'center' }}
+                        accessibilityRole="adjustable"
+                        accessibilityLabel="Target size percentage"
+                        accessibilityValue={{ min: 0, max: 100, now: compressorSizePercentage }}
+                        {...compressorPanResponder.panHandlers}
+                      >
+                        <View style={{ height: 6, borderRadius: 3, backgroundColor: toolsTheme.border }} />
+                        <View style={{
+                          position: 'absolute', left: 0, height: 6, borderRadius: 3,
+                          width: `${compressorSizePercentage}%`,
+                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                        }} />
+                        <View style={{
+                          position: 'absolute', left: `${compressorSizePercentage}%`, marginLeft: -10,
+                          width: 20, height: 20, borderRadius: 10,
+                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                        }} />
+                      </View>
+                    )}
+                  </View>
 
                   <View style={{
                     backgroundColor: toolsThemeMode === 'light' ? 'rgba(109,40,217,0.06)' : 'rgba(125,82,221,0.10)',
@@ -17976,7 +18144,9 @@ function App() {
                     </Text>
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>{tt('upTo10')}</Text>
                   </BouncyButton>
+                  </View>
 
+                  <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
                   {compressorFiles.length > 0 && (
                     <BouncyButton
                       style={{ alignSelf: 'flex-start', marginTop: 4 }}
@@ -18044,16 +18214,67 @@ function App() {
                     </View>
                   ))}
 
+                  {isWebWide && compressorFiles.length > 0 && (
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                      <BouncyButton
+                        style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: compressorProcessing ? 0.6 : 1 }]}
+                        onPress={runCompressorBatch}
+                        disabled={compressorProcessing || !compressorFiles.some((f) => f.status === 'pending' || f.status === 'error')}
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: compressorProcessing, busy: compressorProcessing }}
+                      >
+                        <Text style={styles.submitBtnText}>{compressorProcessing ? tt('compressing') : tt('compressAll')}</Text>
+                      </BouncyButton>
+                      <BouncyButton
+                        style={[
+                          styles.saveAccountSettingsBtn,
+                          { flex: 1, marginTop: 0, backgroundColor: toolsTheme.bg, borderWidth: 1, borderColor: toolsTheme.border },
+                          !compressorFiles.every((f) => f.status === 'done') && { opacity: 0.4 }
+                        ]}
+                        onPress={handleDownloadAllCompressed}
+                        disabled={!compressorFiles.every((f) => f.status === 'done')}
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: !compressorFiles.every((f) => f.status === 'done') }}
+                      >
+                        <Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text>
+                      </BouncyButton>
+                    </View>
                   )}
-                </>
+                  </View>
+                </View>
+
+                {isWebWide && (
+                  <View>
+                    <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '800', marginBottom: 10 }}>
+                      {tt('moreTools')}
+                    </Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                      {ALL_TOOLS_LIST.filter((t) => t.key !== 'imageCompressor').map(({ key, label, Icon }) => (
+                        <BouncyButton
+                          key={key}
+                          style={{
+                            alignItems: 'center', gap: 8, width: '23%',
+                            backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
+                            borderRadius: 14, padding: 14
+                          }}
+                          onPress={() => setActiveTool(key)}
+                          accessibilityRole="button"
+                        >
+                          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                            <Icon size={18} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                          </View>
+                          <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700', textAlign: 'center' }}>{label}</Text>
+                        </BouncyButton>
+                      ))}
+                    </View>
+                  </View>
+                )}
+                </View>
               )}
 
-              {activeTool === 'qrGenerator' && (
-                <>
-                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
-                    {tt('qrIntro')}
-                  </Text>
-
+              {activeTool === 'qrGenerator' && (() => {
+                const previewBlock = (
+                  <>
                   {!!currentQrValue() && (
                     <View style={{ alignItems: 'center', marginVertical: 14, gap: 6 }}>
                       <View style={{ padding: 16, backgroundColor: '#FFFFFF', borderRadius: 16 }}>
@@ -18072,7 +18293,11 @@ function App() {
                       </Text>
                     </View>
                   )}
+                  </>
+                );
 
+                const formFieldsBlock = (
+                  <>
                   <Text style={styles.formGroupLabel}>{tt('contentType')}</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {[
@@ -18367,7 +18592,11 @@ function App() {
                     </View>
                     )}
                   </View>
+                  </>
+                );
 
+                const downloadButtonsBlock = (
+                  <>
                   {!!currentQrValue() && (
                     <View style={{ marginTop: 14, width: '100%' }}>
                       <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
@@ -18392,11 +18621,67 @@ function App() {
                       </View>
                     </View>
                   )}
-                </>
-              )}
+                  </>
+                );
+
+                return (
+                  <>
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
+                      {tt('qrIntro')}
+                    </Text>
+
+                    {isWebWide ? (
+                      <View style={{ flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1, gap: 14 }}>
+                          {formFieldsBlock}
+                        </View>
+                        <View style={{ flex: 1, gap: 14 }}>
+                          {previewBlock}
+                          {downloadButtonsBlock}
+                        </View>
+                      </View>
+                    ) : (
+                      <>
+                        {previewBlock}
+                        {formFieldsBlock}
+                        {downloadButtonsBlock}
+                      </>
+                    )}
+
+                    {isWebWide && (
+                      <View style={{ marginTop: 20 }}>
+                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '800', marginBottom: 10 }}>
+                          {tt('moreTools')}
+                        </Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                          {ALL_TOOLS_LIST.filter((t) => t.key !== 'qrGenerator').map(({ key, label, Icon }) => (
+                            <BouncyButton
+                              key={key}
+                              style={{
+                                alignItems: 'center', gap: 8, width: '23%',
+                                backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
+                                borderRadius: 14, padding: 14
+                              }}
+                              onPress={() => setActiveTool(key)}
+                              accessibilityRole="button"
+                            >
+                              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                                <Icon size={18} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                              </View>
+                              <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700', textAlign: 'center' }}>{label}</Text>
+                            </BouncyButton>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+                  </>
+                );
+              })()}
 
               {activeTool === 'imageConverter' && (
-                <>
+                <View style={{ gap: 20 }}>
+                <View style={[{ gap: 14 }, isWebWide && { flexDirection: 'row', alignItems: 'flex-start', gap: 24 }]}>
+                  <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
                   <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
                     {tt('converterIntro')}
                   </Text>
@@ -18448,7 +18733,9 @@ function App() {
                     <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addFromFiles')}</Text>
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 10.5, textAlign: 'center' }}>{tt('addFromFilesDesc')}</Text>
                   </BouncyButton>
+                  </View>
 
+                  <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
                   {converterFiles.map((file, fileIndex) => (
                     <View key={file.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 10 }}>
                       <BouncyButton
@@ -18541,11 +18828,42 @@ function App() {
                       </BouncyButton>
                     </View>
                   )}
-                </>
+                  </View>
+                </View>
+
+                {isWebWide && (
+                  <View>
+                    <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '800', marginBottom: 10 }}>
+                      {tt('moreTools')}
+                    </Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                      {ALL_TOOLS_LIST.filter((t) => t.key !== 'imageConverter').map(({ key, label, Icon }) => (
+                        <BouncyButton
+                          key={key}
+                          style={{
+                            alignItems: 'center', gap: 8, width: '23%',
+                            backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
+                            borderRadius: 14, padding: 14
+                          }}
+                          onPress={() => setActiveTool(key)}
+                          accessibilityRole="button"
+                        >
+                          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                            <Icon size={18} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                          </View>
+                          <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700', textAlign: 'center' }}>{label}</Text>
+                        </BouncyButton>
+                      ))}
+                    </View>
+                  </View>
+                )}
+                </View>
               )}
 
               {activeTool === 'pdfEditor' && (
-                <>
+                <View style={{ gap: 20 }}>
+                <View style={[{ gap: 14 }, isWebWide && { flexDirection: 'row', alignItems: 'flex-start', gap: 24 }]}>
+                  <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
                   <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
                     {tt('pdfEditorIntro')}
                   </Text>
@@ -18583,7 +18901,9 @@ function App() {
                       <Text style={{ color: toolsTheme.textSecondary, fontSize: 12 }}>{tt('loadingPdf')}</Text>
                     </View>
                   )}
+                  </View>
 
+                  <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
                   {pdfEditorPages.length > 0 && (
                     <BouncyButton
                       style={{ alignSelf: 'flex-start', marginTop: 14 }}
@@ -18673,7 +18993,48 @@ function App() {
                       </View>
                     ))}
                   </View>
-                </>
+
+                  {isWebWide && pdfEditorPages.length > 0 && (
+                    <BouncyButton
+                      style={[styles.saveAccountSettingsBtn, { marginTop: 4, opacity: pdfEditorExporting ? 0.6 : 1 }]}
+                      onPress={handleExportPdf}
+                      disabled={pdfEditorExporting}
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: pdfEditorExporting, busy: pdfEditorExporting }}
+                    >
+                      <Text style={styles.submitBtnText}>{pdfEditorExporting ? tt('exportingPdf') : tt('exportPdf')}</Text>
+                    </BouncyButton>
+                  )}
+                  </View>
+                </View>
+
+                {isWebWide && (
+                  <View>
+                    <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '800', marginBottom: 10 }}>
+                      {tt('moreTools')}
+                    </Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                      {ALL_TOOLS_LIST.filter((t) => t.key !== 'pdfEditor').map(({ key, label, Icon }) => (
+                        <BouncyButton
+                          key={key}
+                          style={{
+                            alignItems: 'center', gap: 8, width: '23%',
+                            backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
+                            borderRadius: 14, padding: 14
+                          }}
+                          onPress={() => setActiveTool(key)}
+                          accessibilityRole="button"
+                        >
+                          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                            <Icon size={18} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                          </View>
+                          <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700', textAlign: 'center' }}>{label}</Text>
+                        </BouncyButton>
+                      ))}
+                    </View>
+                  </View>
+                )}
+                </View>
               )}
             </AppKeyboardAwareScrollView>
 
@@ -18681,11 +19042,8 @@ function App() {
                 All, deliberately outside the ScrollView so it stays
                 pinned to the bottom of the screen instead of scrolling
                 away with the file list. */}
-            {activeTool === 'imageCompressor' && compressorFiles.length > 0 && (
-              <View style={[
-                { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 10, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border },
-                isWebWide && { maxWidth: 1400, width: '100%', alignSelf: 'center' }
-              ]}>
+            {activeTool === 'imageCompressor' && compressorFiles.length > 0 && !isWebWide && (
+              <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 10, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border }}>
                 <BouncyButton
                   style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: compressorProcessing ? 0.6 : 1 }]}
                   onPress={runCompressorBatch}
@@ -18711,11 +19069,8 @@ function App() {
               </View>
             )}
 
-            {activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && (
-              <View style={[
-                { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border },
-                isWebWide && { maxWidth: 1400, width: '100%', alignSelf: 'center' }
-              ]}>
+            {activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && !isWebWide && (
+              <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border }}>
                 <BouncyButton
                   style={[styles.saveAccountSettingsBtn, { marginTop: 0, opacity: pdfEditorExporting ? 0.6 : 1 }]}
                   onPress={handleExportPdf}
@@ -18728,6 +19083,86 @@ function App() {
               </View>
             )}
           </SafeAreaView>
+        </Modal>
+      )}
+
+      {/* TOOLS OVERFLOW MENU - triggered by the 3-dot icon. Mobile web
+          (header too narrow for inline controls) gets Donate/language/
+          theme/Feedback; native (no inline controls at all normally)
+          gets just Donate/Feedback. Wide web never shows this trigger -
+          it keeps its inline header controls. */}
+      {toolsMenuVisible && (
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setToolsMenuVisible(false)}>
+          <View
+            style={{ flex: 1 }}
+            onStartShouldSetResponder={() => true}
+            onResponderRelease={() => setToolsMenuVisible(false)}
+          >
+            <View style={{
+              position: 'absolute', top: Platform.OS === 'web' ? 56 : 90, right: 16,
+              backgroundColor: toolsTheme.surface, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border,
+              minWidth: 210, paddingVertical: 6, overflow: 'hidden'
+            }}>
+              {Platform.OS === 'web' && !isWebWide && (
+                <>
+                  {DONATIONS_ENABLED && (
+                    <BouncyButton
+                      style={{ paddingHorizontal: 16, paddingVertical: 12 }}
+                      onPress={() => { setToolsMenuVisible(false); setDonateModalContext('tools'); setToolsInterstitialOfferCompress(false); setDonateTermsAgreed(false); setDonateModalVisible(true); }}
+                      accessibilityRole="button"
+                    >
+                      <Text style={{ color: toolsTheme.accent, fontSize: 13.5, fontWeight: '700' }}>Donate</Text>
+                    </BouncyButton>
+                  )}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 }}>
+                    <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Language</Text>
+                    <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, overflow: 'hidden' }}>
+                      {['en', 'id'].map((lang) => (
+                        <BouncyButton
+                          key={lang}
+                          style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: toolsLanguage === lang ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent' }}
+                          onPress={() => setToolsLanguagePersisted(lang)}
+                          accessibilityRole="button"
+                          accessibilityLabel={lang === 'en' ? 'English' : 'Indonesian'}
+                          accessibilityState={{ selected: toolsLanguage === lang }}
+                        >
+                          <Text style={{ color: toolsLanguage === lang ? '#FFFFFF' : toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>{lang.toUpperCase()}</Text>
+                        </BouncyButton>
+                      ))}
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 }}>
+                    <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>{toolsThemeMode === 'light' ? tt('light') : tt('dark')}</Text>
+                    <BouncyButton
+                      style={{ width: 30, height: 30, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
+                      onPress={toggleToolsTheme}
+                      accessibilityRole="button"
+                      accessibilityLabel={toolsThemeMode === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+                    >
+                      {toolsThemeMode === 'light' ? <SunIconSVG color={toolsTheme.textSecondary} size={14} /> : <MoonIconSVG color={toolsTheme.textSecondary} size={14} />}
+                    </BouncyButton>
+                  </View>
+                  <View style={{ height: 1, backgroundColor: toolsTheme.border, marginVertical: 4 }} />
+                </>
+              )}
+              {Platform.OS !== 'web' && DONATIONS_ENABLED && (
+                <BouncyButton
+                  style={{ paddingHorizontal: 16, paddingVertical: 12 }}
+                  onPress={() => { setToolsMenuVisible(false); setDonateModalContext('tools'); setToolsInterstitialOfferCompress(false); setDonateTermsAgreed(false); setDonateModalVisible(true); }}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ color: toolsTheme.accent, fontSize: 13.5, fontWeight: '700' }}>Donate</Text>
+                </BouncyButton>
+              )}
+              <BouncyButton
+                style={{ paddingHorizontal: 16, paddingVertical: 12 }}
+                onPress={() => { setToolsMenuVisible(false); setFeedbackModalVisible(true); }}
+                accessibilityRole="button"
+              >
+                <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Feedback & Support</Text>
+              </BouncyButton>
+            </View>
+          </View>
         </Modal>
       )}
 
@@ -18781,6 +19216,62 @@ function App() {
                 }}
               >
                 <Text style={styles.confirmDeleteText}>Clear All</Text>
+              </BouncyButton>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* LEAVE TOOLS CONFIRMATION - only shown when the active tool has
+          unsaved work (see toolsHasUnsavedWork), styled to match the
+          Clear Images confirmation above. */}
+      <Modal
+        animationType={Platform.OS === 'web' ? 'none' : 'fade'}
+        transparent={true}
+        visible={leaveToolsConfirmVisible}
+        onRequestClose={() => setLeaveToolsConfirmVisible(false)}
+      >
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+          onStartShouldSetResponder={() => Platform.OS === 'web'}
+          onResponderRelease={() => setLeaveToolsConfirmVisible(false)}
+        >
+          {Platform.OS !== 'web' && (
+            lightweightMode ? (
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+            ) : (
+              <BlurView
+                intensity={55}
+                tint={themeMode === 'light' ? 'light' : 'dark'}
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+              />
+            )
+          )}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => {}}
+          >
+            <View style={[styles.successIconCircle, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+              <TrashIconSVG />
+            </View>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Leave Tools?</Text>
+            <Text style={styles.confirmSubText}>Anything you haven't downloaded yet will be lost.</Text>
+            <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+              <BouncyButton
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                onPress={() => setLeaveToolsConfirmVisible(false)}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                accessibilityRole="button"
+                onPress={() => {
+                  setLeaveToolsConfirmVisible(false);
+                  setToolsScreenVisible(false);
+                }}
+              >
+                <Text style={styles.confirmDeleteText}>Leave</Text>
               </BouncyButton>
             </View>
           </View>
@@ -19748,11 +20239,17 @@ function App() {
       )}
 
 
-      {/* FEEDBACK & SUPPORT CUSTOM DARK OVERLAY MODAL WITH FORM & NOTIFY SWITCH */}
+      {/* FEEDBACK & SUPPORT CUSTOM DARK OVERLAY MODAL WITH FORM & NOTIFY SWITCH.
+          Conditionally mounted for the same reason the Donate modal is -
+          an always-mounted Modal toggled via visible= creates its portal
+          once at first render and never re-portals, so anything mounted
+          later (like Tools) would render on top of it regardless of
+          which is actually "visible". */}
+      {feedbackModalVisible && (
       <Modal
         animationType="none"
         transparent={true}
-        visible={feedbackModalVisible}
+        visible={true}
         onRequestClose={() => setFeedbackModalVisible(false)}
       >
         <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
@@ -19958,6 +20455,7 @@ function App() {
           </Animated.View>
         </View>
       </Modal>
+      )}
 
       {/* FEEDBACK SUCCESS POPUP MODAL */}
       <Modal
@@ -20488,7 +20986,7 @@ function App() {
                       this list before the visually distinct Donate button. */}
                   {Platform.OS !== 'web' && (
                     <BouncyButton
-                      style={[styles.settingItemRow, { marginTop: 4, borderBottomWidth: 0 }]}
+                      style={[styles.settingItemRow, { borderBottomWidth: 0 }]}
                       onPress={() => { setSettingsModalVisible(false); setOptionsView('root'); setToolsScreenVisible(true); setActiveTool('hub'); }}
                       accessibilityRole="button"
                     >
