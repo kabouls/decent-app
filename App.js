@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 699;
+const BUILD_NUMBER = 700;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -18152,6 +18152,7 @@ function App() {
                     )}
                   </View>
 
+                  {!isWebWide && (
                   <BouncyButton
                     style={{
                       marginTop: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
@@ -18166,9 +18167,26 @@ function App() {
                     </Text>
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>{tt('upTo10')}</Text>
                   </BouncyButton>
+                  )}
                   </View>
 
                   <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
+                  {isWebWide && (
+                  <BouncyButton
+                    style={{
+                      borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
+                      borderRadius: 14, padding: 20, alignItems: 'center', gap: 8
+                    }}
+                    onPress={pickCompressorImages}
+                    accessibilityRole="button"
+                  >
+                    <ImageIconSVG size={26} color={toolsTheme.textSecondary} />
+                    <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
+                      {compressorFiles.length === 0 ? tt('chooseImages') : tt('addMoreImages')}
+                    </Text>
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>{tt('upTo10')}</Text>
+                  </BouncyButton>
+                  )}
                   {compressorFiles.length > 0 && (
                     <BouncyButton
                       style={{ alignSelf: 'flex-start', marginTop: 4 }}
@@ -18267,6 +18285,7 @@ function App() {
 
                 {isWebWide && (
                   <View>
+                    <View style={{ height: 1, backgroundColor: toolsTheme.border, marginBottom: 20 }} />
                     <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '800', marginBottom: 10 }}>
                       {tt('moreTools')}
                     </Text>
@@ -18672,6 +18691,7 @@ function App() {
 
                     {isWebWide && (
                       <View style={{ marginTop: 20 }}>
+                        <View style={{ height: 1, backgroundColor: toolsTheme.border, marginBottom: 20 }} />
                         <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '800', marginBottom: 10 }}>
                           {tt('moreTools')}
                         </Text>
@@ -18728,6 +18748,8 @@ function App() {
                     ))}
                   </View>
 
+                  {!isWebWide && (
+                  <>
                   <BouncyButton
                     style={{
                       marginTop: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
@@ -18755,9 +18777,39 @@ function App() {
                     <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addFromFiles')}</Text>
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 10.5, textAlign: 'center' }}>{tt('addFromFilesDesc')}</Text>
                   </BouncyButton>
+                  </>
+                  )}
                   </View>
 
                   <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
+                  {isWebWide && (
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <BouncyButton
+                      style={{
+                        flex: 1, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
+                        borderRadius: 14, padding: 16, alignItems: 'center', gap: 6
+                      }}
+                      onPress={pickConverterImages}
+                      accessibilityRole="button"
+                    >
+                      <ImageIconSVG size={22} color={toolsTheme.textSecondary} />
+                      <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>
+                        {converterFiles.length === 0 ? tt('chooseImages') : tt('addMoreImages')}
+                      </Text>
+                    </BouncyButton>
+                    <BouncyButton
+                      style={{
+                        flex: 1, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
+                        borderRadius: 14, padding: 16, alignItems: 'center', gap: 6
+                      }}
+                      onPress={pickConverterFiles}
+                      accessibilityRole="button"
+                    >
+                      <ImageIconSVG size={22} color={toolsTheme.textSecondary} />
+                      <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addFromFiles')}</Text>
+                    </BouncyButton>
+                  </View>
+                  )}
                   {converterFiles.map((file, fileIndex) => (
                     <View key={file.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 10 }}>
                       <BouncyButton
@@ -18855,6 +18907,7 @@ function App() {
 
                 {isWebWide && (
                   <View>
+                    <View style={{ height: 1, backgroundColor: toolsTheme.border, marginBottom: 20 }} />
                     <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '800', marginBottom: 10 }}>
                       {tt('moreTools')}
                     </Text>
@@ -19032,6 +19085,7 @@ function App() {
 
                 {isWebWide && (
                   <View>
+                    <View style={{ height: 1, backgroundColor: toolsTheme.border, marginBottom: 20 }} />
                     <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '800', marginBottom: 10 }}>
                       {tt('moreTools')}
                     </Text>
@@ -19246,11 +19300,16 @@ function App() {
 
       {/* LEAVE TOOLS CONFIRMATION - only shown when the active tool has
           unsaved work (see toolsHasUnsavedWork), styled to match the
-          Clear Images confirmation above. */}
+          Clear Images confirmation above. Conditionally mounted for the
+          same reason Donate and Feedback modals had to be - an always-
+          mounted Modal toggled via visible= creates its portal once at
+          first render and never re-portals, so it renders underneath
+          anything mounted later (like Tools). */}
+      {leaveToolsConfirmVisible && (
       <Modal
         animationType={Platform.OS === 'web' ? 'none' : 'fade'}
         transparent={true}
-        visible={leaveToolsConfirmVisible}
+        visible={true}
         onRequestClose={() => setLeaveToolsConfirmVisible(false)}
       >
         <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
@@ -19299,6 +19358,7 @@ function App() {
           </View>
         </View>
       </Modal>
+      )}
 
       {/* DELETE ACCOUNT - requires typing DELETE, real failsafe for a destructive action */}
       <Modal
