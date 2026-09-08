@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 682;
+const BUILD_NUMBER = 683;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -2048,11 +2048,13 @@ const TOOLS_TRANSLATIONS = {
     pdfEditorIntro: 'Add PDF files or photos to build your document. Drag to reorder, tap to rotate or remove a page. Nothing leaves your device.',
     addPdf: 'Add PDF',
     addImages: 'Add Images',
+    addFromFiles: 'Add from Files',
+    addFromFilesDesc: 'For HEIC, TIFF, BMP, and other formats not in your photo library',
     exportPdf: 'Export PDF',
     exportingPdf: 'Exporting...',
     loadingPdf: 'Loading...',
     pageCount: 'pages',
-    converterIntro: 'Drop up to 10 images and pick a format to convert them all to. Nothing leaves your device.',
+    converterIntro: 'Drop up to 10 images (including HEIC, TIFF, BMP, and other unusual formats) and pick a format to convert them all to. Nothing leaves your device.',
     convertTo: 'Convert To',
     convert: 'Convert',
     convertAll: 'Convert All',
@@ -2121,11 +2123,13 @@ const TOOLS_TRANSLATIONS = {
     pdfEditorIntro: 'Tambahkan file PDF atau foto untuk membuat dokumen Anda. Seret untuk mengatur ulang, ketuk untuk memutar atau menghapus halaman. Tidak ada yang meninggalkan perangkat Anda.',
     addPdf: 'Tambah PDF',
     addImages: 'Tambah Gambar',
+    addFromFiles: 'Tambah dari File',
+    addFromFilesDesc: 'Untuk HEIC, TIFF, BMP, dan format lain yang tidak ada di galeri foto Anda',
     exportPdf: 'Ekspor PDF',
     exportingPdf: 'Mengekspor...',
     loadingPdf: 'Memuat...',
     pageCount: 'halaman',
-    converterIntro: 'Unggah hingga 10 gambar dan pilih format untuk mengonversinya. Tidak ada yang meninggalkan perangkat Anda.',
+    converterIntro: 'Unggah hingga 10 gambar (termasuk HEIC, TIFF, BMP, dan format tidak umum lainnya) dan pilih format untuk mengonversinya. Tidak ada yang meninggalkan perangkat Anda.',
     convertTo: 'Konversi Ke',
     convert: 'Konversi',
     convertAll: 'Konversi Semua',
@@ -4060,14 +4064,23 @@ const getFileSizeBytes = async (uri) => {
   return info.size || 0;
 };
 
-// Used by Keep Original Format - ImageManipulator only outputs JPEG/PNG/
-// WEBP, so anything else (HEIC, GIF, BMP, TIFF...) falls back to JPEG,
-// which is the same thing that already happens for those formats when a
-// fixed format is explicitly chosen instead of "keep original."
+// Used by Keep Original Format (Compressor) and for the Converter's
+// "Original: X" display label. Only PNG/WEBP ever change actual output
+// behavior downstream (compressImageToTarget/convertImageFormat both
+// fall through to JPEG for anything else) - the extra formats below are
+// purely to show an accurate original-format label rather than silently
+// mislabeling e.g. a HEIC photo as "JPEG".
 const detectImageFormat = (mimeType, uri) => {
   const source = (mimeType || uri || '').toLowerCase();
   if (source.includes('png')) return 'PNG';
   if (source.includes('webp')) return 'WEBP';
+  if (source.includes('heic') || source.includes('heif')) return 'HEIC';
+  if (source.includes('tiff') || /\.tif($|\?)/.test(source)) return 'TIFF';
+  if (source.includes('bmp')) return 'BMP';
+  if (source.includes('gif')) return 'GIF';
+  if (source.includes('avif')) return 'AVIF';
+  if (source.includes('svg')) return 'SVG';
+  if (/\.ico($|\?)/.test(source)) return 'ICO';
   return 'JPEG';
 };
 
@@ -11299,6 +11312,48 @@ function App() {
     setConverterFiles((prev) => [...prev, ...newItems].slice(0, 10));
   };
 
+  // Separate from pickConverterImages above - the photo library picker
+  // only ever shows what the OS photo library already normalized (on
+  // iOS that's usually JPEG regardless of the underlying HEIC storage),
+  // so it rarely actually surfaces the "weird format" case at all. This
+  // picks a raw FILE instead (HEIC, TIFF, BMP, AVIF, GIF...), which
+  // covers the real pain point: converting something someone downloaded,
+  // scanned, or exported from another app rather than a camera-roll
+  // photo. Whether a given format actually decodes successfully still
+  // depends on the device/browser's own image codecs underneath
+  // expo-image-manipulator - this widens what's reachable, it doesn't
+  // add new decode capability - so per-file failures are still expected
+  // for the rarest formats and are handled the same way as any other
+  // conversion error.
+  const pickConverterFiles = async () => {
+    let DocumentPicker;
+    try {
+      DocumentPicker = require('expo-document-picker');
+    } catch (e) {
+      console.warn('expo-document-picker not available (needs a native rebuild if just added):', e);
+      showToast('File picking isn\'t available yet on this build - try again after the next app update.');
+      return;
+    }
+    const result = await DocumentPicker.getDocumentAsync({ type: 'image/*', multiple: true, copyToCacheDirectory: true });
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+    const newItems = await Promise.all(result.assets.map(async (a) => {
+      const size = await getFileSizeBytes(a.uri).catch(() => a.size || 0);
+      const originalFormat = detectImageFormat(a.mimeType, a.uri);
+      return {
+        id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        originalUri: a.uri,
+        originalSize: size,
+        originalFormat,
+        resultUri: null,
+        resultSize: null,
+        status: 'pending',
+        error: null
+      };
+    }));
+    setConverterFiles((prev) => [...prev, ...newItems].slice(0, 10));
+  };
+
   const removeConverterFile = (id) => {
     setConverterFiles((prev) => prev.filter((f) => f.id !== id));
   };
@@ -18379,6 +18434,19 @@ function App() {
                       {converterFiles.length === 0 ? tt('chooseImages') : tt('addMoreImages')}
                     </Text>
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>{tt('upTo10')}</Text>
+                  </BouncyButton>
+
+                  <BouncyButton
+                    style={{
+                      marginTop: 10, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
+                      borderRadius: 14, padding: 16, alignItems: 'center', gap: 6
+                    }}
+                    onPress={pickConverterFiles}
+                    accessibilityRole="button"
+                  >
+                    <ImageIconSVG size={20} color={toolsTheme.textSecondary} />
+                    <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addFromFiles')}</Text>
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 10.5, textAlign: 'center' }}>{tt('addFromFilesDesc')}</Text>
                   </BouncyButton>
 
                   {converterFiles.map((file, fileIndex) => (
