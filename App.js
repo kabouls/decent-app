@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 681;
+const BUILD_NUMBER = 682;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -17509,17 +17509,19 @@ function App() {
                     button. */}
                 <View style={[
                   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: toolsTheme.bg, borderBottomWidth: 1, borderBottomColor: toolsTheme.border },
-                  isWebWide && { maxWidth: 1200, width: '100%', alignSelf: 'center' }
+                  isWebWide && { width: '100%' }
                 ]}>
                   <BouncyButton
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 8,
+                      paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12,
+                      borderWidth: 1, borderColor: toolsTheme.border, backgroundColor: 'transparent'
+                    }}
                     onPress={() => setToolsScreenVisible(false)}
                     accessibilityRole="button"
                     accessibilityLabel="Back to DECENT"
                   >
-                    <View style={{ width: 28, height: 28, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, alignItems: 'center', justifyContent: 'center' }}>
-                      <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={16} />
-                    </View>
+                    <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={16} />
                     <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Back to DECENT</Text>
                   </BouncyButton>
 
@@ -17574,7 +17576,7 @@ function App() {
                 {activeTool !== 'hub' && (
                   <View style={[
                     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: toolsTheme.bg, borderBottomWidth: 1, borderBottomColor: toolsTheme.border },
-                    isWebWide && { maxWidth: 1200, width: '100%', alignSelf: 'center' }
+                    isWebWide && { width: '100%' }
                   ]}>
                     <BouncyButton
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
@@ -17680,7 +17682,7 @@ function App() {
                 { padding: 20, gap: 14 },
                 activeTool === 'imageCompressor' && compressorFiles.length > 0 && { paddingBottom: 90 },
                 activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && { paddingBottom: 90 },
-                isWebWide && { maxWidth: 1200, width: '100%', alignSelf: 'center' }
+                isWebWide && { width: '100%' }
               ]}
               enableOnAndroid={true}
               extraScrollHeight={140}
@@ -17692,81 +17694,95 @@ function App() {
                     {tt('toolsHubIntro')}
                   </Text>
 
-                  <BouncyButton
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 14,
-                      backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                      borderRadius: 16, padding: 16
-                    }}
-                    onPress={() => setActiveTool('imageCompressor')}
-                    accessibilityRole="button"
-                  >
-                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                      <ImageIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('imageCompressor')}</Text>
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('imageCompressorDesc')}</Text>
-                    </View>
-                    <ChevronRightSVG color={toolsTheme.accent} size={18} />
-                  </BouncyButton>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
+                    <BouncyButton
+                      style={[
+                        {
+                          flexDirection: 'row', alignItems: 'center', gap: 14,
+                          backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
+                          borderRadius: 16, padding: 16
+                        },
+                        isWebWide ? { width: '48.5%' } : { width: '100%' }
+                      ]}
+                      onPress={() => setActiveTool('imageCompressor')}
+                      accessibilityRole="button"
+                    >
+                      <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                        <ImageIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('imageCompressor')}</Text>
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('imageCompressorDesc')}</Text>
+                      </View>
+                      <ChevronRightSVG color={toolsTheme.accent} size={18} />
+                    </BouncyButton>
 
-                  <BouncyButton
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 14,
-                      backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                      borderRadius: 16, padding: 16
-                    }}
-                    onPress={() => setActiveTool('qrGenerator')}
-                    accessibilityRole="button"
-                  >
-                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                      <QrIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('qrGenerator')}</Text>
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('qrGeneratorDesc')}</Text>
-                    </View>
-                    <ChevronRightSVG color={toolsTheme.accent} size={18} />
-                  </BouncyButton>
+                    <BouncyButton
+                      style={[
+                        {
+                          flexDirection: 'row', alignItems: 'center', gap: 14,
+                          backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
+                          borderRadius: 16, padding: 16
+                        },
+                        isWebWide ? { width: '48.5%' } : { width: '100%' }
+                      ]}
+                      onPress={() => setActiveTool('qrGenerator')}
+                      accessibilityRole="button"
+                    >
+                      <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                        <QrIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('qrGenerator')}</Text>
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('qrGeneratorDesc')}</Text>
+                      </View>
+                      <ChevronRightSVG color={toolsTheme.accent} size={18} />
+                    </BouncyButton>
 
-                  <BouncyButton
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 14,
-                      backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                      borderRadius: 16, padding: 16
-                    }}
-                    onPress={() => setActiveTool('imageConverter')}
-                    accessibilityRole="button"
-                  >
-                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                      <SwapIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('imageConverter')}</Text>
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('imageConverterDesc')}</Text>
-                    </View>
-                    <ChevronRightSVG color={toolsTheme.accent} size={18} />
-                  </BouncyButton>
+                    <BouncyButton
+                      style={[
+                        {
+                          flexDirection: 'row', alignItems: 'center', gap: 14,
+                          backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
+                          borderRadius: 16, padding: 16
+                        },
+                        isWebWide ? { width: '48.5%' } : { width: '100%' }
+                      ]}
+                      onPress={() => setActiveTool('imageConverter')}
+                      accessibilityRole="button"
+                    >
+                      <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                        <SwapIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('imageConverter')}</Text>
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('imageConverterDesc')}</Text>
+                      </View>
+                      <ChevronRightSVG color={toolsTheme.accent} size={18} />
+                    </BouncyButton>
 
-                  <BouncyButton
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 14,
-                      backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                      borderRadius: 16, padding: 16
-                    }}
-                    onPress={() => setActiveTool('pdfEditor')}
-                    accessibilityRole="button"
-                  >
-                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                      <PdfIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('pdfEditor')}</Text>
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('pdfEditorDesc')}</Text>
-                    </View>
-                    <ChevronRightSVG color={toolsTheme.accent} size={18} />
-                  </BouncyButton>
+                    <BouncyButton
+                      style={[
+                        {
+                          flexDirection: 'row', alignItems: 'center', gap: 14,
+                          backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
+                          borderRadius: 16, padding: 16
+                        },
+                        isWebWide ? { width: '48.5%' } : { width: '100%' }
+                      ]}
+                      onPress={() => setActiveTool('pdfEditor')}
+                      accessibilityRole="button"
+                    >
+                      <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                        <PdfIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('pdfEditor')}</Text>
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('pdfEditorDesc')}</Text>
+                      </View>
+                      <ChevronRightSVG color={toolsTheme.accent} size={18} />
+                    </BouncyButton>
+                  </View>
                 </>
               )}
 
@@ -18600,7 +18616,7 @@ function App() {
             {activeTool === 'imageCompressor' && compressorFiles.length > 0 && (
               <View style={[
                 { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 10, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border },
-                isWebWide && { maxWidth: 1200, width: '100%', alignSelf: 'center' }
+                isWebWide && { width: '100%' }
               ]}>
                 <BouncyButton
                   style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: compressorProcessing ? 0.6 : 1 }]}
@@ -18630,7 +18646,7 @@ function App() {
             {activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && (
               <View style={[
                 { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border },
-                isWebWide && { maxWidth: 1200, width: '100%', alignSelf: 'center' }
+                isWebWide && { width: '100%' }
               ]}>
                 <BouncyButton
                   style={[styles.saveAccountSettingsBtn, { marginTop: 0, opacity: pdfEditorExporting ? 0.6 : 1 }]}
