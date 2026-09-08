@@ -51,8 +51,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { PDFDocument, degrees } from 'pdf-lib';
-import * as DocumentPicker from 'expo-document-picker';
-import * as Sharing from 'expo-sharing';
 import { generateWebPdfThumbnails, generateNativePdfThumbnails } from './pdfThumbnails';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { decode } from 'base64-arraybuffer';
@@ -159,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 680;
+const BUILD_NUMBER = 681;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -11426,6 +11424,14 @@ function App() {
   };
 
   const pickPdfEditorPdfs = async () => {
+    let DocumentPicker;
+    try {
+      DocumentPicker = require('expo-document-picker');
+    } catch (e) {
+      console.warn('expo-document-picker not available (needs a native rebuild if just added):', e);
+      showToast('PDF picking isn\'t available yet on this build - try again after the next app update.');
+      return;
+    }
     const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', multiple: true, copyToCacheDirectory: true });
     if (result.canceled || !result.assets || result.assets.length === 0) return;
     setPdfEditorLoading(true);
@@ -11512,6 +11518,7 @@ function App() {
         const localUri = `${FileSystem.cacheDirectory}edited-${Date.now()}.pdf`;
         const base64 = btoa(String.fromCharCode(...bytes));
         await FileSystem.writeAsStringAsync(localUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+        const Sharing = require('expo-sharing');
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
           await Sharing.shareAsync(localUri, { mimeType: 'application/pdf', dialogTitle: 'Save PDF' });
@@ -17501,16 +17508,18 @@ function App() {
                     two navigation levels don't get conflated into one
                     button. */}
                 <View style={[
-                  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: toolsTheme.surface, borderBottomWidth: 1, borderBottomColor: toolsTheme.border },
-                  isWebWide && { maxWidth: 960, width: '100%', alignSelf: 'center' }
+                  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: toolsTheme.bg, borderBottomWidth: 1, borderBottomColor: toolsTheme.border },
+                  isWebWide && { maxWidth: 1200, width: '100%', alignSelf: 'center' }
                 ]}>
                   <BouncyButton
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
                     onPress={() => setToolsScreenVisible(false)}
                     accessibilityRole="button"
                     accessibilityLabel="Back to DECENT"
                   >
-                    <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={18} />
+                    <View style={{ width: 28, height: 28, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, alignItems: 'center', justifyContent: 'center' }}>
+                      <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={16} />
+                    </View>
                     <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Back to DECENT</Text>
                   </BouncyButton>
 
@@ -17565,7 +17574,7 @@ function App() {
                 {activeTool !== 'hub' && (
                   <View style={[
                     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: toolsTheme.bg, borderBottomWidth: 1, borderBottomColor: toolsTheme.border },
-                    isWebWide && { maxWidth: 960, width: '100%', alignSelf: 'center' }
+                    isWebWide && { maxWidth: 1200, width: '100%', alignSelf: 'center' }
                   ]}>
                     <BouncyButton
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
@@ -17586,7 +17595,7 @@ function App() {
                 {/* Narrow web only - wide web already fit these into the
                     top-right of the main header row above. */}
                 {!isWebWide && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8, backgroundColor: toolsTheme.surface, borderBottomWidth: 1, borderBottomColor: toolsTheme.border }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8, backgroundColor: toolsTheme.bg, borderBottomWidth: 1, borderBottomColor: toolsTheme.border }}>
                     {DONATIONS_ENABLED && (
                       <BouncyButton
                         onPress={() => { setDonateModalContext('tools'); setToolsInterstitialOfferCompress(false); setDonateTermsAgreed(false); setDonateModalVisible(true); }}
@@ -17671,7 +17680,7 @@ function App() {
                 { padding: 20, gap: 14 },
                 activeTool === 'imageCompressor' && compressorFiles.length > 0 && { paddingBottom: 90 },
                 activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && { paddingBottom: 90 },
-                isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }
+                isWebWide && { maxWidth: 1200, width: '100%', alignSelf: 'center' }
               ]}
               enableOnAndroid={true}
               extraScrollHeight={140}
@@ -18591,7 +18600,7 @@ function App() {
             {activeTool === 'imageCompressor' && compressorFiles.length > 0 && (
               <View style={[
                 { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 10, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border },
-                isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }
+                isWebWide && { maxWidth: 1200, width: '100%', alignSelf: 'center' }
               ]}>
                 <BouncyButton
                   style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: compressorProcessing ? 0.6 : 1 }]}
@@ -18621,7 +18630,7 @@ function App() {
             {activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && (
               <View style={[
                 { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border },
-                isWebWide && { maxWidth: 720, width: '100%', alignSelf: 'center' }
+                isWebWide && { maxWidth: 1200, width: '100%', alignSelf: 'center' }
               ]}>
                 <BouncyButton
                   style={[styles.saveAccountSettingsBtn, { marginTop: 0, opacity: pdfEditorExporting ? 0.6 : 1 }]}
