@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 698;
+const BUILD_NUMBER = 699;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -11296,10 +11296,12 @@ function App() {
   };
 
   const removeCompressorFile = (id) => {
+    triggerHaptic('light');
     setCompressorFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
   const clearAllCompressorFiles = () => {
+    triggerHaptic('warning');
     setCompressorFiles([]);
   };
 
@@ -11324,6 +11326,7 @@ function App() {
       } : f)));
     } catch (e) {
       console.warn('Image compression failed for', file.id, e);
+      triggerHaptic('error');
       setCompressorFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, status: 'error', error: 'Could not compress this image.' } : f)));
     }
   };
@@ -11382,7 +11385,10 @@ function App() {
     for (const f of done) {
       await handleDownloadCompressedImage(f);
     }
-    if (done.length > 0) maybeShowToolsDownloadInterstitial(false);
+    if (done.length > 0) {
+      triggerHaptic('success');
+      maybeShowToolsDownloadInterstitial(false);
+    }
   };
 
   const handleSingleCompressedDownload = async (file) => {
@@ -11466,10 +11472,12 @@ function App() {
   };
 
   const removeConverterFile = (id) => {
+    triggerHaptic('light');
     setConverterFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
   const clearAllConverterFiles = () => {
+    triggerHaptic('warning');
     setConverterFiles([]);
   };
 
@@ -11482,6 +11490,7 @@ function App() {
       } : f)));
     } catch (e) {
       console.warn('Image conversion failed for', file.id, e);
+      triggerHaptic('error');
       setConverterFiles((prev) => prev.map((f) => (f.id === file.id ? { ...f, status: 'error', error: 'Could not convert this image.' } : f)));
     }
   };
@@ -11545,7 +11554,10 @@ function App() {
     for (const f of done) {
       await handleDownloadConvertedImage(f);
     }
-    if (done.length > 0) maybeShowToolsDownloadInterstitial(true);
+    if (done.length > 0) {
+      triggerHaptic('success');
+      maybeShowToolsDownloadInterstitial(true);
+    }
   };
 
   // TOOLS: PDF Editor handlers. Every picked file/image becomes a loaded
@@ -11562,6 +11574,7 @@ function App() {
     } catch (e) {
       console.warn('Could not load PDF/image source:', e);
       showToast('Could not open that file - it may be corrupted or password-protected.');
+      triggerHaptic('error');
       return;
     }
     setPdfEditorSourceDocs((prev) => [...prev, doc]);
@@ -11627,10 +11640,12 @@ function App() {
   };
 
   const removePdfEditorPage = (pageId) => {
+    triggerHaptic('light');
     setPdfEditorPages((prev) => prev.filter((p) => p.id !== pageId));
   };
 
   const rotatePdfEditorPage = (pageId) => {
+    triggerHaptic('light');
     setPdfEditorPages((prev) => prev.map((p) => (p.id === pageId ? { ...p, rotation: (p.rotation + 90) % 360 } : p)));
   };
 
@@ -11644,6 +11659,7 @@ function App() {
       const index = prev.findIndex((p) => p.id === pageId);
       const targetIndex = index + direction;
       if (index === -1 || targetIndex < 0 || targetIndex >= prev.length) return prev;
+      triggerHaptic('light');
       const next = [...prev];
       [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
       return next;
@@ -11661,6 +11677,7 @@ function App() {
   };
 
   const clearAllPdfEditorPages = () => {
+    triggerHaptic('warning');
     setPdfEditorSourceDocs([]);
     setPdfEditorPages([]);
   };
@@ -11693,9 +11710,11 @@ function App() {
         }
       }
       maybeShowToolsDownloadInterstitial(false);
+      triggerHaptic('success');
     } catch (e) {
       console.warn('PDF export failed:', e);
       showToast('Could not export the PDF - try again.');
+      triggerHaptic('error');
     } finally {
       setPdfEditorExporting(false);
     }
@@ -11760,15 +11779,18 @@ function App() {
             await FileSystem.writeAsStringAsync(localUri, base64, { encoding: FileSystem.EncodingType.Base64 });
             await MediaLibrary.saveToLibraryAsync(localUri);
             showToast('QR code saved to your photos.');
+            triggerHaptic('success');
           } catch (innerErr) {
             console.warn('QR save failed:', innerErr);
             showToast('Could not save QR code - try again.');
+            triggerHaptic('error');
           }
         });
       }
     } catch (e) {
       console.warn('QR PNG export failed:', e);
       showToast('Could not download QR code - try again.');
+      triggerHaptic('error');
     } finally {
       setQrExporting(false);
       maybeShowToolsDownloadInterstitial(false);
