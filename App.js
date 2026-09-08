@@ -50,7 +50,7 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { PDFDocument, degrees } from 'pdf-lib';
+import { PDFDocument, degrees, StandardFonts, rgb } from 'pdf-lib';
 import { generateWebPdfThumbnails, generateNativePdfThumbnails } from './pdfThumbnails';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { decode } from 'base64-arraybuffer';
@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 701;
+const BUILD_NUMBER = 704;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -717,6 +717,15 @@ const RotateIconSVG = React.memo(({ color = '#94A3B8', size = 15 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M4 12a8 8 0 1 1 2.5 5.8" stroke={color} strokeWidth="2" strokeLinecap="round" />
     <Path d="M4 17v-5h5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
+// Four arrows pointing inward toward the center - a compress/shrink
+// action, distinct from SwapIconSVG (which is specifically the Image
+// Converter's icon elsewhere in Tools).
+const CompressIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
@@ -7075,10 +7084,18 @@ function App() {
   // that references back into those docs by index, which is what the
   // grid UI and export step both actually work from.
   const [pdfEditorSourceDocs, setPdfEditorSourceDocs] = useState([]);
+  // Parallel to pdfEditorSourceDocs (same index per source) - the loaded
+  // PDFDocument object alone doesn't retain where it came from, but
+  // compression needs to re-render each page from its original file at a
+  // much higher resolution than the small grid thumbnail, which means
+  // going back to the source URI, not the already-parsed pdf-lib object.
+  const [pdfEditorSourceMeta, setPdfEditorSourceMeta] = useState([]); // [{ uri, isImage }]
+  const [pdfCompressing, setPdfCompressing] = useState(false);
   const [pdfEditorPages, setPdfEditorPages] = useState([]);
   const [pdfEditorLoading, setPdfEditorLoading] = useState(false);
   const [pdfEditorExporting, setPdfEditorExporting] = useState(false);
   const [pdfDragIndex, setPdfDragIndex] = useState(null);
+  const [pdfFullscreenIndex, setPdfFullscreenIndex] = useState(null); // null | index into pdfEditorPages
   const [toolsMenuVisible, setToolsMenuVisible] = useState(false);
   const [leaveToolsConfirmVisible, setLeaveToolsConfirmVisible] = useState(false);
 
@@ -11586,6 +11603,7 @@ function App() {
       return;
     }
     setPdfEditorSourceDocs((prev) => [...prev, doc]);
+    setPdfEditorSourceMeta((prev) => [...prev, { uri, isImage }]);
 
     const pageCount = doc.getPageCount();
     const newPages = Array.from({ length: pageCount }, (_, i) => ({
@@ -11687,7 +11705,118 @@ function App() {
   const clearAllPdfEditorPages = () => {
     triggerHaptic('warning');
     setPdfEditorSourceDocs([]);
+    setPdfEditorSourceMeta([]);
     setPdfEditorPages([]);
+  };
+
+  // Renders every page at a real, readable resolution (not the small
+  // grid-thumbnail scale), compresses each one through the same engine
+  // the Image Compressor uses, then rebuilds one fresh PDF from the
+  // compressed pages. This is the standard approach real PDF compressor
+  // tools use for scanned/photo-heavy documents - pdf-lib has no way to
+  // reach into an existing page's embedded images and re-encode them in
+  // place, so rasterizing and rebuilding is the reliable path rather
+  // than fragile low-level PDF-internals surgery. The tradeoff: any
+  // selectable/searchable text becomes part of a flattened image, same
+  // as any other rasterize-based compressor.
+  const handleCompressPdf = async () => {
+    if (pdfEditorPages.length === 0) return;
+    setPdfCompressing(true);
+    triggerHaptic('light');
+    try {
+      const renderCache = {}; // sourceFileIndex -> array of high-res page image URIs
+      const compressedPageDocs = [];
+      const compressedThumbnailUris = [];
+
+      for (const page of pdfEditorPages) {
+        const meta = pdfEditorSourceMeta[page.sourceFileIndex];
+        if (!meta) continue; // shouldn't happen, but don't let one bad entry fail the whole batch
+
+        let renderedUri;
+        if (meta.isImage) {
+          renderedUri = meta.uri;
+        } else {
+          if (!renderCache[page.sourceFileIndex]) {
+            renderCache[page.sourceFileIndex] = Platform.OS === 'web'
+              ? await generateWebPdfThumbnails(meta.uri, 1.5)
+              : await generateNativePdfThumbnails(meta.uri, 1200);
+          }
+          renderedUri = renderCache[page.sourceFileIndex] ? renderCache[page.sourceFileIndex][page.sourcePageIndex] : null;
+        }
+        if (!renderedUri) continue; // couldn't render this specific page - skip it rather than abort everything
+
+        const compressed = await compressImageToTarget(renderedUri, {
+          targetBytes: 200 * 1024, maxWidth: 1600, maxHeight: 1600, format: 'JPEG'
+        });
+        const pageDoc = await loadImageAsPdfDoc(compressed.uri);
+        if (page.rotation) {
+          const [pdfPage] = pageDoc.getPages();
+          pdfPage.setRotation(degrees(page.rotation % 360));
+        }
+        compressedPageDocs.push(pageDoc);
+        compressedThumbnailUris.push(compressed.uri);
+      }
+
+      if (compressedPageDocs.length === 0) {
+        showToast('Could not compress this PDF - try again.');
+        triggerHaptic('error');
+        return;
+      }
+
+      // Collapse everything into one fresh source - after compression,
+      // which original file each page came from no longer matters, it's
+      // all one rebuilt document now. The compressed image itself is
+      // already the right thumbnail - no need to re-render through
+      // pdfjs-dist a second time just to get a preview.
+      setPdfEditorSourceDocs(compressedPageDocs);
+      setPdfEditorSourceMeta(compressedPageDocs.map(() => ({ uri: null, isImage: true })));
+      setPdfEditorPages(compressedPageDocs.map((_, i) => ({
+        id: `${Date.now()}_compressed_${i}_${Math.random().toString(36).slice(2)}`,
+        sourceFileIndex: i,
+        sourcePageIndex: 0,
+        thumbnailUri: compressedThumbnailUris[i],
+        rotation: 0,
+        thumbnailLoading: false
+      })));
+
+      showToast('PDF compressed.');
+      triggerHaptic('success');
+    } catch (e) {
+      console.warn('PDF compression failed:', e);
+      showToast('Could not compress this PDF - try again.');
+      triggerHaptic('error');
+    } finally {
+      setPdfCompressing(false);
+    }
+  };
+
+  // Shared by handleExportPdf and handleExtractPage - the actual save-
+  // or-share mechanics don't differ between "export the whole document"
+  // and "extract just this page," only what bytes and filename get
+  // passed in.
+  const savePdfBytes = async (bytes, filename) => {
+    if (Platform.OS === 'web') {
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } else {
+      const localUri = `${FileSystem.cacheDirectory}${filename}`;
+      const base64 = btoa(String.fromCharCode(...bytes));
+      await FileSystem.writeAsStringAsync(localUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      const Sharing = require('expo-sharing');
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(localUri, { mimeType: 'application/pdf', dialogTitle: 'Save PDF' });
+      } else {
+        showToast('Sharing is not available on this device.');
+      }
+    }
   };
 
   const handleExportPdf = async () => {
@@ -11695,28 +11824,7 @@ function App() {
     setPdfEditorExporting(true);
     try {
       const bytes = await assemblePdfFromPages(pdfEditorSourceDocs, pdfEditorPages);
-      if (Platform.OS === 'web') {
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-        const objectUrl = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = objectUrl;
-        link.download = 'edited.pdf';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(objectUrl);
-      } else {
-        const localUri = `${FileSystem.cacheDirectory}edited-${Date.now()}.pdf`;
-        const base64 = btoa(String.fromCharCode(...bytes));
-        await FileSystem.writeAsStringAsync(localUri, base64, { encoding: FileSystem.EncodingType.Base64 });
-        const Sharing = require('expo-sharing');
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(localUri, { mimeType: 'application/pdf', dialogTitle: 'Save PDF' });
-        } else {
-          showToast('Sharing is not available on this device.');
-        }
-      }
+      await savePdfBytes(bytes, 'edited.pdf');
       maybeShowToolsDownloadInterstitial(false);
       triggerHaptic('success');
     } catch (e) {
@@ -11725,6 +11833,109 @@ function App() {
       triggerHaptic('error');
     } finally {
       setPdfEditorExporting(false);
+    }
+  };
+
+  const handleExtractPage = async (pageIndex) => {
+    const page = pdfEditorPages[pageIndex];
+    if (!page) return;
+    try {
+      const bytes = await assemblePdfFromPages(pdfEditorSourceDocs, [page]);
+      await savePdfBytes(bytes, `page-${pageIndex + 1}.pdf`);
+      triggerHaptic('success');
+    } catch (e) {
+      console.warn('Extract page failed:', e);
+      showToast('Could not extract this page - try again.');
+      triggerHaptic('error');
+    }
+  };
+
+  // Inserts a blank US Letter page (612x792pt) immediately after
+  // afterIndex. Scoped to blank-only for now, not "insert an existing
+  // image/PDF at this specific position" - that's a real follow-up, but
+  // a genuinely separate, bigger piece of work (picking a file AND
+  // splicing its pages into the middle of the array, rather than just
+  // appending, which is all the existing Add PDF/Add Images buttons do).
+  const handleInsertBlankPage = async (afterIndex) => {
+    triggerHaptic('light');
+    try {
+      const blankDoc = await PDFDocument.create();
+      blankDoc.addPage([612, 792]);
+      const newSourceIndex = pdfEditorSourceDocs.length;
+
+      setPdfEditorSourceDocs((prev) => [...prev, blankDoc]);
+      setPdfEditorSourceMeta((prev) => [...prev, { uri: null, isImage: false }]);
+
+      const newPage = {
+        id: `${Date.now()}_blank_${Math.random().toString(36).slice(2)}`,
+        sourceFileIndex: newSourceIndex,
+        sourcePageIndex: 0,
+        thumbnailUri: null,
+        rotation: 0,
+        thumbnailLoading: false
+      };
+      setPdfEditorPages((prev) => {
+        const next = [...prev];
+        next.splice(afterIndex + 1, 0, newPage);
+        return next;
+      });
+    } catch (e) {
+      console.warn('Insert blank page failed:', e);
+      showToast('Could not insert a blank page - try again.');
+      triggerHaptic('error');
+    }
+  };
+
+  // Draws a centered page number at the bottom of every page and
+  // collapses the result into one fresh combined source, same "replace
+  // the editing state" pattern compression uses - after this runs, page
+  // provenance no longer matters, it's one rebuilt document. Numbering
+  // uses simple bottom-center placement in PDF page coordinates; a
+  // rotated page's visual "bottom" can differ from its coordinate-space
+  // bottom, which this doesn't correct for - an acceptable simplification
+  // for a first version rather than the added geometry needed to handle
+  // every rotation case perfectly.
+  const handleAddPageNumbers = async () => {
+    if (pdfEditorPages.length === 0) return;
+    triggerHaptic('light');
+    try {
+      const outDoc = await PDFDocument.create();
+      const font = await outDoc.embedFont(StandardFonts.Helvetica);
+      for (let i = 0; i < pdfEditorPages.length; i++) {
+        const p = pdfEditorPages[i];
+        const [copiedPage] = await outDoc.copyPages(pdfEditorSourceDocs[p.sourceFileIndex], [p.sourcePageIndex]);
+        if (p.rotation) {
+          const current = copiedPage.getRotation().angle || 0;
+          copiedPage.setRotation(degrees((current + p.rotation) % 360));
+        }
+        outDoc.addPage(copiedPage);
+        const label = `${i + 1}`;
+        const { width } = copiedPage.getSize();
+        const textWidth = font.widthOfTextAtSize(label, 10);
+        copiedPage.drawText(label, {
+          x: (width - textWidth) / 2,
+          y: 20,
+          size: 10,
+          font,
+          color: rgb(0, 0, 0)
+        });
+      }
+
+      setPdfEditorSourceDocs([outDoc]);
+      setPdfEditorSourceMeta([{ uri: null, isImage: false }]);
+      setPdfEditorPages(pdfEditorPages.map((p, i) => ({
+        ...p,
+        sourceFileIndex: 0,
+        sourcePageIndex: i,
+        rotation: 0 // already baked into the copied page itself above
+      })));
+
+      showToast('Page numbers added.');
+      triggerHaptic('success');
+    } catch (e) {
+      console.warn('Add page numbers failed:', e);
+      showToast('Could not add page numbers - try again.');
+      triggerHaptic('error');
     }
   };
 
@@ -19071,6 +19282,11 @@ function App() {
                           onDragEnd: () => setPdfDragIndex(null)
                         } : {})}
                       >
+                        <BouncyButton
+                          onPress={() => setPdfFullscreenIndex(index)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Open page ${index + 1}`}
+                        >
                         <View style={{
                           width: '100%', aspectRatio: 0.75, borderRadius: 8, backgroundColor: toolsTheme.bg,
                           alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
@@ -19087,6 +19303,7 @@ function App() {
                             <PdfIconSVG size={28} color={toolsTheme.textSecondary} />
                           )}
                         </View>
+                        </BouncyButton>
                         <Text style={{ color: toolsTheme.textSecondary, fontSize: 10, textAlign: 'center', marginTop: 4 }}>
                           {index + 1}
                         </Text>
@@ -19213,6 +19430,144 @@ function App() {
                 </BouncyButton>
               </View>
             )}
+          </SafeAreaView>
+        </Modal>
+      )}
+
+      {/* PDF FULL-SCREEN PAGE EDITOR - tap any page tile in PDF Editor to
+          open it here. This is the foundation the rest of the requested
+          page-level tools (compress, extract, insert, page numbers) get
+          added to over the next few builds - shipping the viewer +
+          rotate/delete/navigate first since everything else hangs its
+          toolbar off this same screen. */}
+      {pdfFullscreenIndex !== null && pdfEditorPages[pdfFullscreenIndex] && (
+        <Modal
+          animationType={Platform.OS === 'web' ? 'none' : 'fade'}
+          transparent={false}
+          visible={true}
+          onRequestClose={() => setPdfFullscreenIndex(null)}
+        >
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#0B0F17' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }}>
+              <BouncyButton
+                style={{ padding: 6 }}
+                onPress={() => setPdfFullscreenIndex(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <Text style={{ color: '#F8FAFC', fontSize: 22 }}>✕</Text>
+              </BouncyButton>
+              <Text style={{ color: '#F8FAFC', fontSize: 14, fontWeight: '700' }}>
+                {pdfFullscreenIndex + 1} / {pdfEditorPages.length}
+              </Text>
+              <BouncyButton
+                style={{ padding: 6 }}
+                onPress={() => {
+                  const page = pdfEditorPages[pdfFullscreenIndex];
+                  if (page) removePdfEditorPage(page.id);
+                  setPdfFullscreenIndex((i) => (pdfEditorPages.length <= 1 ? null : Math.min(i, pdfEditorPages.length - 2)));
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Delete this page"
+              >
+                <TrashIconSVG />
+              </BouncyButton>
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 12 }}>
+              <BouncyButton
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', opacity: pdfCompressing ? 0.5 : 1 }}
+                onPress={handleCompressPdf}
+                disabled={pdfCompressing}
+                accessibilityRole="button"
+                accessibilityLabel="Compress this PDF"
+                accessibilityState={{ disabled: pdfCompressing, busy: pdfCompressing }}
+              >
+                {pdfCompressing ? (
+                  <ActivityIndicator color="#F8FAFC" size="small" />
+                ) : (
+                  <>
+                    <CompressIconSVG color="#F8FAFC" size={15} />
+                    <Text style={{ color: '#F8FAFC', fontSize: 12, fontWeight: '600' }}>Compress</Text>
+                  </>
+                )}
+              </BouncyButton>
+              <BouncyButton
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+                onPress={handleAddPageNumbers}
+                accessibilityRole="button"
+                accessibilityLabel="Add page numbers"
+              >
+                <Text style={{ color: '#F8FAFC', fontSize: 12, fontWeight: '600' }}>Page Numbers</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+                onPress={() => handleExtractPage(pdfFullscreenIndex)}
+                accessibilityRole="button"
+                accessibilityLabel="Save this page as its own PDF"
+              >
+                <Text style={{ color: '#F8FAFC', fontSize: 12, fontWeight: '600' }}>Extract Page</Text>
+              </BouncyButton>
+            </View>
+
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+              {pdfEditorPages[pdfFullscreenIndex].thumbnailUri ? (
+                <Image
+                  source={{ uri: pdfEditorPages[pdfFullscreenIndex].thumbnailUri }}
+                  style={{
+                    width: '100%', height: '100%',
+                    transform: [{ rotate: `${pdfEditorPages[pdfFullscreenIndex].rotation}deg` }]
+                  }}
+                  resizeMode="contain"
+                />
+              ) : (
+                <PdfIconSVG size={64} color="#64748B" />
+              )}
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 16 }}>
+              <BouncyButton
+                style={{ padding: 10, opacity: pdfFullscreenIndex === 0 ? 0.3 : 1 }}
+                onPress={() => setPdfFullscreenIndex((i) => Math.max(0, i - 1))}
+                disabled={pdfFullscreenIndex === 0}
+                accessibilityRole="button"
+                accessibilityLabel="Previous page"
+              >
+                <ChevronLeftSVG color="#F8FAFC" size={26} />
+              </BouncyButton>
+
+              <BouncyButton
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+                onPress={() => rotatePdfEditorPage(pdfEditorPages[pdfFullscreenIndex].id)}
+                accessibilityRole="button"
+                accessibilityLabel="Rotate page"
+              >
+                <RotateIconSVG color="#F8FAFC" size={16} />
+                <Text style={{ color: '#F8FAFC', fontSize: 13, fontWeight: '600' }}>Rotate</Text>
+              </BouncyButton>
+
+              <BouncyButton
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+                onPress={async () => {
+                  await handleInsertBlankPage(pdfFullscreenIndex);
+                  setPdfFullscreenIndex((i) => i + 1);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Insert a blank page after this one"
+              >
+                <Text style={{ color: '#F8FAFC', fontSize: 13, fontWeight: '600' }}>+ Page</Text>
+              </BouncyButton>
+
+              <BouncyButton
+                style={{ padding: 10, opacity: pdfFullscreenIndex >= pdfEditorPages.length - 1 ? 0.3 : 1 }}
+                onPress={() => setPdfFullscreenIndex((i) => Math.min(pdfEditorPages.length - 1, i + 1))}
+                disabled={pdfFullscreenIndex >= pdfEditorPages.length - 1}
+                accessibilityRole="button"
+                accessibilityLabel="Next page"
+              >
+                <ChevronRightSVG color="#F8FAFC" size={26} />
+              </BouncyButton>
+            </View>
           </SafeAreaView>
         </Modal>
       )}
