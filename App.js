@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 720;
+const BUILD_NUMBER = 721;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3863,13 +3863,25 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
 
   if (!visible) return null;
 
-  const HandleDot = ({ kind, style }) => (
-    <View {...respondersRef.current[kind]} style={[{ position: 'absolute', width: 28, height: 28, marginLeft: -14, marginTop: -14, alignItems: 'center', justifyContent: 'center' }, style]}>
+  // Plain functions returning JSX, called directly - NOT used as JSX
+  // tags. `<HandleDot .../>` would make React treat a fresh function
+  // identity as a fresh component TYPE every render (this file redefines
+  // HandleDot/EdgeBar on every call of PdfPageCropEditor's body), which
+  // forces React to unmount and remount the underlying View every single
+  // drag frame - exactly the reason dragging a corner never actually
+  // worked: each onPanResponderMove call sets state, which re-renders,
+  // which mints new HandleDot/EdgeBar identities, which destroys the DOM
+  // node mid-gesture and drops the browser's pointer capture with it.
+  // Calling these as plain functions keeps the same View at the same
+  // tree position across renders - only its props change, so React just
+  // updates it in place and the drag stays continuous.
+  const renderHandleDot = (kind, style) => (
+    <View key={kind} {...respondersRef.current[kind]} style={[{ position: 'absolute', width: 28, height: 28, marginLeft: -14, marginTop: -14, alignItems: 'center', justifyContent: 'center' }, style]}>
       <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: '#7D52DD', borderWidth: 2, borderColor: '#FFFFFF' }} />
     </View>
   );
-  const EdgeBar = ({ kind, style }) => (
-    <View {...respondersRef.current[kind]} style={[{ position: 'absolute' }, style]} />
+  const renderEdgeBar = (kind, style) => (
+    <View key={kind} {...respondersRef.current[kind]} style={[{ position: 'absolute' }, style]} />
   );
 
   return (
@@ -3904,15 +3916,15 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
               borderWidth: 1.5, borderColor: '#FFFFFF'
             }} />
 
-            <EdgeBar kind="top" style={{ top: `${insets.top * 100}%`, left: `${insets.left * 100}%`, right: `${insets.right * 100}%`, height: 24, marginTop: -12 }} />
-            <EdgeBar kind="bottom" style={{ bottom: `${insets.bottom * 100}%`, left: `${insets.left * 100}%`, right: `${insets.right * 100}%`, height: 24, marginBottom: -12 }} />
-            <EdgeBar kind="left" style={{ left: `${insets.left * 100}%`, top: `${insets.top * 100}%`, bottom: `${insets.bottom * 100}%`, width: 24, marginLeft: -12 }} />
-            <EdgeBar kind="right" style={{ right: `${insets.right * 100}%`, top: `${insets.top * 100}%`, bottom: `${insets.bottom * 100}%`, width: 24, marginRight: -12 }} />
+            {renderEdgeBar('top', { top: `${insets.top * 100}%`, left: `${insets.left * 100}%`, right: `${insets.right * 100}%`, height: 24, marginTop: -12 })}
+            {renderEdgeBar('bottom', { bottom: `${insets.bottom * 100}%`, left: `${insets.left * 100}%`, right: `${insets.right * 100}%`, height: 24, marginBottom: -12 })}
+            {renderEdgeBar('left', { left: `${insets.left * 100}%`, top: `${insets.top * 100}%`, bottom: `${insets.bottom * 100}%`, width: 24, marginLeft: -12 })}
+            {renderEdgeBar('right', { right: `${insets.right * 100}%`, top: `${insets.top * 100}%`, bottom: `${insets.bottom * 100}%`, width: 24, marginRight: -12 })}
 
-            <HandleDot kind="tl" style={{ top: `${insets.top * 100}%`, left: `${insets.left * 100}%` }} />
-            <HandleDot kind="tr" style={{ top: `${insets.top * 100}%`, left: `${(1 - insets.right) * 100}%` }} />
-            <HandleDot kind="bl" style={{ top: `${(1 - insets.bottom) * 100}%`, left: `${insets.left * 100}%` }} />
-            <HandleDot kind="br" style={{ top: `${(1 - insets.bottom) * 100}%`, left: `${(1 - insets.right) * 100}%` }} />
+            {renderHandleDot('tl', { top: `${insets.top * 100}%`, left: `${insets.left * 100}%` })}
+            {renderHandleDot('tr', { top: `${insets.top * 100}%`, left: `${(1 - insets.right) * 100}%` })}
+            {renderHandleDot('bl', { top: `${(1 - insets.bottom) * 100}%`, left: `${insets.left * 100}%` })}
+            {renderHandleDot('br', { top: `${(1 - insets.bottom) * 100}%`, left: `${(1 - insets.right) * 100}%` })}
           </View>
         </View>
 
@@ -3940,7 +3952,7 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
         </View>
 
         <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
-          <BouncyButton style={[styles.saveAccountSettingsBtn, { marginTop: 0 }]} onPress={() => onConfirm(insets)} accessibilityRole="button">
+          <BouncyButton style={[styles.saveAccountSettingsBtn, { marginTop: 0, alignSelf: 'center', width: frameW }]} onPress={() => onConfirm(insets)} accessibilityRole="button">
             <Text style={styles.submitBtnText}>{isLastInQueue ? 'Done - Apply Crop' : 'Next Page'}</Text>
           </BouncyButton>
         </View>
@@ -19015,7 +19027,7 @@ function App() {
                     {isWebWide && <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Back to DECENT</Text>}
                   </BouncyButton>
 
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
                     <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
                       <DecentLogoSVG size={15} />
                     </View>
@@ -19093,7 +19105,7 @@ function App() {
                       <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
                     </BouncyButton>
                   ) : <View style={{ width: 30 }} />}
-                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                     <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
                       <DecentLogoSVG size={15} />
                     </View>
