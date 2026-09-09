@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 722;
+const BUILD_NUMBER = 723;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -733,23 +733,6 @@ const RotateCCWIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M3 12a9 9 0 1 0 2.64-6.36L3 8" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     <Path d="M3 3v5h5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-  </Svg>
-));
-// A dashed mirror-axis line with chevrons pointing away from it on each
-// side - flip horizontal mirrors left/right (vertical axis line),
-// flip vertical mirrors top/bottom (horizontal axis line).
-const FlipHorizontalIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M12 3v18" stroke={color} strokeWidth="2" strokeDasharray="3 3" strokeLinecap="round" />
-    <Path d="M7 8l-3 4 3 4" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <Path d="M17 8l3 4-3 4" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-  </Svg>
-));
-const FlipVerticalIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M3 12h18" stroke={color} strokeWidth="2" strokeDasharray="3 3" strokeLinecap="round" />
-    <Path d="M8 7l4-3 4 3" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <Path d="M8 17l4 3 4-3" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 // Plain right-pointing chevron - used next to every export/download CTA.
@@ -3912,7 +3895,7 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
 
   return (
     <Modal animationType={Platform.OS === 'web' ? 'none' : 'fade'} transparent={false} visible={true} onRequestClose={onCancel}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#0B0F17' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#0B0F17', userSelect: 'none', WebkitUserSelect: 'none' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }}>
           <BouncyButton style={{ padding: 6 }} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Cancel crop">
             <Text style={{ color: '#F8FAFC', fontSize: 22 }}>✕</Text>
@@ -12204,21 +12187,22 @@ function App() {
     };
     setPdfContainers((prev) => [...prev, container]);
 
-    // Large files (especially many-page, image-heavy scans) can take a
-    // real while to rasterize every page for thumbnails - this is a
-    // known, currently-uncapped cost inside generateWebPdfThumbnails/
-    // generateNativePdfThumbnails (outside this file - see
-    // pdfThumbnails.web.js/.native.js), not something addressable from
-    // the call site beyond lowering the render scale and giving the
-    // user a heads-up rather than just hanging silently.
+    // Large files (especially many-page, image-heavy scans) still take a
+    // while to rasterize every page for thumbnails, even after lowering
+    // this to a genuinely thumbnail-appropriate scale (0.3, versus what
+    // used to be passed here) and adding yielding + document cleanup
+    // inside generateWebPdfThumbnails itself (see pdfThumbnails.web.js) -
+    // a many-page PDF is still real, cumulative rendering work, just no
+    // longer blocking the whole browser tab while it happens. This toast
+    // is just an honest heads-up for genuinely large files, not a sign
+    // something's stuck.
     if (!isImage) {
       if (originalSize > 15 * 1024 * 1024) {
         showToast('Large file - this may take a moment to process.');
       }
-      const scale = originalSize > 10 * 1024 * 1024 ? 1.0 : 1.5;
       const thumbnails = Platform.OS === 'web'
-        ? await generateWebPdfThumbnails(uri, scale)
-        : await generateNativePdfThumbnails(uri, originalSize > 10 * 1024 * 1024 ? 600 : 900);
+        ? await generateWebPdfThumbnails(uri, 0.3)
+        : await generateNativePdfThumbnails(uri, 160);
       setPdfContainers((prev) => prev.map((c) => {
         if (c.id !== containerId) return c; // container may have been removed while this was rendering - no-op rather than resurrect it
         return {
@@ -12330,106 +12314,14 @@ function App() {
     pushPdfHistorySnapshot('Delete page');
     triggerHaptic('light');
     updateActiveContainerPages((pages) => pages.filter((p) => p.id !== pageId));
+    showToast('Page removed.');
   };
 
   const rotatePdfEditorPage = (pageId, direction = 1) => {
     pushPdfHistorySnapshot('Rotate page');
     triggerHaptic('light');
     updateActiveContainerPages((pages) => pages.map((p) => (p.id === pageId ? { ...p, rotation: (p.rotation + 90 * direction + 360) % 360 } : p)));
-  };
-
-  // Flip has no page-level equivalent in the PDF spec the way rotation
-  // does (pdf-lib can set a page's /Rotate entry directly, but there's
-  // no matching /Flip) - so unlike rotate, this actually rasterizes the
-  // one page being flipped and replaces just its own source with the
-  // flipped image, same rasterize-and-replace approach Crop/Compress use
-  // for the whole container, just scoped to a single page here. Every
-  // other page's source is left completely untouched.
-  // Web-specific flip using plain Canvas rather than expo-image-manipulator's
-  // manipulateAsync - that library's actual transform actions (flip/rotate/
-  // crop, as opposed to the compress-only usage already proven elsewhere in
-  // this file) have inconsistent web support, and a silently-failing flip
-  // on web is exactly what "flipping doesn't work" sounds like. Canvas
-  // scale(-1,1)/scale(1,-1) is a plain, verified browser primitive with no
-  // such ambiguity, so web and native now go through genuinely different,
-  // independently-reliable code paths for the same operation.
-  const flipImageWeb = (uri, direction) => new Promise((resolve, reject) => {
-    const img = new window.Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
-      const ctx = canvas.getContext('2d');
-      if (direction === 'horizontal') {
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-      } else {
-        ctx.translate(0, canvas.height);
-        ctx.scale(1, -1);
-      }
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/jpeg', 0.92));
-    };
-    img.onerror = (e) => reject(e);
-    img.src = uri;
-  });
-
-  const handleFlipPage = async (pageId, direction) => {
-    if (!activePdfContainer) return;
-    const page = activePdfContainer.pages.find((p) => p.id === pageId);
-    if (!page) return;
-    pushPdfHistorySnapshot('Flip page');
-    triggerHaptic('light');
-    try {
-      const meta = activePdfContainer.sourceMeta[page.sourceFileIndex];
-      let sourceUri;
-      if (meta.isImage) {
-        sourceUri = meta.uri;
-      } else {
-        const rendered = Platform.OS === 'web'
-          ? await generateWebPdfThumbnails(meta.uri, 2)
-          : await generateNativePdfThumbnails(meta.uri, 1600);
-        sourceUri = rendered ? rendered[page.sourcePageIndex] : null;
-      }
-      if (!sourceUri) throw new Error('Could not render page to flip');
-
-      let flippedUri;
-      if (Platform.OS === 'web') {
-        flippedUri = await flipImageWeb(sourceUri, direction);
-      } else {
-        const flipAction = direction === 'horizontal'
-          ? { flip: ImageManipulator.FlipType.Horizontal }
-          : { flip: ImageManipulator.FlipType.Vertical };
-        const result = await ImageManipulator.manipulateAsync(sourceUri, [flipAction], {
-          compress: 0.92, format: ImageManipulator.SaveFormat.JPEG
-        });
-        flippedUri = result.uri;
-      }
-
-      const flippedDoc = await loadImageAsPdfDoc(flippedUri);
-      if (page.rotation) {
-        const [pdfPage] = flippedDoc.getPages();
-        pdfPage.setRotation(degrees(page.rotation % 360));
-      }
-
-      const targetId = activePdfContainer.id;
-      setPdfContainers((prev) => prev.map((c) => {
-        if (c.id !== targetId) return c;
-        const newSourceIndex = c.sourceDocs.length;
-        return {
-          ...c,
-          sourceDocs: [...c.sourceDocs, flippedDoc],
-          sourceMeta: [...c.sourceMeta, { uri: null, isImage: true }],
-          pages: c.pages.map((p) => (p.id === pageId ? { ...p, sourceFileIndex: newSourceIndex, sourcePageIndex: 0, thumbnailUri: flippedUri } : p))
-        };
-      }));
-      setPdfFullscreenHighResCache({});
-      triggerHaptic('success');
-    } catch (e) {
-      console.warn('Flip page failed:', e);
-      showToast('Could not flip this page - try again.');
-      triggerHaptic('error');
-    }
+    showToast('Page rotated.');
   };
 
   // Native reorder - simple move-by-one-position rather than true drag
@@ -12519,12 +12411,14 @@ function App() {
     </View>
   );
 
-  // Removes one whole container (the tab strip's "x") - undo-able like
-  // everything else here, so no separate confirmation dialog needed.
+  // Removes one whole container - reached via the tab close confirm
+  // modal (which handles the "are you sure"), so this itself just does
+  // the removal; it's undo-able too either way.
   const removePdfContainer = (containerId) => {
     pushPdfHistorySnapshot('Remove PDF');
     triggerHaptic('warning');
     setPdfContainers((prev) => prev.filter((c) => c.id !== containerId));
+    showToast('PDF removed.');
   };
 
   // "Clear PDF" toolbar button - wipes everything currently loaded.
@@ -12537,6 +12431,7 @@ function App() {
     triggerHaptic('warning');
     setPdfContainers([]);
     setPdfFullscreenHighResCache({});
+    showToast('Cleared.');
   };
 
   // Container-level multi-select - Compress (once there's more than one
@@ -12597,6 +12492,7 @@ function App() {
     setPdfFullscreenHighResCache({});
     cancelContainerSelectFlow();
     triggerHaptic('success');
+    showToast('PDFs merged.');
   };
 
   // Renders every page at a real, readable resolution (not the small
@@ -12940,6 +12836,7 @@ function App() {
       const bytes = await assemblePdfFromPages(activePdfContainer.sourceDocs, [page]);
       await savePdfBytes(bytes, `page-${pageIndex + 1}.pdf`);
       triggerHaptic('success');
+      showToast('Page extracted.');
     } catch (e) {
       console.warn('Extract page failed:', e);
       showToast('Could not extract this page - try again.');
@@ -12972,6 +12869,7 @@ function App() {
         pages.splice(afterIndex + 1, 0, newPage);
         return { ...c, sourceDocs: [...c.sourceDocs, blankDoc], sourceMeta: [...c.sourceMeta, { uri: null, isImage: false }], pages };
       }));
+      showToast('Page added.');
     } catch (e) {
       console.warn('Insert blank page failed:', e);
       showToast('Could not insert a blank page - try again.');
@@ -13007,11 +12905,12 @@ function App() {
         pages.splice(afterIndex + 1, 0, ...newPages);
         return { ...c, sourceDocs: [...c.sourceDocs, doc], sourceMeta: [...c.sourceMeta, { uri, isImage }], pages };
       }));
+      showToast(pageCount > 1 ? 'Pages added.' : 'Page added.');
 
       if (!isImage) {
         const thumbnails = Platform.OS === 'web'
-          ? await generateWebPdfThumbnails(uri, 1.5)
-          : await generateNativePdfThumbnails(uri, 900);
+          ? await generateWebPdfThumbnails(uri, 0.3)
+          : await generateNativePdfThumbnails(uri, 160);
         setPdfContainers((prev) => prev.map((c) => {
           if (c.id !== targetId) return c;
           return {
@@ -13089,8 +12988,8 @@ function App() {
       const outBytes = await outDoc.save();
       const tempUri = await pdfBytesToTempUri(outBytes);
       const thumbnails = Platform.OS === 'web'
-        ? await generateWebPdfThumbnails(tempUri, 1.5)
-        : await generateNativePdfThumbnails(tempUri, 900);
+        ? await generateWebPdfThumbnails(tempUri, 0.3)
+        : await generateNativePdfThumbnails(tempUri, 160);
       const newPages = pages.map((p, i) => ({
         ...p, sourceFileIndex: 0, sourcePageIndex: i, rotation: 0,
         thumbnailUri: (thumbnails && thumbnails[i]) || p.thumbnailUri
@@ -13183,8 +13082,8 @@ function App() {
       const outBytes = await outDoc.save();
       const tempUri = await pdfBytesToTempUri(outBytes);
       const thumbnails = Platform.OS === 'web'
-        ? await generateWebPdfThumbnails(tempUri, 1.5)
-        : await generateNativePdfThumbnails(tempUri, 900);
+        ? await generateWebPdfThumbnails(tempUri, 0.3)
+        : await generateNativePdfThumbnails(tempUri, 160);
       const newPages = pages.map((p, i) => ({
         ...p, sourceFileIndex: 0, sourcePageIndex: i, rotation: 0,
         thumbnailUri: (thumbnails && thumbnails[i]) || p.thumbnailUri
@@ -20961,18 +20860,6 @@ function App() {
                                   <RotateCWIconSVG size={16} color={toolsTheme.textSecondary} />
                                 </BouncyButton>
                                 <BouncyButton
-                                  style={{ width: 36, height: 36, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
-                                  onPress={() => handleFlipPage(activePage.id, 'horizontal')} accessibilityRole="button" accessibilityLabel="Flip horizontally"
-                                >
-                                  <FlipHorizontalIconSVG size={16} color={toolsTheme.textSecondary} />
-                                </BouncyButton>
-                                <BouncyButton
-                                  style={{ width: 36, height: 36, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
-                                  onPress={() => handleFlipPage(activePage.id, 'vertical')} accessibilityRole="button" accessibilityLabel="Flip vertically"
-                                >
-                                  <FlipVerticalIconSVG size={16} color={toolsTheme.textSecondary} />
-                                </BouncyButton>
-                                <BouncyButton
                                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
                                   onPress={() => startSinglePageCrop(activePage.id)} accessibilityRole="button" accessibilityLabel="Crop this page"
                                 >
@@ -21910,7 +21797,6 @@ function App() {
           'Compress PDF': 'Compressed',
           'Add page numbers': 'Page numbers added',
           'Crop pages': 'Pages cropped',
-          'Flip page': 'Page(s) flipped',
           'Rotate page': 'Page(s) rotated',
           'Delete page': 'Page(s) removed',
           'Reorder pages': 'Pages reordered',
