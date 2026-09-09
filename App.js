@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 717;
+const BUILD_NUMBER = 718;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -20268,6 +20268,164 @@ function App() {
                   </View>
                   )}
 
+                  {pdfContainers.length > 0 && !pdfSelectModeTool && !pdfContainerSelectModeTool && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, alignItems: 'center' }}>
+                      {isWebWide && (
+                        <>
+                          <BouncyButton
+                            style={{
+                              flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
+                              borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, opacity: pdfEditorLoading ? 0.6 : 1
+                            }}
+                            onPress={pickPdfEditorPdfs}
+                            disabled={pdfEditorLoading}
+                            accessibilityRole="button"
+                            accessibilityLabel="Add another PDF"
+                          >
+                            <PdfIconSVG color={toolsTheme.textSecondary} size={14} />
+                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addPdf')}</Text>
+                          </BouncyButton>
+                          <BouncyButton
+                            style={{
+                              flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
+                              borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, opacity: pdfEditorLoading ? 0.6 : 1
+                            }}
+                            onPress={pickPdfEditorImages}
+                            disabled={pdfEditorLoading}
+                            accessibilityRole="button"
+                            accessibilityLabel="Add photos as a new PDF"
+                          >
+                            <ImageIconSVG color={toolsTheme.textSecondary} size={14} />
+                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addImages')}</Text>
+                          </BouncyButton>
+                          <View style={{ width: 1, height: 20, backgroundColor: toolsTheme.border, marginHorizontal: 2 }} />
+                        </>
+                      )}
+                      <View style={{
+                        flexDirection: 'row', alignItems: 'center', borderRadius: 99, overflow: 'hidden',
+                        backgroundColor: isPdfCompressActive ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent',
+                        borderWidth: isPdfCompressActive ? 0 : 1,
+                        borderColor: toolsTheme.border
+                      }}>
+                        {isPdfCompressActive && (
+                          <BouncyButton
+                            style={{ paddingLeft: 12, paddingVertical: 8 }}
+                            onPress={() => setPdfCompressUndoConfirmVisible(true)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Undo compress"
+                          >
+                            <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+                              <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', lineHeight: 11 }}>✕</Text>
+                            </View>
+                          </BouncyButton>
+                        )}
+                        <BouncyButton
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8,
+                            paddingLeft: isPdfCompressActive ? 6 : 14, paddingRight: 14,
+                            opacity: pdfCompressing ? 0.6 : 1
+                          }}
+                          onPress={() => (pdfContainers.length > 1 ? startContainerSelectFlow('compress') : setPdfCompressOptionsVisible(true))}
+                          disabled={pdfCompressing}
+                          accessibilityRole="button"
+                          accessibilityLabel="Compress"
+                          accessibilityState={{ disabled: pdfCompressing, busy: pdfCompressing, selected: isPdfCompressActive }}
+                        >
+                          {pdfCompressing ? (
+                            <ActivityIndicator color={isPdfCompressActive ? '#FFFFFF' : toolsTheme.textSecondary} size="small" />
+                          ) : (
+                            <>
+                              <CompressIconSVG color={isPdfCompressActive ? '#FFFFFF' : toolsTheme.textSecondary} size={14} />
+                              <Text style={{ color: isPdfCompressActive ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Compress</Text>
+                            </>
+                          )}
+                        </BouncyButton>
+                      </View>
+                      {/* No separate "Reorder" toggle - every page
+                          thumbnail (rail tile or list tile) always shows
+                          its own up/down + typeable-number pill, see
+                          renderPdfReorderPill. */}
+                      {isWebWide ? (
+                        <>
+                          <BouncyButton
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                            onPress={handleAddPageNumbers}
+                            accessibilityRole="button"
+                            accessibilityLabel="Add page numbers"
+                          >
+                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Page Numbers</Text>
+                          </BouncyButton>
+                          <BouncyButton
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                            onPress={() => { cancelContainerSelectFlow(); setPdfSelectedPageIds([]); setPdfSelectModeTool('crop'); }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Crop pages"
+                          >
+                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Crop Pages</Text>
+                          </BouncyButton>
+                          {pdfContainers.length > 1 && (
+                            <BouncyButton
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                              onPress={() => startContainerSelectFlow('merge')}
+                              accessibilityRole="button"
+                              accessibilityLabel="Merge PDFs"
+                            >
+                              <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Merge PDFs</Text>
+                            </BouncyButton>
+                          )}
+                        </>
+                      ) : (
+                        <View ref={pdfMoreToolsButtonRef} collapsable={false}>
+                        <BouncyButton
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 14,
+                            borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border
+                          }}
+                          onPress={() => {
+                            if (pdfMoreToolsButtonRef.current) {
+                              pdfMoreToolsButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
+                                setPdfMoreToolsMenuPosition({ top: pageY + height + 6, left: pageX });
+                                setPdfMoreToolsMenuVisible(true);
+                              });
+                            } else {
+                              setPdfMoreToolsMenuVisible(true);
+                            }
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel="More PDF tools"
+                        >
+                          <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>More Tools</Text>
+                          <ChevronDownSVG color={toolsTheme.textSecondary} size={13} />
+                        </BouncyButton>
+                        </View>
+                      )}
+                      {/* Global undo - pops the most recent operation
+                          regardless of which container it touched. */}
+                      {pdfEditorHasPendingChanges && (
+                        <BouncyButton
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                          onPress={handleUndoPdfEdit}
+                          accessibilityRole="button"
+                          accessibilityLabel="Undo last change"
+                        >
+                          <RevertIconSVG color={toolsTheme.accent} size={14} />
+                          <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '600' }}>Undo</Text>
+                        </BouncyButton>
+                      )}
+                      {isWebWide && (
+                        <BouncyButton
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: '#EF4444', marginLeft: 'auto' }}
+                          onPress={() => setPdfClearConfirmVisible(true)}
+                          accessibilityRole="button"
+                          accessibilityLabel="Clear loaded PDFs"
+                        >
+                          <TrashIconSVG />
+                          <Text style={{ color: '#EF4444', fontSize: 12.5, fontWeight: '700' }}>Clear PDF{pdfContainers.length > 1 ? 's' : ''}</Text>
+                        </BouncyButton>
+                      )}
+                    </View>
+                  )}
+
                   {/* CONTAINER TABS - one uploaded PDF (or photo set) per
                       container, shown as its own tab once there's more
                       than one - the "x" removes just that container
@@ -20385,157 +20543,6 @@ function App() {
                       </View>
                     </View>
                   )}
-                  {pdfContainers.length > 0 && !pdfSelectModeTool && !pdfContainerSelectModeTool && (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, alignItems: 'center' }}>
-                      {isWebWide && (
-                        <>
-                          <BouncyButton
-                            style={{
-                              flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
-                              borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, opacity: pdfEditorLoading ? 0.6 : 1
-                            }}
-                            onPress={pickPdfEditorPdfs}
-                            disabled={pdfEditorLoading}
-                            accessibilityRole="button"
-                            accessibilityLabel="Add another PDF"
-                          >
-                            <PdfIconSVG color={toolsTheme.textSecondary} size={14} />
-                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addPdf')}</Text>
-                          </BouncyButton>
-                          <BouncyButton
-                            style={{
-                              flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
-                              borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, opacity: pdfEditorLoading ? 0.6 : 1
-                            }}
-                            onPress={pickPdfEditorImages}
-                            disabled={pdfEditorLoading}
-                            accessibilityRole="button"
-                            accessibilityLabel="Add photos as a new PDF"
-                          >
-                            <ImageIconSVG color={toolsTheme.textSecondary} size={14} />
-                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addImages')}</Text>
-                          </BouncyButton>
-                          <View style={{ width: 1, height: 20, backgroundColor: toolsTheme.border, marginHorizontal: 2 }} />
-                        </>
-                      )}
-                      <BouncyButton
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
-                          borderRadius: 99, opacity: pdfCompressing ? 0.6 : 1,
-                          backgroundColor: isPdfCompressActive ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent',
-                          borderWidth: isPdfCompressActive ? 0 : 1,
-                          borderColor: toolsTheme.border
-                        }}
-                        onPress={() => (pdfContainers.length > 1 ? startContainerSelectFlow('compress') : setPdfCompressOptionsVisible(true))}
-                        disabled={pdfCompressing}
-                        accessibilityRole="button"
-                        accessibilityLabel="Compress"
-                        accessibilityState={{ disabled: pdfCompressing, busy: pdfCompressing, selected: isPdfCompressActive }}
-                      >
-                        {pdfCompressing ? (
-                          <ActivityIndicator color={isPdfCompressActive ? '#FFFFFF' : toolsTheme.textSecondary} size="small" />
-                        ) : (
-                          <>
-                            <CompressIconSVG color={isPdfCompressActive ? '#FFFFFF' : toolsTheme.textSecondary} size={14} />
-                            <Text style={{ color: isPdfCompressActive ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Compress</Text>
-                          </>
-                        )}
-                      </BouncyButton>
-                      {isPdfCompressActive && (
-                        <BouncyButton
-                          style={{ width: 26, height: 26, borderRadius: 13, borderWidth: 1, borderColor: '#EF4444', alignItems: 'center', justifyContent: 'center' }}
-                          onPress={() => setPdfCompressUndoConfirmVisible(true)}
-                          accessibilityRole="button"
-                          accessibilityLabel="Undo compress"
-                        >
-                          <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '800', lineHeight: 14 }}>✕</Text>
-                        </BouncyButton>
-                      )}
-                      {/* No separate "Reorder" toggle - every page
-                          thumbnail (rail tile or list tile) always shows
-                          its own up/down + typeable-number pill, see
-                          renderPdfReorderPill. */}
-                      {isWebWide ? (
-                        <>
-                          <BouncyButton
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                            onPress={handleAddPageNumbers}
-                            accessibilityRole="button"
-                            accessibilityLabel="Add page numbers"
-                          >
-                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Page Numbers</Text>
-                          </BouncyButton>
-                          <BouncyButton
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                            onPress={() => { cancelContainerSelectFlow(); setPdfSelectedPageIds([]); setPdfSelectModeTool('crop'); }}
-                            accessibilityRole="button"
-                            accessibilityLabel="Crop pages"
-                          >
-                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Crop Pages</Text>
-                          </BouncyButton>
-                          {pdfContainers.length > 1 && (
-                            <BouncyButton
-                              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                              onPress={() => startContainerSelectFlow('merge')}
-                              accessibilityRole="button"
-                              accessibilityLabel="Merge PDFs"
-                            >
-                              <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Merge PDFs</Text>
-                            </BouncyButton>
-                          )}
-                        </>
-                      ) : (
-                        <View ref={pdfMoreToolsButtonRef} collapsable={false}>
-                        <BouncyButton
-                          style={{
-                            flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 14,
-                            borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border
-                          }}
-                          onPress={() => {
-                            if (pdfMoreToolsButtonRef.current) {
-                              pdfMoreToolsButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
-                                setPdfMoreToolsMenuPosition({ top: pageY + height + 6, left: pageX });
-                                setPdfMoreToolsMenuVisible(true);
-                              });
-                            } else {
-                              setPdfMoreToolsMenuVisible(true);
-                            }
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel="More PDF tools"
-                        >
-                          <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>More Tools</Text>
-                          <ChevronDownSVG color={toolsTheme.textSecondary} size={13} />
-                        </BouncyButton>
-                        </View>
-                      )}
-                      {/* Global undo - pops the most recent operation
-                          regardless of which container it touched. */}
-                      {pdfEditorHasPendingChanges && (
-                        <BouncyButton
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                          onPress={handleUndoPdfEdit}
-                          accessibilityRole="button"
-                          accessibilityLabel="Undo last change"
-                        >
-                          <RevertIconSVG color={toolsTheme.accent} size={14} />
-                          <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '600' }}>Undo</Text>
-                        </BouncyButton>
-                      )}
-                      {isWebWide && (
-                        <BouncyButton
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: '#EF4444', marginLeft: 'auto' }}
-                          onPress={() => setPdfClearConfirmVisible(true)}
-                          accessibilityRole="button"
-                          accessibilityLabel="Clear loaded PDFs"
-                        >
-                          <TrashIconSVG />
-                          <Text style={{ color: '#EF4444', fontSize: 12.5, fontWeight: '700' }}>Clear PDF{pdfContainers.length > 1 ? 's' : ''}</Text>
-                        </BouncyButton>
-                      )}
-                    </View>
-                  )}
-
                   {!isWebWide && containerPages.length > 0 && (
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginTop: 8 }}>
                       {containerPages.length} {tt('pageCount')}
