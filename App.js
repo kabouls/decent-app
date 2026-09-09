@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 721;
+const BUILD_NUMBER = 722;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3855,9 +3855,35 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
       }
     }).panHandlers;
 
+    // MOVE - dragging inside the crop rectangle (not on an edge/corner
+    // handle) repositions the whole box without resizing it: both
+    // dimensions stay fixed, only the anchor point moves, clamped so the
+    // box can't be dragged past the frame's own edges.
+    const moveHandler = PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => { dragStartRef.current = insetsRef.current; },
+      onPanResponderMove: (_, gestureState) => {
+        const start = dragStartRef.current;
+        const { w, h } = frameSizeRef.current;
+        const boxWidth = 1 - start.left - start.right;
+        const boxHeight = 1 - start.top - start.bottom;
+        const newLeft = Math.max(0, Math.min(1 - boxWidth, start.left + gestureState.dx / w));
+        const newTop = Math.max(0, Math.min(1 - boxHeight, start.top + gestureState.dy / h));
+        const next = {
+          left: newLeft, right: 1 - boxWidth - newLeft,
+          top: newTop, bottom: 1 - boxHeight - newTop
+        };
+        insetsRef.current = next;
+        setInsets(next);
+      }
+    }).panHandlers;
+
     respondersRef.current = {
       top: buildHandle('top'), bottom: buildHandle('bottom'), left: buildHandle('left'), right: buildHandle('right'),
-      tl: buildHandle('tl'), tr: buildHandle('tr'), bl: buildHandle('bl'), br: buildHandle('br')
+      tl: buildHandle('tl'), tr: buildHandle('tr'), bl: buildHandle('bl'), br: buildHandle('br'),
+      move: moveHandler
     };
   }
 
@@ -3895,10 +3921,10 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
           <View style={{ width: 34 }} />
         </View>
 
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
           <View style={{ width: frameW, height: frameH, position: 'relative' }}>
             {imageUri ? (
-              <Image source={{ uri: imageUri }} style={{ width: '100%', height: '100%' }} resizeMode="stretch" />
+              <Image source={{ uri: imageUri }} draggable={false} style={{ width: '100%', height: '100%' }} resizeMode="stretch" />
             ) : (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                 <PdfIconSVG size={48} color="#64748B" />
@@ -3909,7 +3935,12 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
             <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${insets.bottom * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
             <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${insets.left * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
             <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: `${insets.right * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
-            <View pointerEvents="none" style={{
+            {/* The crop box interior itself - draggable to reposition the
+                whole box without resizing it, once it's been sized down
+                from a corner/edge. Edge bars and corner handles render
+                after this (higher in z-order), so touches right at the
+                boundary still hit those instead of triggering a move. */}
+            <View {...respondersRef.current.move} style={{
               position: 'absolute',
               top: `${insets.top * 100}%`, bottom: `${insets.bottom * 100}%`,
               left: `${insets.left * 100}%`, right: `${insets.right * 100}%`,
@@ -3947,7 +3978,7 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
             </Text>
           </BouncyButton>
           <Text style={{ color: '#64748B', fontSize: 11, marginTop: 8, textAlign: 'center' }}>
-            Drag a corner to resize both sides, or an edge for just that side.
+            Drag a corner to resize both sides, an edge for just that side, or the box itself to move it.
           </Text>
         </View>
 
@@ -6117,7 +6148,8 @@ function App() {
   const [toolsInterstitialOfferCompress, setToolsInterstitialOfferCompress] = useState(false);
   const TOOLS_INTERSTITIAL_DISMISSED_KEY = 'tools_interstitial_dismissed_date';
 
-  const maybeShowToolsDownloadInterstitial = async (offerCompress = false) => {
+  const maybeShowToolsDownloadInterstitial = async (offerCompress = false, exportedPdf = null) => {
+    setLastExportedPdf(exportedPdf); // clears it for non-PDF callers (Compressor/Converter/QR), sets it for PDF Editor's export paths
     try {
       const dismissedDate = await AsyncStorage.getItem(TOOLS_INTERSTITIAL_DISMISSED_KEY);
       const today = new Date().toDateString();
@@ -7367,6 +7399,7 @@ function App() {
   const [pdfCompressUndoConfirmVisible, setPdfCompressUndoConfirmVisible] = useState(false);
   const [pdfPageNumbersUndoConfirmVisible, setPdfPageNumbersUndoConfirmVisible] = useState(false);
   const [pdfClearConfirmVisible, setPdfClearConfirmVisible] = useState(false);
+  const [pdfTabCloseConfirmId, setPdfTabCloseConfirmId] = useState(null); // container id pending removal via its tab's x
   const [pdfMoreToolsMenuVisible, setPdfMoreToolsMenuVisible] = useState(false);
   const pdfMoreToolsButtonRef = useRef(null);
   const [pdfMoreToolsMenuPosition, setPdfMoreToolsMenuPosition] = useState({ top: 140, left: 20 });
@@ -7393,6 +7426,18 @@ function App() {
   // (combine into one file vs export each separately) instead of
   // exporting immediately.
   const [pdfExportChoiceVisible, setPdfExportChoiceVisible] = useState(false);
+  // Shown before export actually runs - lists which edits were applied
+  // and, if Compress was one of them, the original-vs-current file size.
+  // pdfExportSummary is computed async (assembling bytes to measure the
+  // current size) right before this opens, so there's a brief loading
+  // state between pressing Export and the modal actually appearing.
+  const [pdfExportConfirmVisible, setPdfExportConfirmVisible] = useState(false);
+  const [pdfExportSummary, setPdfExportSummary] = useState(null); // { editLabels: string[], originalSize: number, currentSize: number|null }
+  const [pdfExportSummaryLoading, setPdfExportSummaryLoading] = useState(false);
+  // Captured after a successful PDF export so the post-export interstitial
+  // can offer an explicit "Open PDF" button - export itself only ever
+  // downloads/saves, never opens anything on its own.
+  const [lastExportedPdf, setLastExportedPdf] = useState(null); // { uri, filename } | null
   const [pdfCombineOrderVisible, setPdfCombineOrderVisible] = useState(false);
   const [pdfCombineOrderIds, setPdfCombineOrderIds] = useState([]); // ordered container ids, user-arranged before combining
 
@@ -7503,8 +7548,13 @@ function App() {
   // actually been applied and is still the most recent thing on the undo
   // stack - once Undo pops it (or something else happens after it), it
   // goes back to its plain outline look.
-  const isPdfCompressActive = pdfEditorHistory.length > 0 && pdfEditorHistory[pdfEditorHistory.length - 1].label === 'Compress PDF';
-  const isPdfPageNumbersActive = pdfEditorHistory.length > 0 && pdfEditorHistory[pdfEditorHistory.length - 1].label === 'Add page numbers';
+  // .some() rather than checking only the last entry - with 2+ ops
+  // applied (e.g. Compress then Page Numbers), every applied effect
+  // should show as active, not just whichever ran most recently. Undo
+  // only pops the last entry, so this naturally turns off exactly the
+  // one that got undone and leaves earlier ones highlighted.
+  const isPdfCompressActive = pdfEditorHistory.some((h) => h.label === 'Compress PDF');
+  const isPdfPageNumbersActive = pdfEditorHistory.some((h) => h.label === 'Add page numbers');
 
   const [toolsMenuVisible, setToolsMenuVisible] = useState(false);
   const [leaveToolsConfirmVisible, setLeaveToolsConfirmVisible] = useState(false);
@@ -7599,7 +7649,9 @@ function App() {
     if (pdfCompressUndoConfirmVisible) { setPdfCompressUndoConfirmVisible(false); return true; }
     if (pdfPageNumbersUndoConfirmVisible) { setPdfPageNumbersUndoConfirmVisible(false); return true; }
     if (pdfClearConfirmVisible) { setPdfClearConfirmVisible(false); return true; }
+    if (pdfTabCloseConfirmId) { setPdfTabCloseConfirmId(null); return true; }
     if (pdfExportChoiceVisible) { setPdfExportChoiceVisible(false); return true; }
+    if (pdfExportConfirmVisible) { setPdfExportConfirmVisible(false); return true; }
     if (pdfCombineOrderVisible) { setPdfCombineOrderVisible(false); return true; }
     if (pdfMoreToolsMenuVisible) { setPdfMoreToolsMenuVisible(false); return true; }
     return false;
@@ -12140,22 +12192,35 @@ function App() {
       thumbnailLoading: !isImage
     }));
     pdfContainerLabelCounterRef.current += 1;
+    const originalSize = await getFileSizeBytes(uri).catch(() => 0);
     const container = {
       id: containerId,
       name: displayName || (isImage ? 'Photo' : 'Document'),
       label: `PDF ${pdfContainerLabelCounterRef.current}`,
       sourceDocs: [doc],
       sourceMeta: [{ uri, isImage }],
-      pages: newPages
+      pages: newPages,
+      originalSize
     };
     setPdfContainers((prev) => [...prev, container]);
 
+    // Large files (especially many-page, image-heavy scans) can take a
+    // real while to rasterize every page for thumbnails - this is a
+    // known, currently-uncapped cost inside generateWebPdfThumbnails/
+    // generateNativePdfThumbnails (outside this file - see
+    // pdfThumbnails.web.js/.native.js), not something addressable from
+    // the call site beyond lowering the render scale and giving the
+    // user a heads-up rather than just hanging silently.
     if (!isImage) {
+      if (originalSize > 15 * 1024 * 1024) {
+        showToast('Large file - this may take a moment to process.');
+      }
+      const scale = originalSize > 10 * 1024 * 1024 ? 1.0 : 1.5;
       const thumbnails = Platform.OS === 'web'
-        ? await generateWebPdfThumbnails(uri, 1.5)
-        : await generateNativePdfThumbnails(uri, 900);
+        ? await generateWebPdfThumbnails(uri, scale)
+        : await generateNativePdfThumbnails(uri, originalSize > 10 * 1024 * 1024 ? 600 : 900);
       setPdfContainers((prev) => prev.map((c) => {
-        if (c.id !== containerId) return c;
+        if (c.id !== containerId) return c; // container may have been removed while this was rendering - no-op rather than resurrect it
         return {
           ...c,
           pages: c.pages.map((p) => {
@@ -12202,13 +12267,15 @@ function App() {
       return;
     }
     pdfContainerLabelCounterRef.current += 1;
+    const originalSize = (await Promise.all(uris.map((u) => getFileSizeBytes(u).catch(() => 0)))).reduce((a, b) => a + b, 0);
     const container = {
       id: containerId,
       name: uris.length > 1 ? `${uris.length} Photos` : 'Photo',
       label: `PDF ${pdfContainerLabelCounterRef.current}`,
       sourceDocs: docs,
       sourceMeta,
-      pages
+      pages,
+      originalSize
     };
     setPdfContainers((prev) => [...prev, container]);
   };
@@ -12278,6 +12345,35 @@ function App() {
   // flipped image, same rasterize-and-replace approach Crop/Compress use
   // for the whole container, just scoped to a single page here. Every
   // other page's source is left completely untouched.
+  // Web-specific flip using plain Canvas rather than expo-image-manipulator's
+  // manipulateAsync - that library's actual transform actions (flip/rotate/
+  // crop, as opposed to the compress-only usage already proven elsewhere in
+  // this file) have inconsistent web support, and a silently-failing flip
+  // on web is exactly what "flipping doesn't work" sounds like. Canvas
+  // scale(-1,1)/scale(1,-1) is a plain, verified browser primitive with no
+  // such ambiguity, so web and native now go through genuinely different,
+  // independently-reliable code paths for the same operation.
+  const flipImageWeb = (uri, direction) => new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext('2d');
+      if (direction === 'horizontal') {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      } else {
+        ctx.translate(0, canvas.height);
+        ctx.scale(1, -1);
+      }
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
+    };
+    img.onerror = (e) => reject(e);
+    img.src = uri;
+  });
+
   const handleFlipPage = async (pageId, direction) => {
     if (!activePdfContainer) return;
     const page = activePdfContainer.pages.find((p) => p.id === pageId);
@@ -12297,14 +12393,20 @@ function App() {
       }
       if (!sourceUri) throw new Error('Could not render page to flip');
 
-      const flipAction = direction === 'horizontal'
-        ? { flip: ImageManipulator.FlipType.Horizontal }
-        : { flip: ImageManipulator.FlipType.Vertical };
-      const result = await ImageManipulator.manipulateAsync(sourceUri, [flipAction], {
-        compress: 0.92, format: ImageManipulator.SaveFormat.JPEG
-      });
+      let flippedUri;
+      if (Platform.OS === 'web') {
+        flippedUri = await flipImageWeb(sourceUri, direction);
+      } else {
+        const flipAction = direction === 'horizontal'
+          ? { flip: ImageManipulator.FlipType.Horizontal }
+          : { flip: ImageManipulator.FlipType.Vertical };
+        const result = await ImageManipulator.manipulateAsync(sourceUri, [flipAction], {
+          compress: 0.92, format: ImageManipulator.SaveFormat.JPEG
+        });
+        flippedUri = result.uri;
+      }
 
-      const flippedDoc = await loadImageAsPdfDoc(result.uri);
+      const flippedDoc = await loadImageAsPdfDoc(flippedUri);
       if (page.rotation) {
         const [pdfPage] = flippedDoc.getPages();
         pdfPage.setRotation(degrees(page.rotation % 360));
@@ -12318,7 +12420,7 @@ function App() {
           ...c,
           sourceDocs: [...c.sourceDocs, flippedDoc],
           sourceMeta: [...c.sourceMeta, { uri: null, isImage: true }],
-          pages: c.pages.map((p) => (p.id === pageId ? { ...p, sourceFileIndex: newSourceIndex, sourcePageIndex: 0, thumbnailUri: result.uri } : p))
+          pages: c.pages.map((p) => (p.id === pageId ? { ...p, sourceFileIndex: newSourceIndex, sourcePageIndex: 0, thumbnailUri: flippedUri } : p))
         };
       }));
       setPdfFullscreenHighResCache({});
@@ -12480,7 +12582,8 @@ function App() {
       id: `container_${Date.now()}_${Math.random().toString(36).slice(2)}`,
       name: toMerge.map((c) => c.name).join(' + '),
       label: `PDF ${pdfContainerLabelCounterRef.current}`,
-      sourceDocs, sourceMeta, pages
+      sourceDocs, sourceMeta, pages,
+      originalSize: toMerge.reduce((sum, c) => sum + (c.originalSize || 0), 0)
     };
 
     pushPdfHistorySnapshot('Merge PDFs');
@@ -12620,7 +12723,13 @@ function App() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(objectUrl);
+      // Not revoking this one immediately (unlike other blob URLs this
+      // file creates and tears down right away) - the post-export
+      // interstitial's "Open PDF" button needs it to still be valid.
+      // Browsers release blob URLs on their own when the page/tab
+      // unloads, so holding one extra URL for the rest of the session
+      // isn't a real leak.
+      return objectUrl;
     } else {
       const localUri = `${FileSystem.cacheDirectory}${filename}`;
       const base64 = btoa(String.fromCharCode(...bytes));
@@ -12631,6 +12740,32 @@ function App() {
         await Sharing.shareAsync(localUri, { mimeType: 'application/pdf', dialogTitle: 'Save PDF' });
       } else {
         showToast('Sharing is not available on this device.');
+      }
+      return localUri;
+    }
+  };
+
+  // The "Open PDF" button in the post-export interstitial - export
+  // itself never opens anything automatically, only downloads/saves, so
+  // this is the one explicit action that actually views the file. Web
+  // just opens the object URL savePdfBytes already returned; native
+  // re-opens the OS share/open sheet against the same cached file.
+  const handleOpenLastExportedPdf = async () => {
+    if (!lastExportedPdf) return;
+    if (Platform.OS === 'web') {
+      window.open(lastExportedPdf.uri, '_blank');
+    } else {
+      try {
+        const Sharing = require('expo-sharing');
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(lastExportedPdf.uri, { mimeType: 'application/pdf', dialogTitle: 'Open PDF' });
+        } else {
+          showToast('Opening files is not available on this device.');
+        }
+      } catch (e) {
+        console.warn('Could not open PDF:', e);
+        showToast('Could not open the PDF - try again.');
       }
     }
   };
@@ -12655,26 +12790,65 @@ function App() {
 
   const exportOneContainer = async (container) => {
     const bytes = await assemblePdfFromPages(container.sourceDocs, container.pages);
-    const baseName = (container.name || 'document').replace(/\.pdf$/i, '');
-    await savePdfBytes(bytes, `${baseName}.pdf`);
+    const filename = `${(container.name || 'document').replace(/\.pdf$/i, '')}.pdf`;
+    const uri = await savePdfBytes(bytes, filename);
+    return { uri, filename };
   };
 
-  // Top-right Export button. One container exports immediately; 2+
-  // containers opens the combine-vs-separate choice instead.
-  const handleExportPdf = () => {
+  // Builds what the export-confirm modal shows: every distinct edit
+  // applied this session (deduplicated, first-occurrence order), and -
+  // only when Compress was one of them, since that's the only edit that
+  // changes file size in a way worth calling out - the actual original
+  // vs. current size. Current size means assembling real bytes for
+  // every loaded container, so this only runs once, right when Export
+  // is pressed, not on every render.
+  const buildPdfExportSummary = async () => {
+    const editLabels = [];
+    pdfEditorHistory.forEach((h) => { if (!editLabels.includes(h.label)) editLabels.push(h.label); });
+    const wasCompressed = editLabels.includes('Compress PDF');
+    const originalSize = pdfContainers.reduce((sum, c) => sum + (c.originalSize || 0), 0);
+    let currentSize = null;
+    if (wasCompressed) {
+      try {
+        const sizes = await Promise.all(pdfContainers.map(async (c) => {
+          const bytes = await assemblePdfFromPages(c.sourceDocs, c.pages);
+          return bytes.length;
+        }));
+        currentSize = sizes.reduce((a, b) => a + b, 0);
+      } catch (e) {
+        currentSize = null; // size comparison just won't show - not worth failing the whole export flow over
+      }
+    }
+    return { editLabels, originalSize, currentSize };
+  };
+
+  // Top-right Export button - always confirms first (what was edited,
+  // and the size change if Compress was used) before anything actually
+  // exports. Single container proceeds straight to export from there;
+  // 2+ containers goes to the existing combine-vs-separate choice.
+  const handleExportPdf = async () => {
     if (pdfContainers.length === 0) return;
+    setPdfExportSummaryLoading(true);
+    const summary = await buildPdfExportSummary();
+    setPdfExportSummaryLoading(false);
+    setPdfExportSummary(summary);
+    setPdfExportConfirmVisible(true);
+  };
+
+  const confirmExportAndProceed = () => {
+    setPdfExportConfirmVisible(false);
     if (pdfContainers.length === 1) {
       exportActiveOrGivenContainer(pdfContainers[0]);
-      return;
+    } else {
+      setPdfExportChoiceVisible(true);
     }
-    setPdfExportChoiceVisible(true);
   };
 
   const exportActiveOrGivenContainer = async (container) => {
     setPdfEditorExporting(true);
     try {
-      await exportOneContainer(container);
-      maybeShowToolsDownloadInterstitial(false);
+      const { uri, filename } = await exportOneContainer(container);
+      maybeShowToolsDownloadInterstitial(false, { uri, filename });
       triggerHaptic('success');
     } catch (e) {
       console.warn('PDF export failed:', e);
@@ -12692,10 +12866,11 @@ function App() {
     setPdfExportChoiceVisible(false);
     setPdfEditorExporting(true);
     try {
+      let last = null;
       for (const container of pdfContainers) {
-        await exportOneContainer(container);
+        last = await exportOneContainer(container);
       }
-      maybeShowToolsDownloadInterstitial(false);
+      maybeShowToolsDownloadInterstitial(false, last);
       triggerHaptic('success');
     } catch (e) {
       console.warn('Batch export failed:', e);
@@ -12744,8 +12919,8 @@ function App() {
         }
       }
       const bytes = await outDoc.save();
-      await savePdfBytes(bytes, 'combined.pdf');
-      maybeShowToolsDownloadInterstitial(false);
+      const uri = await savePdfBytes(bytes, 'combined.pdf');
+      maybeShowToolsDownloadInterstitial(false, { uri, filename: 'combined.pdf' });
       triggerHaptic('success');
       setPdfCombineOrderVisible(false);
     } catch (e) {
@@ -19000,7 +19175,28 @@ function App() {
             else handleLeaveTools();
           }}
         >
-          <SafeAreaView style={{ flex: 1, backgroundColor: toolsTheme.bg }}>
+          <SafeAreaView style={[
+            { flex: 1, backgroundColor: toolsTheme.bg },
+            // Tools is built almost entirely with inline style={{...}}
+            // objects rather than the shared getStyles() stylesheet, so
+            // the app's normal font injection (which only reaches
+            // styles.xxx-referenced styles - see the b593 comment near
+            // getStyles) never touches it, and it was quietly rendering
+            // in the browser's default sans-serif instead of Inter. Web
+            // only: RN Text elements that don't set their own fontFamily
+            // inherit this via ordinary CSS cascade, so nothing needs
+            // touching per-component. This can't reach native (no CSS
+            // inheritance there) and won't get every weight pixel-exact
+            // on web either - bold text still renders as a synthetic
+            // bold on the regular cut rather than Inter's true
+            // semibold/bold files, since each Text's own inline
+            // fontWeight isn't being remapped to the matching named
+            // family the way getStyles does. Real fix for that is the
+            // same per-style remap getStyles already does, just applied
+            // to Tools' inline styles specifically - out of scope for a
+            // single pass given how many there are.
+            Platform.OS === 'web' && { fontFamily: 'Inter_400Regular' }
+          ]}>
             {Platform.OS === 'web' ? (
               <>
                 {/* WEB - genuine page-style header, not a modal chrome.
@@ -19069,15 +19265,15 @@ function App() {
                           marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
                           backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                          opacity: pdfEditorExporting ? 0.6 : 1
+                          opacity: (pdfEditorExporting || pdfExportSummaryLoading) ? 0.6 : 1
                         }}
                         onPress={handleExportPdf}
-                        disabled={pdfEditorExporting}
+                        disabled={pdfEditorExporting || pdfExportSummaryLoading}
                         accessibilityRole="button"
                         accessibilityLabel="Export"
-                        accessibilityState={{ disabled: pdfEditorExporting, busy: pdfEditorExporting }}
+                        accessibilityState={{ disabled: pdfEditorExporting || pdfExportSummaryLoading, busy: pdfEditorExporting || pdfExportSummaryLoading }}
                       >
-                        {pdfEditorExporting ? (
+                        {(pdfEditorExporting || pdfExportSummaryLoading) ? (
                           <ActivityIndicator color="#FFFFFF" size="small" />
                         ) : (
                           <><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text><ArrowRightIconSVG size={13} color="#FFFFFF" /></>
@@ -19142,15 +19338,15 @@ function App() {
                           flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
                           backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                          opacity: pdfEditorExporting ? 0.6 : 1
+                          opacity: (pdfEditorExporting || pdfExportSummaryLoading) ? 0.6 : 1
                         }}
                         onPress={handleExportPdf}
-                        disabled={pdfEditorExporting}
+                        disabled={pdfEditorExporting || pdfExportSummaryLoading}
                         accessibilityRole="button"
                         accessibilityLabel="Export"
-                        accessibilityState={{ disabled: pdfEditorExporting, busy: pdfEditorExporting }}
+                        accessibilityState={{ disabled: pdfEditorExporting || pdfExportSummaryLoading, busy: pdfEditorExporting || pdfExportSummaryLoading }}
                       >
-                        {pdfEditorExporting ? (
+                        {(pdfEditorExporting || pdfExportSummaryLoading) ? (
                           <ActivityIndicator color="#FFFFFF" size="small" />
                         ) : (
                           <><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text><ArrowRightIconSVG size={13} color="#FFFFFF" /></>
@@ -20539,7 +20735,7 @@ function App() {
                       )}
                       {isWebWide && (
                         <BouncyButton
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: '#EF4444', marginLeft: 'auto' }}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginLeft: 'auto' }}
                           onPress={() => setPdfClearConfirmVisible(true)}
                           accessibilityRole="button"
                           accessibilityLabel="Clear loaded PDFs"
@@ -20627,7 +20823,7 @@ function App() {
                                 </View>
                               </BouncyButton>
                               {!pdfContainerSelectModeTool && !pdfSelectModeTool && (
-                                <BouncyButton onPress={() => removePdfContainer(c.id)} style={{ padding: 2 }} accessibilityRole="button" accessibilityLabel={`Remove ${c.name}`}>
+                                <BouncyButton onPress={() => setPdfTabCloseConfirmId(c.id)} style={{ padding: 2 }} accessibilityRole="button" accessibilityLabel={`Remove ${c.name}`}>
                                   <Text style={{ color: toolsTheme.textSecondary, fontSize: 13, fontWeight: '700' }}>✕</Text>
                                 </BouncyButton>
                               )}
@@ -20792,7 +20988,7 @@ function App() {
                                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
                                   onPress={() => { setPdfAddPageAfterIndex(activeIndex); setPdfAddPageMenuVisible(true); }} accessibilityRole="button" accessibilityLabel="Add a page after this one"
                                 >
-                                  <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>+ Page</Text>
+                                  <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>Add page</Text>
                                 </BouncyButton>
                                 <BouncyButton
                                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: '#EF4444' }}
@@ -21123,7 +21319,7 @@ function App() {
                 accessibilityRole="button"
                 accessibilityLabel="Add a page after this one"
               >
-                <Text style={{ color: '#F8FAFC', fontSize: 13, fontWeight: '600' }}>+ Page</Text>
+                <Text style={{ color: '#F8FAFC', fontSize: 13, fontWeight: '600' }}>Add page</Text>
               </BouncyButton>
 
               <BouncyButton
@@ -21349,6 +21545,59 @@ function App() {
           </View>
         </Modal>
       )}
+
+      {/* PDF EDITOR - TAB CLOSE CONFIRM. The x on a container tab is the
+          same weight of action as Clear PDF (removing one whole PDF), so
+          it gets the same confirmation treatment rather than firing
+          instantly on a stray tap. */}
+      {pdfTabCloseConfirmId && (() => {
+        const target = pdfContainers.find((c) => c.id === pdfTabCloseConfirmId);
+        if (!target) return null;
+        return (
+          <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfTabCloseConfirmId(null)}>
+            <View
+              style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+              onStartShouldSetResponder={() => Platform.OS === 'web'}
+              onResponderRelease={() => setPdfTabCloseConfirmId(null)}
+            >
+              {Platform.OS !== 'web' && (
+                lightweightMode ? (
+                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+                ) : (
+                  <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+                )
+              )}
+              <View
+                style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+                onStartShouldSetResponder={() => Platform.OS === 'web'}
+                onResponderRelease={() => {}}
+              >
+                <View style={[styles.successIconCircle, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+                  <TrashIconSVG />
+                </View>
+                <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Remove {target.name}?</Text>
+                <Text style={styles.confirmSubText}>This removes just this PDF - the others stay loaded.</Text>
+                <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+                  <BouncyButton
+                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                    onPress={() => setPdfTabCloseConfirmId(null)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+                  </BouncyButton>
+                  <BouncyButton
+                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                    onPress={() => { const id = pdfTabCloseConfirmId; setPdfTabCloseConfirmId(null); removePdfContainer(id); }}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.confirmDeleteText}>Remove</Text>
+                  </BouncyButton>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        );
+      })()}
 
       {/* PDF EDITOR - UNDO COMPRESS CONFIRM. The Compress pill's "x" -
           compress rebuilds the whole document, so this is worth a
@@ -21646,6 +21895,96 @@ function App() {
           </View>
         </Modal>
       )}
+
+      {/* PDF EDITOR - EXPORT CONFIRM. Shown before every export - lists
+          every distinct edit applied this session, and the original vs.
+          current file size if Compress was one of them. */}
+      {pdfExportConfirmVisible && pdfExportSummary && (() => {
+        const formatBytes = (n) => {
+          if (n == null) return '—';
+          if (n < 1024) return `${n} B`;
+          if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+          return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+        };
+        const EDIT_LABEL_TEXT = {
+          'Compress PDF': 'Compressed',
+          'Add page numbers': 'Page numbers added',
+          'Crop pages': 'Pages cropped',
+          'Flip page': 'Page(s) flipped',
+          'Rotate page': 'Page(s) rotated',
+          'Delete page': 'Page(s) removed',
+          'Reorder pages': 'Pages reordered',
+          'Add page': 'Page(s) added',
+          'Merge PDFs': 'PDFs merged',
+          'Remove PDF': 'A PDF was removed'
+        };
+        const hasSizeInfo = pdfExportSummary.editLabels.includes('Compress PDF') && pdfExportSummary.currentSize != null;
+        return (
+          <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfExportConfirmVisible(false)}>
+            <View
+              style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+              onStartShouldSetResponder={() => Platform.OS === 'web'}
+              onResponderRelease={() => setPdfExportConfirmVisible(false)}
+            >
+              {Platform.OS !== 'web' && (
+                lightweightMode ? (
+                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+                ) : (
+                  <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+                )
+              )}
+              <View
+                style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+                onStartShouldSetResponder={() => Platform.OS === 'web'}
+                onResponderRelease={() => {}}
+              >
+                <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Ready to Export?</Text>
+                {pdfExportSummary.editLabels.length > 0 ? (
+                  <View style={{ width: '100%', gap: 6, marginTop: 8, marginBottom: hasSizeInfo ? 12 : 4 }}>
+                    {pdfExportSummary.editLabels.map((label) => (
+                      <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: theme.accent }} />
+                        <Text style={{ color: theme.text, fontSize: 13 }}>{EDIT_LABEL_TEXT[label] || label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.confirmSubText}>No edits have been made - this exports the PDF as loaded.</Text>
+                )}
+                {hasSizeInfo && (
+                  <View style={{ width: '100%', backgroundColor: theme.surface, borderRadius: 10, padding: 12, marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View>
+                      <Text style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase' }}>Original</Text>
+                      <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>{formatBytes(pdfExportSummary.originalSize)}</Text>
+                    </View>
+                    <ArrowRightIconSVG size={14} color={theme.textSecondary} />
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase' }}>Compressed</Text>
+                      <Text style={{ color: '#22C55E', fontSize: 14, fontWeight: '700' }}>{formatBytes(pdfExportSummary.currentSize)}</Text>
+                    </View>
+                  </View>
+                )}
+                <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+                  <BouncyButton
+                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                    onPress={() => setPdfExportConfirmVisible(false)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+                  </BouncyButton>
+                  <BouncyButton
+                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD' }]}
+                    onPress={confirmExportAndProceed}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.confirmDeleteText}>Export</Text>
+                  </BouncyButton>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        );
+      })()}
 
       {/* PDF EDITOR - EXPORT CHOICE. Only shown with 2+ containers -
           Combine reorders then produces one file; Export Each Separately
@@ -23202,12 +23541,12 @@ function App() {
                 {donateRegion === 'id' ? (
                   <View style={{ alignItems: 'center' }}>
                     <View style={{
-                      width: 190, height: 190, borderRadius: 16, borderWidth: 1, borderColor: theme.border,
+                      width: 240, height: 240, borderRadius: 16, borderWidth: 1, borderColor: theme.border,
                       backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 10, overflow: 'hidden'
                     }}>
                       <Image
                         source={require('./assets/qris-code.png')}
-                        style={{ width: 180, height: 180 }}
+                        style={{ width: 230, height: 230 }}
                         resizeMode="contain"
                       />
                       {/* Blurred + gated behind the same Terms checkbox
@@ -23330,6 +23669,22 @@ function App() {
                         <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Don't show again today</Text>
                       </BouncyButton>
                     </View>
+                    {/* Export only ever downloads/saves - this is the one
+                        explicit way to actually view the file afterward,
+                        never automatic. Only shown when the thing that
+                        was just downloaded was actually a PDF. */}
+                    {lastExportedPdf && (
+                      <BouncyButton
+                        style={{
+                          marginTop: 14, width: '100%', paddingVertical: 12, borderRadius: 99, alignItems: 'center',
+                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD'
+                        }}
+                        onPress={handleOpenLastExportedPdf}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' }}>Open PDF</Text>
+                      </BouncyButton>
+                    )}
                   </>
                 )}
               </View>
