@@ -67,8 +67,10 @@ Every other portfolio tool makes you choose: a boring PDF, a screenshot gallery 
 A free companion toolkit at [decent.ink/tools](https://decent.ink/tools) (also built into the app) for prepping your portfolio and job applications. **Genuinely free** — no account, no login, no ads, no premium tier, no usage limits, no gotcha. Everything runs entirely on your own device; nothing you drop in ever gets uploaded anywhere.
 
 - 🗜️ **Image Compressor** — shrink a photo to a target file size (handy for application portals with strict upload limits), with format conversion and batch support
-- 🔳 **QR Code Generator** — URLs, WiFi networks, contact cards, email, SMS — fully customizable (colors, dot style, logo), export as PNG or SVG
-- 🌐 Available in English and Indonesian, with its own light/dark theme, independent of the main app
+- 🔳 **QR Code Generator** — URLs, WiFi networks, contact cards, email — fully customizable (colors, dot style, logo), export as PNG or SVG
+- 🔄 **Image Converter** — convert between JPEG, PNG, and WEBP, including HEIC/TIFF/BMP and other unusual formats not in your photo library
+- 📄 **PDF Editor** — merge PDFs and photos into one document, reorder, rotate, crop, compress, add page numbers, extract or insert pages — non-destructive editing with full undo/review before anything's final
+- 🌐 Available in English and Indonesian on web, with its own light/dark theme independent of the main app
 - 📄 More tools on the way
 
 ## Support the project

@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 710;
+const BUILD_NUMBER = 712;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -18145,7 +18145,7 @@ function App() {
                     accessibilityRole="button"
                     accessibilityLabel="Back to DECENT"
                   >
-                    <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={isWebWide ? 16 : 22} />
+                    {!isWebWide && <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />}
                     {isWebWide && <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Back to DECENT</Text>}
                   </BouncyButton>
 
@@ -19577,14 +19577,14 @@ function App() {
                     </View>
                   )}
 
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
+                  <View style={{ gap: 12, marginTop: 10 }}>
                     {pdfEditorPages.map((page, index) => {
                       const isNewSourceBoundary = index > 0 && page.sourceFileIndex !== pdfEditorPages[index - 1].sourceFileIndex;
                       return (
                       <View
                         key={page.id}
                         style={{
-                          width: 100, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 8,
+                          width: '100%', backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 8,
                           borderWidth: pdfDragIndex === index ? 2 : (isNewSourceBoundary ? 2 : 1),
                           borderColor: pdfDragIndex === index
                             ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6')
