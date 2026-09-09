@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 713;
+const BUILD_NUMBER = 714;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3699,6 +3699,183 @@ const WebImageCropModal = ({ visible, imageUri, aspect, onConfirm, onCancel, the
   );
 };
 
+// PDF Editor - interactive drag-handle crop editor for a single page.
+// Real corner + edge handles over a live dark mask (replacing the old
+// numeric-percent-field version) plus an aspect-ratio lock that, once
+// turned on, keeps corner-handle drags proportional to the box's shape
+// at lock time. One PanResponder per handle, built fresh every render
+// (not memoized in a ref like WebImageCropModal's) specifically so each
+// one always closes over the current insets/aspectLocked/naturalSize -
+// see ZoomPanImage's comment above about frozen refs for why memoizing
+// this via useRef(...).current would reintroduce that exact bug here.
+const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConfirm, onCancel, viewportWidth, styles }) => {
+  const [naturalSize, setNaturalSize] = useState(null);
+  const [insets, setInsets] = useState({ top: 0, bottom: 0, left: 0, right: 0 });
+  const [aspectLocked, setAspectLocked] = useState(false);
+  const dragStartRef = useRef({ top: 0, bottom: 0, left: 0, right: 0 });
+  const lockedRatioRef = useRef(null);
+
+  useEffect(() => {
+    if (!visible || !imageUri) return;
+    setNaturalSize(null);
+    setInsets({ top: 0, bottom: 0, left: 0, right: 0 });
+    setAspectLocked(false);
+    lockedRatioRef.current = null;
+    Image.getSize(
+      imageUri,
+      (width, height) => setNaturalSize({ width, height }),
+      () => setNaturalSize({ width: 850, height: 1100 }) // rough US-letter fallback if dimensions can't be read
+    );
+  }, [visible, imageUri]);
+
+  const frameW = viewportWidth >= 768 ? Math.min(480, viewportWidth - 320) : Math.min(340, (viewportWidth || 400) - 64);
+  const frameH = naturalSize ? frameW * (naturalSize.height / naturalSize.width) : frameW * 1.29;
+
+  // Keeps one inset in [0, 0.9 - theOppositeInset] - the 0.9 ceiling
+  // leaves at least 10% of that axis visible so the crop can never
+  // collapse to nothing.
+  const clampPair = (primary, other) => Math.max(0, Math.min(0.9 - other, primary));
+
+  const toggleAspectLock = () => {
+    setAspectLocked((prev) => {
+      const next = !prev;
+      if (next) {
+        const w = naturalSize ? naturalSize.width : frameW;
+        const h = naturalSize ? naturalSize.height : frameH;
+        lockedRatioRef.current = (w * (1 - insets.left - insets.right)) / (h * (1 - insets.top - insets.bottom));
+      }
+      return next;
+    });
+  };
+
+  const HANDLE_AXES = {
+    top: ['top'], bottom: ['bottom'], left: ['left'], right: ['right'],
+    tl: ['top', 'left'], tr: ['top', 'right'], bl: ['bottom', 'left'], br: ['bottom', 'right']
+  };
+
+  // Straight edge handles just move that one inset. Corner handles move
+  // two at once - and when aspect lock is on, the horizontal drag drives
+  // the resize and the vertical inset is derived from the locked ratio
+  // instead of read from the gesture directly (dy is ignored in that
+  // case), anchored on the two fixed sides opposite the dragged corner.
+  const buildHandle = (kind) => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderGrant: () => { dragStartRef.current = insets; },
+    onPanResponderMove: (_, gestureState) => {
+      const start = dragStartRef.current;
+      const axes = HANDLE_AXES[kind];
+      const next = { ...insets };
+
+      if (axes.length === 2 && aspectLocked && naturalSize && lockedRatioRef.current) {
+        const horizKey = axes.includes('left') ? 'left' : 'right';
+        const vertKey = axes.includes('top') ? 'top' : 'bottom';
+        const otherHoriz = horizKey === 'left' ? start.right : start.left;
+        const otherVert = vertKey === 'top' ? start.bottom : start.top;
+        const rawHoriz = horizKey === 'left'
+          ? clampPair(start.left + gestureState.dx / frameW, otherHoriz)
+          : clampPair(start.right - gestureState.dx / frameW, otherHoriz);
+        next[horizKey] = rawHoriz;
+        const visibleWpx = naturalSize.width * (1 - rawHoriz - otherHoriz);
+        const targetHpx = visibleWpx / lockedRatioRef.current;
+        next[vertKey] = clampPair(1 - otherVert - targetHpx / naturalSize.height, otherVert);
+      } else {
+        if (axes.includes('top')) next.top = clampPair(start.top + gestureState.dy / frameH, start.bottom);
+        if (axes.includes('bottom')) next.bottom = clampPair(start.bottom - gestureState.dy / frameH, start.top);
+        if (axes.includes('left')) next.left = clampPair(start.left + gestureState.dx / frameW, start.right);
+        if (axes.includes('right')) next.right = clampPair(start.right - gestureState.dx / frameW, start.left);
+      }
+      setInsets(next);
+    }
+  }).panHandlers;
+
+  if (!visible) return null;
+
+  const HandleDot = ({ kind, style }) => (
+    <View {...buildHandle(kind)} style={[{ position: 'absolute', width: 28, height: 28, marginLeft: -14, marginTop: -14, alignItems: 'center', justifyContent: 'center' }, style]}>
+      <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: '#7D52DD', borderWidth: 2, borderColor: '#FFFFFF' }} />
+    </View>
+  );
+  const EdgeBar = ({ kind, style }) => (
+    <View {...buildHandle(kind)} style={[{ position: 'absolute' }, style]} />
+  );
+
+  return (
+    <Modal animationType={Platform.OS === 'web' ? 'none' : 'fade'} transparent={false} visible={true} onRequestClose={onCancel}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#0B0F17' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }}>
+          <BouncyButton style={{ padding: 6 }} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Cancel crop">
+            <Text style={{ color: '#F8FAFC', fontSize: 22 }}>✕</Text>
+          </BouncyButton>
+          <Text style={{ color: '#F8FAFC', fontSize: 14, fontWeight: '700' }}>{pageLabel}</Text>
+          <View style={{ width: 34 }} />
+        </View>
+
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <View style={{ width: frameW, height: frameH, position: 'relative' }}>
+            {imageUri ? (
+              <Image source={{ uri: imageUri }} style={{ width: '100%', height: '100%' }} resizeMode="stretch" />
+            ) : (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <PdfIconSVG size={48} color="#64748B" />
+              </View>
+            )}
+            {/* Dark mask over the four excluded edges, live every drag frame */}
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: `${insets.top * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
+            <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${insets.bottom * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${insets.left * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: `${insets.right * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
+            <View pointerEvents="none" style={{
+              position: 'absolute',
+              top: `${insets.top * 100}%`, bottom: `${insets.bottom * 100}%`,
+              left: `${insets.left * 100}%`, right: `${insets.right * 100}%`,
+              borderWidth: 1.5, borderColor: '#FFFFFF'
+            }} />
+
+            <EdgeBar kind="top" style={{ top: `${insets.top * 100}%`, left: `${insets.left * 100}%`, right: `${insets.right * 100}%`, height: 24, marginTop: -12 }} />
+            <EdgeBar kind="bottom" style={{ bottom: `${insets.bottom * 100}%`, left: `${insets.left * 100}%`, right: `${insets.right * 100}%`, height: 24, marginBottom: -12 }} />
+            <EdgeBar kind="left" style={{ left: `${insets.left * 100}%`, top: `${insets.top * 100}%`, bottom: `${insets.bottom * 100}%`, width: 24, marginLeft: -12 }} />
+            <EdgeBar kind="right" style={{ right: `${insets.right * 100}%`, top: `${insets.top * 100}%`, bottom: `${insets.bottom * 100}%`, width: 24, marginRight: -12 }} />
+
+            <HandleDot kind="tl" style={{ top: `${insets.top * 100}%`, left: `${insets.left * 100}%` }} />
+            <HandleDot kind="tr" style={{ top: `${insets.top * 100}%`, left: `${(1 - insets.right) * 100}%` }} />
+            <HandleDot kind="bl" style={{ top: `${(1 - insets.bottom) * 100}%`, left: `${insets.left * 100}%` }} />
+            <HandleDot kind="br" style={{ top: `${(1 - insets.bottom) * 100}%`, left: `${(1 - insets.right) * 100}%` }} />
+          </View>
+        </View>
+
+        <View style={{ paddingHorizontal: 20, paddingBottom: 12, alignItems: 'center' }}>
+          <BouncyButton
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 16,
+              borderRadius: 99, borderWidth: 1.5,
+              borderColor: aspectLocked ? '#8B5CF6' : 'rgba(255,255,255,0.25)',
+              backgroundColor: aspectLocked ? 'rgba(139,92,246,0.18)' : 'transparent'
+            }}
+            onPress={toggleAspectLock}
+            accessibilityRole="button"
+            accessibilityLabel="Preserve aspect ratio"
+            accessibilityState={{ selected: aspectLocked }}
+          >
+            <LockIconSVG color={aspectLocked ? '#8B5CF6' : '#94A3B8'} size={14} />
+            <Text style={{ color: aspectLocked ? '#8B5CF6' : '#94A3B8', fontSize: 12.5, fontWeight: '700' }}>
+              {aspectLocked ? 'Aspect Ratio Locked' : 'Preserve Aspect Ratio'}
+            </Text>
+          </BouncyButton>
+          <Text style={{ color: '#64748B', fontSize: 11, marginTop: 8, textAlign: 'center' }}>
+            Drag a corner to resize both sides, or an edge for just that side.
+          </Text>
+        </View>
+
+        <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
+          <BouncyButton style={[styles.saveAccountSettingsBtn, { marginTop: 0 }]} onPress={() => onConfirm(insets)} accessibilityRole="button">
+            <Text style={styles.submitBtnText}>{isLastInQueue ? 'Done - Apply Crop' : 'Next Page'}</Text>
+          </BouncyButton>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+};
+
 // Wide-web-only zoom/pan for the fullscreen image viewers below (lightbox
 // + swipeable multi-image viewer) - scroll-wheel to zoom, click-and-drag
 // to pan once zoomed in, same underlying pattern as WebImageCropModal's
@@ -7091,7 +7268,11 @@ function App() {
   // going back to the source URI, not the already-parsed pdf-lib object.
   const [pdfEditorSourceMeta, setPdfEditorSourceMeta] = useState([]); // [{ uri, isImage }]
   const [pdfCompressing, setPdfCompressing] = useState(false);
-  const [pdfReorderModeActive, setPdfReorderModeActive] = useState(false);
+  // Compress is a whole-PDF effect - clicking it opens this options
+  // popup (quality preset) rather than running immediately, same
+  // category as any future whole-document tool.
+  const [pdfCompressOptionsVisible, setPdfCompressOptionsVisible] = useState(false);
+  const [pdfCompressQuality, setPdfCompressQuality] = useState('medium'); // 'low' | 'medium' | 'high'
   const [pdfMoreToolsMenuVisible, setPdfMoreToolsMenuVisible] = useState(false);
   const pdfMoreToolsButtonRef = useRef(null);
   const [pdfMoreToolsMenuPosition, setPdfMoreToolsMenuPosition] = useState({ top: 140, left: 20 });
@@ -7106,8 +7287,12 @@ function App() {
   // page-at-a-time popup - null when the popup isn't open, otherwise an
   // index into pdfSelectedPageIds for which selected page is showing.
   const [pdfCropQueueIndex, setPdfCropQueueIndex] = useState(null);
-  const [pdfCropInsets, setPdfCropInsets] = useState({ top: 0, bottom: 0, left: 0, right: 0 }); // 0-1 fractions
   const [pdfCropInsetsByPageId, setPdfCropInsetsByPageId] = useState({}); // accumulates as the user advances through the queue
+  // Wide-web preview+rail layout only - which page is showing in the big
+  // main-preview pane; the rail's thumbnails are what change this.
+  // Mobile/native/narrow-web keep the separate full-screen Modal driven
+  // by pdfFullscreenIndex instead, unchanged.
+  const [pdfActivePageId, setPdfActivePageId] = useState(null);
   const [pdfEditorPages, setPdfEditorPages] = useState([]);
   const [pdfEditorLoading, setPdfEditorLoading] = useState(false);
   const [pdfEditorExporting, setPdfEditorExporting] = useState(false);
@@ -7145,6 +7330,46 @@ function App() {
     });
     return () => { cancelled = true; };
   }, [pdfFullscreenIndex]);
+
+  // Same high-res-on-demand render as above, but for the wide-web
+  // preview+rail layout's main pane, which is driven by pdfActivePageId
+  // instead of the full-screen Modal's pdfFullscreenIndex - the two
+  // layouts render their big preview from different state, so this
+  // mirrors the effect above rather than trying to unify them.
+  useEffect(() => {
+    if (!isWebWide || !pdfActivePageId) return;
+    const page = pdfEditorPages.find((p) => p.id === pdfActivePageId);
+    if (!page) return;
+    if (pdfFullscreenHighResCache[page.sourceFileIndex]) return;
+    const meta = pdfEditorSourceMeta[page.sourceFileIndex];
+    if (!meta || meta.isImage) return;
+
+    let cancelled = false;
+    setPdfFullscreenHighResLoading(true);
+    const render = Platform.OS === 'web'
+      ? generateWebPdfThumbnails(meta.uri, 2.5)
+      : generateNativePdfThumbnails(meta.uri, 1600);
+    render.then((result) => {
+      if (cancelled) return;
+      if (result) {
+        setPdfFullscreenHighResCache((prev) => ({ ...prev, [page.sourceFileIndex]: result }));
+      }
+      setPdfFullscreenHighResLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [pdfActivePageId, isWebWide]);
+
+  // Keeps pdfActivePageId pointing at a real page at all times - picks
+  // the first page on initial load, and re-anchors to the first page
+  // whenever the active one gets deleted/cropped/compressed away from
+  // under it (Compress and Crop both rebuild the whole document, which
+  // mints fresh page ids).
+  useEffect(() => {
+    if (pdfEditorPages.length === 0) { setPdfActivePageId(null); return; }
+    if (!pdfActivePageId || !pdfEditorPages.some((p) => p.id === pdfActivePageId)) {
+      setPdfActivePageId(pdfEditorPages[0].id);
+    }
+  }, [pdfEditorPages]);
 
   // PDF EDITOR STAGING ENGINE. Every tool (rotate, delete, compress, add
   // pages, page numbers...) already applies directly to
@@ -11832,6 +12057,48 @@ function App() {
     reorderPdfEditorPages(currentIndex, targetIndex);
   };
 
+  // Always-visible reorder control rendered at the top-right corner of
+  // every page thumbnail (rail tiles + the mobile/narrow list) - replaces
+  // the old separate "Reorder mode" toggle. Up/down arrows nudge by one
+  // position; typing a number and pressing enter jumps straight there.
+  // A plain function returning JSX (not a component defined in render) -
+  // defining a component inline in the render body would mint a new
+  // component type every render and remount this on every unrelated
+  // state change, dropping focus out of the number field mid-type.
+  const renderPdfReorderPill = (page, index, small) => (
+    <View style={{
+      position: 'absolute', top: 6, right: 6, flexDirection: 'row', alignItems: 'center', gap: 2,
+      backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 99, paddingHorizontal: 4, paddingVertical: 2
+    }}>
+      <BouncyButton
+        onPress={() => movePdfEditorPage(page.id, -1)}
+        disabled={index === 0}
+        style={{ opacity: index === 0 ? 0.3 : 1, padding: 3 }}
+        accessibilityRole="button"
+        accessibilityLabel="Move page earlier"
+      >
+        <ChevronUpSVG size={small ? 10 : 12} color="#FFFFFF" />
+      </BouncyButton>
+      <FocusableTextInput
+        style={{ color: '#FFFFFF', fontSize: small ? 10 : 11, fontWeight: '700', textAlign: 'center', width: small ? 18 : 22, padding: 0 }}
+        defaultValue={String(index + 1)}
+        keyboardType="number-pad"
+        selectTextOnFocus
+        onSubmitEditing={(e) => handleReorderByTypedPosition(page.id, parseInt(e.nativeEvent.text, 10))}
+        accessibilityLabel={`Move page to position, currently ${index + 1}`}
+      />
+      <BouncyButton
+        onPress={() => movePdfEditorPage(page.id, 1)}
+        disabled={index === pdfEditorPages.length - 1}
+        style={{ opacity: index === pdfEditorPages.length - 1 ? 0.3 : 1, padding: 3 }}
+        accessibilityRole="button"
+        accessibilityLabel="Move page later"
+      >
+        <ChevronDownSVG size={small ? 10 : 12} color="#FFFFFF" />
+      </BouncyButton>
+    </View>
+  );
+
   const clearAllPdfEditorPages = () => {
     triggerHaptic('warning');
     setPdfEditorSourceDocs([]);
@@ -11850,8 +12117,15 @@ function App() {
   // than fragile low-level PDF-internals surgery. The tradeoff: any
   // selectable/searchable text becomes part of a flattened image, same
   // as any other rasterize-based compressor.
-  const handleCompressPdf = async () => {
+  const PDF_COMPRESS_PRESETS = {
+    low: { targetBytes: 80 * 1024, maxWidth: 1000, maxHeight: 1000, label: 'Low', desc: 'Smallest file, more visible compression' },
+    medium: { targetBytes: 200 * 1024, maxWidth: 1600, maxHeight: 1600, label: 'Medium', desc: 'Balanced size and quality' },
+    high: { targetBytes: 450 * 1024, maxWidth: 2000, maxHeight: 2000, label: 'High', desc: 'Best quality, larger file' }
+  };
+
+  const handleCompressPdf = async (quality) => {
     if (pdfEditorPages.length === 0) return;
+    const preset = PDF_COMPRESS_PRESETS[quality] || PDF_COMPRESS_PRESETS.medium;
     pushPdfHistorySnapshot('Compress PDF');
     setPdfCompressing(true);
     triggerHaptic('light');
@@ -11878,7 +12152,7 @@ function App() {
         if (!renderedUri) continue; // couldn't render this specific page - skip it rather than abort everything
 
         const compressed = await compressImageToTarget(renderedUri, {
-          targetBytes: 200 * 1024, maxWidth: 1600, maxHeight: 1600, format: 'JPEG'
+          targetBytes: preset.targetBytes, maxWidth: preset.maxWidth, maxHeight: preset.maxHeight, format: 'JPEG'
         });
         const pageDoc = await loadImageAsPdfDoc(compressed.uri);
         if (page.rotation) {
@@ -12082,24 +12356,24 @@ function App() {
 
   const startPdfCropQueue = () => {
     if (pdfSelectedPageIds.length === 0) return;
-    setPdfCropInsets({ top: 0, bottom: 0, left: 0, right: 0 });
     setPdfCropInsetsByPageId({});
     setPdfCropQueueIndex(0);
   };
 
-  // Called by both "Next" and "Done" - saves the current page's insets
-  // into the accumulator, then either advances to the next selected
-  // page (resetting the live sliders for it) or, on the last page,
-  // triggers the actual crop with everything collected so far.
-  const advancePdfCropQueue = () => {
+  // Called by both "Next" and "Done" from the drag-handle crop editor,
+  // which reports back the exact insets it landed on for the page
+  // currently showing (the editor owns its own live drag state - this
+  // just receives the final value once the user confirms). Saves it into
+  // the accumulator, then either advances to the next selected page or,
+  // on the last page, triggers the actual crop with everything collected.
+  const advancePdfCropQueue = (currentPageInsets) => {
     const currentPageId = pdfSelectedPageIds[pdfCropQueueIndex];
-    const updatedInsets = { ...pdfCropInsetsByPageId, [currentPageId]: pdfCropInsets };
+    const updatedInsets = { ...pdfCropInsetsByPageId, [currentPageId]: currentPageInsets };
     setPdfCropInsetsByPageId(updatedInsets);
 
     if (pdfCropQueueIndex >= pdfSelectedPageIds.length - 1) {
       applyPdfCropAndFinish(updatedInsets);
     } else {
-      setPdfCropInsets({ top: 0, bottom: 0, left: 0, right: 0 });
       setPdfCropQueueIndex((i) => i + 1);
     }
   };
@@ -19489,7 +19763,7 @@ function App() {
                           flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
                           borderRadius: 99, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD', opacity: pdfCompressing ? 0.6 : 1
                         }}
-                        onPress={handleCompressPdf}
+                        onPress={() => setPdfCompressOptionsVisible(true)}
                         disabled={pdfCompressing}
                         accessibilityRole="button"
                         accessibilityLabel="Compress this PDF"
@@ -19504,26 +19778,10 @@ function App() {
                           </>
                         )}
                       </BouncyButton>
-                      <BouncyButton
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
-                          borderRadius: 99, borderWidth: 1,
-                          borderColor: pdfReorderModeActive ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border,
-                          backgroundColor: pdfReorderModeActive ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.1)' : 'rgba(139,92,246,0.15)') : 'transparent'
-                        }}
-                        onPress={() => {
-                          setPdfSelectModeTool(null);
-                          setPdfSelectedPageIds([]);
-                          setPdfReorderModeActive((v) => !v);
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Reorder pages"
-                        accessibilityState={{ selected: pdfReorderModeActive }}
-                      >
-                        <Text style={{ color: pdfReorderModeActive ? toolsTheme.accent : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>
-                          {pdfReorderModeActive ? 'Done Reordering' : 'Reorder'}
-                        </Text>
-                      </BouncyButton>
+                      {/* No separate "Reorder" toggle anymore - every page
+                          thumbnail (rail tile or list tile) always shows
+                          its own up/down + typeable-number pill, see
+                          renderPdfReorderPill. */}
                       <View ref={pdfMoreToolsButtonRef} collapsable={false}>
                       <BouncyButton
                         style={{
@@ -19590,161 +19848,235 @@ function App() {
                     </View>
                   )}
 
-                  <View style={{ gap: 12, marginTop: 10 }}>
-                    {pdfEditorPages.map((page, index) => {
-                      const isNewSourceBoundary = index > 0 && page.sourceFileIndex !== pdfEditorPages[index - 1].sourceFileIndex;
+                  {isWebWide ? (
+                    pdfEditorPages.length > 0 && (() => {
+                      const activePage = pdfEditorPages.find((p) => p.id === pdfActivePageId) || pdfEditorPages[0];
+                      const activeIndex = pdfEditorPages.findIndex((p) => p.id === activePage.id);
+                      const highResPages = pdfFullscreenHighResCache[activePage.sourceFileIndex];
+                      const highResUri = highResPages ? highResPages[activePage.sourcePageIndex] : null;
+                      const displayUri = highResUri || activePage.thumbnailUri;
                       return (
-                      <View
-                        key={page.id}
-                        style={{
-                          width: '100%', backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 8, position: 'relative',
-                          borderWidth: pdfDragIndex === index ? 2 : (isNewSourceBoundary ? 2 : 1),
-                          borderColor: pdfDragIndex === index
-                            ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6')
-                            : (isNewSourceBoundary ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border),
-                          borderStyle: isNewSourceBoundary && pdfDragIndex !== index ? 'dashed' : 'solid'
-                        }}
-                        {...(Platform.OS === 'web' ? {
-                          draggable: true,
-                          onDragStart: () => setPdfDragIndex(index),
-                          onDragOver: (e) => e.preventDefault(),
-                          onDrop: (e) => {
-                            e.preventDefault();
-                            if (pdfDragIndex !== null) reorderPdfEditorPages(pdfDragIndex, index);
-                            setPdfDragIndex(null);
-                          },
-                          onDragEnd: () => setPdfDragIndex(null)
-                        } : {})}
-                      >
-                        {isNewSourceBoundary && (
-                          <Text style={{ color: toolsTheme.accent, fontSize: 9, fontWeight: '700', textAlign: 'center', marginBottom: 4 }}>
-                            NEW FILE
-                          </Text>
-                        )}
-                        <BouncyButton
-                          onPress={() => (pdfSelectModeTool ? togglePdfPageSelected(page.id) : setPdfFullscreenIndex(index))}
-                          accessibilityRole="button"
-                          accessibilityLabel={pdfSelectModeTool ? `Select page ${index + 1}` : `Open page ${index + 1}`}
-                          accessibilityState={pdfSelectModeTool ? { selected: pdfSelectedPageIds.includes(page.id) } : undefined}
-                        >
-                        <View style={{
-                          width: '100%', aspectRatio: 0.75, borderRadius: 8, backgroundColor: toolsTheme.bg,
-                          alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
-                        }}>
-                          {page.thumbnailLoading ? (
-                            <ActivityIndicator color={toolsTheme.accent} size="small" />
-                          ) : page.thumbnailUri ? (
-                            <Image
-                              source={{ uri: page.thumbnailUri }}
-                              style={{ width: '100%', height: '100%', transform: [{ rotate: `${page.rotation}deg` }] }}
-                              resizeMode="contain"
-                            />
-                          ) : (
-                            <PdfIconSVG size={28} color={toolsTheme.textSecondary} />
-                          )}
-                          {pdfSelectModeTool && (
-                            <View style={{
-                              position: 'absolute', top: 10, right: 10, paddingVertical: 6, paddingHorizontal: 12,
-                              borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 5,
-                              backgroundColor: pdfSelectedPageIds.includes(page.id)
-                                ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6')
-                                : 'rgba(0,0,0,0.55)',
-                              borderWidth: pdfSelectedPageIds.includes(page.id) ? 0 : 1.5,
-                              borderColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'
-                            }}>
-                              {pdfSelectedPageIds.includes(page.id) && (
-                                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>✓</Text>
-                              )}
-                              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
-                                {pdfSelectedPageIds.includes(page.id) ? `Page ${index + 1} Selected` : `Select Page ${index + 1}`}
+                        <View style={{ flexDirection: 'row', gap: 16, marginTop: 10 }}>
+                          {/* MAIN PREVIEW PANE - the big single-page view;
+                              per-page tools (rotate, extract, insert,
+                              delete, and the crop select-mode pill) all
+                              act on whichever page is showing here. */}
+                          <View style={{ flex: 1, backgroundColor: toolsTheme.surface, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border, padding: 16, minHeight: 480 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                              <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
+                                Page {activeIndex + 1} of {pdfEditorPages.length}
                               </Text>
+                              {pdfEditorHasPendingChanges && (
+                                <BouncyButton style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} onPress={handleUndoPdfEdit} accessibilityRole="button" accessibilityLabel="Undo last change">
+                                  <RevertIconSVG color={toolsTheme.accent} size={14} />
+                                  <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '600' }}>Undo</Text>
+                                </BouncyButton>
+                              )}
                             </View>
-                          )}
-                        </View>
-                        </BouncyButton>
-                        {!pdfReorderModeActive && (
-                          <View style={{
-                            position: 'absolute', top: -8, left: -8, minWidth: 26, height: 26, borderRadius: 13,
-                            paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center',
-                            backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                            borderWidth: 2, borderColor: toolsTheme.surface
-                          }}>
-                            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>{index + 1}</Text>
-                          </View>
-                        )}
-                        {pdfReorderModeActive ? (
-                          <FocusableTextInput
-                            style={{
-                              color: toolsTheme.text, fontSize: 12, fontWeight: '700', textAlign: 'center',
-                              marginTop: 4, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 6,
-                              paddingVertical: 2
-                            }}
-                            defaultValue={String(index + 1)}
-                            keyboardType="number-pad"
-                            selectTextOnFocus
-                            onSubmitEditing={(e) => handleReorderByTypedPosition(page.id, parseInt(e.nativeEvent.text, 10))}
-                            accessibilityLabel={`Move page to position, currently ${index + 1}`}
-                          />
-                        ) : null}
-                        {pdfReorderModeActive ? (
-                          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 4 }}>
-                            <BouncyButton
-                              onPress={() => movePdfEditorPage(page.id, -1)}
-                              disabled={index === 0}
-                              accessibilityRole="button"
-                              accessibilityLabel="Move page earlier"
-                              style={{ opacity: index === 0 ? 0.3 : 1 }}
-                            >
-                              <ChevronUpSVG size={16} color={toolsTheme.textSecondary} />
-                            </BouncyButton>
-                            <BouncyButton
-                              onPress={() => movePdfEditorPage(page.id, 1)}
-                              disabled={index === pdfEditorPages.length - 1}
-                              accessibilityRole="button"
-                              accessibilityLabel="Move page later"
-                              style={{ opacity: index === pdfEditorPages.length - 1 ? 0.3 : 1 }}
-                            >
-                              <ChevronDownSVG size={16} color={toolsTheme.textSecondary} />
-                            </BouncyButton>
-                          </View>
-                        ) : (
-                          <>
-                            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 4 }}>
-                              <BouncyButton onPress={() => rotatePdfEditorPage(page.id)} accessibilityRole="button" accessibilityLabel="Rotate page">
-                                <RotateIconSVG size={15} color={toolsTheme.textSecondary} />
-                              </BouncyButton>
-                              <BouncyButton onPress={() => removePdfEditorPage(page.id)} accessibilityRole="button" accessibilityLabel="Remove page">
-                                <TrashIconSVG />
-                              </BouncyButton>
-                            </View>
-                            {Platform.OS !== 'web' && (
-                              <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+
+                            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: toolsTheme.bg, borderRadius: 10, overflow: 'hidden', minHeight: 380, position: 'relative' }}>
+                              {pdfSelectModeTool && (
                                 <BouncyButton
-                                  onPress={() => movePdfEditorPage(page.id, -1)}
-                                  disabled={index === 0}
+                                  onPress={() => togglePdfPageSelected(activePage.id)}
+                                  style={{
+                                    position: 'absolute', top: 10, right: 10, zIndex: 2, paddingVertical: 6, paddingHorizontal: 12,
+                                    borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 5,
+                                    backgroundColor: pdfSelectedPageIds.includes(activePage.id) ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'rgba(0,0,0,0.55)',
+                                    borderWidth: pdfSelectedPageIds.includes(activePage.id) ? 0 : 1.5,
+                                    borderColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                                  }}
                                   accessibilityRole="button"
-                                  accessibilityLabel="Move page earlier"
-                                  style={{ opacity: index === 0 ? 0.3 : 1 }}
+                                  accessibilityLabel={`Select page ${activeIndex + 1}`}
+                                  accessibilityState={{ selected: pdfSelectedPageIds.includes(activePage.id) }}
                                 >
-                                  <ChevronUpSVG size={14} color={toolsTheme.textSecondary} />
+                                  {pdfSelectedPageIds.includes(activePage.id) && <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>✓</Text>}
+                                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                                    {pdfSelectedPageIds.includes(activePage.id) ? `Page ${activeIndex + 1} Selected` : `Select Page ${activeIndex + 1}`}
+                                  </Text>
+                                </BouncyButton>
+                              )}
+                              {displayUri ? (
+                                <Image
+                                  source={{ uri: displayUri }}
+                                  style={{ width: '100%', height: '100%', transform: [{ rotate: `${activePage.rotation}deg` }] }}
+                                  resizeMode="contain"
+                                />
+                              ) : (
+                                <PdfIconSVG size={48} color={toolsTheme.textSecondary} />
+                              )}
+                              {pdfFullscreenHighResLoading && !highResUri && (
+                                <View style={{ position: 'absolute', bottom: 12, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 }}>
+                                  <ActivityIndicator color="#F8FAFC" size="small" />
+                                  <Text style={{ color: '#F8FAFC', fontSize: 11 }}>Sharpening...</Text>
+                                </View>
+                              )}
+                            </View>
+
+                            {!pdfSelectModeTool && (
+                              <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                                <BouncyButton
+                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                                  onPress={() => rotatePdfEditorPage(activePage.id)} accessibilityRole="button" accessibilityLabel="Rotate page"
+                                >
+                                  <RotateIconSVG size={15} color={toolsTheme.textSecondary} />
+                                  <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>Rotate</Text>
                                 </BouncyButton>
                                 <BouncyButton
-                                  onPress={() => movePdfEditorPage(page.id, 1)}
-                                  disabled={index === pdfEditorPages.length - 1}
-                                  accessibilityRole="button"
-                                  accessibilityLabel="Move page later"
-                                  style={{ opacity: index === pdfEditorPages.length - 1 ? 0.3 : 1 }}
+                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                                  onPress={() => handleExtractPage(activeIndex)} accessibilityRole="button" accessibilityLabel="Save this page as its own PDF"
                                 >
-                                  <ChevronDownSVG size={14} color={toolsTheme.textSecondary} />
+                                  <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>Extract Page</Text>
+                                </BouncyButton>
+                                <BouncyButton
+                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                                  onPress={() => handleInsertBlankPage(activeIndex)} accessibilityRole="button" accessibilityLabel="Insert a blank page after this one"
+                                >
+                                  <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>+ Page</Text>
+                                </BouncyButton>
+                                <BouncyButton
+                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: '#EF4444' }}
+                                  onPress={() => removePdfEditorPage(activePage.id)} accessibilityRole="button" accessibilityLabel="Remove page"
+                                >
+                                  <TrashIconSVG />
+                                  <Text style={{ color: '#EF4444', fontSize: 12.5, fontWeight: '600' }}>Delete</Text>
                                 </BouncyButton>
                               </View>
                             )}
-                          </>
-                        )}
-                      </View>
+                          </View>
+
+                          {/* RIGHT RAIL - thumbnail navigation. Drag to
+                              reorder, or use a tile's own reorder pill
+                              (top-right, always visible) for a precise
+                              typed position. */}
+                          <View style={{ width: 168 }}>
+                            <ScrollView style={{ maxHeight: 560 }} contentContainerStyle={{ gap: 10 }}>
+                              {pdfEditorPages.map((page, index) => {
+                                const isNewSourceBoundary = index > 0 && page.sourceFileIndex !== pdfEditorPages[index - 1].sourceFileIndex;
+                                const isActive = page.id === activePage.id;
+                                return (
+                                  <View
+                                    key={page.id}
+                                    style={{
+                                      borderRadius: 10, padding: 6, position: 'relative',
+                                      backgroundColor: toolsTheme.surface,
+                                      borderWidth: isActive ? 2 : (isNewSourceBoundary ? 2 : 1),
+                                      borderColor: isActive
+                                        ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6')
+                                        : (isNewSourceBoundary ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border),
+                                      borderStyle: isNewSourceBoundary && !isActive ? 'dashed' : 'solid'
+                                    }}
+                                    draggable
+                                    onDragStart={() => setPdfDragIndex(index)}
+                                    onDragOver={(e) => e.preventDefault()}
+                                    onDrop={(e) => { e.preventDefault(); if (pdfDragIndex !== null) reorderPdfEditorPages(pdfDragIndex, index); setPdfDragIndex(null); }}
+                                    onDragEnd={() => setPdfDragIndex(null)}
+                                  >
+                                    {isNewSourceBoundary && (
+                                      <Text style={{ color: toolsTheme.accent, fontSize: 8, fontWeight: '700', textAlign: 'center', marginBottom: 3 }}>NEW FILE</Text>
+                                    )}
+                                    <BouncyButton
+                                      onPress={() => (pdfSelectModeTool ? togglePdfPageSelected(page.id) : setPdfActivePageId(page.id))}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={pdfSelectModeTool ? `Select page ${index + 1}` : `Show page ${index + 1}`}
+                                      accessibilityState={pdfSelectModeTool ? { selected: pdfSelectedPageIds.includes(page.id) } : { selected: isActive }}
+                                    >
+                                      <View style={{ width: '100%', aspectRatio: 0.75, borderRadius: 6, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                        {page.thumbnailLoading ? (
+                                          <ActivityIndicator color={toolsTheme.accent} size="small" />
+                                        ) : page.thumbnailUri ? (
+                                          <Image source={{ uri: page.thumbnailUri }} style={{ width: '100%', height: '100%', transform: [{ rotate: `${page.rotation}deg` }] }} resizeMode="contain" />
+                                        ) : (
+                                          <PdfIconSVG size={20} color={toolsTheme.textSecondary} />
+                                        )}
+                                        {pdfSelectModeTool && pdfSelectedPageIds.includes(page.id) && (
+                                          <View style={{ position: 'absolute', top: 4, left: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>✓</Text>
+                                          </View>
+                                        )}
+                                        {!pdfSelectModeTool && renderPdfReorderPill(page, index, true)}
+                                      </View>
+                                    </BouncyButton>
+                                  </View>
+                                );
+                              })}
+                            </ScrollView>
+                          </View>
+                        </View>
                       );
-                    })}
-                  </View>
+                    })()
+                  ) : (
+                    <View style={{ gap: 12, marginTop: 10 }}>
+                      {pdfEditorPages.map((page, index) => {
+                        const isNewSourceBoundary = index > 0 && page.sourceFileIndex !== pdfEditorPages[index - 1].sourceFileIndex;
+                        return (
+                        <View
+                          key={page.id}
+                          style={{
+                            width: '100%', backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 8, position: 'relative',
+                            borderWidth: isNewSourceBoundary ? 2 : 1,
+                            borderColor: isNewSourceBoundary ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border,
+                            borderStyle: isNewSourceBoundary ? 'dashed' : 'solid'
+                          }}
+                        >
+                          {isNewSourceBoundary && (
+                            <Text style={{ color: toolsTheme.accent, fontSize: 9, fontWeight: '700', textAlign: 'center', marginBottom: 4 }}>
+                              NEW FILE
+                            </Text>
+                          )}
+                          <BouncyButton
+                            onPress={() => (pdfSelectModeTool ? togglePdfPageSelected(page.id) : setPdfFullscreenIndex(index))}
+                            accessibilityRole="button"
+                            accessibilityLabel={pdfSelectModeTool ? `Select page ${index + 1}` : `Open page ${index + 1}`}
+                            accessibilityState={pdfSelectModeTool ? { selected: pdfSelectedPageIds.includes(page.id) } : undefined}
+                          >
+                          <View style={{
+                            width: '100%', aspectRatio: 0.75, borderRadius: 8, backgroundColor: toolsTheme.bg,
+                            alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
+                          }}>
+                            {page.thumbnailLoading ? (
+                              <ActivityIndicator color={toolsTheme.accent} size="small" />
+                            ) : page.thumbnailUri ? (
+                              <Image
+                                source={{ uri: page.thumbnailUri }}
+                                style={{ width: '100%', height: '100%', transform: [{ rotate: `${page.rotation}deg` }] }}
+                                resizeMode="contain"
+                              />
+                            ) : (
+                              <PdfIconSVG size={28} color={toolsTheme.textSecondary} />
+                            )}
+                            {pdfSelectModeTool ? (
+                              <View style={{
+                                position: 'absolute', top: 10, right: 10, paddingVertical: 6, paddingHorizontal: 12,
+                                borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 5,
+                                backgroundColor: pdfSelectedPageIds.includes(page.id)
+                                  ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6')
+                                  : 'rgba(0,0,0,0.55)',
+                                borderWidth: pdfSelectedPageIds.includes(page.id) ? 0 : 1.5,
+                                borderColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                              }}>
+                                {pdfSelectedPageIds.includes(page.id) && (
+                                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>✓</Text>
+                                )}
+                                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                                  {pdfSelectedPageIds.includes(page.id) ? `Page ${index + 1} Selected` : `Select Page ${index + 1}`}
+                                </Text>
+                              </View>
+                            ) : renderPdfReorderPill(page, index, false)}
+                          </View>
+                          </BouncyButton>
+                          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+                            <BouncyButton onPress={() => rotatePdfEditorPage(page.id)} accessibilityRole="button" accessibilityLabel="Rotate page">
+                              <RotateIconSVG size={15} color={toolsTheme.textSecondary} />
+                            </BouncyButton>
+                            <BouncyButton onPress={() => removePdfEditorPage(page.id)} accessibilityRole="button" accessibilityLabel="Remove page">
+                              <TrashIconSVG />
+                            </BouncyButton>
+                          </View>
+                        </View>
+                        );
+                      })}
+                    </View>
+                  )}
 
                   {isWebWide && pdfEditorPages.length > 0 && (
                     pdfEditorHasPendingChanges ? (
@@ -20164,12 +20496,77 @@ function App() {
         </View>
       </Modal>
 
-      {/* PDF EDITOR - CROP POPUP. One selected page at a time, live
-          preview with the crop boundary overlaid, numeric inset
-          controls rather than drag-handles (a full interactive slider
-          would mean repeating the Compressor's whole web/native
-          PanResponder pattern four times over - numeric fields give the
-          same real control and live preview with far less risk). */}
+      {/* PDF EDITOR - COMPRESS OPTIONS. Compress is a whole-PDF effect,
+          so selecting it opens this quality picker rather than running
+          immediately - Crop below is the per-page equivalent, which
+          instead prompts for a page selection first. */}
+      {pdfCompressOptionsVisible && (
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfCompressOptionsVisible(false)}>
+          <View
+            style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => setPdfCompressOptionsVisible(false)}
+          >
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+              )
+            )}
+            <View
+              style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+              onStartShouldSetResponder={() => Platform.OS === 'web'}
+              onResponderRelease={() => {}}
+            >
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Compress PDF</Text>
+              <Text style={styles.confirmSubText}>Choose a quality level:</Text>
+              <View style={{ width: '100%', gap: 8, marginTop: 4, marginBottom: 16 }}>
+                {Object.entries(PDF_COMPRESS_PRESETS).map(([key, preset]) => (
+                  <BouncyButton
+                    key={key}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                      padding: 12, borderRadius: 12, borderWidth: 1.5,
+                      borderColor: pdfCompressQuality === key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                      backgroundColor: pdfCompressQuality === key ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
+                    }}
+                    onPress={() => setPdfCompressQuality(key)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: pdfCompressQuality === key }}
+                  >
+                    <View>
+                      <Text style={{ color: theme.text, fontSize: 13.5, fontWeight: '700' }}>{preset.label}</Text>
+                      <Text style={{ color: theme.textSecondary, fontSize: 11.5, marginTop: 2 }}>{preset.desc}</Text>
+                    </View>
+                    {pdfCompressQuality === key && <Text style={{ color: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', fontSize: 15, fontWeight: '800' }}>✓</Text>}
+                  </BouncyButton>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                  onPress={() => setPdfCompressOptionsVisible(false)}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+                </BouncyButton>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD' }]}
+                  onPress={() => { setPdfCompressOptionsVisible(false); handleCompressPdf(pdfCompressQuality); }}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.confirmDeleteText}>Compress</Text>
+                </BouncyButton>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* PDF EDITOR - CROP POPUP. One selected page at a time, real
+          drag-handle crop editor (see PdfPageCropEditor above) instead
+          of the old numeric-only fields. */}
       {pdfCropQueueIndex !== null && pdfSelectedPageIds[pdfCropQueueIndex] && (() => {
         const currentPageId = pdfSelectedPageIds[pdfCropQueueIndex];
         const currentPage = pdfEditorPages.find((p) => p.id === currentPageId);
@@ -20178,76 +20575,17 @@ function App() {
         const previewUri = (highResPages && highResPages[currentPage.sourcePageIndex]) || currentPage.thumbnailUri;
         const isLastInQueue = pdfCropQueueIndex >= pdfSelectedPageIds.length - 1;
 
-        const insetField = (label, key) => (
-          <View style={{ flex: 1, minWidth: 90 }}>
-            <Text style={{ color: '#94A3B8', fontSize: 10.5, marginBottom: 3 }}>{label}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 8 }}>
-              <FocusableTextInput
-                style={{ flex: 1, color: '#F8FAFC', fontSize: 13, paddingVertical: 6, paddingHorizontal: 8 }}
-                value={String(Math.round(pdfCropInsets[key] * 100))}
-                keyboardType="number-pad"
-                onChangeText={(t) => {
-                  const pct = Math.max(0, Math.min(90, parseInt(t.replace(/[^0-9]/g, ''), 10) || 0));
-                  setPdfCropInsets((prev) => ({ ...prev, [key]: pct / 100 }));
-                }}
-                accessibilityLabel={`${label} crop percent`}
-              />
-              <Text style={{ color: '#94A3B8', fontSize: 12, paddingRight: 8 }}>%</Text>
-            </View>
-          </View>
-        );
-
         return (
-          <Modal animationType={Platform.OS === 'web' ? 'none' : 'fade'} transparent={false} visible={true} onRequestClose={() => setPdfCropQueueIndex(null)}>
-            <SafeAreaView style={{ flex: 1, backgroundColor: '#0B0F17' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }}>
-                <BouncyButton style={{ padding: 6 }} onPress={() => setPdfCropQueueIndex(null)} accessibilityRole="button" accessibilityLabel="Cancel crop">
-                  <Text style={{ color: '#F8FAFC', fontSize: 22 }}>✕</Text>
-                </BouncyButton>
-                <Text style={{ color: '#F8FAFC', fontSize: 14, fontWeight: '700' }}>
-                  Crop - Page {pdfCropQueueIndex + 1} of {pdfSelectedPageIds.length}
-                </Text>
-                <View style={{ width: 34 }} />
-              </View>
-
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-                <View style={{ width: '100%', maxWidth: 360, aspectRatio: 0.75, position: 'relative' }}>
-                  {previewUri ? (
-                    <Image source={{ uri: previewUri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
-                  ) : (
-                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                      <PdfIconSVG size={48} color="#64748B" />
-                    </View>
-                  )}
-                  {/* Dark mask over the four excluded edges - what's left
-                      uncovered in the middle is what the crop will keep. */}
-                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: `${pdfCropInsets.top * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
-                  <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: `${pdfCropInsets.bottom * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
-                  <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${pdfCropInsets.left * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
-                  <View style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: `${pdfCropInsets.right * 100}%`, backgroundColor: 'rgba(0,0,0,0.65)' }} />
-                </View>
-              </View>
-
-              <View style={{ paddingHorizontal: 20, paddingBottom: 12 }}>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
-                  {insetField('Top', 'top')}
-                  {insetField('Bottom', 'bottom')}
-                  {insetField('Left', 'left')}
-                  {insetField('Right', 'right')}
-                </View>
-              </View>
-
-              <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
-                <BouncyButton
-                  style={[styles.saveAccountSettingsBtn, { marginTop: 0 }]}
-                  onPress={advancePdfCropQueue}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.submitBtnText}>{isLastInQueue ? 'Done - Apply Crop' : 'Next Page'}</Text>
-                </BouncyButton>
-              </View>
-            </SafeAreaView>
-          </Modal>
+          <PdfPageCropEditor
+            visible={true}
+            imageUri={previewUri}
+            pageLabel={`Crop - Page ${pdfCropQueueIndex + 1} of ${pdfSelectedPageIds.length}`}
+            isLastInQueue={isLastInQueue}
+            onConfirm={(insets) => advancePdfCropQueue(insets)}
+            onCancel={() => setPdfCropQueueIndex(null)}
+            viewportWidth={viewportWidth}
+            styles={styles}
+          />
         );
       })()}
 
@@ -20279,7 +20617,6 @@ function App() {
                 style={{ paddingHorizontal: 16, paddingVertical: 12 }}
                 onPress={() => {
                   setPdfMoreToolsMenuVisible(false);
-                  setPdfReorderModeActive(false);
                   setPdfSelectedPageIds([]);
                   setPdfSelectModeTool('crop');
                 }}
