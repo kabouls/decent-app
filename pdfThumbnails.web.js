@@ -25,7 +25,7 @@
 // thumbnail" rather than "nothing works" - a deliberately conservative
 // choice until the babel fix is confirmed working end-to-end.
 //
-// Three real fixes below, all aimed at large/many-page PDFs:
+// Four real fixes below, all aimed at large/many-page PDFs:
 //
 // 1. `source` accepts EITHER a uri (string, fetched as before - the
 //    only option every other caller of this function still uses) OR
@@ -37,38 +37,30 @@
 //    bytes it already has straight into getDocument({data}) skips that
 //    second fetch entirely.
 //
-// 2. Yielding between pages (`await tick()`). Each `page.render()` call
-//    still genuinely blocks the main thread for however long that one
-//    page takes - awaiting the promise doesn't change that, it just
-//    means control returns to the event loop AFTER each page instead of
-//    only after all of them. Without an explicit yield in between, the
-//    browser gets essentially zero chances to paint or handle input for
-//    the entire loop's duration on a many-page document, which is what
-//    "the whole window goes laggy" during a big upload actually was.
-//    A bare setTimeout(0) forces an actual macrotask boundary, which is
-//    enough for the browser to catch up on a paint/input frame between
-//    pages, at the cost of the whole batch taking a little longer in
-//    total (worth it - responsive-but-slower beats frozen).
+// 2. `pageNumber` (optional, 1-indexed) renders ONLY that one page and
+//    returns a single data URL instead of an array - added because
+//    App.js's "live preview" high-res render was calling this with no
+//    page number, which means it rendered and kept in memory EVERY
+//    page of the document at 2.5x scale the moment the FIRST page was
+//    viewed, not just the one actually on screen. For a many-page PDF
+//    that's the real explanation for "1GB+ memory, still laggy after
+//    it loads" - viewing page 1 of a 14-page document was silently
+//    rendering and caching all 14 pages at high resolution. Omitting
+//    pageNumber keeps the original all-pages behavior, still needed by
+//    the rail-thumbnail callers.
 //
-// 3. pdf.destroy() in a finally block. The pdfjsLib.getDocument(...)
-//    document object holds real memory (parsed PDF structure, and on
-//    top of that whatever the worker/WASM side is holding) for as long
-//    as it's referenced - which, before this, was forever, since
-//    nothing ever called .destroy() on it once thumbnails were pulled
-//    out. That's very likely part of why the browser stayed laggy even
-//    after removing the file from the UI: the PDF.js document itself
-//    was still alive in memory, this function just never let it go.
-//
-// None of this touches the OTHER big cost for a large PDF, which is
-// pdf-lib's own PDFDocument.load() over in App.js - that's a separate,
-// synchronous, single-threaded parse with no yielding of its own, and
-// is a well-documented characteristic of pdf-lib on large/complex
-// files, not something fixable from this file. The only real fix for
-// that specific cost would be moving it off the main thread entirely
-// (a Web Worker), which is a substantially bigger, separate change.
+// 4. `onPageReady(index, dataUrl)` (optional) - called after each page
+//    finishes, for callers doing the full-document render (rail
+//    thumbnails) who want to show pages as they complete instead of
+//    waiting for the entire document to finish before updating anything.
+//    A 14-page PDF where every tile sits on a spinner until the whole
+//    batch is done LOOKS frozen even though it's technically still
+//    yielding between pages - showing page 1 the moment it's ready
+//    (typically well under a second) makes the difference between
+//    "stuck" and "loading."
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-export const generateWebPdfThumbnails = async (source, scale = 0.4) => {
+export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber = null, onPageReady = null) => {
   let pdf = null;
   try {
     const pdfjsLib = await import('pdfjs-dist');
@@ -77,16 +69,28 @@ export const generateWebPdfThumbnails = async (source, scale = 0.4) => {
     pdf = isBytes
       ? await pdfjsLib.getDocument({ data: source }).promise
       : await pdfjsLib.getDocument({ url: source }).promise;
-    const thumbnails = [];
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
+
+    const renderOnePage = async (num) => {
+      const page = await pdf.getPage(num);
       const viewport = page.getViewport({ scale });
       const canvas = document.createElement('canvas');
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-      thumbnails.push(canvas.toDataURL('image/jpeg', 0.7));
-      page.cleanup(); // releases this page's own render resources immediately, rather than waiting for pdf.destroy() below
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      page.cleanup();
+      return dataUrl;
+    };
+
+    if (pageNumber != null) {
+      return await renderOnePage(pageNumber); // single string, not an array - caller asked for exactly one page
+    }
+
+    const thumbnails = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const dataUrl = await renderOnePage(i);
+      thumbnails.push(dataUrl);
+      if (onPageReady) onPageReady(i - 1, dataUrl); // 0-indexed, matching how callers index their own page arrays
       if (i < pdf.numPages) await tick();
     }
     return thumbnails;

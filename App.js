@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 724;
+const BUILD_NUMBER = 725;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7439,10 +7439,15 @@ function App() {
   const [pdfEditorExporting, setPdfEditorExporting] = useState(false);
   const [pdfDragIndex, setPdfDragIndex] = useState(null);
   const [pdfFullscreenIndex, setPdfFullscreenIndex] = useState(null); // null | index into activePdfContainer.pages
-  // Cache of high-res page renders, keyed by sourceFileIndex within
-  // whichever container is currently active - cleared whenever the
+  // Cache of high-res single-page renders, keyed by "sourceFileIndex:
+  // sourcePageIndex" within whichever container is currently active -
+  // one entry per PAGE, not per source document. Cleared whenever the
   // active container changes (below) so it never mixes pages from two
-  // different containers under a colliding index.
+  // different containers under a colliding key. This used to render and
+  // cache EVERY page of a source at once just to show one - viewing page
+  // 1 of a 14-page PDF meant rendering and holding all 14 pages in
+  // memory at 2.5x scale. Now it renders exactly the one page being
+  // looked at.
   const [pdfFullscreenHighResCache, setPdfFullscreenHighResCache] = useState({});
   const [pdfFullscreenHighResLoading, setPdfFullscreenHighResLoading] = useState(false);
 
@@ -7454,19 +7459,20 @@ function App() {
     if (pdfFullscreenIndex === null || !activePdfContainer) return;
     const page = activePdfContainer.pages[pdfFullscreenIndex];
     if (!page) return;
-    if (pdfFullscreenHighResCache[page.sourceFileIndex]) return; // already rendered this source
+    const cacheKey = `${page.sourceFileIndex}:${page.sourcePageIndex}`;
+    if (pdfFullscreenHighResCache[cacheKey]) return; // already rendered this exact page
     const meta = activePdfContainer.sourceMeta[page.sourceFileIndex];
     if (!meta || meta.isImage) return; // images are already full-res, nothing to render
 
     let cancelled = false;
     setPdfFullscreenHighResLoading(true);
     const render = Platform.OS === 'web'
-      ? generateWebPdfThumbnails(meta.uri, 2.5)
-      : generateNativePdfThumbnails(meta.uri, 1600);
+      ? generateWebPdfThumbnails(meta.uri, 2.5, page.sourcePageIndex + 1)
+      : generateNativePdfThumbnails(meta.uri, 1600, page.sourcePageIndex + 1);
     render.then((result) => {
       if (cancelled) return;
       if (result) {
-        setPdfFullscreenHighResCache((prev) => ({ ...prev, [page.sourceFileIndex]: result }));
+        setPdfFullscreenHighResCache((prev) => ({ ...prev, [cacheKey]: result }));
       }
       setPdfFullscreenHighResLoading(false);
     });
@@ -7480,19 +7486,20 @@ function App() {
     if (!isWebWide || !pdfActivePageId || !activePdfContainer) return;
     const page = activePdfContainer.pages.find((p) => p.id === pdfActivePageId);
     if (!page) return;
-    if (pdfFullscreenHighResCache[page.sourceFileIndex]) return;
+    const cacheKey = `${page.sourceFileIndex}:${page.sourcePageIndex}`;
+    if (pdfFullscreenHighResCache[cacheKey]) return;
     const meta = activePdfContainer.sourceMeta[page.sourceFileIndex];
     if (!meta || meta.isImage) return;
 
     let cancelled = false;
     setPdfFullscreenHighResLoading(true);
     const render = Platform.OS === 'web'
-      ? generateWebPdfThumbnails(meta.uri, 2.5)
-      : generateNativePdfThumbnails(meta.uri, 1600);
+      ? generateWebPdfThumbnails(meta.uri, 2.5, page.sourcePageIndex + 1)
+      : generateNativePdfThumbnails(meta.uri, 1600, page.sourcePageIndex + 1);
     render.then((result) => {
       if (cancelled) return;
       if (result) {
-        setPdfFullscreenHighResCache((prev) => ({ ...prev, [page.sourceFileIndex]: result }));
+        setPdfFullscreenHighResCache((prev) => ({ ...prev, [cacheKey]: result }));
       }
       setPdfFullscreenHighResLoading(false);
     });
@@ -12215,28 +12222,42 @@ function App() {
     // while to rasterize every page for thumbnails, even after lowering
     // this to a genuinely thumbnail-appropriate scale (0.3, versus what
     // used to be passed here) and adding yielding + document cleanup
-    // inside generateWebPdfThumbnails itself (see pdfThumbnails.web.js) -
-    // a many-page PDF is still real, cumulative rendering work, just no
-    // longer blocking the whole browser tab while it happens. This toast
-    // is just an honest heads-up for genuinely large files, not a sign
-    // something's stuck.
+    // inside generateWebPdfThumbnails itself (see pdfThumbnails.web.js).
+    // Web updates each page's thumbnail the moment IT finishes (via
+    // onPageReady) instead of waiting for the whole document - a 14-page
+    // PDF where every tile sits on a spinner until all 14 are done looks
+    // frozen even while it's technically still responsive; showing page
+    // 1 within under a second (typical) instead of only once everything
+    // is ready is the actual "make it snappy" fix, not just faster total
+    // completion. Native still waits for the full batch since
+    // generateNativePdfThumbnails doesn't have a per-page callback.
     if (!isImage) {
       if (originalSize > 15 * 1024 * 1024) {
         showToast('Large file - this may take a moment to process.');
       }
-      const thumbnails = Platform.OS === 'web'
-        ? await generateWebPdfThumbnails(fetchedBytes || uri, 0.3)
-        : await generateNativePdfThumbnails(uri, 160);
-      setPdfContainers((prev) => prev.map((c) => {
-        if (c.id !== containerId) return c; // container may have been removed while this was rendering - no-op rather than resurrect it
-        return {
-          ...c,
-          pages: c.pages.map((p) => {
-            const t = thumbnails ? thumbnails[p.sourcePageIndex] : null;
-            return { ...p, thumbnailUri: t || null, thumbnailLoading: false };
-          })
-        };
-      }));
+      if (Platform.OS === 'web') {
+        await generateWebPdfThumbnails(fetchedBytes || uri, 0.3, null, (pageIndex, dataUrl) => {
+          setPdfContainers((prev) => prev.map((c) => {
+            if (c.id !== containerId) return c; // container may have been removed while this was rendering - no-op rather than resurrect it
+            return {
+              ...c,
+              pages: c.pages.map((p) => (p.sourcePageIndex === pageIndex ? { ...p, thumbnailUri: dataUrl, thumbnailLoading: false } : p))
+            };
+          }));
+        });
+      } else {
+        const thumbnails = await generateNativePdfThumbnails(uri, 160);
+        setPdfContainers((prev) => prev.map((c) => {
+          if (c.id !== containerId) return c;
+          return {
+            ...c,
+            pages: c.pages.map((p) => {
+              const t = thumbnails ? thumbnails[p.sourcePageIndex] : null;
+              return { ...p, thumbnailUri: t || null, thumbnailLoading: false };
+            })
+          };
+        }));
+      }
     }
     return containerId;
   };
@@ -20811,8 +20832,7 @@ function App() {
                     containerPages.length > 0 && (() => {
                       const activePage = containerPages.find((p) => p.id === pdfActivePageId) || containerPages[0];
                       const activeIndex = containerPages.findIndex((p) => p.id === activePage.id);
-                      const highResPages = pdfFullscreenHighResCache[activePage.sourceFileIndex];
-                      const highResUri = highResPages ? highResPages[activePage.sourcePageIndex] : null;
+                      const highResUri = pdfFullscreenHighResCache[`${activePage.sourceFileIndex}:${activePage.sourcePageIndex}`];
                       const displayUri = highResUri || activePage.thumbnailUri;
                       // Fills as much of the viewport height as this
                       // layout reasonably can - the image itself still
@@ -21181,8 +21201,7 @@ function App() {
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
               {(() => {
                 const currentPage = containerPages[pdfFullscreenIndex];
-                const highResPages = pdfFullscreenHighResCache[currentPage.sourceFileIndex];
-                const highResUri = highResPages ? highResPages[currentPage.sourcePageIndex] : null;
+                const highResUri = pdfFullscreenHighResCache[`${currentPage.sourceFileIndex}:${currentPage.sourcePageIndex}`];
                 const displayUri = highResUri || currentPage.thumbnailUri;
                 return displayUri ? (
                   <>
@@ -21686,8 +21705,7 @@ function App() {
         const currentPageId = pdfSelectedPageIds[pdfCropQueueIndex];
         const currentPage = containerPages.find((p) => p.id === currentPageId);
         if (!currentPage) return null;
-        const highResPages = pdfFullscreenHighResCache[currentPage.sourceFileIndex];
-        const previewUri = (highResPages && highResPages[currentPage.sourcePageIndex]) || currentPage.thumbnailUri;
+        const previewUri = pdfFullscreenHighResCache[`${currentPage.sourceFileIndex}:${currentPage.sourcePageIndex}`] || currentPage.thumbnailUri;
         const isLastInQueue = pdfCropQueueIndex >= pdfSelectedPageIds.length - 1;
 
         return (
