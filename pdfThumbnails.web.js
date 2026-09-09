@@ -25,9 +25,19 @@
 // thumbnail" rather than "nothing works" - a deliberately conservative
 // choice until the babel fix is confirmed working end-to-end.
 //
-// Two real fixes below, both aimed at large/many-page PDFs:
+// Three real fixes below, all aimed at large/many-page PDFs:
 //
-// 1. Yielding between pages (`await tick()`). Each `page.render()` call
+// 1. `source` accepts EITHER a uri (string, fetched as before - the
+//    only option every other caller of this function still uses) OR
+//    already-fetched bytes (Uint8Array). App.js's initial-add path
+//    already has to fetch the whole file once for pdf-lib to parse it -
+//    before this, this function fetched the SAME file a second time
+//    independently via pdfjsLib.getDocument({url}), which for a large
+//    file is a genuinely wasteful duplicate download+read. Passing the
+//    bytes it already has straight into getDocument({data}) skips that
+//    second fetch entirely.
+//
+// 2. Yielding between pages (`await tick()`). Each `page.render()` call
 //    still genuinely blocks the main thread for however long that one
 //    page takes - awaiting the promise doesn't change that, it just
 //    means control returns to the event loop AFTER each page instead of
@@ -40,22 +50,33 @@
 //    pages, at the cost of the whole batch taking a little longer in
 //    total (worth it - responsive-but-slower beats frozen).
 //
-// 2. pdf.destroy() in a finally block. The pdfjsLib.getDocument(...)
+// 3. pdf.destroy() in a finally block. The pdfjsLib.getDocument(...)
 //    document object holds real memory (parsed PDF structure, and on
 //    top of that whatever the worker/WASM side is holding) for as long
 //    as it's referenced - which, before this, was forever, since
 //    nothing ever called .destroy() on it once thumbnails were pulled
-//    out. That's very likely why the browser stayed laggy even after
-//    removing the file from the UI: the PDF.js document itself was
-//    still alive in memory, this function just never let it go.
+//    out. That's very likely part of why the browser stayed laggy even
+//    after removing the file from the UI: the PDF.js document itself
+//    was still alive in memory, this function just never let it go.
+//
+// None of this touches the OTHER big cost for a large PDF, which is
+// pdf-lib's own PDFDocument.load() over in App.js - that's a separate,
+// synchronous, single-threaded parse with no yielding of its own, and
+// is a well-documented characteristic of pdf-lib on large/complex
+// files, not something fixable from this file. The only real fix for
+// that specific cost would be moving it off the main thread entirely
+// (a Web Worker), which is a substantially bigger, separate change.
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-export const generateWebPdfThumbnails = async (uri, scale = 0.4) => {
+export const generateWebPdfThumbnails = async (source, scale = 0.4) => {
   let pdf = null;
   try {
     const pdfjsLib = await import('pdfjs-dist');
     pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
-    pdf = await pdfjsLib.getDocument({ url: uri }).promise;
+    const isBytes = source instanceof Uint8Array || (typeof ArrayBuffer !== 'undefined' && source instanceof ArrayBuffer);
+    pdf = isBytes
+      ? await pdfjsLib.getDocument({ data: source }).promise
+      : await pdfjsLib.getDocument({ url: source }).promise;
     const thumbnails = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);

@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 723;
+const BUILD_NUMBER = 724;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -12155,9 +12155,34 @@ function App() {
   // addPdfContainerFromImages below - multiple photos picked together
   // build ONE container, not one each).
   const addPdfContainerFromSource = async (uri, isImage, displayName) => {
+    // Fetched once, right here, and reused for everything below - pdf-lib
+    // needs raw bytes to parse anyway, so getting them first means: no
+    // separate getFileSizeBytes fetch (bytes.length IS the size), and no
+    // second fetch inside generateWebPdfThumbnails either (it now accepts
+    // bytes directly instead of re-fetching the same uri). For a large
+    // PDF this used to be three independent full-file fetches before any
+    // actual parsing even started; now it's one. This still doesn't
+    // touch the single biggest remaining cost for a large file - pdf-lib's
+    // own PDFDocument.load() parse below, which is a genuinely slow,
+    // synchronous, single-threaded operation for big/complex PDFs and a
+    // known characteristic of the library itself, not something fixable
+    // from the call site short of moving it into a Web Worker.
     let doc;
+    let originalSize = 0;
+    let fetchedBytes = null;
     try {
-      doc = await loadSourceAsPdfDoc(uri, isImage);
+      if (isImage) {
+        doc = await loadImageAsPdfDoc(uri);
+        originalSize = await getFileSizeBytes(uri).catch(() => 0);
+      } else if (Platform.OS === 'web') {
+        const bytes = await fetchBytesFromUri(uri);
+        originalSize = bytes.length;
+        doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        fetchedBytes = bytes; // reused for the thumbnail step below, purely to avoid fetching the same file a second time - not part of the container itself
+      } else {
+        doc = await loadSourceAsPdfDoc(uri, isImage);
+        originalSize = await getFileSizeBytes(uri).catch(() => 0);
+      }
     } catch (e) {
       console.warn('Could not load PDF/image source:', e);
       showToast('Could not open that file - it may be corrupted or password-protected.');
@@ -12175,7 +12200,6 @@ function App() {
       thumbnailLoading: !isImage
     }));
     pdfContainerLabelCounterRef.current += 1;
-    const originalSize = await getFileSizeBytes(uri).catch(() => 0);
     const container = {
       id: containerId,
       name: displayName || (isImage ? 'Photo' : 'Document'),
@@ -12201,7 +12225,7 @@ function App() {
         showToast('Large file - this may take a moment to process.');
       }
       const thumbnails = Platform.OS === 'web'
-        ? await generateWebPdfThumbnails(uri, 0.3)
+        ? await generateWebPdfThumbnails(fetchedBytes || uri, 0.3)
         : await generateNativePdfThumbnails(uri, 160);
       setPdfContainers((prev) => prev.map((c) => {
         if (c.id !== containerId) return c; // container may have been removed while this was rendering - no-op rather than resurrect it
@@ -12986,10 +13010,12 @@ function App() {
 
       const targetId = activePdfContainer.id;
       const outBytes = await outDoc.save();
-      const tempUri = await pdfBytesToTempUri(outBytes);
+      // Web can hand pdf.js the bytes directly (no blob URL round trip
+      // needed); native's renderer only accepts a real file uri, so that
+      // path still needs pdfBytesToTempUri.
       const thumbnails = Platform.OS === 'web'
-        ? await generateWebPdfThumbnails(tempUri, 0.3)
-        : await generateNativePdfThumbnails(tempUri, 160);
+        ? await generateWebPdfThumbnails(outBytes, 0.3)
+        : await generateNativePdfThumbnails(await pdfBytesToTempUri(outBytes), 160);
       const newPages = pages.map((p, i) => ({
         ...p, sourceFileIndex: 0, sourcePageIndex: i, rotation: 0,
         thumbnailUri: (thumbnails && thumbnails[i]) || p.thumbnailUri
@@ -13080,10 +13106,12 @@ function App() {
 
       const targetId = activePdfContainer.id;
       const outBytes = await outDoc.save();
-      const tempUri = await pdfBytesToTempUri(outBytes);
+      // Web can hand pdf.js the bytes directly (no blob URL round trip
+      // needed); native's renderer only accepts a real file uri, so that
+      // path still needs pdfBytesToTempUri.
       const thumbnails = Platform.OS === 'web'
-        ? await generateWebPdfThumbnails(tempUri, 0.3)
-        : await generateNativePdfThumbnails(tempUri, 160);
+        ? await generateWebPdfThumbnails(outBytes, 0.3)
+        : await generateNativePdfThumbnails(await pdfBytesToTempUri(outBytes), 160);
       const newPages = pages.map((p, i) => ({
         ...p, sourceFileIndex: 0, sourcePageIndex: i, rotation: 0,
         thumbnailUri: (thumbnails && thumbnails[i]) || p.thumbnailUri
