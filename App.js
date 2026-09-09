@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 715;
+const BUILD_NUMBER = 716;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7255,18 +7255,24 @@ function App() {
   const [converterFormat, setConverterFormat] = useState('JPEG');
   const [converterProcessing, setConverterProcessing] = useState(false);
 
-  // TOOLS: PDF Editor state. pdfEditorSourceDocs holds the actual loaded
-  // PDFDocument objects (one per picked file/image, kept alive for the
-  // whole session) - pdfEditorPages is the flat, reorderable page list
-  // that references back into those docs by index, which is what the
-  // grid UI and export step both actually work from.
-  const [pdfEditorSourceDocs, setPdfEditorSourceDocs] = useState([]);
-  // Parallel to pdfEditorSourceDocs (same index per source) - the loaded
-  // PDFDocument object alone doesn't retain where it came from, but
-  // compression needs to re-render each page from its original file at a
-  // much higher resolution than the small grid thumbnail, which means
-  // going back to the source URI, not the already-parsed pdf-lib object.
-  const [pdfEditorSourceMeta, setPdfEditorSourceMeta] = useState([]); // [{ uri, isImage }]
+  // TOOLS: PDF Editor state. Each uploaded PDF (or set of photos added
+  // together) becomes its own "container" - pdfContainers holds them
+  // all, each with its own sourceDocs/sourceMeta/pages (same shapes the
+  // old flat single-workspace version used, just scoped per container).
+  // Every tool except Merge acts on whichever container is active,
+  // leaving the others completely untouched; Merge is the one operation
+  // that collapses containers together into a new one.
+  const [pdfContainers, setPdfContainers] = useState([]);
+  // 'PDF 1', 'PDF 2'... assigned once at creation from an ever-
+  // increasing counter, never recomputed from the current array length -
+  // removing a container mid-session shouldn't relabel the ones after it.
+  const pdfContainerLabelCounterRef = useRef(0);
+  const [pdfActiveContainerId, setPdfActiveContainerId] = useState(null);
+  const activePdfContainer = pdfContainers.find((c) => c.id === pdfActiveContainerId) || pdfContainers[0] || null;
+  // Plain alias so the render JSX below doesn't need a null-guard at
+  // every single usage site - empty array when nothing's loaded yet.
+  const containerPages = activePdfContainer ? activePdfContainer.pages : [];
+
   const [pdfCompressing, setPdfCompressing] = useState(false);
   // Compress is a whole-PDF effect - clicking it opens this options
   // popup (quality preset) rather than running immediately, same
@@ -7277,44 +7283,64 @@ function App() {
   const [pdfMoreToolsMenuVisible, setPdfMoreToolsMenuVisible] = useState(false);
   const pdfMoreToolsButtonRef = useRef(null);
   const [pdfMoreToolsMenuPosition, setPdfMoreToolsMenuPosition] = useState({ top: 140, left: 20 });
-  // Generic multi-select mode for per-page tools (Crop is the first,
-  // built so future per-page tools reuse the same selection UI rather
-  // than each inventing their own). null when inactive; a string tool
-  // name ('crop') while active, so the grid/toolbar know both THAT
-  // selection is happening and WHICH tool it's for.
-  const [pdfSelectModeTool, setPdfSelectModeTool] = useState(null);
+
+  // Generic multi-select mode for per-page tools within the ACTIVE
+  // container only (Crop is the first, built so future per-page tools
+  // reuse this rather than each inventing their own).
+  const [pdfSelectModeTool, setPdfSelectModeTool] = useState(null); // null | 'crop'
   const [pdfSelectedPageIds, setPdfSelectedPageIds] = useState([]);
   // Crop-specific: once selection is confirmed, this drives the one-
   // page-at-a-time popup - null when the popup isn't open, otherwise an
   // index into pdfSelectedPageIds for which selected page is showing.
   const [pdfCropQueueIndex, setPdfCropQueueIndex] = useState(null);
   const [pdfCropInsetsByPageId, setPdfCropInsetsByPageId] = useState({}); // accumulates as the user advances through the queue
-  // Wide-web preview+rail layout only - which page is showing in the big
-  // main-preview pane; the rail's thumbnails are what change this.
-  // Mobile/native/narrow-web keep the separate full-screen Modal driven
-  // by pdfFullscreenIndex instead, unchanged.
+
+  // Container-level multi-select - same interaction pattern as
+  // pdfSelectModeTool above, one level up (containers instead of pages).
+  // Compress uses it once there's more than one container; Merge always
+  // uses it, since merging only makes sense with 2+ selected.
+  const [pdfContainerSelectModeTool, setPdfContainerSelectModeTool] = useState(null); // null | 'compress' | 'merge'
+  const [pdfSelectedContainerIds, setPdfSelectedContainerIds] = useState([]);
+
+  // Export (top-right button). With 2+ containers it opens a choice
+  // (combine into one file vs export each separately) instead of
+  // exporting immediately.
+  const [pdfExportChoiceVisible, setPdfExportChoiceVisible] = useState(false);
+  const [pdfCombineOrderVisible, setPdfCombineOrderVisible] = useState(false);
+  const [pdfCombineOrderIds, setPdfCombineOrderIds] = useState([]); // ordered container ids, user-arranged before combining
+
+  // "+ Page" menu - Blank Page (unchanged) or pull pages in from another
+  // PDF/photo, spliced into the ACTIVE container only, never creating a
+  // new container of its own.
+  const [pdfAddPageMenuVisible, setPdfAddPageMenuVisible] = useState(false);
+  const [pdfAddPageAfterIndex, setPdfAddPageAfterIndex] = useState(null);
+
+  // Wide-web preview+rail layout only - which page of the active
+  // container is showing in the big main-preview pane; the rail's
+  // thumbnails are what change this. Mobile/native/narrow-web keep the
+  // separate full-screen Modal driven by pdfFullscreenIndex instead.
   const [pdfActivePageId, setPdfActivePageId] = useState(null);
-  const [pdfEditorPages, setPdfEditorPages] = useState([]);
   const [pdfEditorLoading, setPdfEditorLoading] = useState(false);
   const [pdfEditorExporting, setPdfEditorExporting] = useState(false);
   const [pdfDragIndex, setPdfDragIndex] = useState(null);
-  const [pdfFullscreenIndex, setPdfFullscreenIndex] = useState(null); // null | index into pdfEditorPages
-  // Cache of high-res page renders for the full-screen viewer, keyed by
-  // sourceFileIndex -> array of image URIs (one per page in that
-  // source). The grid thumbnails are deliberately low-res (0.4 scale,
-  // fine for a small tile) - full-screen needs something sharp, so this
-  // renders each source at a much higher scale on demand, once per
-  // source, cached so paging between pages already in the same document
-  // doesn't re-render.
+  const [pdfFullscreenIndex, setPdfFullscreenIndex] = useState(null); // null | index into activePdfContainer.pages
+  // Cache of high-res page renders, keyed by sourceFileIndex within
+  // whichever container is currently active - cleared whenever the
+  // active container changes (below) so it never mixes pages from two
+  // different containers under a colliding index.
   const [pdfFullscreenHighResCache, setPdfFullscreenHighResCache] = useState({});
   const [pdfFullscreenHighResLoading, setPdfFullscreenHighResLoading] = useState(false);
 
   useEffect(() => {
-    if (pdfFullscreenIndex === null) return;
-    const page = pdfEditorPages[pdfFullscreenIndex];
+    setPdfFullscreenHighResCache({});
+  }, [pdfActiveContainerId]);
+
+  useEffect(() => {
+    if (pdfFullscreenIndex === null || !activePdfContainer) return;
+    const page = activePdfContainer.pages[pdfFullscreenIndex];
     if (!page) return;
     if (pdfFullscreenHighResCache[page.sourceFileIndex]) return; // already rendered this source
-    const meta = pdfEditorSourceMeta[page.sourceFileIndex];
+    const meta = activePdfContainer.sourceMeta[page.sourceFileIndex];
     if (!meta || meta.isImage) return; // images are already full-res, nothing to render
 
     let cancelled = false;
@@ -7330,19 +7356,17 @@ function App() {
       setPdfFullscreenHighResLoading(false);
     });
     return () => { cancelled = true; };
-  }, [pdfFullscreenIndex]);
+  }, [pdfFullscreenIndex, activePdfContainer]);
 
   // Same high-res-on-demand render as above, but for the wide-web
   // preview+rail layout's main pane, which is driven by pdfActivePageId
-  // instead of the full-screen Modal's pdfFullscreenIndex - the two
-  // layouts render their big preview from different state, so this
-  // mirrors the effect above rather than trying to unify them.
+  // instead of the full-screen Modal's pdfFullscreenIndex.
   useEffect(() => {
-    if (!isWebWide || !pdfActivePageId) return;
-    const page = pdfEditorPages.find((p) => p.id === pdfActivePageId);
+    if (!isWebWide || !pdfActivePageId || !activePdfContainer) return;
+    const page = activePdfContainer.pages.find((p) => p.id === pdfActivePageId);
     if (!page) return;
     if (pdfFullscreenHighResCache[page.sourceFileIndex]) return;
-    const meta = pdfEditorSourceMeta[page.sourceFileIndex];
+    const meta = activePdfContainer.sourceMeta[page.sourceFileIndex];
     if (!meta || meta.isImage) return;
 
     let cancelled = false;
@@ -7358,88 +7382,41 @@ function App() {
       setPdfFullscreenHighResLoading(false);
     });
     return () => { cancelled = true; };
-  }, [pdfActivePageId, isWebWide]);
+  }, [pdfActivePageId, isWebWide, activePdfContainer]);
 
-  // Keeps pdfActivePageId pointing at a real page at all times - picks
-  // the first page on initial load, and re-anchors to the first page
-  // whenever the active one gets deleted/cropped/compressed away from
-  // under it (Compress and Crop both rebuild the whole document, which
-  // mints fresh page ids).
+  // Keeps pdfActiveContainerId pointing at a real container at all times.
   useEffect(() => {
-    if (pdfEditorPages.length === 0) { setPdfActivePageId(null); return; }
-    if (!pdfActivePageId || !pdfEditorPages.some((p) => p.id === pdfActivePageId)) {
-      setPdfActivePageId(pdfEditorPages[0].id);
+    if (pdfContainers.length === 0) { setPdfActiveContainerId(null); return; }
+    if (!pdfActiveContainerId || !pdfContainers.some((c) => c.id === pdfActiveContainerId)) {
+      setPdfActiveContainerId(pdfContainers[0].id);
     }
-  }, [pdfEditorPages]);
+  }, [pdfContainers]);
 
-  // PDF EDITOR STAGING ENGINE. Every tool (rotate, delete, compress, add
-  // pages, page numbers...) already applies directly to
-  // pdfEditorSourceDocs/pdfEditorSourceMeta/pdfEditorPages - that live
-  // state IS the working draft. What's added here is a snapshot taken
-  // immediately before each operation runs, so Undo can restore exactly
-  // what came before it, and a separate "last saved baseline" so Revert
-  // can throw away everything since the last Save Changes. All three
-  // pieces of state get snapshotted together, not just pdfEditorPages,
-  // because Compress and Page Numbers rebuild the underlying documents
-  // entirely (not just page-level metadata like rotation/order do) - a
-  // snapshot that only captured pages would be wrong for those two.
-  const [pdfEditorHistory, setPdfEditorHistory] = useState([]); // stack of { sourceDocs, sourceMeta, pages, label }
-  const [pdfEditorSavedSnapshot, setPdfEditorSavedSnapshot] = useState(null); // last Save Changes baseline, for Revert
-  const [pdfReviewChangesVisible, setPdfReviewChangesVisible] = useState(false);
+  // Keeps pdfActivePageId pointing at a real page of the active
+  // container - picks the first page whenever the container switches or
+  // the active one gets deleted/cropped/compressed away from under it.
+  useEffect(() => {
+    if (!activePdfContainer || activePdfContainer.pages.length === 0) { setPdfActivePageId(null); return; }
+    if (!pdfActivePageId || !activePdfContainer.pages.some((p) => p.id === pdfActivePageId)) {
+      setPdfActivePageId(activePdfContainer.pages[0].id);
+    }
+  }, [activePdfContainer]);
 
+  // GLOBAL UNDO. One shared stack across every container - each entry
+  // snapshots the ENTIRE pdfContainers array immediately before a
+  // mutating operation runs, so Undo always reverses whatever happened
+  // most recently, regardless of which container it touched. This is
+  // also what makes Merge trivially undoable for free - Merge changes
+  // the shape of pdfContainers itself (N containers become one), and a
+  // whole-array snapshot restores that shape exactly, not just one
+  // container's internal state.
+  const [pdfEditorHistory, setPdfEditorHistory] = useState([]); // stack of { containers, label }
   const pdfEditorHasPendingChanges = pdfEditorHistory.length > 0;
   // Compress's toolbar pill only shows purple/filled once a compress has
-  // actually been applied and is still pending (unsaved) - i.e. it's the
-  // most recent operation on the undo stack. Once Undo pops it or Save
-  // Changes clears the stack, it goes back to its plain outline look.
+  // actually been applied and is still the most recent thing on the undo
+  // stack - once Undo pops it (or something else happens after it), it
+  // goes back to its plain outline look.
   const isPdfCompressActive = pdfEditorHistory.length > 0 && pdfEditorHistory[pdfEditorHistory.length - 1].label === 'Compress PDF';
-
-  // Call this at the very start of any operation that mutates
-  // pdfEditorSourceDocs/pdfEditorSourceMeta/pdfEditorPages, before making
-  // the actual change - label is what shows up in the Review Changes list.
-  const pushPdfHistorySnapshot = (label) => {
-    setPdfEditorHistory((prev) => [...prev, {
-      sourceDocs: pdfEditorSourceDocs,
-      sourceMeta: pdfEditorSourceMeta,
-      pages: pdfEditorPages,
-      label
-    }]);
-  };
-
-  const handleUndoPdfEdit = () => {
-    setPdfEditorHistory((prev) => {
-      if (prev.length === 0) return prev;
-      const last = prev[prev.length - 1];
-      setPdfEditorSourceDocs(last.sourceDocs);
-      setPdfEditorSourceMeta(last.sourceMeta);
-      setPdfEditorPages(last.pages);
-      setPdfFullscreenHighResCache({});
-      triggerHaptic('light');
-      return prev.slice(0, -1);
-    });
-  };
-
-  const handleSavePdfChanges = () => {
-    setPdfEditorSavedSnapshot({
-      sourceDocs: pdfEditorSourceDocs,
-      sourceMeta: pdfEditorSourceMeta,
-      pages: pdfEditorPages
-    });
-    setPdfEditorHistory([]);
-    setPdfReviewChangesVisible(false);
-    triggerHaptic('success');
-  };
-
-  const handleRevertPdfChanges = () => {
-    if (pdfEditorSavedSnapshot) {
-      setPdfEditorSourceDocs(pdfEditorSavedSnapshot.sourceDocs);
-      setPdfEditorSourceMeta(pdfEditorSavedSnapshot.sourceMeta);
-      setPdfEditorPages(pdfEditorSavedSnapshot.pages);
-    }
-    setPdfEditorHistory([]);
-    setPdfFullscreenHighResCache({});
-    triggerHaptic('warning');
-  };
 
   const [toolsMenuVisible, setToolsMenuVisible] = useState(false);
   const [leaveToolsConfirmVisible, setLeaveToolsConfirmVisible] = useState(false);
@@ -7451,7 +7428,7 @@ function App() {
   const toolsHasUnsavedWork = () => {
     if (activeTool === 'imageCompressor') return compressorFiles.length > 0;
     if (activeTool === 'imageConverter') return converterFiles.length > 0;
-    if (activeTool === 'pdfEditor') return pdfEditorPages.length > 0;
+    if (activeTool === 'pdfEditor') return pdfContainers.length > 0;
     return false;
   };
 
@@ -11930,14 +11907,39 @@ function App() {
     }
   };
 
-  // TOOLS: PDF Editor handlers. Every picked file/image becomes a loaded
-  // PDFDocument appended to pdfEditorSourceDocs, and its pages get
-  // appended to the flat pdfEditorPages list (which is what the grid UI
-  // and reordering actually operate on) - thumbnails generate in the
-  // background per page so the grid can show placeholders immediately
-  // rather than blocking on every page rendering first.
-  const addPdfEditorSource = async (uri, isImage) => {
-    const sourceIndex = pdfEditorSourceDocs.length;
+  // TOOLS: PDF Editor handlers. Each uploaded PDF (or set of photos added
+  // together) becomes its own container in pdfContainers - every handler
+  // below that mutates pages/sourceDocs operates on ONE container at a
+  // time (almost always the active one), never the whole array, except
+  // mergeContainers which is the one operation that deliberately
+  // collapses several containers into one.
+
+  // GLOBAL UNDO - snapshots the entire pdfContainers array before any
+  // mutating operation runs. See the state block above for why a single
+  // whole-array snapshot (rather than per-container history) is what
+  // makes "Undo, regardless of which container it touched" and Merge's
+  // undo both work for free from the same mechanism.
+  const pushPdfHistorySnapshot = (label) => {
+    setPdfEditorHistory((prev) => [...prev, { containers: pdfContainers, label }]);
+  };
+
+  const handleUndoPdfEdit = () => {
+    setPdfEditorHistory((prev) => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      setPdfContainers(last.containers);
+      setPdfFullscreenHighResCache({});
+      triggerHaptic('light');
+      return prev.slice(0, -1);
+    });
+  };
+
+  // Builds one new container from a single picked file - used for each
+  // file "Add PDF" picks (one container per file, stacked after any
+  // already uploaded) and is NOT used for "Add Images" (see
+  // addPdfContainerFromImages below - multiple photos picked together
+  // build ONE container, not one each).
+  const addPdfContainerFromSource = async (uri, isImage, displayName) => {
     let doc;
     try {
       doc = await loadSourceAsPdfDoc(uri, isImage);
@@ -11945,32 +11947,90 @@ function App() {
       console.warn('Could not load PDF/image source:', e);
       showToast('Could not open that file - it may be corrupted or password-protected.');
       triggerHaptic('error');
-      return;
+      return null;
     }
-    setPdfEditorSourceDocs((prev) => [...prev, doc]);
-    setPdfEditorSourceMeta((prev) => [...prev, { uri, isImage }]);
-
     const pageCount = doc.getPageCount();
+    const containerId = `container_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const newPages = Array.from({ length: pageCount }, (_, i) => ({
-      id: `${Date.now()}_${sourceIndex}_${i}_${Math.random().toString(36).slice(2)}`,
-      sourceFileIndex: sourceIndex,
+      id: `${containerId}_${i}_${Math.random().toString(36).slice(2)}`,
+      sourceFileIndex: 0,
       sourcePageIndex: i,
-      thumbnailUri: isImage ? uri : null, // an image IS its own thumbnail, no rendering needed
+      thumbnailUri: isImage ? uri : null,
       rotation: 0,
       thumbnailLoading: !isImage
     }));
-    setPdfEditorPages((prev) => [...prev, ...newPages]);
+    pdfContainerLabelCounterRef.current += 1;
+    const container = {
+      id: containerId,
+      name: displayName || (isImage ? 'Photo' : 'Document'),
+      label: `PDF ${pdfContainerLabelCounterRef.current}`,
+      sourceDocs: [doc],
+      sourceMeta: [{ uri, isImage }],
+      pages: newPages
+    };
+    setPdfContainers((prev) => [...prev, container]);
 
     if (!isImage) {
       const thumbnails = Platform.OS === 'web'
         ? await generateWebPdfThumbnails(uri, 1.5)
         : await generateNativePdfThumbnails(uri, 900);
-      setPdfEditorPages((prev) => prev.map((p) => {
-        if (p.sourceFileIndex !== sourceIndex) return p;
-        const t = thumbnails ? thumbnails[p.sourcePageIndex] : null;
-        return { ...p, thumbnailUri: t || null, thumbnailLoading: false };
+      setPdfContainers((prev) => prev.map((c) => {
+        if (c.id !== containerId) return c;
+        return {
+          ...c,
+          pages: c.pages.map((p) => {
+            const t = thumbnails ? thumbnails[p.sourcePageIndex] : null;
+            return { ...p, thumbnailUri: t || null, thumbnailLoading: false };
+          })
+        };
       }));
     }
+    return containerId;
+  };
+
+  // "Add Images" builds ONE container from every photo picked in that
+  // one action (building a single document from photos), not a
+  // container per photo.
+  const addPdfContainerFromImages = async (uris) => {
+    if (uris.length === 0) return;
+    const containerId = `container_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const docs = [];
+    const sourceMeta = [];
+    const pages = [];
+    for (let i = 0; i < uris.length; i++) {
+      let doc;
+      try {
+        doc = await loadImageAsPdfDoc(uris[i]);
+      } catch (e) {
+        console.warn('Could not load image:', e);
+        continue;
+      }
+      docs.push(doc);
+      sourceMeta.push({ uri: uris[i], isImage: true });
+      pages.push({
+        id: `${containerId}_${i}_${Math.random().toString(36).slice(2)}`,
+        sourceFileIndex: docs.length - 1,
+        sourcePageIndex: 0,
+        thumbnailUri: uris[i],
+        rotation: 0,
+        thumbnailLoading: false
+      });
+    }
+    if (docs.length === 0) {
+      showToast('Could not open those photos - try again.');
+      triggerHaptic('error');
+      return;
+    }
+    pdfContainerLabelCounterRef.current += 1;
+    const container = {
+      id: containerId,
+      name: uris.length > 1 ? `${uris.length} Photos` : 'Photo',
+      label: `PDF ${pdfContainerLabelCounterRef.current}`,
+      sourceDocs: docs,
+      sourceMeta,
+      pages
+    };
+    setPdfContainers((prev) => [...prev, container]);
   };
 
   const pickPdfEditorPdfs = async () => {
@@ -11986,7 +12046,10 @@ function App() {
     if (result.canceled || !result.assets || result.assets.length === 0) return;
     setPdfEditorLoading(true);
     for (const asset of result.assets) {
-      await addPdfEditorSource(asset.uri, false);
+      // Each picked file becomes its own container, stacked after
+      // whatever's already uploaded - asset.name is the original
+      // filename DocumentPicker reports, used as that container's label.
+      await addPdfContainerFromSource(asset.uri, false, asset.name);
     }
     setPdfEditorLoading(false);
   };
@@ -12004,70 +12067,80 @@ function App() {
     });
     if (result.canceled || !result.assets || result.assets.length === 0) return;
     setPdfEditorLoading(true);
-    for (const asset of result.assets) {
-      await addPdfEditorSource(asset.uri, true);
-    }
+    await addPdfContainerFromImages(result.assets.map((a) => a.uri));
     setPdfEditorLoading(false);
+  };
+
+  // Shared by every per-page handler below - replaces just the active
+  // container's pages array, leaving every other container untouched.
+  const updateActiveContainerPages = (updater) => {
+    if (!activePdfContainer) return;
+    const targetId = activePdfContainer.id;
+    setPdfContainers((prev) => prev.map((c) => (c.id === targetId ? { ...c, pages: updater(c.pages) } : c)));
   };
 
   const removePdfEditorPage = (pageId) => {
     pushPdfHistorySnapshot('Delete page');
     triggerHaptic('light');
-    setPdfEditorPages((prev) => prev.filter((p) => p.id !== pageId));
+    updateActiveContainerPages((pages) => pages.filter((p) => p.id !== pageId));
   };
 
   const rotatePdfEditorPage = (pageId) => {
     pushPdfHistorySnapshot('Rotate page');
     triggerHaptic('light');
-    setPdfEditorPages((prev) => prev.map((p) => (p.id === pageId ? { ...p, rotation: (p.rotation + 90) % 360 } : p)));
+    updateActiveContainerPages((pages) => pages.map((p) => (p.id === pageId ? { ...p, rotation: (p.rotation + 90) % 360 } : p)));
   };
 
   // Native reorder - simple move-by-one-position rather than true drag
   // gestures, since a real drag-and-drop interaction needs a gesture
   // library this project doesn't currently have. Web gets genuine drag-
   // and-drop instead (see the HTML5 drag events used directly in the
-  // grid UI), since that's free on web with no new dependency.
+  // rail/list UI), since that's free on web with no new dependency.
   const movePdfEditorPage = (pageId, direction) => {
-    const index = pdfEditorPages.findIndex((p) => p.id === pageId);
+    if (!activePdfContainer) return;
+    const pages = activePdfContainer.pages;
+    const index = pages.findIndex((p) => p.id === pageId);
     const targetIndex = index + direction;
-    if (index === -1 || targetIndex < 0 || targetIndex >= pdfEditorPages.length) return;
+    if (index === -1 || targetIndex < 0 || targetIndex >= pages.length) return;
     pushPdfHistorySnapshot('Reorder pages');
     triggerHaptic('light');
-    setPdfEditorPages((prev) => {
-      const next = [...prev];
+    updateActiveContainerPages((prevPages) => {
+      const next = [...prevPages];
       [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
       return next;
     });
   };
 
   const reorderPdfEditorPages = (fromIndex, toIndex) => {
-    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= pdfEditorPages.length || toIndex >= pdfEditorPages.length) return;
+    if (!activePdfContainer) return;
+    const pages = activePdfContainer.pages;
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= pages.length || toIndex >= pages.length) return;
     pushPdfHistorySnapshot('Reorder pages');
-    setPdfEditorPages((prev) => {
-      const next = [...prev];
+    updateActiveContainerPages((prevPages) => {
+      const next = [...prevPages];
       const [moved] = next.splice(fromIndex, 1);
       next.splice(toIndex, 0, moved);
       return next;
     });
   };
 
-  // Reorder mode's typeable page number field - "move page 5 to position
+  // Reorder pill's typeable page number field - "move page 5 to position
   // 3" is exactly a splice-out/splice-in, which reorderPdfEditorPages
   // already implements correctly (everything between the two positions
   // naturally shifts). This just translates a typed 1-indexed position
   // into the from/to indices that function expects.
   const handleReorderByTypedPosition = (pageId, typedPosition) => {
-    const currentIndex = pdfEditorPages.findIndex((p) => p.id === pageId);
+    if (!activePdfContainer) return;
+    const pages = activePdfContainer.pages;
+    const currentIndex = pages.findIndex((p) => p.id === pageId);
     if (currentIndex === -1 || !typedPosition) return;
-    const targetIndex = Math.max(0, Math.min(pdfEditorPages.length - 1, typedPosition - 1));
+    const targetIndex = Math.max(0, Math.min(pages.length - 1, typedPosition - 1));
     reorderPdfEditorPages(currentIndex, targetIndex);
   };
 
   // Always-visible reorder control rendered at the top-right corner of
-  // every page thumbnail (rail tiles + the mobile/narrow list) - replaces
-  // the old separate "Reorder mode" toggle. Up/down arrows nudge by one
-  // position; typing a number and pressing enter jumps straight there.
-  // A plain function returning JSX (not a component defined in render) -
+  // every page thumbnail (rail tiles + the mobile/narrow list). A plain
+  // function returning JSX (not a component defined in render) -
   // defining a component inline in the render body would mint a new
   // component type every render and remount this on every unrelated
   // state change, dropping focus out of the number field mid-type.
@@ -12095,8 +12168,8 @@ function App() {
       />
       <BouncyButton
         onPress={() => movePdfEditorPage(page.id, 1)}
-        disabled={index === pdfEditorPages.length - 1}
-        style={{ opacity: index === pdfEditorPages.length - 1 ? 0.3 : 1, padding: 3 }}
+        disabled={index === (activePdfContainer ? activePdfContainer.pages.length : 1) - 1}
+        style={{ opacity: index === (activePdfContainer ? activePdfContainer.pages.length : 1) - 1 ? 0.3 : 1, padding: 3 }}
         accessibilityRole="button"
         accessibilityLabel="Move page later"
       >
@@ -12105,17 +12178,76 @@ function App() {
     </View>
   );
 
-  const clearAllPdfEditorPages = () => {
+  // Removes one whole container (the tab strip's "x") - undo-able like
+  // everything else here, so no separate confirmation dialog needed.
+  const removePdfContainer = (containerId) => {
+    pushPdfHistorySnapshot('Remove PDF');
     triggerHaptic('warning');
-    setPdfEditorSourceDocs([]);
-    setPdfEditorSourceMeta([]);
-    setPdfEditorPages([]);
+    setPdfContainers((prev) => prev.filter((c) => c.id !== containerId));
+  };
+
+  // Container-level multi-select - Compress (once there's more than one
+  // container) and Merge both reuse this, same pattern as the per-page
+  // pdfSelectModeTool one level down.
+  const toggleContainerSelected = (id) => {
+    setPdfSelectedContainerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const startContainerSelectFlow = (tool) => {
+    setPdfSelectModeTool(null);
+    setPdfSelectedPageIds([]);
+    setPdfSelectedContainerIds([]);
+    setPdfContainerSelectModeTool(tool);
+  };
+
+  const cancelContainerSelectFlow = () => {
+    setPdfContainerSelectModeTool(null);
+    setPdfSelectedContainerIds([]);
+  };
+
+  // Collapses the selected containers into one new container, fully
+  // interleaveable/reorderable afterward exactly like a single uploaded
+  // PDF - this is the one operation that changes the SHAPE of
+  // pdfContainers itself, which is exactly why global undo snapshots the
+  // whole array rather than per-container history (see state block).
+  const mergeContainers = (containerIds) => {
+    const toMerge = pdfContainers.filter((c) => containerIds.includes(c.id));
+    if (toMerge.length < 2) return;
+
+    let sourceDocs = [];
+    let sourceMeta = [];
+    let pages = [];
+    toMerge.forEach((c) => {
+      const offset = sourceDocs.length;
+      sourceDocs = sourceDocs.concat(c.sourceDocs);
+      sourceMeta = sourceMeta.concat(c.sourceMeta);
+      pages = pages.concat(c.pages.map((p) => ({ ...p, sourceFileIndex: p.sourceFileIndex + offset })));
+    });
+
+    pdfContainerLabelCounterRef.current += 1;
+    const mergedContainer = {
+      id: `container_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      name: toMerge.map((c) => c.name).join(' + '),
+      label: `PDF ${pdfContainerLabelCounterRef.current}`,
+      sourceDocs, sourceMeta, pages
+    };
+
+    pushPdfHistorySnapshot('Merge PDFs');
+    setPdfContainers((prev) => {
+      const firstIndex = prev.findIndex((c) => containerIds.includes(c.id));
+      const before = prev.slice(0, firstIndex).filter((c) => !containerIds.includes(c.id));
+      const after = prev.slice(firstIndex).filter((c) => !containerIds.includes(c.id));
+      return [...before, mergedContainer, ...after];
+    });
+    setPdfActiveContainerId(mergedContainer.id);
     setPdfFullscreenHighResCache({});
+    cancelContainerSelectFlow();
+    triggerHaptic('success');
   };
 
   // Renders every page at a real, readable resolution (not the small
-  // grid-thumbnail scale), compresses each one through the same engine
-  // the Image Compressor uses, then rebuilds one fresh PDF from the
+  // thumbnail scale), compresses each one through the same engine the
+  // Image Compressor uses, then rebuilds one fresh PDF from the
   // compressed pages. This is the standard approach real PDF compressor
   // tools use for scanned/photo-heavy documents - pdf-lib has no way to
   // reach into an existing page's embedded images and re-encode them in
@@ -12129,84 +12261,104 @@ function App() {
     high: { targetBytes: 450 * 1024, maxWidth: 2000, maxHeight: 2000, label: 'High', desc: 'Best quality, larger file' }
   };
 
-  const handleCompressPdf = async (quality) => {
-    if (pdfEditorPages.length === 0) return;
-    const preset = PDF_COMPRESS_PRESETS[quality] || PDF_COMPRESS_PRESETS.medium;
-    pushPdfHistorySnapshot('Compress PDF');
-    setPdfCompressing(true);
-    triggerHaptic('light');
-    try {
-      const renderCache = {}; // sourceFileIndex -> array of high-res page image URIs
-      const compressedPageDocs = [];
-      const compressedThumbnailUris = [];
+  // Compresses ONE container and returns a new container object (or null
+  // on total failure) rather than touching state directly, so
+  // handleCompressPdf below can run this against several containers in a
+  // loop and commit them all in a single setPdfContainers call.
+  const compressOneContainer = async (container, preset) => {
+    const renderCache = {}; // sourceFileIndex -> array of high-res page image URIs, scoped to this one container
+    const compressedPageDocs = [];
+    const compressedThumbnailUris = [];
 
-      for (const page of pdfEditorPages) {
-        const meta = pdfEditorSourceMeta[page.sourceFileIndex];
-        if (!meta) continue; // shouldn't happen, but don't let one bad entry fail the whole batch
+    for (const page of container.pages) {
+      const meta = container.sourceMeta[page.sourceFileIndex];
+      if (!meta) continue;
 
-        let renderedUri;
-        if (meta.isImage) {
-          renderedUri = meta.uri;
-        } else {
-          if (!renderCache[page.sourceFileIndex]) {
-            renderCache[page.sourceFileIndex] = Platform.OS === 'web'
-              ? await generateWebPdfThumbnails(meta.uri, 1.5)
-              : await generateNativePdfThumbnails(meta.uri, 1200);
-          }
-          renderedUri = renderCache[page.sourceFileIndex] ? renderCache[page.sourceFileIndex][page.sourcePageIndex] : null;
+      let renderedUri;
+      if (meta.isImage) {
+        renderedUri = meta.uri;
+      } else {
+        if (!renderCache[page.sourceFileIndex]) {
+          renderCache[page.sourceFileIndex] = Platform.OS === 'web'
+            ? await generateWebPdfThumbnails(meta.uri, 1.5)
+            : await generateNativePdfThumbnails(meta.uri, 1200);
         }
-        if (!renderedUri) continue; // couldn't render this specific page - skip it rather than abort everything
-
-        const compressed = await compressImageToTarget(renderedUri, {
-          targetBytes: preset.targetBytes, maxWidth: preset.maxWidth, maxHeight: preset.maxHeight, format: 'JPEG'
-        });
-        const pageDoc = await loadImageAsPdfDoc(compressed.uri);
-        if (page.rotation) {
-          const [pdfPage] = pageDoc.getPages();
-          pdfPage.setRotation(degrees(page.rotation % 360));
-        }
-        compressedPageDocs.push(pageDoc);
-        compressedThumbnailUris.push(compressed.uri);
+        renderedUri = renderCache[page.sourceFileIndex] ? renderCache[page.sourceFileIndex][page.sourcePageIndex] : null;
       }
+      if (!renderedUri) continue;
 
-      if (compressedPageDocs.length === 0) {
-        showToast('Could not compress this PDF - try again.');
-        triggerHaptic('error');
-        return;
+      const compressed = await compressImageToTarget(renderedUri, {
+        targetBytes: preset.targetBytes, maxWidth: preset.maxWidth, maxHeight: preset.maxHeight, format: 'JPEG'
+      });
+      const pageDoc = await loadImageAsPdfDoc(compressed.uri);
+      if (page.rotation) {
+        const [pdfPage] = pageDoc.getPages();
+        pdfPage.setRotation(degrees(page.rotation % 360));
       }
+      compressedPageDocs.push(pageDoc);
+      compressedThumbnailUris.push(compressed.uri);
+    }
 
-      // Collapse everything into one fresh source - after compression,
-      // which original file each page came from no longer matters, it's
-      // all one rebuilt document now. The compressed image itself is
-      // already the right thumbnail - no need to re-render through
-      // pdfjs-dist a second time just to get a preview.
-      setPdfEditorSourceDocs(compressedPageDocs);
-      setPdfEditorSourceMeta(compressedPageDocs.map(() => ({ uri: null, isImage: true })));
-      setPdfEditorPages(compressedPageDocs.map((_, i) => ({
+    if (compressedPageDocs.length === 0) return null;
+
+    return {
+      ...container,
+      sourceDocs: compressedPageDocs,
+      sourceMeta: compressedPageDocs.map(() => ({ uri: null, isImage: true })),
+      pages: compressedPageDocs.map((_, i) => ({
         id: `${Date.now()}_compressed_${i}_${Math.random().toString(36).slice(2)}`,
         sourceFileIndex: i,
         sourcePageIndex: 0,
         thumbnailUri: compressedThumbnailUris[i],
         rotation: 0,
         thumbnailLoading: false
-      })));
-      setPdfFullscreenHighResCache({});
+      }))
+    };
+  };
 
-      showToast('PDF compressed.');
+  // containerIds is optional - omit it (or pass none) to compress just
+  // the active container, the one-container fast path with no select
+  // step. With 2+ ids, each compresses independently; nothing flattens.
+  const handleCompressPdf = async (quality, containerIds) => {
+    const targets = containerIds && containerIds.length > 0
+      ? containerIds
+      : (activePdfContainer ? [activePdfContainer.id] : []);
+    if (targets.length === 0) return;
+    const preset = PDF_COMPRESS_PRESETS[quality] || PDF_COMPRESS_PRESETS.medium;
+    pushPdfHistorySnapshot('Compress PDF');
+    setPdfCompressing(true);
+    triggerHaptic('light');
+    try {
+      const updates = {};
+      for (const cid of targets) {
+        const container = pdfContainers.find((c) => c.id === cid);
+        if (!container) continue;
+        const compressed = await compressOneContainer(container, preset);
+        if (compressed) updates[cid] = compressed;
+      }
+      if (Object.keys(updates).length === 0) {
+        showToast('Could not compress - try again.');
+        triggerHaptic('error');
+        return;
+      }
+      setPdfContainers((prev) => prev.map((c) => updates[c.id] || c));
+      setPdfFullscreenHighResCache({});
+      showToast(targets.length > 1 ? 'PDFs compressed.' : 'PDF compressed.');
       triggerHaptic('success');
     } catch (e) {
       console.warn('PDF compression failed:', e);
-      showToast('Could not compress this PDF - try again.');
+      showToast('Could not compress - try again.');
       triggerHaptic('error');
     } finally {
       setPdfCompressing(false);
+      cancelContainerSelectFlow();
     }
   };
 
-  // Shared by handleExportPdf and handleExtractPage - the actual save-
-  // or-share mechanics don't differ between "export the whole document"
-  // and "extract just this page," only what bytes and filename get
-  // passed in.
+  // Shared by every export path below - the actual save-or-share
+  // mechanics don't differ between "export one container," "export each
+  // separately," or "export a combined file," only what bytes and
+  // filename get passed in.
   const savePdfBytes = async (bytes, filename) => {
     if (Platform.OS === 'web') {
       const blob = new Blob([bytes], { type: 'application/pdf' });
@@ -12232,12 +12384,27 @@ function App() {
     }
   };
 
-  const handleExportPdf = async () => {
-    if (pdfEditorPages.length === 0) return;
+  const exportOneContainer = async (container) => {
+    const bytes = await assemblePdfFromPages(container.sourceDocs, container.pages);
+    const baseName = (container.name || 'document').replace(/\.pdf$/i, '');
+    await savePdfBytes(bytes, `${baseName}.pdf`);
+  };
+
+  // Top-right Export button. One container exports immediately; 2+
+  // containers opens the combine-vs-separate choice instead.
+  const handleExportPdf = () => {
+    if (pdfContainers.length === 0) return;
+    if (pdfContainers.length === 1) {
+      exportActiveOrGivenContainer(pdfContainers[0]);
+      return;
+    }
+    setPdfExportChoiceVisible(true);
+  };
+
+  const exportActiveOrGivenContainer = async (container) => {
     setPdfEditorExporting(true);
     try {
-      const bytes = await assemblePdfFromPages(pdfEditorSourceDocs, pdfEditorPages);
-      await savePdfBytes(bytes, 'edited.pdf');
+      await exportOneContainer(container);
       maybeShowToolsDownloadInterstitial(false);
       triggerHaptic('success');
     } catch (e) {
@@ -12249,11 +12416,84 @@ function App() {
     }
   };
 
+  // "Export each separately" - sequential downloads, same pattern the
+  // Compressor's "Download All" already uses elsewhere in Tools, rather
+  // than introducing a zip dependency this project doesn't have.
+  const handleExportEachSeparately = async () => {
+    setPdfExportChoiceVisible(false);
+    setPdfEditorExporting(true);
+    try {
+      for (const container of pdfContainers) {
+        await exportOneContainer(container);
+      }
+      maybeShowToolsDownloadInterstitial(false);
+      triggerHaptic('success');
+    } catch (e) {
+      console.warn('Batch export failed:', e);
+      showToast('Could not export all PDFs - try again.');
+      triggerHaptic('error');
+    } finally {
+      setPdfEditorExporting(false);
+    }
+  };
+
+  const openCombineOrderScreen = () => {
+    setPdfExportChoiceVisible(false);
+    setPdfCombineOrderIds(pdfContainers.map((c) => c.id));
+    setPdfCombineOrderVisible(true);
+  };
+
+  const moveCombineOrderId = (id, direction) => {
+    setPdfCombineOrderIds((prev) => {
+      const index = prev.indexOf(id);
+      const target = index + direction;
+      if (index === -1 || target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
+  // "Combine" - raw concatenation in the user-arranged order, no page-
+  // level interleaving. The source containers are left exactly as they
+  // were in the workspace afterward - this only produces an exported
+  // file, unlike Merge which replaces the originals with one new
+  // editable container.
+  const handleCombineAndExport = async () => {
+    setPdfEditorExporting(true);
+    try {
+      const orderedContainers = pdfCombineOrderIds.map((id) => pdfContainers.find((c) => c.id === id)).filter(Boolean);
+      const outDoc = await PDFDocument.create();
+      for (const container of orderedContainers) {
+        for (const page of container.pages) {
+          const [copiedPage] = await outDoc.copyPages(container.sourceDocs[page.sourceFileIndex], [page.sourcePageIndex]);
+          if (page.rotation) {
+            const current = copiedPage.getRotation().angle || 0;
+            copiedPage.setRotation(degrees((current + page.rotation) % 360));
+          }
+          outDoc.addPage(copiedPage);
+        }
+      }
+      const bytes = await outDoc.save();
+      await savePdfBytes(bytes, 'combined.pdf');
+      maybeShowToolsDownloadInterstitial(false);
+      triggerHaptic('success');
+      setPdfCombineOrderVisible(false);
+    } catch (e) {
+      console.warn('Combine export failed:', e);
+      showToast('Could not combine and export - try again.');
+      triggerHaptic('error');
+    } finally {
+      setPdfEditorExporting(false);
+    }
+  };
+
   const handleExtractPage = async (pageIndex) => {
-    const page = pdfEditorPages[pageIndex];
+    if (!activePdfContainer) return;
+    const page = activePdfContainer.pages[pageIndex];
     if (!page) return;
     try {
-      const bytes = await assemblePdfFromPages(pdfEditorSourceDocs, [page]);
+      const bytes = await assemblePdfFromPages(activePdfContainer.sourceDocs, [page]);
       await savePdfBytes(bytes, `page-${pageIndex + 1}.pdf`);
       triggerHaptic('success');
     } catch (e) {
@@ -12264,35 +12504,30 @@ function App() {
   };
 
   // Inserts a blank US Letter page (612x792pt) immediately after
-  // afterIndex. Scoped to blank-only for now, not "insert an existing
-  // image/PDF at this specific position" - that's a real follow-up, but
-  // a genuinely separate, bigger piece of work (picking a file AND
-  // splicing its pages into the middle of the array, rather than just
-  // appending, which is all the existing Add PDF/Add Images buttons do).
+  // afterIndex, into the active container only. Reached from the "+
+  // Page" menu's "Blank Page" option.
   const handleInsertBlankPage = async (afterIndex) => {
+    if (!activePdfContainer) return;
     pushPdfHistorySnapshot('Add page');
     triggerHaptic('light');
     try {
       const blankDoc = await PDFDocument.create();
       blankDoc.addPage([612, 792]);
-      const newSourceIndex = pdfEditorSourceDocs.length;
-
-      setPdfEditorSourceDocs((prev) => [...prev, blankDoc]);
-      setPdfEditorSourceMeta((prev) => [...prev, { uri: null, isImage: false }]);
-
+      const targetId = activePdfContainer.id;
       const newPage = {
         id: `${Date.now()}_blank_${Math.random().toString(36).slice(2)}`,
-        sourceFileIndex: newSourceIndex,
+        sourceFileIndex: activePdfContainer.sourceDocs.length,
         sourcePageIndex: 0,
         thumbnailUri: null,
         rotation: 0,
         thumbnailLoading: false
       };
-      setPdfEditorPages((prev) => {
-        const next = [...prev];
-        next.splice(afterIndex + 1, 0, newPage);
-        return next;
-      });
+      setPdfContainers((prev) => prev.map((c) => {
+        if (c.id !== targetId) return c;
+        const pages = [...c.pages];
+        pages.splice(afterIndex + 1, 0, newPage);
+        return { ...c, sourceDocs: [...c.sourceDocs, blankDoc], sourceMeta: [...c.sourceMeta, { uri: null, isImage: false }], pages };
+      }));
     } catch (e) {
       console.warn('Insert blank page failed:', e);
       showToast('Could not insert a blank page - try again.');
@@ -12300,25 +12535,101 @@ function App() {
     }
   };
 
-  // Draws a centered page number at the bottom of every page and
-  // collapses the result into one fresh combined source, same "replace
-  // the editing state" pattern compression uses - after this runs, page
-  // provenance no longer matters, it's one rebuilt document. Numbering
-  // uses simple bottom-center placement in PDF page coordinates; a
-  // rotated page's visual "bottom" can differ from its coordinate-space
-  // bottom, which this doesn't correct for - an acceptable simplification
-  // for a first version rather than the added geometry needed to handle
-  // every rotation case perfectly.
+  // "+ Page" menu's "From PDF"/"From Photo" options - pulls every page
+  // of the picked file into the ACTIVE container only, spliced in right
+  // after afterIndex. This never creates a new container - that's the
+  // whole point of the distinction from "Add PDF" up top, which always
+  // does create one.
+  const handleInsertFileIntoActiveContainer = async (uri, isImage, afterIndex) => {
+    if (!activePdfContainer) return;
+    pushPdfHistorySnapshot('Add page');
+    triggerHaptic('light');
+    const targetId = activePdfContainer.id;
+    const newSourceIndex = activePdfContainer.sourceDocs.length;
+    try {
+      const doc = await loadSourceAsPdfDoc(uri, isImage);
+      const pageCount = doc.getPageCount();
+      setPdfContainers((prev) => prev.map((c) => {
+        if (c.id !== targetId) return c;
+        const newPages = Array.from({ length: pageCount }, (_, i) => ({
+          id: `${Date.now()}_added_${i}_${Math.random().toString(36).slice(2)}`,
+          sourceFileIndex: newSourceIndex,
+          sourcePageIndex: i,
+          thumbnailUri: isImage ? uri : null,
+          rotation: 0,
+          thumbnailLoading: !isImage
+        }));
+        const pages = [...c.pages];
+        pages.splice(afterIndex + 1, 0, ...newPages);
+        return { ...c, sourceDocs: [...c.sourceDocs, doc], sourceMeta: [...c.sourceMeta, { uri, isImage }], pages };
+      }));
+
+      if (!isImage) {
+        const thumbnails = Platform.OS === 'web'
+          ? await generateWebPdfThumbnails(uri, 1.5)
+          : await generateNativePdfThumbnails(uri, 900);
+        setPdfContainers((prev) => prev.map((c) => {
+          if (c.id !== targetId) return c;
+          return {
+            ...c,
+            pages: c.pages.map((p) => {
+              if (p.sourceFileIndex !== newSourceIndex) return p;
+              const t = thumbnails ? thumbnails[p.sourcePageIndex] : null;
+              return { ...p, thumbnailUri: t || null, thumbnailLoading: false };
+            })
+          };
+        }));
+      }
+    } catch (e) {
+      console.warn('Could not insert file:', e);
+      showToast('Could not open that file - it may be corrupted or password-protected.');
+      triggerHaptic('error');
+    }
+  };
+
+  const pickPdfToInsert = async (afterIndex) => {
+    let DocumentPicker;
+    try {
+      DocumentPicker = require('expo-document-picker');
+    } catch (e) {
+      showToast('PDF picking isn\'t available yet on this build - try again after the next app update.');
+      return;
+    }
+    const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', multiple: false, copyToCacheDirectory: true });
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+    await handleInsertFileIntoActiveContainer(result.assets[0].uri, false, afterIndex);
+  };
+
+  const pickImageToInsert = async (afterIndex) => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showAppAlert('Permission Denied', 'Media library access is required to pick photos.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1 });
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+    await handleInsertFileIntoActiveContainer(result.assets[0].uri, true, afterIndex);
+  };
+
+  // Draws a centered page number at the bottom of every page of the
+  // ACTIVE container and collapses the result into one fresh source for
+  // that container, same "replace the editing state" pattern Compress
+  // and Crop use. Numbering uses simple bottom-center placement in PDF
+  // page coordinates; a rotated page's visual "bottom" can differ from
+  // its coordinate-space bottom, which this doesn't correct for - an
+  // acceptable simplification rather than the added geometry needed to
+  // handle every rotation case perfectly.
   const handleAddPageNumbers = async () => {
-    if (pdfEditorPages.length === 0) return;
+    if (!activePdfContainer || activePdfContainer.pages.length === 0) return;
     pushPdfHistorySnapshot('Add page numbers');
     triggerHaptic('light');
     try {
       const outDoc = await PDFDocument.create();
       const font = await outDoc.embedFont(StandardFonts.Helvetica);
-      for (let i = 0; i < pdfEditorPages.length; i++) {
-        const p = pdfEditorPages[i];
-        const [copiedPage] = await outDoc.copyPages(pdfEditorSourceDocs[p.sourceFileIndex], [p.sourcePageIndex]);
+      const pages = activePdfContainer.pages;
+      for (let i = 0; i < pages.length; i++) {
+        const p = pages[i];
+        const [copiedPage] = await outDoc.copyPages(activePdfContainer.sourceDocs[p.sourceFileIndex], [p.sourcePageIndex]);
         if (p.rotation) {
           const current = copiedPage.getRotation().angle || 0;
           copiedPage.setRotation(degrees((current + p.rotation) % 360));
@@ -12327,23 +12638,14 @@ function App() {
         const label = `${i + 1}`;
         const { width } = copiedPage.getSize();
         const textWidth = font.widthOfTextAtSize(label, 10);
-        copiedPage.drawText(label, {
-          x: (width - textWidth) / 2,
-          y: 20,
-          size: 10,
-          font,
-          color: rgb(0, 0, 0)
-        });
+        copiedPage.drawText(label, { x: (width - textWidth) / 2, y: 20, size: 10, font, color: rgb(0, 0, 0) });
       }
 
-      setPdfEditorSourceDocs([outDoc]);
-      setPdfEditorSourceMeta([{ uri: null, isImage: false }]);
-      setPdfEditorPages(pdfEditorPages.map((p, i) => ({
-        ...p,
-        sourceFileIndex: 0,
-        sourcePageIndex: i,
-        rotation: 0 // already baked into the copied page itself above
-      })));
+      const targetId = activePdfContainer.id;
+      const newPages = pages.map((p, i) => ({ ...p, sourceFileIndex: 0, sourcePageIndex: i, rotation: 0 }));
+      setPdfContainers((prev) => prev.map((c) => (
+        c.id === targetId ? { ...c, sourceDocs: [outDoc], sourceMeta: [{ uri: null, isImage: false }], pages: newPages } : c
+      )));
 
       showToast('Page numbers added.');
       triggerHaptic('success');
@@ -12354,8 +12656,8 @@ function App() {
     }
   };
 
-  // Select mode - generic multi-select for per-page tools, Crop is the
-  // first user of it.
+  // Select mode - generic multi-select for per-page tools within the
+  // active container, Crop is the first user of it.
   const togglePdfPageSelected = (pageId) => {
     setPdfSelectedPageIds((prev) => (prev.includes(pageId) ? prev.filter((id) => id !== pageId) : [...prev, pageId]));
   };
@@ -12385,19 +12687,19 @@ function App() {
   };
 
   // Applies crop to every page that was actually adjusted, in one pass -
-  // rebuilds the whole document (same pattern as Compress/Page Numbers
-  // above) rather than mutating pdfEditorSourceDocs' page objects in
-  // place. Direct mutation would corrupt Undo: a history snapshot only
-  // stores a reference to the sourceDocs array, not a deep clone, so
-  // mutating a PDFPage object in place would silently change what the
-  // "before" snapshot points to as well.
+  // rebuilds the active container's document (same pattern as Compress/
+  // Page Numbers above) rather than mutating its sourceDocs page objects
+  // in place, which would corrupt the global undo snapshot the same way
+  // it always would have.
   const applyPdfCropAndFinish = async (insetsByPageId) => {
+    if (!activePdfContainer) return;
     pushPdfHistorySnapshot('Crop pages');
     triggerHaptic('light');
     try {
       const outDoc = await PDFDocument.create();
-      for (const page of pdfEditorPages) {
-        const [copiedPage] = await outDoc.copyPages(pdfEditorSourceDocs[page.sourceFileIndex], [page.sourcePageIndex]);
+      const pages = activePdfContainer.pages;
+      for (const page of pages) {
+        const [copiedPage] = await outDoc.copyPages(activePdfContainer.sourceDocs[page.sourceFileIndex], [page.sourcePageIndex]);
         if (page.rotation) {
           const current = copiedPage.getRotation().angle || 0;
           copiedPage.setRotation(degrees((current + page.rotation) % 360));
@@ -12415,14 +12717,11 @@ function App() {
         outDoc.addPage(copiedPage);
       }
 
-      setPdfEditorSourceDocs([outDoc]);
-      setPdfEditorSourceMeta([{ uri: null, isImage: false }]);
-      setPdfEditorPages(pdfEditorPages.map((p, i) => ({
-        ...p,
-        sourceFileIndex: 0,
-        sourcePageIndex: i,
-        rotation: 0 // already baked into the copied page itself above
-      })));
+      const targetId = activePdfContainer.id;
+      const newPages = pages.map((p, i) => ({ ...p, sourceFileIndex: 0, sourcePageIndex: i, rotation: 0 }));
+      setPdfContainers((prev) => prev.map((c) => (
+        c.id === targetId ? { ...c, sourceDocs: [outDoc], sourceMeta: [{ uri: null, isImage: false }], pages: newPages } : c
+      )));
       setPdfFullscreenHighResCache({});
 
       showToast('Crop applied.');
@@ -12437,6 +12736,7 @@ function App() {
       setPdfCropQueueIndex(null);
     }
   };
+
 
   // TOOLS: QR Code Generator handlers.
   const pickQrLogo = async () => {
@@ -18502,6 +18802,27 @@ function App() {
                     <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '800' }}>
                       {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : tt('pdfEditor')}
                     </Text>
+                    {activeTool === 'pdfEditor' && pdfContainers.length > 0 && (
+                      <BouncyButton
+                        style={{
+                          marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6,
+                          paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
+                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                          opacity: pdfEditorExporting ? 0.6 : 1
+                        }}
+                        onPress={handleExportPdf}
+                        disabled={pdfEditorExporting}
+                        accessibilityRole="button"
+                        accessibilityLabel="Export"
+                        accessibilityState={{ disabled: pdfEditorExporting, busy: pdfEditorExporting }}
+                      >
+                        {pdfEditorExporting ? (
+                          <ActivityIndicator color="#FFFFFF" size="small" />
+                        ) : (
+                          <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text>
+                        )}
+                      </BouncyButton>
+                    )}
                   </View>
                 )}
 
@@ -18550,10 +18871,31 @@ function App() {
                 </View>
 
                 {activeTool !== 'hub' && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: toolsTheme.bg }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: toolsTheme.bg }}>
                     <Text style={{ color: toolsTheme.text, fontSize: 17, fontWeight: '800' }}>
                       {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : tt('pdfEditor')}
                     </Text>
+                    {activeTool === 'pdfEditor' && pdfContainers.length > 0 && (
+                      <BouncyButton
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 6,
+                          paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
+                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                          opacity: pdfEditorExporting ? 0.6 : 1
+                        }}
+                        onPress={handleExportPdf}
+                        disabled={pdfEditorExporting}
+                        accessibilityRole="button"
+                        accessibilityLabel="Export"
+                        accessibilityState={{ disabled: pdfEditorExporting, busy: pdfEditorExporting }}
+                      >
+                        {pdfEditorExporting ? (
+                          <ActivityIndicator color="#FFFFFF" size="small" />
+                        ) : (
+                          <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text>
+                        )}
+                      </BouncyButton>
+                    )}
                   </View>
                 )}
               </>
@@ -18563,7 +18905,6 @@ function App() {
               contentContainerStyle={[
                 { padding: 20, gap: 14 },
                 activeTool === 'imageCompressor' && compressorFiles.length > 0 && !isWebWide && { paddingBottom: 90 },
-                activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && !isWebWide && { paddingBottom: 90 },
                 isWebWide && { maxWidth: 1400, width: '100%', alignSelf: 'center' }
               ]}
               enableOnAndroid={true}
@@ -19692,7 +20033,7 @@ function App() {
               {activeTool === 'pdfEditor' && (
                 <View style={{ gap: 20 }}>
                 <View style={{ gap: 14 }}>
-                  {pdfEditorPages.length === 0 && (
+                  {pdfContainers.length === 0 && (
                   <View style={{ gap: 14 }}>
                   <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
                     {tt('pdfEditorIntro')}
@@ -19734,8 +20075,95 @@ function App() {
                   </View>
                   )}
 
+                  {/* CONTAINER TABS - one uploaded PDF (or photo set) per
+                      container, shown as its own tab once there's more
+                      than one - the "x" removes just that container
+                      (undo-able like everything else, no confirm dialog
+                      needed). While pdfContainerSelectModeTool is active
+                      (Compress with 2+ containers, or Merge), tapping a
+                      tab toggles its checkbox instead of switching to it. */}
+                  {pdfContainers.length > 1 && (
+                    <View style={{ marginTop: 4, gap: 10 }}>
+                      {pdfContainerSelectModeTool && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 12 }}>
+                          <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
+                            {pdfSelectedContainerIds.length} PDF{pdfSelectedContainerIds.length === 1 ? '' : 's'} selected
+                          </Text>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <BouncyButton style={{ paddingVertical: 6, paddingHorizontal: 12 }} onPress={cancelContainerSelectFlow} accessibilityRole="button">
+                              <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Cancel</Text>
+                            </BouncyButton>
+                            <BouncyButton
+                              style={{
+                                paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
+                                backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                                opacity: (pdfContainerSelectModeTool === 'merge' ? pdfSelectedContainerIds.length < 2 : pdfSelectedContainerIds.length === 0) ? 0.5 : 1
+                              }}
+                              onPress={() => {
+                                if (pdfContainerSelectModeTool === 'merge') mergeContainers(pdfSelectedContainerIds);
+                                else setPdfCompressOptionsVisible(true);
+                              }}
+                              disabled={pdfContainerSelectModeTool === 'merge' ? pdfSelectedContainerIds.length < 2 : pdfSelectedContainerIds.length === 0}
+                              accessibilityRole="button"
+                            >
+                              <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>Confirm</Text>
+                            </BouncyButton>
+                          </View>
+                        </View>
+                      )}
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                        {pdfContainers.map((c) => {
+                          const isActive = c.id === activePdfContainer?.id;
+                          const isSelected = pdfSelectedContainerIds.includes(c.id);
+                          return (
+                            <View
+                              key={c.id}
+                              style={{
+                                flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10,
+                                borderRadius: 10, borderWidth: 1.5,
+                                borderColor: (pdfContainerSelectModeTool ? isSelected : isActive) ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border,
+                                backgroundColor: (pdfContainerSelectModeTool ? isSelected : isActive) ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : toolsTheme.surface
+                              }}
+                            >
+                              <BouncyButton
+                                onPress={() => {
+                                  if (pdfContainerSelectModeTool) { toggleContainerSelected(c.id); return; }
+                                  if (pdfSelectModeTool) return; // mid crop-page-select - don't let the active container shift under it
+                                  setPdfActiveContainerId(c.id);
+                                }}
+                                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Switch to ${c.name}`}
+                                accessibilityState={{ selected: pdfContainerSelectModeTool ? isSelected : isActive }}
+                              >
+                                {pdfContainerSelectModeTool && (
+                                  <View style={{
+                                    width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+                                    backgroundColor: isSelected ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
+                                    borderWidth: isSelected ? 0 : 1.5, borderColor: toolsTheme.textSecondary
+                                  }}>
+                                    {isSelected && <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>✓</Text>}
+                                  </View>
+                                )}
+                                <View>
+                                  <Text numberOfLines={1} style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700', maxWidth: 120 }}>{c.name}</Text>
+                                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 10 }}>{c.label}</Text>
+                                </View>
+                              </BouncyButton>
+                              {!pdfContainerSelectModeTool && !pdfSelectModeTool && (
+                                <BouncyButton onPress={() => removePdfContainer(c.id)} style={{ padding: 2 }} accessibilityRole="button" accessibilityLabel={`Remove ${c.name}`}>
+                                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 13, fontWeight: '700' }}>✕</Text>
+                                </BouncyButton>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  )}
+
                   <View style={{ gap: 14 }}>
-                  {pdfEditorPages.length > 0 && pdfSelectModeTool && (
+                  {containerPages.length > 0 && pdfSelectModeTool && (
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 12 }}>
                       <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
                         {pdfSelectedPageIds.length} page{pdfSelectedPageIds.length === 1 ? '' : 's'} selected
@@ -19764,7 +20192,7 @@ function App() {
                       </View>
                     </View>
                   )}
-                  {pdfEditorPages.length > 0 && !pdfSelectModeTool && (
+                  {pdfContainers.length > 0 && !pdfSelectModeTool && !pdfContainerSelectModeTool && (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, alignItems: 'center' }}>
                       <BouncyButton
                         style={{
@@ -19774,10 +20202,10 @@ function App() {
                           borderWidth: isPdfCompressActive ? 0 : 1,
                           borderColor: toolsTheme.border
                         }}
-                        onPress={() => setPdfCompressOptionsVisible(true)}
+                        onPress={() => (pdfContainers.length > 1 ? startContainerSelectFlow('compress') : setPdfCompressOptionsVisible(true))}
                         disabled={pdfCompressing}
                         accessibilityRole="button"
-                        accessibilityLabel="Compress this PDF"
+                        accessibilityLabel="Compress"
                         accessibilityState={{ disabled: pdfCompressing, busy: pdfCompressing, selected: isPdfCompressActive }}
                       >
                         {pdfCompressing ? (
@@ -19799,7 +20227,7 @@ function App() {
                           <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '800', lineHeight: 14 }}>✕</Text>
                         </BouncyButton>
                       )}
-                      {/* No separate "Reorder" toggle anymore - every page
+                      {/* No separate "Reorder" toggle - every page
                           thumbnail (rail tile or list tile) always shows
                           its own up/down + typeable-number pill, see
                           renderPdfReorderPill. */}
@@ -19826,30 +20254,29 @@ function App() {
                         <ChevronDownSVG color={toolsTheme.textSecondary} size={13} />
                       </BouncyButton>
                       </View>
+                      {/* Global undo - pops the most recent operation
+                          regardless of which container it touched. */}
+                      {pdfEditorHasPendingChanges && (
+                        <BouncyButton
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                          onPress={handleUndoPdfEdit}
+                          accessibilityRole="button"
+                          accessibilityLabel="Undo last change"
+                        >
+                          <RevertIconSVG color={toolsTheme.accent} size={14} />
+                          <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '600' }}>Undo</Text>
+                        </BouncyButton>
+                      )}
                     </View>
                   )}
 
-                  {!isWebWide && pdfEditorPages.length > 0 && pdfEditorHasPendingChanges && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 4 }}>
-                      <BouncyButton
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                        onPress={handleUndoPdfEdit}
-                        accessibilityRole="button"
-                        accessibilityLabel="Undo last change"
-                      >
-                        <RevertIconSVG color={toolsTheme.accent} size={14} />
-                        <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '600' }}>Undo</Text>
-                      </BouncyButton>
-                    </View>
-                  )}
-
-                  {pdfEditorPages.length > 0 && (
-                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginTop: pdfEditorPages.length > 0 ? 8 : 0 }}>
-                      {pdfEditorPages.length} {tt('pageCount')}
+                  {containerPages.length > 0 && (
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginTop: 8 }}>
+                      {containerPages.length} {tt('pageCount')}
                     </Text>
                   )}
 
-                  {isWebWide && pdfEditorPages.length === 0 && (
+                  {isWebWide && containerPages.length === 0 && (
                     <View style={{
                       flex: 1, minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 10,
                       borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border, borderRadius: 14, padding: 40
@@ -19861,9 +20288,9 @@ function App() {
                   )}
 
                   {isWebWide ? (
-                    pdfEditorPages.length > 0 && (() => {
-                      const activePage = pdfEditorPages.find((p) => p.id === pdfActivePageId) || pdfEditorPages[0];
-                      const activeIndex = pdfEditorPages.findIndex((p) => p.id === activePage.id);
+                    containerPages.length > 0 && (() => {
+                      const activePage = containerPages.find((p) => p.id === pdfActivePageId) || containerPages[0];
+                      const activeIndex = containerPages.findIndex((p) => p.id === activePage.id);
                       const highResPages = pdfFullscreenHighResCache[activePage.sourceFileIndex];
                       const highResUri = highResPages ? highResPages[activePage.sourcePageIndex] : null;
                       const displayUri = highResUri || activePage.thumbnailUri;
@@ -19879,18 +20306,13 @@ function App() {
                           {/* MAIN PREVIEW PANE - the big single-page view;
                               per-page tools (rotate, extract, insert,
                               delete, and the crop select-mode pill) all
-                              act on whichever page is showing here. */}
+                              act on whichever page is showing here, within
+                              the active container only. */}
                           <View style={{ flex: 1, backgroundColor: toolsTheme.surface, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border, padding: 16 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                               <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
-                                Page {activeIndex + 1} of {pdfEditorPages.length}
+                                Page {activeIndex + 1} of {containerPages.length}
                               </Text>
-                              {pdfEditorHasPendingChanges && (
-                                <BouncyButton style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} onPress={handleUndoPdfEdit} accessibilityRole="button" accessibilityLabel="Undo last change">
-                                  <RevertIconSVG color={toolsTheme.accent} size={14} />
-                                  <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '600' }}>Undo</Text>
-                                </BouncyButton>
-                              )}
                             </View>
 
                             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: toolsTheme.bg, borderRadius: 10, overflow: 'hidden', position: 'relative' }}>
@@ -19948,7 +20370,7 @@ function App() {
                                 </BouncyButton>
                                 <BouncyButton
                                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                                  onPress={() => handleInsertBlankPage(activeIndex)} accessibilityRole="button" accessibilityLabel="Insert a blank page after this one"
+                                  onPress={() => { setPdfAddPageAfterIndex(activeIndex); setPdfAddPageMenuVisible(true); }} accessibilityRole="button" accessibilityLabel="Add a page after this one"
                                 >
                                   <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>+ Page</Text>
                                 </BouncyButton>
@@ -19963,14 +20385,14 @@ function App() {
                             )}
                           </View>
 
-                          {/* RIGHT RAIL - thumbnail navigation. Drag to
-                              reorder, or use a tile's own reorder pill
-                              (top-right, always visible) for a precise
-                              typed position. */}
+                          {/* RIGHT RAIL - thumbnail navigation within the
+                              active container. Drag to reorder, or use a
+                              tile's own reorder pill (top-right, always
+                              visible) for a precise typed position. */}
                           <View style={{ width: 168 }}>
                             <ScrollView style={{ height: pdfPreviewPaneHeight }} contentContainerStyle={{ gap: 10 }}>
-                              {pdfEditorPages.map((page, index) => {
-                                const isNewSourceBoundary = index > 0 && page.sourceFileIndex !== pdfEditorPages[index - 1].sourceFileIndex;
+                              {containerPages.map((page, index) => {
+                                const isNewSourceBoundary = index > 0 && page.sourceFileIndex !== containerPages[index - 1].sourceFileIndex;
                                 const isActive = page.id === activePage.id;
                                 return (
                                   <View
@@ -20025,8 +20447,8 @@ function App() {
                     })()
                   ) : (
                     <View style={{ gap: 12, marginTop: 10 }}>
-                      {pdfEditorPages.map((page, index) => {
-                        const isNewSourceBoundary = index > 0 && page.sourceFileIndex !== pdfEditorPages[index - 1].sourceFileIndex;
+                      {containerPages.map((page, index) => {
+                        const isNewSourceBoundary = index > 0 && page.sourceFileIndex !== containerPages[index - 1].sourceFileIndex;
                         return (
                         <View
                           key={page.id}
@@ -20096,43 +20518,6 @@ function App() {
                       })}
                     </View>
                   )}
-
-                  {isWebWide && pdfEditorPages.length > 0 && (
-                    pdfEditorHasPendingChanges ? (
-                      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 4 }}>
-                        <BouncyButton
-                          style={{
-                            width: 44, height: 44, borderRadius: 99,
-                            backgroundColor: '#FFFFFF',
-                            borderWidth: 1.5, borderColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6',
-                            alignItems: 'center', justifyContent: 'center'
-                          }}
-                          onPress={handleRevertPdfChanges}
-                          accessibilityRole="button"
-                          accessibilityLabel="Revert changes"
-                        >
-                          <RevertIconSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} size={19} />
-                        </BouncyButton>
-                        <BouncyButton
-                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0 }]}
-                          onPress={() => setPdfReviewChangesVisible(true)}
-                          accessibilityRole="button"
-                        >
-                          <Text style={styles.submitBtnText}>Save Changes</Text>
-                        </BouncyButton>
-                      </View>
-                    ) : (
-                      <BouncyButton
-                        style={[styles.saveAccountSettingsBtn, { marginTop: 4, opacity: pdfEditorExporting ? 0.6 : 1 }]}
-                        onPress={handleExportPdf}
-                        disabled={pdfEditorExporting}
-                        accessibilityRole="button"
-                        accessibilityState={{ disabled: pdfEditorExporting, busy: pdfEditorExporting }}
-                      >
-                        <Text style={styles.submitBtnText}>{pdfEditorExporting ? tt('exportingPdf') : tt('exportPdf')}</Text>
-                      </BouncyButton>
-                    )
-                  )}
                   </View>
                 </View>
 
@@ -20170,7 +20555,8 @@ function App() {
             {/* Sticky footer - only the Compressor's Compress All/Download
                 All, deliberately outside the ScrollView so it stays
                 pinned to the bottom of the screen instead of scrolling
-                away with the file list. */}
+                away with the file list. PDF Editor no longer has a
+                bottom footer - Export lives in the top header now. */}
             {activeTool === 'imageCompressor' && compressorFiles.length > 0 && !isWebWide && (
               <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 10, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border }}>
                 <BouncyButton
@@ -20197,56 +20583,14 @@ function App() {
                 </BouncyButton>
               </View>
             )}
-
-            {activeTool === 'pdfEditor' && pdfEditorPages.length > 0 && !isWebWide && (
-              <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border }}>
-                {pdfEditorHasPendingChanges ? (
-                  <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-                    <BouncyButton
-                      style={{
-                        width: 44, height: 44, borderRadius: 99,
-                        backgroundColor: '#FFFFFF',
-                        borderWidth: 1.5, borderColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6',
-                        alignItems: 'center', justifyContent: 'center'
-                      }}
-                      onPress={handleRevertPdfChanges}
-                      accessibilityRole="button"
-                      accessibilityLabel="Revert changes"
-                    >
-                      <RevertIconSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} size={19} />
-                    </BouncyButton>
-                    <BouncyButton
-                      style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0 }]}
-                      onPress={() => setPdfReviewChangesVisible(true)}
-                      accessibilityRole="button"
-                    >
-                      <Text style={styles.submitBtnText}>Save Changes</Text>
-                    </BouncyButton>
-                  </View>
-                ) : (
-                  <BouncyButton
-                    style={[styles.saveAccountSettingsBtn, { marginTop: 0, opacity: pdfEditorExporting ? 0.6 : 1 }]}
-                    onPress={handleExportPdf}
-                    disabled={pdfEditorExporting}
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: pdfEditorExporting, busy: pdfEditorExporting }}
-                  >
-                    <Text style={styles.submitBtnText}>{pdfEditorExporting ? tt('exportingPdf') : tt('exportPdf')}</Text>
-                  </BouncyButton>
-                )}
-              </View>
-            )}
           </SafeAreaView>
         </Modal>
       )}
 
-      {/* PDF FULL-SCREEN PAGE EDITOR - tap any page tile in PDF Editor to
-          open it here. This is the foundation the rest of the requested
-          page-level tools (compress, extract, insert, page numbers) get
-          added to over the next few builds - shipping the viewer +
-          rotate/delete/navigate first since everything else hangs its
-          toolbar off this same screen. */}
-      {pdfFullscreenIndex !== null && pdfEditorPages[pdfFullscreenIndex] && (
+      {/* PDF FULL-SCREEN PAGE EDITOR (mobile/narrow only) - tap any page
+          tile in PDF Editor to open it here, scoped to whichever
+          container is active. */}
+      {pdfFullscreenIndex !== null && containerPages[pdfFullscreenIndex] && (
         <Modal
           animationType={Platform.OS === 'web' ? 'none' : 'fade'}
           transparent={false}
@@ -20264,7 +20608,7 @@ function App() {
                 <Text style={{ color: '#F8FAFC', fontSize: 22 }}>✕</Text>
               </BouncyButton>
               <Text style={{ color: '#F8FAFC', fontSize: 14, fontWeight: '700' }}>
-                {pdfFullscreenIndex + 1} / {pdfEditorPages.length}
+                {pdfFullscreenIndex + 1} / {containerPages.length}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 {pdfEditorHasPendingChanges && (
@@ -20280,9 +20624,9 @@ function App() {
                 <BouncyButton
                   style={{ padding: 6 }}
                   onPress={() => {
-                    const page = pdfEditorPages[pdfFullscreenIndex];
+                    const page = containerPages[pdfFullscreenIndex];
                     if (page) removePdfEditorPage(page.id);
-                    setPdfFullscreenIndex((i) => (pdfEditorPages.length <= 1 ? null : Math.min(i, pdfEditorPages.length - 2)));
+                    setPdfFullscreenIndex((i) => (containerPages.length <= 1 ? null : Math.min(i, containerPages.length - 2)));
                   }}
                   accessibilityRole="button"
                   accessibilityLabel="Delete this page"
@@ -20305,7 +20649,7 @@ function App() {
 
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
               {(() => {
-                const currentPage = pdfEditorPages[pdfFullscreenIndex];
+                const currentPage = containerPages[pdfFullscreenIndex];
                 const highResPages = pdfFullscreenHighResCache[currentPage.sourceFileIndex];
                 const highResUri = highResPages ? highResPages[currentPage.sourcePageIndex] : null;
                 const displayUri = highResUri || currentPage.thumbnailUri;
@@ -20345,7 +20689,7 @@ function App() {
 
               <BouncyButton
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
-                onPress={() => rotatePdfEditorPage(pdfEditorPages[pdfFullscreenIndex].id)}
+                onPress={() => rotatePdfEditorPage(containerPages[pdfFullscreenIndex].id)}
                 accessibilityRole="button"
                 accessibilityLabel="Rotate page"
               >
@@ -20355,20 +20699,17 @@ function App() {
 
               <BouncyButton
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
-                onPress={async () => {
-                  await handleInsertBlankPage(pdfFullscreenIndex);
-                  setPdfFullscreenIndex((i) => i + 1);
-                }}
+                onPress={() => { setPdfAddPageAfterIndex(pdfFullscreenIndex); setPdfAddPageMenuVisible(true); }}
                 accessibilityRole="button"
-                accessibilityLabel="Insert a blank page after this one"
+                accessibilityLabel="Add a page after this one"
               >
                 <Text style={{ color: '#F8FAFC', fontSize: 13, fontWeight: '600' }}>+ Page</Text>
               </BouncyButton>
 
               <BouncyButton
-                style={{ padding: 10, opacity: pdfFullscreenIndex >= pdfEditorPages.length - 1 ? 0.3 : 1 }}
-                onPress={() => setPdfFullscreenIndex((i) => Math.min(pdfEditorPages.length - 1, i + 1))}
-                disabled={pdfFullscreenIndex >= pdfEditorPages.length - 1}
+                style={{ padding: 10, opacity: pdfFullscreenIndex >= containerPages.length - 1 ? 0.3 : 1 }}
+                onPress={() => setPdfFullscreenIndex((i) => Math.min(containerPages.length - 1, i + 1))}
+                disabled={pdfFullscreenIndex >= containerPages.length - 1}
                 accessibilityRole="button"
                 accessibilityLabel="Next page"
               >
@@ -20504,7 +20845,6 @@ function App() {
                 onPress={() => {
                   if (clearFilesConfirmTarget === 'compressor') clearAllCompressorFiles();
                   else if (clearFilesConfirmTarget === 'converter') clearAllConverterFiles();
-                  else if (clearFilesConfirmTarget === 'pdfEditor') clearAllPdfEditorPages();
                   setClearFilesConfirmTarget(null);
                 }}
               >
@@ -20538,7 +20878,7 @@ function App() {
               onResponderRelease={() => {}}
             >
               <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Undo Compress?</Text>
-              <Text style={styles.confirmSubText}>This reverts the PDF back to how it was before compressing.</Text>
+              <Text style={styles.confirmSubText}>This reverts back to how it was before compressing.</Text>
               <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
@@ -20560,16 +20900,17 @@ function App() {
         </Modal>
       )}
 
-      {/* PDF EDITOR - COMPRESS OPTIONS. Compress is a whole-PDF effect,
-          so selecting it opens this quality picker rather than running
-          immediately - Crop below is the per-page equivalent, which
-          instead prompts for a page selection first. */}
+      {/* PDF EDITOR - COMPRESS OPTIONS. Whole-container effect - opens
+          this quality picker rather than running immediately. If reached
+          via the container-select flow (2+ containers), Confirm below
+          compresses every selected container independently; otherwise
+          just the active one. */}
       {pdfCompressOptionsVisible && (
-        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfCompressOptionsVisible(false)}>
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => { setPdfCompressOptionsVisible(false); cancelContainerSelectFlow(); }}>
           <View
             style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
             onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => setPdfCompressOptionsVisible(false)}
+            onResponderRelease={() => { setPdfCompressOptionsVisible(false); cancelContainerSelectFlow(); }}
           >
             {Platform.OS !== 'web' && (
               lightweightMode ? (
@@ -20583,7 +20924,9 @@ function App() {
               onStartShouldSetResponder={() => Platform.OS === 'web'}
               onResponderRelease={() => {}}
             >
-              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Compress PDF</Text>
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>
+                {pdfContainerSelectModeTool === 'compress' && pdfSelectedContainerIds.length > 1 ? `Compress ${pdfSelectedContainerIds.length} PDFs` : 'Compress PDF'}
+              </Text>
               <Text style={styles.confirmSubText}>Choose a quality level:</Text>
               <View style={{ width: '100%', gap: 8, marginTop: 4, marginBottom: 16 }}>
                 {Object.entries(PDF_COMPRESS_PRESETS).map(([key, preset]) => (
@@ -20610,14 +20953,18 @@ function App() {
               <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                  onPress={() => setPdfCompressOptionsVisible(false)}
+                  onPress={() => { setPdfCompressOptionsVisible(false); cancelContainerSelectFlow(); }}
                   accessibilityRole="button"
                 >
                   <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
                 </BouncyButton>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD' }]}
-                  onPress={() => { setPdfCompressOptionsVisible(false); handleCompressPdf(pdfCompressQuality); }}
+                  onPress={() => {
+                    const ids = pdfContainerSelectModeTool === 'compress' ? pdfSelectedContainerIds : undefined;
+                    setPdfCompressOptionsVisible(false);
+                    handleCompressPdf(pdfCompressQuality, ids);
+                  }}
                   accessibilityRole="button"
                 >
                   <Text style={styles.confirmDeleteText}>Compress</Text>
@@ -20628,12 +20975,12 @@ function App() {
         </Modal>
       )}
 
-      {/* PDF EDITOR - CROP POPUP. One selected page at a time, real
-          drag-handle crop editor (see PdfPageCropEditor above) instead
-          of the old numeric-only fields. */}
+      {/* PDF EDITOR - CROP POPUP. One selected page at a time, within the
+          active container, real drag-handle crop editor (see
+          PdfPageCropEditor above) instead of numeric-only fields. */}
       {pdfCropQueueIndex !== null && pdfSelectedPageIds[pdfCropQueueIndex] && (() => {
         const currentPageId = pdfSelectedPageIds[pdfCropQueueIndex];
-        const currentPage = pdfEditorPages.find((p) => p.id === currentPageId);
+        const currentPage = containerPages.find((p) => p.id === currentPageId);
         if (!currentPage) return null;
         const highResPages = pdfFullscreenHighResCache[currentPage.sourceFileIndex];
         const previewUri = (highResPages && highResPages[currentPage.sourcePageIndex]) || currentPage.thumbnailUri;
@@ -20654,10 +21001,8 @@ function App() {
       })()}
 
       {/* PDF EDITOR - MORE TOOLS popup, secondary/less-common tools that
-          don't warrant a primary toolbar slot. Conditionally mounted
-          from the start, matching every other Tools popup this session -
-          no reason to risk the stacking bug on a brand new modal when
-          the safe pattern is already established. */}
+          don't warrant a primary toolbar slot. Merge only shows once
+          there's more than one container to merge. */}
       {pdfMoreToolsMenuVisible && (
         <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfMoreToolsMenuVisible(false)}>
           <View
@@ -20681,6 +21026,7 @@ function App() {
                 style={{ paddingHorizontal: 16, paddingVertical: 12 }}
                 onPress={() => {
                   setPdfMoreToolsMenuVisible(false);
+                  cancelContainerSelectFlow();
                   setPdfSelectedPageIds([]);
                   setPdfSelectModeTool('crop');
                 }}
@@ -20688,70 +21034,173 @@ function App() {
               >
                 <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Crop Pages</Text>
               </BouncyButton>
+              {pdfContainers.length > 1 && (
+                <BouncyButton
+                  style={{ paddingHorizontal: 16, paddingVertical: 12 }}
+                  onPress={() => { setPdfMoreToolsMenuVisible(false); startContainerSelectFlow('merge'); }}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Merge PDFs</Text>
+                </BouncyButton>
+              )}
             </View>
           </View>
         </Modal>
       )}
 
-      {/* PDF EDITOR - REVIEW CHANGES. Lists every pending operation
-          before it actually gets committed - nothing in pdfEditorHistory
-          has been "final" until this confirms it. */}
-      {pdfReviewChangesVisible && (
-        <Modal
-          animationType={Platform.OS === 'web' ? 'none' : 'fade'}
-          transparent={true}
-          visible={true}
-          onRequestClose={() => setPdfReviewChangesVisible(false)}
-        >
-          <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+      {/* PDF EDITOR - ADD PAGE MENU. "+ Page" now offers pulling pages in
+          from another PDF/photo, not just a blank page - always spliced
+          into the ACTIVE container only, never creating a new one (that
+          distinction is the whole point vs. "Add PDF" up top). */}
+      {pdfAddPageMenuVisible && (
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfAddPageMenuVisible(false)}>
+          <View
+            style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
             onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => setPdfReviewChangesVisible(false)}
+            onResponderRelease={() => setPdfAddPageMenuVisible(false)}
           >
             {Platform.OS !== 'web' && (
               lightweightMode ? (
                 <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
               ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
+                <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
               )
             )}
-            <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+            <View
+              style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
               onStartShouldSetResponder={() => Platform.OS === 'web'}
               onResponderRelease={() => {}}
             >
-              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Review Changes</Text>
-              <Text style={styles.confirmSubText}>
-                {pdfEditorHistory.length} {pdfEditorHistory.length === 1 ? 'change' : 'changes'} ready to save:
-              </Text>
-              <View style={{ width: '100%', gap: 6, marginBottom: 16 }}>
-                {pdfEditorHistory.map((h, i) => (
-                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: theme.accent }} />
-                    <Text style={{ color: theme.text, fontSize: 13 }}>{h.label}</Text>
-                  </View>
-                ))}
-              </View>
-              <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Add Page</Text>
+              <View style={{ width: '100%', gap: 8, marginTop: 10 }}>
                 <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                  onPress={() => setPdfReviewChangesVisible(false)}
+                  style={{ paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
+                  onPress={() => { const idx = pdfAddPageAfterIndex; setPdfAddPageMenuVisible(false); handleInsertBlankPage(idx); }}
                   accessibilityRole="button"
                 >
-                  <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+                  <Text style={{ color: theme.text, fontSize: 13.5, fontWeight: '700' }}>Blank Page</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.accent }]}
-                  onPress={handleSavePdfChanges}
+                  style={{ paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
+                  onPress={() => { const idx = pdfAddPageAfterIndex; setPdfAddPageMenuVisible(false); pickPdfToInsert(idx); }}
                   accessibilityRole="button"
                 >
-                  <Text style={styles.confirmDeleteText}>Save Changes</Text>
+                  <Text style={{ color: theme.text, fontSize: 13.5, fontWeight: '700' }}>From PDF</Text>
+                </BouncyButton>
+                <BouncyButton
+                  style={{ paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
+                  onPress={() => { const idx = pdfAddPageAfterIndex; setPdfAddPageMenuVisible(false); pickImageToInsert(idx); }}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ color: theme.text, fontSize: 13.5, fontWeight: '700' }}>From Photo</Text>
+                </BouncyButton>
+                <BouncyButton
+                  style={{ paddingVertical: 10, alignItems: 'center' }}
+                  onPress={() => setPdfAddPageMenuVisible(false)}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Cancel</Text>
                 </BouncyButton>
               </View>
             </View>
           </View>
+        </Modal>
+      )}
+
+      {/* PDF EDITOR - EXPORT CHOICE. Only shown with 2+ containers -
+          Combine reorders then produces one file; Export Each Separately
+          downloads every container as its own file (sequential, same
+          pattern the Compressor's Download All already uses). */}
+      {pdfExportChoiceVisible && (
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfExportChoiceVisible(false)}>
+          <View
+            style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => setPdfExportChoiceVisible(false)}
+          >
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+              )
+            )}
+            <View
+              style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+              onStartShouldSetResponder={() => Platform.OS === 'web'}
+              onResponderRelease={() => {}}
+            >
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Export {pdfContainers.length} PDFs</Text>
+              <Text style={styles.confirmSubText}>Combine them into one file, or export each on its own.</Text>
+              <View style={{ width: '100%', gap: 8, marginTop: 12 }}>
+                <BouncyButton
+                  style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD', alignItems: 'center' }}
+                  onPress={openCombineOrderScreen}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' }}>Combine Into One File</Text>
+                </BouncyButton>
+                <BouncyButton
+                  style={{ paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
+                  onPress={handleExportEachSeparately}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ color: theme.text, fontSize: 13.5, fontWeight: '700' }}>Export Each Separately</Text>
+                </BouncyButton>
+                <BouncyButton style={{ paddingVertical: 10, alignItems: 'center' }} onPress={() => setPdfExportChoiceVisible(false)} accessibilityRole="button">
+                  <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Cancel</Text>
+                </BouncyButton>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* PDF EDITOR - COMBINE ORDER. Raw concatenation, no page-level
+          interleaving - just arrange whole containers, then export one
+          file. Originals stay untouched in the workspace afterward. */}
+      {pdfCombineOrderVisible && (
+        <Modal animationType={Platform.OS === 'web' ? 'none' : 'fade'} transparent={false} visible={true} onRequestClose={() => setPdfCombineOrderVisible(false)}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#0B0F17' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }}>
+              <BouncyButton style={{ padding: 6 }} onPress={() => setPdfCombineOrderVisible(false)} accessibilityRole="button" accessibilityLabel="Cancel">
+                <Text style={{ color: '#F8FAFC', fontSize: 22 }}>✕</Text>
+              </BouncyButton>
+              <Text style={{ color: '#F8FAFC', fontSize: 14, fontWeight: '700' }}>Combine Order</Text>
+              <View style={{ width: 34 }} />
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 20, gap: 10 }}>
+              {pdfCombineOrderIds.map((id, index) => {
+                const container = pdfContainers.find((c) => c.id === id);
+                if (!container) return null;
+                return (
+                  <View key={id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12, padding: 12 }}>
+                    <Text style={{ color: '#94A3B8', fontSize: 13, fontWeight: '800', width: 20 }}>{index + 1}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#F8FAFC', fontSize: 13.5, fontWeight: '700' }} numberOfLines={1}>{container.name}</Text>
+                      <Text style={{ color: '#64748B', fontSize: 11 }}>{container.label} - {container.pages.length} pages</Text>
+                    </View>
+                    <BouncyButton onPress={() => moveCombineOrderId(id, -1)} disabled={index === 0} style={{ opacity: index === 0 ? 0.3 : 1, padding: 6 }} accessibilityRole="button" accessibilityLabel="Move earlier">
+                      <ChevronUpSVG size={16} color="#F8FAFC" />
+                    </BouncyButton>
+                    <BouncyButton onPress={() => moveCombineOrderId(id, 1)} disabled={index === pdfCombineOrderIds.length - 1} style={{ opacity: index === pdfCombineOrderIds.length - 1 ? 0.3 : 1, padding: 6 }} accessibilityRole="button" accessibilityLabel="Move later">
+                      <ChevronDownSVG size={16} color="#F8FAFC" />
+                    </BouncyButton>
+                  </View>
+                );
+              })}
+            </ScrollView>
+            <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
+              <BouncyButton
+                style={[styles.saveAccountSettingsBtn, { marginTop: 0, opacity: pdfEditorExporting ? 0.6 : 1 }]}
+                onPress={handleCombineAndExport}
+                disabled={pdfEditorExporting}
+                accessibilityRole="button"
+              >
+                <Text style={styles.submitBtnText}>{pdfEditorExporting ? 'Combining...' : 'Export Combined PDF'}</Text>
+              </BouncyButton>
+            </View>
+          </SafeAreaView>
         </Modal>
       )}
 
