@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 716;
+const BUILD_NUMBER = 717;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -717,6 +717,45 @@ const RotateIconSVG = React.memo(({ color = '#94A3B8', size = 15 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M4 12a8 8 0 1 1 2.5 5.8" stroke={color} strokeWidth="2" strokeLinecap="round" />
     <Path d="M4 17v-5h5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+
+// Standard "rotate clockwise/counter-clockwise" glyphs (the same shape
+// used across most editing software - a circular arrow with a small
+// arrowhead), as distinct pairs rather than one icon reused both ways.
+const RotateCWIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M21 12a9 9 0 1 1-2.64-6.36L21 8" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M21 3v5h-5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+const RotateCCWIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M3 12a9 9 0 1 0 2.64-6.36L3 8" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M3 3v5h5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+// A dashed mirror-axis line with chevrons pointing away from it on each
+// side - flip horizontal mirrors left/right (vertical axis line),
+// flip vertical mirrors top/bottom (horizontal axis line).
+const FlipHorizontalIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M12 3v18" stroke={color} strokeWidth="2" strokeDasharray="3 3" strokeLinecap="round" />
+    <Path d="M7 8l-3 4 3 4" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M17 8l3 4-3 4" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+const FlipVerticalIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M3 12h18" stroke={color} strokeWidth="2" strokeDasharray="3 3" strokeLinecap="round" />
+    <Path d="M8 7l4-3 4 3" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M8 17l4 3 4-3" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+));
+// Plain right-pointing chevron - used next to every export/download CTA.
+const ArrowRightIconSVG = React.memo(({ color = '#FFFFFF', size = 14 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M5 12h14M13 6l6 6-6 6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
@@ -3714,6 +3753,26 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
   const [aspectLocked, setAspectLocked] = useState(false);
   const dragStartRef = useRef({ top: 0, bottom: 0, left: 0, right: 0 });
   const lockedRatioRef = useRef(null);
+  // Gesture math reads these refs, not the state above directly - kept
+  // in sync every render. This is what actually fixes dragging: the 8
+  // PanResponders below are built exactly ONCE (see respondersRef) so a
+  // drag never gets re-granted mid-gesture, which is what happens if you
+  // rebuild PanResponder.create(...) on every render (each rebuild's
+  // onStartShouldSetPanResponder fires again, silently resetting
+  // dragStartRef to whatever the insets were at that instant - net
+  // effect: only the last couple of pixels of any drag ever registered).
+  // Building them once means the callbacks close over the ORIGINAL
+  // render's insets/aspectLocked/naturalSize forever unless those reads
+  // go through refs instead - hence mirroring every value the gesture
+  // needs into a ref right here, every render, and never reading the
+  // React state variables directly inside onPanResponderMove.
+  const insetsRef = useRef(insets);
+  const aspectLockedRef = useRef(aspectLocked);
+  const naturalSizeRef = useRef(naturalSize);
+  const frameSizeRef = useRef({ w: 0, h: 0 });
+  insetsRef.current = insets;
+  aspectLockedRef.current = aspectLocked;
+  naturalSizeRef.current = naturalSize;
 
   useEffect(() => {
     if (!visible || !imageUri) return;
@@ -3730,6 +3789,7 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
 
   const frameW = viewportWidth >= 768 ? Math.min(480, viewportWidth - 320) : Math.min(340, (viewportWidth || 400) - 64);
   const frameH = naturalSize ? frameW * (naturalSize.height / naturalSize.width) : frameW * 1.29;
+  frameSizeRef.current = { w: frameW, h: frameH };
 
   // Keeps one inset in [0, 0.9 - theOppositeInset] - the 0.9 ceiling
   // leaves at least 10% of that axis visible so the crop can never
@@ -3753,50 +3813,63 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
     tl: ['top', 'left'], tr: ['top', 'right'], bl: ['bottom', 'left'], br: ['bottom', 'right']
   };
 
-  // Straight edge handles just move that one inset. Corner handles move
-  // two at once - and when aspect lock is on, the horizontal drag drives
-  // the resize and the vertical inset is derived from the locked ratio
-  // instead of read from the gesture directly (dy is ignored in that
-  // case), anchored on the two fixed sides opposite the dragged corner.
-  const buildHandle = (kind) => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => { dragStartRef.current = insets; },
-    onPanResponderMove: (_, gestureState) => {
-      const start = dragStartRef.current;
-      const axes = HANDLE_AXES[kind];
-      const next = { ...insets };
+  // Built exactly once (see the comment above insetsRef for why) and
+  // never rebuilt for the lifetime of this component instance - the
+  // crop-queue call site keeps the SAME component mounted across pages
+  // (only props change), so this persists correctly across the whole
+  // queue too, no per-page reset needed.
+  const respondersRef = useRef(null);
+  if (!respondersRef.current) {
+    const buildHandle = (kind) => PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => { dragStartRef.current = insetsRef.current; },
+      onPanResponderMove: (_, gestureState) => {
+        const start = dragStartRef.current;
+        const axes = HANDLE_AXES[kind];
+        const next = { ...insetsRef.current };
+        const { w, h } = frameSizeRef.current;
 
-      if (axes.length === 2 && aspectLocked && naturalSize && lockedRatioRef.current) {
-        const horizKey = axes.includes('left') ? 'left' : 'right';
-        const vertKey = axes.includes('top') ? 'top' : 'bottom';
-        const otherHoriz = horizKey === 'left' ? start.right : start.left;
-        const otherVert = vertKey === 'top' ? start.bottom : start.top;
-        const rawHoriz = horizKey === 'left'
-          ? clampPair(start.left + gestureState.dx / frameW, otherHoriz)
-          : clampPair(start.right - gestureState.dx / frameW, otherHoriz);
-        next[horizKey] = rawHoriz;
-        const visibleWpx = naturalSize.width * (1 - rawHoriz - otherHoriz);
-        const targetHpx = visibleWpx / lockedRatioRef.current;
-        next[vertKey] = clampPair(1 - otherVert - targetHpx / naturalSize.height, otherVert);
-      } else {
-        if (axes.includes('top')) next.top = clampPair(start.top + gestureState.dy / frameH, start.bottom);
-        if (axes.includes('bottom')) next.bottom = clampPair(start.bottom - gestureState.dy / frameH, start.top);
-        if (axes.includes('left')) next.left = clampPair(start.left + gestureState.dx / frameW, start.right);
-        if (axes.includes('right')) next.right = clampPair(start.right - gestureState.dx / frameW, start.left);
+        if (axes.length === 2 && aspectLockedRef.current && naturalSizeRef.current && lockedRatioRef.current) {
+          const ns = naturalSizeRef.current;
+          const horizKey = axes.includes('left') ? 'left' : 'right';
+          const vertKey = axes.includes('top') ? 'top' : 'bottom';
+          const otherHoriz = horizKey === 'left' ? start.right : start.left;
+          const otherVert = vertKey === 'top' ? start.bottom : start.top;
+          const rawHoriz = horizKey === 'left'
+            ? clampPair(start.left + gestureState.dx / w, otherHoriz)
+            : clampPair(start.right - gestureState.dx / w, otherHoriz);
+          next[horizKey] = rawHoriz;
+          const visibleWpx = ns.width * (1 - rawHoriz - otherHoriz);
+          const targetHpx = visibleWpx / lockedRatioRef.current;
+          next[vertKey] = clampPair(1 - otherVert - targetHpx / ns.height, otherVert);
+        } else {
+          if (axes.includes('top')) next.top = clampPair(start.top + gestureState.dy / h, start.bottom);
+          if (axes.includes('bottom')) next.bottom = clampPair(start.bottom - gestureState.dy / h, start.top);
+          if (axes.includes('left')) next.left = clampPair(start.left + gestureState.dx / w, start.right);
+          if (axes.includes('right')) next.right = clampPair(start.right - gestureState.dx / w, start.left);
+        }
+        insetsRef.current = next;
+        setInsets(next);
       }
-      setInsets(next);
-    }
-  }).panHandlers;
+    }).panHandlers;
+
+    respondersRef.current = {
+      top: buildHandle('top'), bottom: buildHandle('bottom'), left: buildHandle('left'), right: buildHandle('right'),
+      tl: buildHandle('tl'), tr: buildHandle('tr'), bl: buildHandle('bl'), br: buildHandle('br')
+    };
+  }
 
   if (!visible) return null;
 
   const HandleDot = ({ kind, style }) => (
-    <View {...buildHandle(kind)} style={[{ position: 'absolute', width: 28, height: 28, marginLeft: -14, marginTop: -14, alignItems: 'center', justifyContent: 'center' }, style]}>
+    <View {...respondersRef.current[kind]} style={[{ position: 'absolute', width: 28, height: 28, marginLeft: -14, marginTop: -14, alignItems: 'center', justifyContent: 'center' }, style]}>
       <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: '#7D52DD', borderWidth: 2, borderColor: '#FFFFFF' }} />
     </View>
   );
   const EdgeBar = ({ kind, style }) => (
-    <View {...buildHandle(kind)} style={[{ position: 'absolute' }, style]} />
+    <View {...respondersRef.current[kind]} style={[{ position: 'absolute' }, style]} />
   );
 
   return (
@@ -7280,6 +7353,7 @@ function App() {
   const [pdfCompressOptionsVisible, setPdfCompressOptionsVisible] = useState(false);
   const [pdfCompressQuality, setPdfCompressQuality] = useState('medium'); // 'low' | 'medium' | 'high'
   const [pdfCompressUndoConfirmVisible, setPdfCompressUndoConfirmVisible] = useState(false);
+  const [pdfClearConfirmVisible, setPdfClearConfirmVisible] = useState(false);
   const [pdfMoreToolsMenuVisible, setPdfMoreToolsMenuVisible] = useState(false);
   const pdfMoreToolsButtonRef = useRef(null);
   const [pdfMoreToolsMenuPosition, setPdfMoreToolsMenuPosition] = useState({ top: 140, left: 20 });
@@ -7439,6 +7513,46 @@ function App() {
       setToolsScreenVisible(false);
     }
   };
+
+  // Navigating between tools (or back to the hub) does NOT keep the
+  // previous tool's content around in the background - going out of a
+  // tool clears its progress outright rather than letting it linger
+  // unseen for whenever someone comes back to it. This is deliberately
+  // separate from leaveToolsConfirmVisible above, which is specifically
+  // about closing Tools entirely back to DECENT and still asks first;
+  // switching between tools inside Tools just clears silently, no
+  // confirmation, since the content never left this screen.
+  const switchTool = (nextTool) => {
+    if (nextTool !== activeTool) {
+      if (activeTool === 'imageCompressor') setCompressorFiles([]);
+      if (activeTool === 'imageConverter') setConverterFiles([]);
+      if (activeTool === 'pdfEditor') {
+        setPdfContainers([]);
+        setPdfEditorHistory([]);
+        setPdfFullscreenHighResCache({});
+        setPdfSelectModeTool(null);
+        setPdfSelectedPageIds([]);
+        setPdfContainerSelectModeTool(null);
+        setPdfSelectedContainerIds([]);
+      }
+    }
+    setActiveTool(nextTool);
+  };
+
+  // Browser-native "leave site?" prompt on a hard refresh/tab close
+  // while Tools has content loaded - same mechanism most sites with
+  // unsaved form state use. Web only; native has no equivalent event.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handler = (e) => {
+      if (toolsScreenVisible && toolsHasUnsavedWork()) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [toolsScreenVisible, activeTool, compressorFiles, converterFiles, pdfContainers]);
 
 
   // TOOLS-ONLY language + theme, WEB ONLY. On native, Tools follows the
@@ -12085,10 +12199,69 @@ function App() {
     updateActiveContainerPages((pages) => pages.filter((p) => p.id !== pageId));
   };
 
-  const rotatePdfEditorPage = (pageId) => {
+  const rotatePdfEditorPage = (pageId, direction = 1) => {
     pushPdfHistorySnapshot('Rotate page');
     triggerHaptic('light');
-    updateActiveContainerPages((pages) => pages.map((p) => (p.id === pageId ? { ...p, rotation: (p.rotation + 90) % 360 } : p)));
+    updateActiveContainerPages((pages) => pages.map((p) => (p.id === pageId ? { ...p, rotation: (p.rotation + 90 * direction + 360) % 360 } : p)));
+  };
+
+  // Flip has no page-level equivalent in the PDF spec the way rotation
+  // does (pdf-lib can set a page's /Rotate entry directly, but there's
+  // no matching /Flip) - so unlike rotate, this actually rasterizes the
+  // one page being flipped and replaces just its own source with the
+  // flipped image, same rasterize-and-replace approach Crop/Compress use
+  // for the whole container, just scoped to a single page here. Every
+  // other page's source is left completely untouched.
+  const handleFlipPage = async (pageId, direction) => {
+    if (!activePdfContainer) return;
+    const page = activePdfContainer.pages.find((p) => p.id === pageId);
+    if (!page) return;
+    pushPdfHistorySnapshot('Flip page');
+    triggerHaptic('light');
+    try {
+      const meta = activePdfContainer.sourceMeta[page.sourceFileIndex];
+      let sourceUri;
+      if (meta.isImage) {
+        sourceUri = meta.uri;
+      } else {
+        const rendered = Platform.OS === 'web'
+          ? await generateWebPdfThumbnails(meta.uri, 2)
+          : await generateNativePdfThumbnails(meta.uri, 1600);
+        sourceUri = rendered ? rendered[page.sourcePageIndex] : null;
+      }
+      if (!sourceUri) throw new Error('Could not render page to flip');
+
+      const flipAction = direction === 'horizontal'
+        ? { flip: ImageManipulator.FlipType.Horizontal }
+        : { flip: ImageManipulator.FlipType.Vertical };
+      const result = await ImageManipulator.manipulateAsync(sourceUri, [flipAction], {
+        compress: 0.92, format: ImageManipulator.SaveFormat.JPEG
+      });
+
+      const flippedDoc = await loadImageAsPdfDoc(result.uri);
+      if (page.rotation) {
+        const [pdfPage] = flippedDoc.getPages();
+        pdfPage.setRotation(degrees(page.rotation % 360));
+      }
+
+      const targetId = activePdfContainer.id;
+      setPdfContainers((prev) => prev.map((c) => {
+        if (c.id !== targetId) return c;
+        const newSourceIndex = c.sourceDocs.length;
+        return {
+          ...c,
+          sourceDocs: [...c.sourceDocs, flippedDoc],
+          sourceMeta: [...c.sourceMeta, { uri: null, isImage: true }],
+          pages: c.pages.map((p) => (p.id === pageId ? { ...p, sourceFileIndex: newSourceIndex, sourcePageIndex: 0, thumbnailUri: result.uri } : p))
+        };
+      }));
+      setPdfFullscreenHighResCache({});
+      triggerHaptic('success');
+    } catch (e) {
+      console.warn('Flip page failed:', e);
+      showToast('Could not flip this page - try again.');
+      triggerHaptic('error');
+    }
   };
 
   // Native reorder - simple move-by-one-position rather than true drag
@@ -12184,6 +12357,18 @@ function App() {
     pushPdfHistorySnapshot('Remove PDF');
     triggerHaptic('warning');
     setPdfContainers((prev) => prev.filter((c) => c.id !== containerId));
+  };
+
+  // "Clear PDF" toolbar button - wipes everything currently loaded.
+  // Undo-able like removePdfContainer above, but the confirmation is
+  // still worth keeping here since it's a much bigger, one-shot loss
+  // (every container, not just one) that a single accidental tap could
+  // trigger.
+  const clearAllPdfContainers = () => {
+    pushPdfHistorySnapshot('Clear all PDFs');
+    triggerHaptic('warning');
+    setPdfContainers([]);
+    setPdfFullscreenHighResCache({});
   };
 
   // Container-level multi-select - Compress (once there's more than one
@@ -12664,6 +12849,15 @@ function App() {
 
   const startPdfCropQueue = () => {
     if (pdfSelectedPageIds.length === 0) return;
+    setPdfCropInsetsByPageId({});
+    setPdfCropQueueIndex(0);
+  };
+
+  // Per-page "Crop" button next to Rotate - crops just that one page
+  // immediately, skipping the multi-select flow entirely (a queue of
+  // exactly one page reuses all the same crop-queue machinery below).
+  const startSinglePageCrop = (pageId) => {
+    setPdfSelectedPageIds([pageId]);
     setPdfCropInsetsByPageId({});
     setPdfCropQueueIndex(0);
   };
@@ -18700,7 +18894,7 @@ function App() {
           transparent={false}
           visible={true}
           onRequestClose={() => {
-            if (activeTool !== 'hub') setActiveTool('hub');
+            if (activeTool !== 'hub') switchTool('hub');
             else handleLeaveTools();
           }}
         >
@@ -18739,49 +18933,14 @@ function App() {
                     <BetaTag themeMode={toolsThemeMode} />
                   </View>
 
-                  {isWebWide ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                      {DONATIONS_ENABLED && (
-                        <BouncyButton
-                          onPress={() => { setDonateModalContext('tools'); setToolsInterstitialOfferCompress(false); setDonateTermsAgreed(false); setDonateModalVisible(true); }}
-                          accessibilityRole="button"
-                        >
-                          <Text style={{ color: toolsTheme.accent, fontSize: 12.5, fontWeight: '700' }}>Donate</Text>
-                        </BouncyButton>
-                      )}
-                      <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, overflow: 'hidden' }}>
-                        {['en', 'id'].map((lang) => (
-                          <BouncyButton
-                            key={lang}
-                            style={{ paddingHorizontal: 10, paddingVertical: 5, backgroundColor: toolsLanguage === lang ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent' }}
-                            onPress={() => setToolsLanguagePersisted(lang)}
-                            accessibilityRole="button"
-                            accessibilityLabel={lang === 'en' ? 'English' : 'Indonesian'}
-                            accessibilityState={{ selected: toolsLanguage === lang }}
-                          >
-                            <Text style={{ color: toolsLanguage === lang ? '#FFFFFF' : toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>{lang.toUpperCase()}</Text>
-                          </BouncyButton>
-                        ))}
-                      </View>
-                      <BouncyButton
-                        style={{ width: 30, height: 30, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
-                        onPress={toggleToolsTheme}
-                        accessibilityRole="button"
-                        accessibilityLabel={toolsThemeMode === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
-                      >
-                        {toolsThemeMode === 'light' ? <SunIconSVG color={toolsTheme.textSecondary} size={14} /> : <MoonIconSVG color={toolsTheme.textSecondary} size={14} />}
-                      </BouncyButton>
-                    </View>
-                  ) : (
-                    <BouncyButton
-                      style={{ padding: 6 }}
-                      onPress={() => setToolsMenuVisible(true)}
-                      accessibilityRole="button"
-                      accessibilityLabel="More options"
-                    >
-                      <MoreIconSVG color={toolsTheme.textSecondary} size={18} />
-                    </BouncyButton>
-                  )}
+                  <BouncyButton
+                    style={{ padding: 6 }}
+                    onPress={() => setToolsMenuVisible(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="More options"
+                  >
+                    <MoreIconSVG color={toolsTheme.textSecondary} size={18} />
+                  </BouncyButton>
                 </View>
 
                 {activeTool !== 'hub' && (
@@ -18791,7 +18950,7 @@ function App() {
                   ]}>
                     <BouncyButton
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                      onPress={() => setActiveTool('hub')}
+                      onPress={() => switchTool('hub')}
                       accessibilityRole="button"
                       accessibilityLabel="Back to Tools"
                     >
@@ -18819,7 +18978,7 @@ function App() {
                         {pdfEditorExporting ? (
                           <ActivityIndicator color="#FFFFFF" size="small" />
                         ) : (
-                          <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text>
+                          <><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text><ArrowRightIconSVG size={13} color="#FFFFFF" /></>
                         )}
                       </BouncyButton>
                     )}
@@ -18837,7 +18996,7 @@ function App() {
                   {activeTool !== 'hub' ? (
                     <BouncyButton
                       style={{ padding: 4 }}
-                      onPress={() => setActiveTool('hub')}
+                      onPress={() => switchTool('hub')}
                       accessibilityRole="button"
                       accessibilityLabel="Back"
                     >
@@ -18892,7 +19051,7 @@ function App() {
                         {pdfEditorExporting ? (
                           <ActivityIndicator color="#FFFFFF" size="small" />
                         ) : (
-                          <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text>
+                          <><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text><ArrowRightIconSVG size={13} color="#FFFFFF" /></>
                         )}
                       </BouncyButton>
                     )}
@@ -18931,7 +19090,7 @@ function App() {
                         },
                         isWebWide ? { width: '48.5%' } : { width: '100%' }
                       ]}
-                      onPress={() => setActiveTool('imageCompressor')}
+                      onPress={() => switchTool('imageCompressor')}
                       accessibilityRole="button"
                     >
                       <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -18953,7 +19112,7 @@ function App() {
                         },
                         isWebWide ? { width: '48.5%' } : { width: '100%' }
                       ]}
-                      onPress={() => setActiveTool('qrGenerator')}
+                      onPress={() => switchTool('qrGenerator')}
                       accessibilityRole="button"
                     >
                       <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -18975,7 +19134,7 @@ function App() {
                         },
                         isWebWide ? { width: '48.5%' } : { width: '100%' }
                       ]}
-                      onPress={() => setActiveTool('imageConverter')}
+                      onPress={() => switchTool('imageConverter')}
                       accessibilityRole="button"
                     >
                       <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -18997,7 +19156,7 @@ function App() {
                         },
                         isWebWide ? { width: '48.5%' } : { width: '100%' }
                       ]}
-                      onPress={() => setActiveTool('pdfEditor')}
+                      onPress={() => switchTool('pdfEditor')}
                       accessibilityRole="button"
                     >
                       <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -19027,7 +19186,7 @@ function App() {
                           },
                           isWebWide ? { width: '23%' } : { width: '48%' }
                         ]}
-                        onPress={() => setActiveTool(key)}
+                        onPress={() => switchTool(key)}
                         accessibilityRole="button"
                       >
                         <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -19233,17 +19392,17 @@ function App() {
                   {isWebWide && (
                   <BouncyButton
                     style={{
-                      borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
+                      backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
                       borderRadius: 14, padding: 20, alignItems: 'center', gap: 8
                     }}
                     onPress={pickCompressorImages}
                     accessibilityRole="button"
                   >
-                    <ImageIconSVG size={26} color={toolsTheme.textSecondary} />
-                    <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
+                    <ImageIconSVG size={26} color="#FFFFFF" />
+                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
                       {compressorFiles.length === 0 ? tt('chooseImages') : tt('addMoreImages')}
                     </Text>
-                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>{tt('upTo10')}</Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11 }}>{tt('upTo10')}</Text>
                   </BouncyButton>
                   )}
 
@@ -19252,7 +19411,6 @@ function App() {
                       flex: 1, minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 10,
                       borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border, borderRadius: 14, padding: 40
                     }}>
-                      <ImageIconSVG size={36} color={toolsTheme.textSecondary} />
                       <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>{tt('nothingHereYet')}</Text>
                       <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>{tt('addFilesToStart')}</Text>
                     </View>
@@ -19298,12 +19456,13 @@ function App() {
                       </View>
                       {file.status === 'done' ? (
                         <BouncyButton
-                          style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
                           onPress={() => handleSingleCompressedDownload(file)}
                           accessibilityRole="button"
                           accessibilityLabel="Download"
                         >
                           <Text style={{ color: toolsTheme.accent, fontSize: 11, fontWeight: '700' }}>{tt('download')}</Text>
+                          <ArrowRightIconSVG size={11} color={toolsTheme.accent} />
                         </BouncyButton>
                       ) : file.status === 'processing' ? (
                         <ActivityIndicator color={toolsTheme.accent} size="small" />
@@ -19339,7 +19498,7 @@ function App() {
                       <BouncyButton
                         style={[
                           styles.saveAccountSettingsBtn,
-                          { flex: 1, marginTop: 0, backgroundColor: toolsTheme.bg, borderWidth: 1, borderColor: toolsTheme.border },
+                          { flex: 1, marginTop: 0, backgroundColor: toolsTheme.bg, borderWidth: 1, borderColor: toolsTheme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
                           !compressorFiles.every((f) => f.status === 'done') && { opacity: 0.4 }
                         ]}
                         onPress={handleDownloadAllCompressed}
@@ -19347,7 +19506,7 @@ function App() {
                         accessibilityRole="button"
                         accessibilityState={{ disabled: !compressorFiles.every((f) => f.status === 'done') }}
                       >
-                        <Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text>
+                        <><Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text><ArrowRightIconSVG size={13} color={toolsTheme.text} /></>
                       </BouncyButton>
                     </View>
                   )}
@@ -19369,7 +19528,7 @@ function App() {
                             backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
                             borderRadius: 14, padding: 14
                           }}
-                          onPress={() => setActiveTool(key)}
+                          onPress={() => switchTool(key)}
                           accessibilityRole="button"
                         >
                           <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -19723,23 +19882,25 @@ function App() {
                     <View style={{ marginTop: 14, width: '100%' }}>
                       <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
                         <BouncyButton
-                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: (qrExporting || !currentQrValue()) ? 0.4 : 1 }]}
+                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: (qrExporting || !currentQrValue()) ? 0.4 : 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }]}
                           onPress={handleDownloadQrPng}
                           disabled={qrExporting || !currentQrValue()}
                           accessibilityRole="button"
                           accessibilityState={{ disabled: qrExporting || !currentQrValue(), busy: qrExporting }}
                         >
                           <Text style={styles.submitBtnText}>{qrExporting ? tt('exporting') : tt('downloadPng')}</Text>
+                          {!qrExporting && <ArrowRightIconSVG size={13} color="#FFFFFF" />}
                         </BouncyButton>
                         {Platform.OS === 'web' && (
                           <BouncyButton
-                            style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, opacity: !currentQrValue() ? 0.4 : 1 }]}
+                            style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, opacity: !currentQrValue() ? 0.4 : 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }]}
                             onPress={handleDownloadQrSvg}
                             disabled={!currentQrValue()}
                             accessibilityRole="button"
                             accessibilityState={{ disabled: !currentQrValue() }}
                           >
                             <Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadSvg')}</Text>
+                            <ArrowRightIconSVG size={13} color={toolsTheme.text} />
                           </BouncyButton>
                         )}
                       </View>
@@ -19787,7 +19948,7 @@ function App() {
                                 backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
                                 borderRadius: 14, padding: 14
                               }}
-                              onPress={() => setActiveTool(key)}
+                              onPress={() => switchTool(key)}
                               accessibilityRole="button"
                             >
                               <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -19869,27 +20030,27 @@ function App() {
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     <BouncyButton
                       style={{
-                        flex: 1, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
+                        flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
                         borderRadius: 14, padding: 16, alignItems: 'center', gap: 6
                       }}
                       onPress={pickConverterImages}
                       accessibilityRole="button"
                     >
-                      <ImageIconSVG size={22} color={toolsTheme.textSecondary} />
-                      <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>
+                      <ImageIconSVG size={22} color="#FFFFFF" />
+                      <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>
                         {converterFiles.length === 0 ? tt('chooseImages') : tt('addMoreImages')}
                       </Text>
                     </BouncyButton>
                     <BouncyButton
                       style={{
-                        flex: 1, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
+                        flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
                         borderRadius: 14, padding: 16, alignItems: 'center', gap: 6
                       }}
                       onPress={pickConverterFiles}
                       accessibilityRole="button"
                     >
-                      <ImageIconSVG size={22} color={toolsTheme.textSecondary} />
-                      <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addFromFiles')}</Text>
+                      <ImageIconSVG size={22} color="#FFFFFF" />
+                      <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('addFromFiles')}</Text>
                     </BouncyButton>
                   </View>
                   )}
@@ -19899,7 +20060,6 @@ function App() {
                       flex: 1, minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 10,
                       borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border, borderRadius: 14, padding: 40
                     }}>
-                      <ImageIconSVG size={36} color={toolsTheme.textSecondary} />
                       <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>{tt('nothingHereYet')}</Text>
                       <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>{tt('addFilesToStart')}</Text>
                     </View>
@@ -19935,12 +20095,13 @@ function App() {
                       </View>
                       {file.status === 'done' ? (
                         <BouncyButton
-                          style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
                           onPress={() => handleSingleConvertedDownload(file)}
                           accessibilityRole="button"
                           accessibilityLabel="Download"
                         >
                           <Text style={{ color: toolsTheme.accent, fontSize: 11, fontWeight: '700' }}>{tt('download')}</Text>
+                          <ArrowRightIconSVG size={11} color={toolsTheme.accent} />
                         </BouncyButton>
                       ) : file.status === 'processing' ? (
                         <ActivityIndicator color={toolsTheme.accent} size="small" />
@@ -19977,7 +20138,7 @@ function App() {
                         <BouncyButton
                           style={[
                             styles.saveAccountSettingsBtn,
-                            { flex: 1, marginTop: 0, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border },
+                            { flex: 1, marginTop: 0, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
                             !converterFiles.every((f) => f.status === 'done') && { opacity: 0.4 }
                           ]}
                           onPress={handleDownloadAllConverted}
@@ -19985,7 +20146,7 @@ function App() {
                           accessibilityRole="button"
                           accessibilityState={{ disabled: !converterFiles.every((f) => f.status === 'done') }}
                         >
-                          <Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text>
+                          <><Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text><ArrowRightIconSVG size={13} color={toolsTheme.text} /></>
                         </BouncyButton>
                       </View>
                       <BouncyButton
@@ -20015,7 +20176,7 @@ function App() {
                             backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
                             borderRadius: 14, padding: 14
                           }}
-                          onPress={() => setActiveTool(key)}
+                          onPress={() => switchTool(key)}
                           accessibilityRole="button"
                         >
                           <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -20039,38 +20200,70 @@ function App() {
                     {tt('pdfEditorIntro')}
                   </Text>
 
-                  <BouncyButton
-                    style={{
-                      marginTop: 14, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                      borderRadius: 16, padding: 28, alignItems: 'center', gap: 10
-                    }}
-                    onPress={pickPdfEditorPdfs}
-                    disabled={pdfEditorLoading}
-                    accessibilityRole="button"
-                  >
-                    <PdfIconSVG size={32} color="#FFFFFF" />
-                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>{tt('addPdf')}</Text>
-                  </BouncyButton>
-
-                  <BouncyButton
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      marginTop: 10, borderWidth: 1, borderColor: toolsTheme.border,
-                      borderRadius: 12, paddingVertical: 10
-                    }}
-                    onPress={pickPdfEditorImages}
-                    disabled={pdfEditorLoading}
-                    accessibilityRole="button"
-                  >
-                    <ImageIconSVG size={16} color={toolsTheme.textSecondary} />
-                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{tt('addImages')}</Text>
-                  </BouncyButton>
-
-                  {pdfEditorLoading && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 }}>
-                      <ActivityIndicator color={toolsTheme.accent} size="small" />
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12 }}>{tt('loadingPdf')}</Text>
+                  {isWebWide ? (
+                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 4, alignItems: 'center' }}>
+                      <BouncyButton
+                        style={{
+                          width: 96, height: 96, borderRadius: 14, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                          alignItems: 'center', justifyContent: 'center', gap: 6
+                        }}
+                        onPress={pickPdfEditorPdfs}
+                        disabled={pdfEditorLoading}
+                        accessibilityRole="button"
+                      >
+                        <PdfIconSVG size={24} color="#FFFFFF" />
+                        <Text style={{ color: '#FFFFFF', fontSize: 11.5, fontWeight: '700' }}>{tt('addPdf')}</Text>
+                      </BouncyButton>
+                      <BouncyButton
+                        style={{
+                          width: 96, height: 96, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border,
+                          alignItems: 'center', justifyContent: 'center', gap: 6
+                        }}
+                        onPress={pickPdfEditorImages}
+                        disabled={pdfEditorLoading}
+                        accessibilityRole="button"
+                      >
+                        <ImageIconSVG size={22} color={toolsTheme.textSecondary} />
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11.5, fontWeight: '600' }}>{tt('addImages')}</Text>
+                      </BouncyButton>
+                      {pdfEditorLoading && <ActivityIndicator color={toolsTheme.accent} size="small" />}
                     </View>
+                  ) : (
+                    <>
+                      <BouncyButton
+                        style={{
+                          marginTop: 14, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                          borderRadius: 16, padding: 28, alignItems: 'center', gap: 10
+                        }}
+                        onPress={pickPdfEditorPdfs}
+                        disabled={pdfEditorLoading}
+                        accessibilityRole="button"
+                      >
+                        <PdfIconSVG size={32} color="#FFFFFF" />
+                        <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>{tt('addPdf')}</Text>
+                      </BouncyButton>
+
+                      <BouncyButton
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                          marginTop: 10, borderWidth: 1, borderColor: toolsTheme.border,
+                          borderRadius: 12, paddingVertical: 10
+                        }}
+                        onPress={pickPdfEditorImages}
+                        disabled={pdfEditorLoading}
+                        accessibilityRole="button"
+                      >
+                        <ImageIconSVG size={16} color={toolsTheme.textSecondary} />
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{tt('addImages')}</Text>
+                      </BouncyButton>
+
+                      {pdfEditorLoading && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 }}>
+                          <ActivityIndicator color={toolsTheme.accent} size="small" />
+                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 12 }}>{tt('loadingPdf')}</Text>
+                        </View>
+                      )}
+                    </>
                   )}
                   </View>
                   )}
@@ -20194,6 +20387,37 @@ function App() {
                   )}
                   {pdfContainers.length > 0 && !pdfSelectModeTool && !pdfContainerSelectModeTool && (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, alignItems: 'center' }}>
+                      {isWebWide && (
+                        <>
+                          <BouncyButton
+                            style={{
+                              flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
+                              borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, opacity: pdfEditorLoading ? 0.6 : 1
+                            }}
+                            onPress={pickPdfEditorPdfs}
+                            disabled={pdfEditorLoading}
+                            accessibilityRole="button"
+                            accessibilityLabel="Add another PDF"
+                          >
+                            <PdfIconSVG color={toolsTheme.textSecondary} size={14} />
+                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addPdf')}</Text>
+                          </BouncyButton>
+                          <BouncyButton
+                            style={{
+                              flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
+                              borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, opacity: pdfEditorLoading ? 0.6 : 1
+                            }}
+                            onPress={pickPdfEditorImages}
+                            disabled={pdfEditorLoading}
+                            accessibilityRole="button"
+                            accessibilityLabel="Add photos as a new PDF"
+                          >
+                            <ImageIconSVG color={toolsTheme.textSecondary} size={14} />
+                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addImages')}</Text>
+                          </BouncyButton>
+                          <View style={{ width: 1, height: 20, backgroundColor: toolsTheme.border, marginHorizontal: 2 }} />
+                        </>
+                      )}
                       <BouncyButton
                         style={{
                           flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
@@ -20231,29 +20455,60 @@ function App() {
                           thumbnail (rail tile or list tile) always shows
                           its own up/down + typeable-number pill, see
                           renderPdfReorderPill. */}
-                      <View ref={pdfMoreToolsButtonRef} collapsable={false}>
-                      <BouncyButton
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 14,
-                          borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border
-                        }}
-                        onPress={() => {
-                          if (pdfMoreToolsButtonRef.current) {
-                            pdfMoreToolsButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
-                              setPdfMoreToolsMenuPosition({ top: pageY + height + 6, left: pageX });
+                      {isWebWide ? (
+                        <>
+                          <BouncyButton
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                            onPress={handleAddPageNumbers}
+                            accessibilityRole="button"
+                            accessibilityLabel="Add page numbers"
+                          >
+                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Page Numbers</Text>
+                          </BouncyButton>
+                          <BouncyButton
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                            onPress={() => { cancelContainerSelectFlow(); setPdfSelectedPageIds([]); setPdfSelectModeTool('crop'); }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Crop pages"
+                          >
+                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Crop Pages</Text>
+                          </BouncyButton>
+                          {pdfContainers.length > 1 && (
+                            <BouncyButton
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                              onPress={() => startContainerSelectFlow('merge')}
+                              accessibilityRole="button"
+                              accessibilityLabel="Merge PDFs"
+                            >
+                              <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Merge PDFs</Text>
+                            </BouncyButton>
+                          )}
+                        </>
+                      ) : (
+                        <View ref={pdfMoreToolsButtonRef} collapsable={false}>
+                        <BouncyButton
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 14,
+                            borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border
+                          }}
+                          onPress={() => {
+                            if (pdfMoreToolsButtonRef.current) {
+                              pdfMoreToolsButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
+                                setPdfMoreToolsMenuPosition({ top: pageY + height + 6, left: pageX });
+                                setPdfMoreToolsMenuVisible(true);
+                              });
+                            } else {
                               setPdfMoreToolsMenuVisible(true);
-                            });
-                          } else {
-                            setPdfMoreToolsMenuVisible(true);
-                          }
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel="More PDF tools"
-                      >
-                        <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>More Tools</Text>
-                        <ChevronDownSVG color={toolsTheme.textSecondary} size={13} />
-                      </BouncyButton>
-                      </View>
+                            }
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel="More PDF tools"
+                        >
+                          <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>More Tools</Text>
+                          <ChevronDownSVG color={toolsTheme.textSecondary} size={13} />
+                        </BouncyButton>
+                        </View>
+                      )}
                       {/* Global undo - pops the most recent operation
                           regardless of which container it touched. */}
                       {pdfEditorHasPendingChanges && (
@@ -20267,10 +20522,21 @@ function App() {
                           <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '600' }}>Undo</Text>
                         </BouncyButton>
                       )}
+                      {isWebWide && (
+                        <BouncyButton
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: '#EF4444', marginLeft: 'auto' }}
+                          onPress={() => setPdfClearConfirmVisible(true)}
+                          accessibilityRole="button"
+                          accessibilityLabel="Clear loaded PDFs"
+                        >
+                          <TrashIconSVG />
+                          <Text style={{ color: '#EF4444', fontSize: 12.5, fontWeight: '700' }}>Clear PDF{pdfContainers.length > 1 ? 's' : ''}</Text>
+                        </BouncyButton>
+                      )}
                     </View>
                   )}
 
-                  {containerPages.length > 0 && (
+                  {!isWebWide && containerPages.length > 0 && (
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginTop: 8 }}>
                       {containerPages.length} {tt('pageCount')}
                     </Text>
@@ -20281,7 +20547,6 @@ function App() {
                       flex: 1, minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 10,
                       borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border, borderRadius: 14, padding: 40
                     }}>
-                      <PdfIconSVG size={36} color={toolsTheme.textSecondary} />
                       <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>{tt('nothingHereYet')}</Text>
                       <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>{tt('addFilesToStart')}</Text>
                     </View>
@@ -20356,11 +20621,34 @@ function App() {
                             {!pdfSelectModeTool && (
                               <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
                                 <BouncyButton
-                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                                  onPress={() => rotatePdfEditorPage(activePage.id)} accessibilityRole="button" accessibilityLabel="Rotate page"
+                                  style={{ width: 36, height: 36, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
+                                  onPress={() => rotatePdfEditorPage(activePage.id, -1)} accessibilityRole="button" accessibilityLabel="Rotate counter-clockwise"
                                 >
-                                  <RotateIconSVG size={15} color={toolsTheme.textSecondary} />
-                                  <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>Rotate</Text>
+                                  <RotateCCWIconSVG size={16} color={toolsTheme.textSecondary} />
+                                </BouncyButton>
+                                <BouncyButton
+                                  style={{ width: 36, height: 36, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
+                                  onPress={() => rotatePdfEditorPage(activePage.id, 1)} accessibilityRole="button" accessibilityLabel="Rotate clockwise"
+                                >
+                                  <RotateCWIconSVG size={16} color={toolsTheme.textSecondary} />
+                                </BouncyButton>
+                                <BouncyButton
+                                  style={{ width: 36, height: 36, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
+                                  onPress={() => handleFlipPage(activePage.id, 'horizontal')} accessibilityRole="button" accessibilityLabel="Flip horizontally"
+                                >
+                                  <FlipHorizontalIconSVG size={16} color={toolsTheme.textSecondary} />
+                                </BouncyButton>
+                                <BouncyButton
+                                  style={{ width: 36, height: 36, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
+                                  onPress={() => handleFlipPage(activePage.id, 'vertical')} accessibilityRole="button" accessibilityLabel="Flip vertically"
+                                >
+                                  <FlipVerticalIconSVG size={16} color={toolsTheme.textSecondary} />
+                                </BouncyButton>
+                                <BouncyButton
+                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                                  onPress={() => startSinglePageCrop(activePage.id)} accessibilityRole="button" accessibilityLabel="Crop this page"
+                                >
+                                  <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>Crop</Text>
                                 </BouncyButton>
                                 <BouncyButton
                                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
@@ -20536,7 +20824,7 @@ function App() {
                             backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
                             borderRadius: 14, padding: 14
                           }}
-                          onPress={() => setActiveTool(key)}
+                          onPress={() => switchTool(key)}
                           accessibilityRole="button"
                         >
                           <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -20571,7 +20859,7 @@ function App() {
                 <BouncyButton
                   style={[
                     styles.saveAccountSettingsBtn,
-                    { flex: 1, marginTop: 0, backgroundColor: toolsTheme.bg, borderWidth: 1, borderColor: toolsTheme.border },
+                    { flex: 1, marginTop: 0, backgroundColor: toolsTheme.bg, borderWidth: 1, borderColor: toolsTheme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
                     !compressorFiles.every((f) => f.status === 'done') && { opacity: 0.4 }
                   ]}
                   onPress={handleDownloadAllCompressed}
@@ -20579,7 +20867,7 @@ function App() {
                   accessibilityRole="button"
                   accessibilityState={{ disabled: !compressorFiles.every((f) => f.status === 'done') }}
                 >
-                  <Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text>
+                  <><Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text><ArrowRightIconSVG size={13} color={toolsTheme.text} /></>
                 </BouncyButton>
               </View>
             )}
@@ -20720,11 +21008,12 @@ function App() {
         </Modal>
       )}
 
-      {/* TOOLS OVERFLOW MENU - triggered by the 3-dot icon. Mobile web
-          (header too narrow for inline controls) gets Donate/language/
-          theme/Feedback; native (no inline controls at all normally)
-          gets just Donate/Feedback. Wide web never shows this trigger -
-          it keeps its inline header controls. */}
+      {/* TOOLS OVERFLOW MENU - triggered by the 3-dot icon, on every web
+          width now (wide web used to show these inline in the header;
+          nested into this menu instead, same as mobile web already had).
+          Order: language, theme (with a text label, not just the icon),
+          then Donate as its own filled pill. Native (no inline controls
+          at all normally) still gets just Donate/Feedback. */}
       {toolsMenuVisible && (
         <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setToolsMenuVisible(false)}>
           <View
@@ -20735,47 +21024,47 @@ function App() {
             <View style={{
               position: 'absolute', top: Platform.OS === 'web' ? 56 : 90, right: 16,
               backgroundColor: toolsTheme.surface, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border,
-              minWidth: 210, paddingVertical: 6, overflow: 'hidden'
+              minWidth: 210, paddingVertical: 10, overflow: 'hidden'
             }}>
-              {Platform.OS === 'web' && !isWebWide && (
+              {Platform.OS === 'web' && (
                 <>
-                  {DONATIONS_ENABLED && (
-                    <BouncyButton
-                      style={{ paddingHorizontal: 16, paddingVertical: 12 }}
-                      onPress={() => { setToolsMenuVisible(false); setDonateModalContext('tools'); setToolsInterstitialOfferCompress(false); setDonateTermsAgreed(false); setDonateModalVisible(true); }}
-                      accessibilityRole="button"
-                    >
-                      <Text style={{ color: toolsTheme.accent, fontSize: 13.5, fontWeight: '700' }}>Donate</Text>
-                    </BouncyButton>
-                  )}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 }}>
-                    <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Language</Text>
-                    <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, overflow: 'hidden' }}>
+                  <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 8, textTransform: 'uppercase' }}>Language</Text>
+                    <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, overflow: 'hidden', alignSelf: 'flex-start' }}>
                       {['en', 'id'].map((lang) => (
                         <BouncyButton
                           key={lang}
-                          style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: toolsLanguage === lang ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent' }}
+                          style={{ paddingHorizontal: 14, paddingVertical: 6, backgroundColor: toolsLanguage === lang ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent' }}
                           onPress={() => setToolsLanguagePersisted(lang)}
                           accessibilityRole="button"
                           accessibilityLabel={lang === 'en' ? 'English' : 'Indonesian'}
                           accessibilityState={{ selected: toolsLanguage === lang }}
                         >
-                          <Text style={{ color: toolsLanguage === lang ? '#FFFFFF' : toolsTheme.textSecondary, fontSize: 11, fontWeight: '700' }}>{lang.toUpperCase()}</Text>
+                          <Text style={{ color: toolsLanguage === lang ? '#FFFFFF' : toolsTheme.textSecondary, fontSize: 11.5, fontWeight: '700' }}>{lang.toUpperCase()}</Text>
                         </BouncyButton>
                       ))}
                     </View>
                   </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 }}>
+                  <BouncyButton
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10 }}
+                    onPress={toggleToolsTheme}
+                    accessibilityRole="button"
+                    accessibilityLabel={toolsThemeMode === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+                  >
+                    {toolsThemeMode === 'light' ? <SunIconSVG color={toolsTheme.textSecondary} size={15} /> : <MoonIconSVG color={toolsTheme.textSecondary} size={15} />}
                     <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>{toolsThemeMode === 'light' ? tt('light') : tt('dark')}</Text>
-                    <BouncyButton
-                      style={{ width: 30, height: 30, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
-                      onPress={toggleToolsTheme}
-                      accessibilityRole="button"
-                      accessibilityLabel={toolsThemeMode === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
-                    >
-                      {toolsThemeMode === 'light' ? <SunIconSVG color={toolsTheme.textSecondary} size={14} /> : <MoonIconSVG color={toolsTheme.textSecondary} size={14} />}
-                    </BouncyButton>
-                  </View>
+                  </BouncyButton>
+                  {DONATIONS_ENABLED && (
+                    <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+                      <BouncyButton
+                        style={{ backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD', borderRadius: 99, paddingVertical: 9, alignItems: 'center' }}
+                        onPress={() => { setToolsMenuVisible(false); setDonateModalContext('tools'); setToolsInterstitialOfferCompress(false); setDonateTermsAgreed(false); setDonateModalVisible(true); }}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Donate</Text>
+                      </BouncyButton>
+                    </View>
+                  )}
                   <View style={{ height: 1, backgroundColor: toolsTheme.border, marginVertical: 4 }} />
                 </>
               )}
@@ -20854,6 +21143,80 @@ function App() {
           </View>
         </View>
       </Modal>
+
+      {/* PDF EDITOR - CLEAR PDF CONFIRM. With 2+ containers loaded, offers
+          clearing just the one the trash icon was pressed from vs.
+          everything; with exactly one, it's a single "Clear PDF" action. */}
+      {pdfClearConfirmVisible && (
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfClearConfirmVisible(false)}>
+          <View
+            style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => setPdfClearConfirmVisible(false)}
+          >
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+              )
+            )}
+            <View
+              style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+              onStartShouldSetResponder={() => Platform.OS === 'web'}
+              onResponderRelease={() => {}}
+            >
+              <View style={[styles.successIconCircle, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+                <TrashIconSVG />
+              </View>
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Clear PDF{pdfContainers.length > 1 ? 's' : ''}?</Text>
+              <Text style={styles.confirmSubText}>
+                {pdfContainers.length > 1
+                  ? 'Choose whether to remove just the current PDF or everything loaded.'
+                  : "This removes the loaded PDF. You'll need to add it again to get it back."}
+              </Text>
+              {pdfContainers.length > 1 ? (
+                <View style={{ width: '100%', gap: 8 }}>
+                  <BouncyButton
+                    style={[styles.confirmDeleteBtn, { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                    onPress={() => { setPdfClearConfirmVisible(false); if (activePdfContainer) removePdfContainer(activePdfContainer.id); }}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Clear This PDF</Text>
+                  </BouncyButton>
+                  <BouncyButton
+                    style={[styles.confirmDeleteBtn, { backgroundColor: '#CF3B3B' }]}
+                    onPress={() => { setPdfClearConfirmVisible(false); clearAllPdfContainers(); }}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.confirmDeleteText}>Clear All PDFs</Text>
+                  </BouncyButton>
+                  <BouncyButton style={{ paddingVertical: 10, alignItems: 'center' }} onPress={() => setPdfClearConfirmVisible(false)} accessibilityRole="button">
+                    <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Cancel</Text>
+                  </BouncyButton>
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+                  <BouncyButton
+                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                    onPress={() => setPdfClearConfirmVisible(false)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+                  </BouncyButton>
+                  <BouncyButton
+                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                    onPress={() => { setPdfClearConfirmVisible(false); clearAllPdfContainers(); }}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.confirmDeleteText}>Clear PDF</Text>
+                  </BouncyButton>
+                </View>
+              )}
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* PDF EDITOR - UNDO COMPRESS CONFIRM. The Compress pill's "x" -
           compress rebuilds the whole document, so this is worth a
@@ -21192,12 +21555,13 @@ function App() {
             </ScrollView>
             <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
               <BouncyButton
-                style={[styles.saveAccountSettingsBtn, { marginTop: 0, opacity: pdfEditorExporting ? 0.6 : 1 }]}
+                style={[styles.saveAccountSettingsBtn, { marginTop: 0, opacity: pdfEditorExporting ? 0.6 : 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }]}
                 onPress={handleCombineAndExport}
                 disabled={pdfEditorExporting}
                 accessibilityRole="button"
               >
                 <Text style={styles.submitBtnText}>{pdfEditorExporting ? 'Combining...' : 'Export Combined PDF'}</Text>
+                {!pdfEditorExporting && <ArrowRightIconSVG size={13} color="#FFFFFF" />}
               </BouncyButton>
             </View>
           </SafeAreaView>
