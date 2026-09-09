@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 718;
+const BUILD_NUMBER = 719;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7494,6 +7494,13 @@ function App() {
 
   const [toolsMenuVisible, setToolsMenuVisible] = useState(false);
   const [leaveToolsConfirmVisible, setLeaveToolsConfirmVisible] = useState(false);
+  // Separate from leaveToolsConfirmVisible above (which is about closing
+  // Tools entirely back to DECENT) - this is for switching AWAY from a
+  // tool that still has content, whether to the hub or straight to
+  // another tool. pendingToolSwitchTarget holds where to go once
+  // confirmed.
+  const [leaveToolConfirmVisible, setLeaveToolConfirmVisible] = useState(false);
+  const [pendingToolSwitchTarget, setPendingToolSwitchTarget] = useState(null);
 
   // Only warns about the ACTIVE tool's own content - someone with 3 old
   // Compressor files sitting around but currently on the PDF Editor with
@@ -7537,6 +7544,50 @@ function App() {
       }
     }
     setActiveTool(nextTool);
+  };
+
+  // Since switchTool above clears content outright with no confirmation,
+  // every USER-FACING "leave this tool" entry point (breadcrumb back,
+  // Escape/hardware-back, tool-to-tool navigation) goes through this
+  // instead, which warns first if there's actually something to lose -
+  // switchTool itself stays confirmation-free since other internal
+  // callers rely on that.
+  const requestSwitchTool = (nextTool) => {
+    if (nextTool === activeTool || !toolsHasUnsavedWork()) {
+      switchTool(nextTool);
+      return;
+    }
+    setPendingToolSwitchTarget(nextTool);
+    setLeaveToolConfirmVisible(true);
+  };
+
+  const confirmPendingToolSwitch = () => {
+    setLeaveToolConfirmVisible(false);
+    if (pendingToolSwitchTarget) switchTool(pendingToolSwitchTarget);
+    setPendingToolSwitchTarget(null);
+  };
+
+  // Priority for Escape/hardware-back while PDF Editor is open: if
+  // there's an active selection flow or popup, THAT is what should
+  // cancel - not navigation. Without this, pressing Escape during (say)
+  // the crop page-select step falls through to the Tools screen's own
+  // Escape-closes-the-Modal behavior and silently wipes every loaded
+  // PDF, which is worse than just doing nothing useful. Returns true if
+  // it consumed the key press (caller should stop there), false if
+  // there was nothing to cancel.
+  const cancelActivePdfEditorFlow = () => {
+    if (activeTool !== 'pdfEditor') return false;
+    if (pdfCropQueueIndex !== null) { setPdfCropQueueIndex(null); return true; }
+    if (pdfSelectModeTool) { setPdfSelectModeTool(null); setPdfSelectedPageIds([]); return true; }
+    if (pdfContainerSelectModeTool) { cancelContainerSelectFlow(); return true; }
+    if (pdfAddPageMenuVisible) { setPdfAddPageMenuVisible(false); return true; }
+    if (pdfCompressOptionsVisible) { setPdfCompressOptionsVisible(false); cancelContainerSelectFlow(); return true; }
+    if (pdfCompressUndoConfirmVisible) { setPdfCompressUndoConfirmVisible(false); return true; }
+    if (pdfClearConfirmVisible) { setPdfClearConfirmVisible(false); return true; }
+    if (pdfExportChoiceVisible) { setPdfExportChoiceVisible(false); return true; }
+    if (pdfCombineOrderVisible) { setPdfCombineOrderVisible(false); return true; }
+    if (pdfMoreToolsMenuVisible) { setPdfMoreToolsMenuVisible(false); return true; }
+    return false;
   };
 
   // Browser-native "leave site?" prompt on a hard refresh/tab close
@@ -18894,7 +18945,8 @@ function App() {
           transparent={false}
           visible={true}
           onRequestClose={() => {
-            if (activeTool !== 'hub') switchTool('hub');
+            if (cancelActivePdfEditorFlow()) return;
+            if (activeTool !== 'hub') requestSwitchTool('hub');
             else handleLeaveTools();
           }}
         >
@@ -18950,7 +19002,7 @@ function App() {
                   ]}>
                     <BouncyButton
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                      onPress={() => switchTool('hub')}
+                      onPress={() => requestSwitchTool('hub')}
                       accessibilityRole="button"
                       accessibilityLabel="Back to Tools"
                     >
@@ -18996,7 +19048,7 @@ function App() {
                   {activeTool !== 'hub' ? (
                     <BouncyButton
                       style={{ padding: 4 }}
-                      onPress={() => switchTool('hub')}
+                      onPress={() => requestSwitchTool('hub')}
                       accessibilityRole="button"
                       accessibilityLabel="Back"
                     >
@@ -19090,7 +19142,7 @@ function App() {
                         },
                         isWebWide ? { width: '48.5%' } : { width: '100%' }
                       ]}
-                      onPress={() => switchTool('imageCompressor')}
+                      onPress={() => requestSwitchTool('imageCompressor')}
                       accessibilityRole="button"
                     >
                       <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -19112,7 +19164,7 @@ function App() {
                         },
                         isWebWide ? { width: '48.5%' } : { width: '100%' }
                       ]}
-                      onPress={() => switchTool('qrGenerator')}
+                      onPress={() => requestSwitchTool('qrGenerator')}
                       accessibilityRole="button"
                     >
                       <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -19134,7 +19186,7 @@ function App() {
                         },
                         isWebWide ? { width: '48.5%' } : { width: '100%' }
                       ]}
-                      onPress={() => switchTool('imageConverter')}
+                      onPress={() => requestSwitchTool('imageConverter')}
                       accessibilityRole="button"
                     >
                       <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -19156,7 +19208,7 @@ function App() {
                         },
                         isWebWide ? { width: '48.5%' } : { width: '100%' }
                       ]}
-                      onPress={() => switchTool('pdfEditor')}
+                      onPress={() => requestSwitchTool('pdfEditor')}
                       accessibilityRole="button"
                     >
                       <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -19186,7 +19238,7 @@ function App() {
                           },
                           isWebWide ? { width: '23%' } : { width: '48%' }
                         ]}
-                        onPress={() => switchTool(key)}
+                        onPress={() => requestSwitchTool(key)}
                         accessibilityRole="button"
                       >
                         <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -19528,7 +19580,7 @@ function App() {
                             backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
                             borderRadius: 14, padding: 14
                           }}
-                          onPress={() => switchTool(key)}
+                          onPress={() => requestSwitchTool(key)}
                           accessibilityRole="button"
                         >
                           <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -19948,7 +20000,7 @@ function App() {
                                 backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
                                 borderRadius: 14, padding: 14
                               }}
-                              onPress={() => switchTool(key)}
+                              onPress={() => requestSwitchTool(key)}
                               accessibilityRole="button"
                             >
                               <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -20176,7 +20228,7 @@ function App() {
                             backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
                             borderRadius: 14, padding: 14
                           }}
-                          onPress={() => switchTool(key)}
+                          onPress={() => requestSwitchTool(key)}
                           accessibilityRole="button"
                         >
                           <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -20831,7 +20883,7 @@ function App() {
                             backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
                             borderRadius: 14, padding: 14
                           }}
-                          onPress={() => switchTool(key)}
+                          onPress={() => requestSwitchTool(key)}
                           accessibilityRole="button"
                         >
                           <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -21628,6 +21680,65 @@ function App() {
                   setLeaveToolsConfirmVisible(false);
                   setToolsScreenVisible(false);
                 }}
+              >
+                <Text style={styles.confirmDeleteText}>Leave</Text>
+              </BouncyButton>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      )}
+
+      {/* LEAVE TOOL CONFIRMATION - separate from the one above; this is
+          for switching AWAY from a tool that still has content (to the
+          hub or straight to another tool), which switchTool() clears
+          outright with no confirmation of its own. Every user-facing
+          "leave this tool" entry point (breadcrumb, Escape/back, tool-
+          to-tool navigation) goes through requestSwitchTool instead of
+          calling switchTool directly, specifically to land here first. */}
+      {leaveToolConfirmVisible && (
+      <Modal
+        animationType={Platform.OS === 'web' ? 'none' : 'fade'}
+        transparent={true}
+        visible={true}
+        onRequestClose={() => { setLeaveToolConfirmVisible(false); setPendingToolSwitchTarget(null); }}
+      >
+        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+          onStartShouldSetResponder={() => Platform.OS === 'web'}
+          onResponderRelease={() => { setLeaveToolConfirmVisible(false); setPendingToolSwitchTarget(null); }}
+        >
+          {Platform.OS !== 'web' && (
+            lightweightMode ? (
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+            ) : (
+              <BlurView
+                intensity={55}
+                tint={themeMode === 'light' ? 'light' : 'dark'}
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+              />
+            )
+          )}
+          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => {}}
+          >
+            <View style={[styles.successIconCircle, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+              <TrashIconSVG />
+            </View>
+            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Leave This Tool?</Text>
+            <Text style={styles.confirmSubText}>Anything loaded here that you haven't downloaded yet will be lost.</Text>
+            <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+              <BouncyButton
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                onPress={() => { setLeaveToolConfirmVisible(false); setPendingToolSwitchTarget(null); }}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                accessibilityRole="button"
+                onPress={confirmPendingToolSwitch}
               >
                 <Text style={styles.confirmDeleteText}>Leave</Text>
               </BouncyButton>
