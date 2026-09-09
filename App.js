@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 719;
+const BUILD_NUMBER = 720;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7353,6 +7353,7 @@ function App() {
   const [pdfCompressOptionsVisible, setPdfCompressOptionsVisible] = useState(false);
   const [pdfCompressQuality, setPdfCompressQuality] = useState('medium'); // 'low' | 'medium' | 'high'
   const [pdfCompressUndoConfirmVisible, setPdfCompressUndoConfirmVisible] = useState(false);
+  const [pdfPageNumbersUndoConfirmVisible, setPdfPageNumbersUndoConfirmVisible] = useState(false);
   const [pdfClearConfirmVisible, setPdfClearConfirmVisible] = useState(false);
   const [pdfMoreToolsMenuVisible, setPdfMoreToolsMenuVisible] = useState(false);
   const pdfMoreToolsButtonRef = useRef(null);
@@ -7491,6 +7492,7 @@ function App() {
   // stack - once Undo pops it (or something else happens after it), it
   // goes back to its plain outline look.
   const isPdfCompressActive = pdfEditorHistory.length > 0 && pdfEditorHistory[pdfEditorHistory.length - 1].label === 'Compress PDF';
+  const isPdfPageNumbersActive = pdfEditorHistory.length > 0 && pdfEditorHistory[pdfEditorHistory.length - 1].label === 'Add page numbers';
 
   const [toolsMenuVisible, setToolsMenuVisible] = useState(false);
   const [leaveToolsConfirmVisible, setLeaveToolsConfirmVisible] = useState(false);
@@ -7583,6 +7585,7 @@ function App() {
     if (pdfAddPageMenuVisible) { setPdfAddPageMenuVisible(false); return true; }
     if (pdfCompressOptionsVisible) { setPdfCompressOptionsVisible(false); cancelContainerSelectFlow(); return true; }
     if (pdfCompressUndoConfirmVisible) { setPdfCompressUndoConfirmVisible(false); return true; }
+    if (pdfPageNumbersUndoConfirmVisible) { setPdfPageNumbersUndoConfirmVisible(false); return true; }
     if (pdfClearConfirmVisible) { setPdfClearConfirmVisible(false); return true; }
     if (pdfExportChoiceVisible) { setPdfExportChoiceVisible(false); return true; }
     if (pdfCombineOrderVisible) { setPdfCombineOrderVisible(false); return true; }
@@ -12620,6 +12623,24 @@ function App() {
     }
   };
 
+  // Gives a rebuilt in-memory PDFDocument a real URI to render thumbnails
+  // from - generateWebPdfThumbnails/generateNativePdfThumbnails both only
+  // ever get called with an actual file/blob URI elsewhere in this file
+  // (never raw bytes), so operations that rebuild a document from scratch
+  // (Page Numbers, Crop) need this to get fresh thumbnails the same way a
+  // newly-picked PDF does, rather than leaving each page's thumbnailUri
+  // pointing at its stale pre-edit render.
+  const pdfBytesToTempUri = async (bytes) => {
+    if (Platform.OS === 'web') {
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      return URL.createObjectURL(blob);
+    }
+    const uri = `${FileSystem.cacheDirectory}tmp_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`;
+    const base64 = btoa(String.fromCharCode(...bytes));
+    await FileSystem.writeAsStringAsync(uri, base64, { encoding: FileSystem.EncodingType.Base64 });
+    return uri;
+  };
+
   const exportOneContainer = async (container) => {
     const bytes = await assemblePdfFromPages(container.sourceDocs, container.pages);
     const baseName = (container.name || 'document').replace(/\.pdf$/i, '');
@@ -12878,10 +12899,19 @@ function App() {
       }
 
       const targetId = activePdfContainer.id;
-      const newPages = pages.map((p, i) => ({ ...p, sourceFileIndex: 0, sourcePageIndex: i, rotation: 0 }));
+      const outBytes = await outDoc.save();
+      const tempUri = await pdfBytesToTempUri(outBytes);
+      const thumbnails = Platform.OS === 'web'
+        ? await generateWebPdfThumbnails(tempUri, 1.5)
+        : await generateNativePdfThumbnails(tempUri, 900);
+      const newPages = pages.map((p, i) => ({
+        ...p, sourceFileIndex: 0, sourcePageIndex: i, rotation: 0,
+        thumbnailUri: (thumbnails && thumbnails[i]) || p.thumbnailUri
+      }));
       setPdfContainers((prev) => prev.map((c) => (
         c.id === targetId ? { ...c, sourceDocs: [outDoc], sourceMeta: [{ uri: null, isImage: false }], pages: newPages } : c
       )));
+      setPdfFullscreenHighResCache({});
 
       showToast('Page numbers added.');
       triggerHaptic('success');
@@ -12963,7 +12993,15 @@ function App() {
       }
 
       const targetId = activePdfContainer.id;
-      const newPages = pages.map((p, i) => ({ ...p, sourceFileIndex: 0, sourcePageIndex: i, rotation: 0 }));
+      const outBytes = await outDoc.save();
+      const tempUri = await pdfBytesToTempUri(outBytes);
+      const thumbnails = Platform.OS === 'web'
+        ? await generateWebPdfThumbnails(tempUri, 1.5)
+        : await generateNativePdfThumbnails(tempUri, 900);
+      const newPages = pages.map((p, i) => ({
+        ...p, sourceFileIndex: 0, sourcePageIndex: i, rotation: 0,
+        thumbnailUri: (thumbnails && thumbnails[i]) || p.thumbnailUri
+      }));
       setPdfContainers((prev) => prev.map((c) => (
         c.id === targetId ? { ...c, sourceDocs: [outDoc], sourceMeta: [{ uri: null, isImage: false }], pages: newPages } : c
       )));
@@ -20399,14 +20437,37 @@ function App() {
                           renderPdfReorderPill. */}
                       {isWebWide ? (
                         <>
-                          <BouncyButton
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                            onPress={handleAddPageNumbers}
-                            accessibilityRole="button"
-                            accessibilityLabel="Add page numbers"
-                          >
-                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Page Numbers</Text>
-                          </BouncyButton>
+                          <View style={{
+                            flexDirection: 'row', alignItems: 'center', borderRadius: 99, overflow: 'hidden',
+                            backgroundColor: isPdfPageNumbersActive ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent',
+                            borderWidth: isPdfPageNumbersActive ? 0 : 1,
+                            borderColor: toolsTheme.border
+                          }}>
+                            {isPdfPageNumbersActive && (
+                              <BouncyButton
+                                style={{ paddingLeft: 12, paddingVertical: 8 }}
+                                onPress={() => setPdfPageNumbersUndoConfirmVisible(true)}
+                                accessibilityRole="button"
+                                accessibilityLabel="Undo page numbers"
+                              >
+                                <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', lineHeight: 11 }}>✕</Text>
+                                </View>
+                              </BouncyButton>
+                            )}
+                            <BouncyButton
+                              style={{
+                                flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8,
+                                paddingLeft: isPdfPageNumbersActive ? 6 : 14, paddingRight: 14
+                              }}
+                              onPress={handleAddPageNumbers}
+                              accessibilityRole="button"
+                              accessibilityLabel="Add page numbers"
+                              accessibilityState={{ selected: isPdfPageNumbersActive }}
+                            >
+                              <Text style={{ color: isPdfPageNumbersActive ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Page Numbers</Text>
+                            </BouncyButton>
+                          </View>
                           <BouncyButton
                             style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
                             onPress={() => { cancelContainerSelectFlow(); setPdfSelectedPageIds([]); setPdfSelectModeTool('crop'); }}
@@ -21312,6 +21373,51 @@ function App() {
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
                   onPress={() => { setPdfCompressUndoConfirmVisible(false); handleUndoPdfEdit(); }}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.confirmDeleteText}>Undo</Text>
+                </BouncyButton>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* PDF EDITOR - UNDO PAGE NUMBERS CONFIRM. Same reasoning as the
+          Compress one above - rebuilds the whole document, worth a
+          confirmation rather than an instant silent undo. */}
+      {pdfPageNumbersUndoConfirmVisible && (
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfPageNumbersUndoConfirmVisible(false)}>
+          <View
+            style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => setPdfPageNumbersUndoConfirmVisible(false)}
+          >
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+              )
+            )}
+            <View
+              style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+              onStartShouldSetResponder={() => Platform.OS === 'web'}
+              onResponderRelease={() => {}}
+            >
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Undo Page Numbers?</Text>
+              <Text style={styles.confirmSubText}>This reverts back to how it was before adding page numbers.</Text>
+              <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                  onPress={() => setPdfPageNumbersUndoConfirmVisible(false)}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+                </BouncyButton>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
+                  onPress={() => { setPdfPageNumbersUndoConfirmVisible(false); handleUndoPdfEdit(); }}
                   accessibilityRole="button"
                 >
                   <Text style={styles.confirmDeleteText}>Undo</Text>
