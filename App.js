@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 725;
+const BUILD_NUMBER = 728;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -4394,6 +4394,20 @@ const triggerHaptic = (type = 'selection') => {
 
 const getFileSizeBytes = async (uri) => {
   if (Platform.OS === 'web') {
+    // data: URIs (what ImageManipulator's web canvas output actually is)
+    // carry their own size right in the string - the base64 payload's
+    // length converts to byte size directly (each 4 base64 chars decode
+    // to 3 bytes, minus 1-2 for any trailing '=' padding), so there's no
+    // need to fetch+blob just to measure something already in hand. This
+    // matters a lot for compressImageToTarget below, which calls this
+    // once per compression attempt (up to 8 per page) purely to check
+    // whether it hit the target size - that used to be a real network-
+    // shaped fetch+blob round trip every single time.
+    if (uri.startsWith('data:')) {
+      const base64 = uri.slice(uri.indexOf(',') + 1);
+      const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+      return Math.floor((base64.length * 3) / 4) - padding;
+    }
     const res = await fetch(uri);
     const blob = await res.blob();
     return blob.size;
@@ -6123,37 +6137,66 @@ function App() {
   // TOOLS DOWNLOAD INTERSTITIAL - shown after a Tools download completes,
   // reusing the same Donate modal UI (region tabs, QRIS/Ko-fi/GitHub
   // Sponsors, terms checkbox) but with different intro copy via
-  // donateModalContext, plus its own Dismiss/"Don't show again today"
-  // controls that the portfolio-context Donate modal doesn't need (that
-  // one is always a deliberate, user-initiated open from Settings, never
-  // auto-triggered).
+  // donateModalContext, plus its own Dismiss/hide-donation controls that
+  // the portfolio-context Donate modal doesn't need (that one is always
+  // a deliberate, user-initiated open from Settings, never auto-
+  // triggered, and never shows slim mode - only the 'tools' interstitial
+  // does).
   const [donateModalContext, setDonateModalContext] = useState('portfolio'); // 'portfolio' | 'tools'
   const [toolsInterstitialOfferCompress, setToolsInterstitialOfferCompress] = useState(false);
+  // Slim mode: the interstitial still shows every time (it's never fully
+  // skipped anymore), but with the donation ask collapsed down to one
+  // line with a "donate here" link, once the user has said they don't
+  // want to see the full pitch today. Whichever PDF-Editor Download/Open
+  // button is relevant still shows either way - only the donation
+  // content itself toggles.
+  const [toolsInterstitialSlim, setToolsInterstitialSlim] = useState(false);
   const TOOLS_INTERSTITIAL_DISMISSED_KEY = 'tools_interstitial_dismissed_date';
 
-  const maybeShowToolsDownloadInterstitial = async (offerCompress = false, exportedPdf = null) => {
-    setLastExportedPdf(exportedPdf); // clears it for non-PDF callers (Compressor/Converter/QR), sets it for PDF Editor's export paths
+  // pendingFiles (PDF Editor's export paths only): an array of
+  // { bytes, filename } that have NOT been saved yet - the actual
+  // download/share only happens when the user presses "Download PDF"
+  // inside this interstitial (or checks "don't show donation again
+  // today," which triggers it immediately as part of that same action -
+  // see handleHideDonationToday), never automatically just from Export
+  // being confirmed.
+  const maybeShowToolsDownloadInterstitial = async (offerCompress = false, pendingFiles = null) => {
+    setLastExportedPdf(null);
+    let hideDonationToday = false;
     try {
       const dismissedDate = await AsyncStorage.getItem(TOOLS_INTERSTITIAL_DISMISSED_KEY);
-      const today = new Date().toDateString();
-      if (dismissedDate === today) return; // already dismissed for today, skip silently
+      hideDonationToday = dismissedDate === new Date().toDateString();
     } catch (e) {
-      // If AsyncStorage itself fails, fail open (show the interstitial)
-      // rather than silently never showing it again.
+      // If AsyncStorage itself fails, fail open (show the full donation ask)
+      // rather than silently defaulting to slim mode forever.
     }
+
+    setToolsInterstitialSlim(hideDonationToday);
+    setPdfPendingExport(pendingFiles); // null for non-PDF callers (Compressor/Converter/QR) - they keep their own immediate download buttons, unaffected by this
     setDonateModalContext('tools');
     setToolsInterstitialOfferCompress(offerCompress);
     setDonateTermsAgreed(false);
     setDonateModalVisible(true);
   };
 
-  const handleDismissToolsInterstitialToday = async () => {
+  // The interstitial's "don't show donation again today" checkbox - not
+  // a plain dismiss, it also immediately runs whatever the interstitial
+  // was waiting on (the pending PDF download, if there is one) rather
+  // than requiring a separate button press after checking it. The
+  // preference itself persists (today only), but the interstitial keeps
+  // showing every time either way - just collapsed to slim mode, with
+  // its own small "donate here" link back to full mode for that one
+  // viewing if they change their mind.
+  const handleHideDonationToday = async () => {
     try {
       await AsyncStorage.setItem(TOOLS_INTERSTITIAL_DISMISSED_KEY, new Date().toDateString());
     } catch (e) {
       console.warn('Could not persist interstitial dismissal:', e);
     }
-    setDonateModalVisible(false);
+    setToolsInterstitialSlim(true);
+    if (pdfPendingExport && pdfPendingExport.length > 0) {
+      handleDownloadPendingExport();
+    }
   };
 
   const [selectedFollowedDesigner, setSelectedFollowedDesigner] = useState(null);
@@ -7374,11 +7417,16 @@ function App() {
   const containerPages = activePdfContainer ? activePdfContainer.pages : [];
 
   const [pdfCompressing, setPdfCompressing] = useState(false);
+  // { containerName, done, total } | null - shown next to the spinner
+  // while compressing so a many-page document doesn't just look stuck.
+  const [pdfCompressProgress, setPdfCompressProgress] = useState(null);
   // Compress is a whole-PDF effect - clicking it opens this options
   // popup (quality preset) rather than running immediately, same
   // category as any future whole-document tool.
   const [pdfCompressOptionsVisible, setPdfCompressOptionsVisible] = useState(false);
-  const [pdfCompressQuality, setPdfCompressQuality] = useState('medium'); // 'low' | 'medium' | 'high'
+  const [pdfCompressQuality, setPdfCompressQuality] = useState('medium'); // 'low' | 'medium' | 'high' | 'custom'
+  const [pdfCompressCustomKB, setPdfCompressCustomKB] = useState(''); // target size in KB - meaning depends on pdfCompressCustomMode
+  const [pdfCompressCustomMode, setPdfCompressCustomMode] = useState('page'); // 'page' | 'whole' - only used when pdfCompressQuality === 'custom'
   const [pdfCompressUndoConfirmVisible, setPdfCompressUndoConfirmVisible] = useState(false);
   const [pdfPageNumbersUndoConfirmVisible, setPdfPageNumbersUndoConfirmVisible] = useState(false);
   const [pdfClearConfirmVisible, setPdfClearConfirmVisible] = useState(false);
@@ -7420,7 +7468,8 @@ function App() {
   // Captured after a successful PDF export so the post-export interstitial
   // can offer an explicit "Open PDF" button - export itself only ever
   // downloads/saves, never opens anything on its own.
-  const [lastExportedPdf, setLastExportedPdf] = useState(null); // { uri, filename } | null
+  const [lastExportedPdf, setLastExportedPdf] = useState(null); // { uri, filename } | null - set once the pending export below has actually been downloaded/shared
+  const [pdfPendingExport, setPdfPendingExport] = useState(null); // [{ bytes, filename }] | null - assembled but NOT yet saved; the interstitial's "Download PDF" button is what actually triggers the save
   const [pdfCombineOrderVisible, setPdfCombineOrderVisible] = useState(false);
   const [pdfCombineOrderIds, setPdfCombineOrderIds] = useState([]); // ordered container ids, user-arranged before combining
 
@@ -10076,6 +10125,7 @@ function App() {
 
   const handleCloseDonateModal = () => {
     setDonateModalVisible(false);
+    setPdfPendingExport(null); // dismissing without pressing "Download PDF" means it never saves - nothing left to clean up otherwise
     if (Platform.OS !== 'web' && returnToOptionsOnClose) {
       setSettingsModalVisible(true);
       setReturnToOptionsOnClose(false);
@@ -12560,10 +12610,13 @@ function App() {
   // on total failure) rather than touching state directly, so
   // handleCompressPdf below can run this against several containers in a
   // loop and commit them all in a single setPdfContainers call.
-  const compressOneContainer = async (container, preset) => {
+  const compressOneContainer = async (container, preset, onProgress) => {
     const renderCache = {}; // sourceFileIndex -> array of high-res page image URIs, scoped to this one container
+    const bytesCache = {}; // sourceFileIndex -> already-fetched bytes, so a multi-page source only gets fetched once here
     const compressedPageDocs = [];
     const compressedThumbnailUris = [];
+    const total = container.pages.length;
+    let done = 0;
 
     for (const page of container.pages) {
       const meta = container.sourceMeta[page.sourceFileIndex];
@@ -12574,13 +12627,18 @@ function App() {
         renderedUri = meta.uri;
       } else {
         if (!renderCache[page.sourceFileIndex]) {
-          renderCache[page.sourceFileIndex] = Platform.OS === 'web'
-            ? await generateWebPdfThumbnails(meta.uri, 1.5)
-            : await generateNativePdfThumbnails(meta.uri, 1200);
+          if (Platform.OS === 'web') {
+            if (!bytesCache[page.sourceFileIndex]) {
+              bytesCache[page.sourceFileIndex] = await fetchBytesFromUri(meta.uri);
+            }
+            renderCache[page.sourceFileIndex] = await generateWebPdfThumbnails(bytesCache[page.sourceFileIndex], 1.5);
+          } else {
+            renderCache[page.sourceFileIndex] = await generateNativePdfThumbnails(meta.uri, 1200);
+          }
         }
         renderedUri = renderCache[page.sourceFileIndex] ? renderCache[page.sourceFileIndex][page.sourcePageIndex] : null;
       }
-      if (!renderedUri) continue;
+      if (!renderedUri) { done += 1; continue; }
 
       const compressed = await compressImageToTarget(renderedUri, {
         targetBytes: preset.targetBytes, maxWidth: preset.maxWidth, maxHeight: preset.maxHeight, format: 'JPEG'
@@ -12592,6 +12650,17 @@ function App() {
       }
       compressedPageDocs.push(pageDoc);
       compressedThumbnailUris.push(compressed.uri);
+
+      done += 1;
+      if (onProgress) onProgress(done, total);
+      // compressImageToTarget's iterative quality/size search (up to 8
+      // real image-manipulation passes) is genuine, unavoidable work per
+      // page, not waste - but with zero yielding between pages, a many-
+      // page document did all of that back to back with no chance for
+      // the browser to paint the progress text below or respond to
+      // anything else, which is exactly what "circling for a long time"
+      // with no visible feedback looked like.
+      if (done < total) await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
     if (compressedPageDocs.length === 0) return null;
@@ -12614,21 +12683,38 @@ function App() {
   // containerIds is optional - omit it (or pass none) to compress just
   // the active container, the one-container fast path with no select
   // step. With 2+ ids, each compresses independently; nothing flattens.
-  const handleCompressPdf = async (quality, containerIds) => {
+  const handleCompressPdf = async (quality, containerIds, customKB, customMode = 'page') => {
     const targets = containerIds && containerIds.length > 0
       ? containerIds
       : (activePdfContainer ? [activePdfContainer.id] : []);
     if (targets.length === 0) return;
-    const preset = PDF_COMPRESS_PRESETS[quality] || PDF_COMPRESS_PRESETS.medium;
+    const basePreset = quality === 'custom'
+      ? { targetBytes: Math.max(10, Number(customKB) || 200) * 1024, maxWidth: 2000, maxHeight: 2000, label: 'Custom', desc: 'Custom target size' }
+      : (PDF_COMPRESS_PRESETS[quality] || PDF_COMPRESS_PRESETS.medium);
     pushPdfHistorySnapshot('Compress PDF');
     setPdfCompressing(true);
+    setPdfCompressProgress(null);
     triggerHaptic('light');
     try {
       const updates = {};
       for (const cid of targets) {
         const container = pdfContainers.find((c) => c.id === cid);
         if (!container) continue;
-        const compressed = await compressOneContainer(container, preset);
+        // "Whole Document" mode targets the FINAL FILE's total size, not
+        // each page individually - since every page still compresses
+        // independently under the hood (there's no single combined
+        // encode pass to target as a whole), the only way to approximate
+        // a whole-document target is to divide it evenly across however
+        // many pages THIS container has and target that per page. A
+        // container with more pages gets a smaller per-page budget than
+        // one with fewer, which is the right tradeoff for hitting the
+        // overall total.
+        const preset = (quality === 'custom' && customMode === 'whole' && container.pages.length > 0)
+          ? { ...basePreset, targetBytes: Math.max(10 * 1024, Math.floor(basePreset.targetBytes / container.pages.length)) }
+          : basePreset;
+        const compressed = await compressOneContainer(container, preset, (done, total) => {
+          setPdfCompressProgress({ containerName: container.name, done, total });
+        });
         if (compressed) updates[cid] = compressed;
       }
       if (Object.keys(updates).length === 0) {
@@ -12646,6 +12732,7 @@ function App() {
       triggerHaptic('error');
     } finally {
       setPdfCompressing(false);
+      setPdfCompressProgress(null);
       cancelContainerSelectFlow();
     }
   };
@@ -12711,6 +12798,29 @@ function App() {
     }
   };
 
+  // The "Download PDF" button in the post-export interstitial - the one
+  // thing that actually triggers the save/share for whatever export just
+  // got confirmed. Nothing downloads before this is pressed; dismissing
+  // the interstitial without pressing it means nothing gets saved.
+  const handleDownloadPendingExport = async () => {
+    if (!pdfPendingExport || pdfPendingExport.length === 0) return;
+    try {
+      let last = null;
+      for (const f of pdfPendingExport) {
+        const uri = await savePdfBytes(f.bytes, f.filename);
+        last = { uri, filename: f.filename };
+      }
+      setPdfPendingExport(null);
+      if (last) setLastExportedPdf(last);
+      showToast(pdfPendingExport.length > 1 ? 'PDFs downloaded.' : 'PDF downloaded.');
+      triggerHaptic('success');
+    } catch (e) {
+      console.warn('Download failed:', e);
+      showToast('Could not download - try again.');
+      triggerHaptic('error');
+    }
+  };
+
   // Gives a rebuilt in-memory PDFDocument a real URI to render thumbnails
   // from - generateWebPdfThumbnails/generateNativePdfThumbnails both only
   // ever get called with an actual file/blob URI elsewhere in this file
@@ -12729,11 +12839,14 @@ function App() {
     return uri;
   };
 
+  // Assembles the bytes for one container's export WITHOUT saving them -
+  // the actual savePdfBytes call now only happens from
+  // handleDownloadPendingExport, once the user presses "Download PDF" in
+  // the interstitial.
   const exportOneContainer = async (container) => {
     const bytes = await assemblePdfFromPages(container.sourceDocs, container.pages);
     const filename = `${(container.name || 'document').replace(/\.pdf$/i, '')}.pdf`;
-    const uri = await savePdfBytes(bytes, filename);
-    return { uri, filename };
+    return { bytes, filename };
   };
 
   // Builds what the export-confirm modal shows: every distinct edit
@@ -12788,8 +12901,8 @@ function App() {
   const exportActiveOrGivenContainer = async (container) => {
     setPdfEditorExporting(true);
     try {
-      const { uri, filename } = await exportOneContainer(container);
-      maybeShowToolsDownloadInterstitial(false, { uri, filename });
+      const file = await exportOneContainer(container);
+      await maybeShowToolsDownloadInterstitial(false, [file]);
       triggerHaptic('success');
     } catch (e) {
       console.warn('PDF export failed:', e);
@@ -12800,18 +12913,20 @@ function App() {
     }
   };
 
-  // "Export each separately" - sequential downloads, same pattern the
-  // Compressor's "Download All" already uses elsewhere in Tools, rather
-  // than introducing a zip dependency this project doesn't have.
+  // "Export each separately" - assembles bytes for every container up
+  // front; handleDownloadPendingExport does the actual sequential saves
+  // once "Download PDF" is pressed (same sequential-download pattern the
+  // Compressor's "Download All" uses, rather than introducing a zip
+  // dependency this project doesn't have).
   const handleExportEachSeparately = async () => {
     setPdfExportChoiceVisible(false);
     setPdfEditorExporting(true);
     try {
-      let last = null;
+      const files = [];
       for (const container of pdfContainers) {
-        last = await exportOneContainer(container);
+        files.push(await exportOneContainer(container));
       }
-      maybeShowToolsDownloadInterstitial(false, last);
+      await maybeShowToolsDownloadInterstitial(false, files);
       triggerHaptic('success');
     } catch (e) {
       console.warn('Batch export failed:', e);
@@ -12860,8 +12975,7 @@ function App() {
         }
       }
       const bytes = await outDoc.save();
-      const uri = await savePdfBytes(bytes, 'combined.pdf');
-      maybeShowToolsDownloadInterstitial(false, { uri, filename: 'combined.pdf' });
+      await maybeShowToolsDownloadInterstitial(false, [{ bytes, filename: 'combined.pdf' }]);
       triggerHaptic('success');
       setPdfCombineOrderVisible(false);
     } catch (e) {
@@ -20578,7 +20692,14 @@ function App() {
                           accessibilityState={{ disabled: pdfCompressing, busy: pdfCompressing, selected: isPdfCompressActive }}
                         >
                           {pdfCompressing ? (
-                            <ActivityIndicator color={isPdfCompressActive ? '#FFFFFF' : toolsTheme.textSecondary} size="small" />
+                            <>
+                              <ActivityIndicator color={isPdfCompressActive ? '#FFFFFF' : toolsTheme.textSecondary} size="small" />
+                              {pdfCompressProgress && (
+                                <Text style={{ color: isPdfCompressActive ? '#FFFFFF' : toolsTheme.text, fontSize: 12, fontWeight: '600' }}>
+                                  {pdfCompressProgress.done}/{pdfCompressProgress.total}
+                                </Text>
+                              )}
+                            </>
                           ) : (
                             <>
                               <CompressIconSVG color={isPdfCompressActive ? '#FFFFFF' : toolsTheme.textSecondary} size={14} />
@@ -21651,7 +21772,7 @@ function App() {
                 {pdfContainerSelectModeTool === 'compress' && pdfSelectedContainerIds.length > 1 ? `Compress ${pdfSelectedContainerIds.length} PDFs` : 'Compress PDF'}
               </Text>
               <Text style={styles.confirmSubText}>Choose a quality level:</Text>
-              <View style={{ width: '100%', gap: 8, marginTop: 4, marginBottom: 16 }}>
+              <View style={{ width: '100%', gap: 8, marginTop: 4, marginBottom: pdfCompressQuality === 'custom' ? 8 : 16 }}>
                 {Object.entries(PDF_COMPRESS_PRESETS).map(([key, preset]) => (
                   <BouncyButton
                     key={key}
@@ -21672,6 +21793,61 @@ function App() {
                     {pdfCompressQuality === key && <Text style={{ color: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', fontSize: 15, fontWeight: '800' }}>✓</Text>}
                   </BouncyButton>
                 ))}
+                <BouncyButton
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                    padding: 12, borderRadius: 12, borderWidth: 1.5,
+                    borderColor: pdfCompressQuality === 'custom' ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                    backgroundColor: pdfCompressQuality === 'custom' ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
+                  }}
+                  onPress={() => setPdfCompressQuality('custom')}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: pdfCompressQuality === 'custom' }}
+                >
+                  <View>
+                    <Text style={{ color: theme.text, fontSize: 13.5, fontWeight: '700' }}>Custom</Text>
+                    <Text style={{ color: theme.textSecondary, fontSize: 11.5, marginTop: 2 }}>Pick your own target size</Text>
+                  </View>
+                  {pdfCompressQuality === 'custom' && <Text style={{ color: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', fontSize: 15, fontWeight: '800' }}>✓</Text>}
+                </BouncyButton>
+                {pdfCompressQuality === 'custom' && (
+                  <View style={{ paddingLeft: 4 }}>
+                    <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: theme.border, overflow: 'hidden', alignSelf: 'flex-start', marginBottom: 10 }}>
+                      {[{ key: 'page', label: 'Per Page' }, { key: 'whole', label: 'Whole Document' }].map((opt) => (
+                        <BouncyButton
+                          key={opt.key}
+                          style={{
+                            paddingHorizontal: 12, paddingVertical: 6,
+                            backgroundColor: pdfCompressCustomMode === opt.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
+                          }}
+                          onPress={() => setPdfCompressCustomMode(opt.key)}
+                          accessibilityRole="button"
+                          accessibilityLabel={opt.label}
+                          accessibilityState={{ selected: pdfCompressCustomMode === opt.key }}
+                        >
+                          <Text style={{ color: pdfCompressCustomMode === opt.key ? '#FFFFFF' : theme.text, fontSize: 11.5, fontWeight: '700' }}>{opt.label}</Text>
+                        </BouncyButton>
+                      ))}
+                    </View>
+                    <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>
+                      {pdfCompressCustomMode === 'whole' ? 'Target Size for the Whole PDF (KB)' : tt('customSizeLabel')}
+                    </Text>
+                    <FocusableTextInput
+                      style={styles.formInput}
+                      placeholder={tt('customSizePlaceholder')}
+                      placeholderTextColor="#94A3B8"
+                      value={pdfCompressCustomKB}
+                      onChangeText={(t) => setPdfCompressCustomKB(t.replace(/[^0-9]/g, ''))}
+                      keyboardType="number-pad"
+                      accessibilityLabel={pdfCompressCustomMode === 'whole' ? 'Custom target file size in KB, for the whole document' : 'Custom target file size in KB, per page'}
+                    />
+                    <Text style={{ color: theme.textSecondary, fontSize: 10.5, marginTop: 4 }}>
+                      {pdfCompressCustomMode === 'whole'
+                        ? `Divided evenly across however many pages the document has when compressed.`
+                        : 'Applies per page, not to the whole document.'}
+                    </Text>
+                  </View>
+                )}
               </View>
               <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
                 <BouncyButton
@@ -21682,12 +21858,17 @@ function App() {
                   <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD' }]}
+                  style={[
+                    styles.confirmDeleteBtn,
+                    { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD' },
+                    pdfCompressQuality === 'custom' && !pdfCompressCustomKB && { opacity: 0.5 }
+                  ]}
                   onPress={() => {
                     const ids = pdfContainerSelectModeTool === 'compress' ? pdfSelectedContainerIds : undefined;
                     setPdfCompressOptionsVisible(false);
-                    handleCompressPdf(pdfCompressQuality, ids);
+                    handleCompressPdf(pdfCompressQuality, ids, pdfCompressCustomKB, pdfCompressCustomMode);
                   }}
+                  disabled={pdfCompressQuality === 'custom' && !pdfCompressCustomKB}
                   accessibilityRole="button"
                 >
                   <Text style={styles.confirmDeleteText}>Compress</Text>
@@ -23428,6 +23609,24 @@ function App() {
 
             <View style={{ padding: 18 }}>
               <View>
+                {donateModalContext === 'tools' && toolsInterstitialSlim ? (
+                  // SLIM MODE - collapses the whole donation ask down to
+                  // one line with an inline link back to the full version,
+                  // once the user's said they don't want to see it today.
+                  // Toggling this only ever changes THIS block's content -
+                  // never a second Modal stacked on top of this one, which
+                  // is exactly the kind of stacking bug the comment above
+                  // this whole Modal already warns about (the interstitial
+                  // once portalled behind Tools for the same reason).
+                  <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 18, marginBottom: 4 }}>
+                    Thanks for using this tool - you can{' '}
+                    <Text style={{ color: theme.accent, fontWeight: '700' }} onPress={() => setToolsInterstitialSlim(false)}>
+                      donate here
+                    </Text>
+                    {' '}if it saved you some time.
+                  </Text>
+                ) : (
+                <>
                 <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 18, marginBottom: 16 }}>
                   {donateModalContext === 'tools'
                     ? "This tool is completely free, with every feature included - no premium tier, no locked features, no account required. If it saved you some time, a donation helps keep it free for everyone."
@@ -23578,6 +23777,8 @@ function App() {
                     </BouncyButton>
                   </View>
                 )}
+                </>
+                )}
 
                 {donateModalContext === 'tools' && (
                   <>
@@ -23597,15 +23798,47 @@ function App() {
                       <BouncyButton onPress={handleCloseDonateModal} accessibilityRole="button">
                         <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Dismiss</Text>
                       </BouncyButton>
-                      <BouncyButton onPress={handleDismissToolsInterstitialToday} accessibilityRole="button">
-                        <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Don't show again today</Text>
-                      </BouncyButton>
+                      {/* Only meaningful while donation content is actually
+                          showing - slim mode has already made this choice,
+                          so there's nothing to check here in that state. */}
+                      {!toolsInterstitialSlim && (
+                        <BouncyButton
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                          onPress={handleHideDonationToday}
+                          accessibilityRole="checkbox"
+                          accessibilityLabel="Don't show donation again today"
+                          accessibilityState={{ checked: false }}
+                        >
+                          <View style={{
+                            width: 16, height: 16, borderRadius: 4, borderWidth: 1.5,
+                            borderColor: theme.border, alignItems: 'center', justifyContent: 'center'
+                          }} />
+                          <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>Don't show donation again today</Text>
+                        </BouncyButton>
+                      )}
                     </View>
-                    {/* Export only ever downloads/saves - this is the one
-                        explicit way to actually view the file afterward,
-                        never automatic. Only shown when the thing that
-                        was just downloaded was actually a PDF. */}
-                    {lastExportedPdf && (
+                    {/* Nothing has actually downloaded/saved yet at this
+                        point - Export only ever assembles the file and
+                        gets here; "Download PDF" is what triggers the
+                        real save, and only once that's done does "Open
+                        PDF" appear as a second, separate explicit
+                        action. Dismissing without pressing either one
+                        means nothing gets saved. */}
+                    {pdfPendingExport && (
+                      <BouncyButton
+                        style={{
+                          marginTop: 14, width: '100%', paddingVertical: 12, borderRadius: 99, alignItems: 'center',
+                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD'
+                        }}
+                        onPress={handleDownloadPendingExport}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' }}>
+                          Download PDF{pdfPendingExport.length > 1 ? 's' : ''}
+                        </Text>
+                      </BouncyButton>
+                    )}
+                    {!pdfPendingExport && lastExportedPdf && (
                       <BouncyButton
                         style={{
                           marginTop: 14, width: '100%', paddingVertical: 12, borderRadius: 99, alignItems: 'center',
