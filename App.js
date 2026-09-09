@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 714;
+const BUILD_NUMBER = 715;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7273,6 +7273,7 @@ function App() {
   // category as any future whole-document tool.
   const [pdfCompressOptionsVisible, setPdfCompressOptionsVisible] = useState(false);
   const [pdfCompressQuality, setPdfCompressQuality] = useState('medium'); // 'low' | 'medium' | 'high'
+  const [pdfCompressUndoConfirmVisible, setPdfCompressUndoConfirmVisible] = useState(false);
   const [pdfMoreToolsMenuVisible, setPdfMoreToolsMenuVisible] = useState(false);
   const pdfMoreToolsButtonRef = useRef(null);
   const [pdfMoreToolsMenuPosition, setPdfMoreToolsMenuPosition] = useState({ top: 140, left: 20 });
@@ -7387,6 +7388,11 @@ function App() {
   const [pdfReviewChangesVisible, setPdfReviewChangesVisible] = useState(false);
 
   const pdfEditorHasPendingChanges = pdfEditorHistory.length > 0;
+  // Compress's toolbar pill only shows purple/filled once a compress has
+  // actually been applied and is still pending (unsaved) - i.e. it's the
+  // most recent operation on the undo stack. Once Undo pops it or Save
+  // Changes clears the stack, it goes back to its plain outline look.
+  const isPdfCompressActive = pdfEditorHistory.length > 0 && pdfEditorHistory[pdfEditorHistory.length - 1].label === 'Compress PDF';
 
   // Call this at the very start of any operation that mutates
   // pdfEditorSourceDocs/pdfEditorSourceMeta/pdfEditorPages, before making
@@ -19686,6 +19692,7 @@ function App() {
               {activeTool === 'pdfEditor' && (
                 <View style={{ gap: 20 }}>
                 <View style={{ gap: 14 }}>
+                  {pdfEditorPages.length === 0 && (
                   <View style={{ gap: 14 }}>
                   <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
                     {tt('pdfEditorIntro')}
@@ -19725,6 +19732,7 @@ function App() {
                     </View>
                   )}
                   </View>
+                  )}
 
                   <View style={{ gap: 14 }}>
                   {pdfEditorPages.length > 0 && pdfSelectModeTool && (
@@ -19757,27 +19765,40 @@ function App() {
                     </View>
                   )}
                   {pdfEditorPages.length > 0 && !pdfSelectModeTool && (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, alignItems: 'center' }}>
                       <BouncyButton
                         style={{
                           flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
-                          borderRadius: 99, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD', opacity: pdfCompressing ? 0.6 : 1
+                          borderRadius: 99, opacity: pdfCompressing ? 0.6 : 1,
+                          backgroundColor: isPdfCompressActive ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent',
+                          borderWidth: isPdfCompressActive ? 0 : 1,
+                          borderColor: toolsTheme.border
                         }}
                         onPress={() => setPdfCompressOptionsVisible(true)}
                         disabled={pdfCompressing}
                         accessibilityRole="button"
                         accessibilityLabel="Compress this PDF"
-                        accessibilityState={{ disabled: pdfCompressing, busy: pdfCompressing }}
+                        accessibilityState={{ disabled: pdfCompressing, busy: pdfCompressing, selected: isPdfCompressActive }}
                       >
                         {pdfCompressing ? (
-                          <ActivityIndicator color="#FFFFFF" size="small" />
+                          <ActivityIndicator color={isPdfCompressActive ? '#FFFFFF' : toolsTheme.textSecondary} size="small" />
                         ) : (
                           <>
-                            <CompressIconSVG color="#FFFFFF" size={14} />
-                            <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>Compress</Text>
+                            <CompressIconSVG color={isPdfCompressActive ? '#FFFFFF' : toolsTheme.textSecondary} size={14} />
+                            <Text style={{ color: isPdfCompressActive ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Compress</Text>
                           </>
                         )}
                       </BouncyButton>
+                      {isPdfCompressActive && (
+                        <BouncyButton
+                          style={{ width: 26, height: 26, borderRadius: 13, borderWidth: 1, borderColor: '#EF4444', alignItems: 'center', justifyContent: 'center' }}
+                          onPress={() => setPdfCompressUndoConfirmVisible(true)}
+                          accessibilityRole="button"
+                          accessibilityLabel="Undo compress"
+                        >
+                          <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '800', lineHeight: 14 }}>✕</Text>
+                        </BouncyButton>
+                      )}
                       {/* No separate "Reorder" toggle anymore - every page
                           thumbnail (rail tile or list tile) always shows
                           its own up/down + typeable-number pill, see
@@ -19808,26 +19829,17 @@ function App() {
                     </View>
                   )}
 
-                  {pdfEditorPages.length > 0 && (
+                  {!isWebWide && pdfEditorPages.length > 0 && pdfEditorHasPendingChanges && (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 4 }}>
                       <BouncyButton
-                        style={{ alignSelf: 'flex-start' }}
-                        onPress={() => setClearFilesConfirmTarget('pdfEditor')}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                        onPress={handleUndoPdfEdit}
                         accessibilityRole="button"
+                        accessibilityLabel="Undo last change"
                       >
-                        <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>{tt('clearAll')}</Text>
+                        <RevertIconSVG color={toolsTheme.accent} size={14} />
+                        <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '600' }}>Undo</Text>
                       </BouncyButton>
-                      {pdfEditorHasPendingChanges && (
-                        <BouncyButton
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                          onPress={handleUndoPdfEdit}
-                          accessibilityRole="button"
-                          accessibilityLabel="Undo last change"
-                        >
-                          <RevertIconSVG color={toolsTheme.accent} size={14} />
-                          <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '600' }}>Undo</Text>
-                        </BouncyButton>
-                      )}
                     </View>
                   )}
 
@@ -19855,13 +19867,20 @@ function App() {
                       const highResPages = pdfFullscreenHighResCache[activePage.sourceFileIndex];
                       const highResUri = highResPages ? highResPages[activePage.sourcePageIndex] : null;
                       const displayUri = highResUri || activePage.thumbnailUri;
+                      // Fills as much of the viewport height as this
+                      // layout reasonably can - the image itself still
+                      // uses resizeMode="contain" inside this box, so it
+                      // always keeps its own aspect ratio and just grows
+                      // to fit whichever dimension (height here, almost
+                      // always) is the tighter constraint.
+                      const pdfPreviewPaneHeight = Math.max(460, Dimensions.get('window').height - 260);
                       return (
-                        <View style={{ flexDirection: 'row', gap: 16, marginTop: 10 }}>
+                        <View style={{ flexDirection: 'row', gap: 16, marginTop: 10, height: pdfPreviewPaneHeight }}>
                           {/* MAIN PREVIEW PANE - the big single-page view;
                               per-page tools (rotate, extract, insert,
                               delete, and the crop select-mode pill) all
                               act on whichever page is showing here. */}
-                          <View style={{ flex: 1, backgroundColor: toolsTheme.surface, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border, padding: 16, minHeight: 480 }}>
+                          <View style={{ flex: 1, backgroundColor: toolsTheme.surface, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border, padding: 16 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                               <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
                                 Page {activeIndex + 1} of {pdfEditorPages.length}
@@ -19874,7 +19893,7 @@ function App() {
                               )}
                             </View>
 
-                            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: toolsTheme.bg, borderRadius: 10, overflow: 'hidden', minHeight: 380, position: 'relative' }}>
+                            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: toolsTheme.bg, borderRadius: 10, overflow: 'hidden', position: 'relative' }}>
                               {pdfSelectModeTool && (
                                 <BouncyButton
                                   onPress={() => togglePdfPageSelected(activePage.id)}
@@ -19949,7 +19968,7 @@ function App() {
                               (top-right, always visible) for a precise
                               typed position. */}
                           <View style={{ width: 168 }}>
-                            <ScrollView style={{ maxHeight: 560 }} contentContainerStyle={{ gap: 10 }}>
+                            <ScrollView style={{ height: pdfPreviewPaneHeight }} contentContainerStyle={{ gap: 10 }}>
                               {pdfEditorPages.map((page, index) => {
                                 const isNewSourceBoundary = index > 0 && page.sourceFileIndex !== pdfEditorPages[index - 1].sourceFileIndex;
                                 const isActive = page.id === activePage.id;
@@ -20495,6 +20514,51 @@ function App() {
           </View>
         </View>
       </Modal>
+
+      {/* PDF EDITOR - UNDO COMPRESS CONFIRM. The Compress pill's "x" -
+          compress rebuilds the whole document, so this is worth a
+          confirmation rather than an instant, silent undo. */}
+      {pdfCompressUndoConfirmVisible && (
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfCompressUndoConfirmVisible(false)}>
+          <View
+            style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => setPdfCompressUndoConfirmVisible(false)}
+          >
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+              )
+            )}
+            <View
+              style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+              onStartShouldSetResponder={() => Platform.OS === 'web'}
+              onResponderRelease={() => {}}
+            >
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Undo Compress?</Text>
+              <Text style={styles.confirmSubText}>This reverts the PDF back to how it was before compressing.</Text>
+              <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                  onPress={() => setPdfCompressUndoConfirmVisible(false)}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+                </BouncyButton>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
+                  onPress={() => { setPdfCompressUndoConfirmVisible(false); handleUndoPdfEdit(); }}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.confirmDeleteText}>Undo</Text>
+                </BouncyButton>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* PDF EDITOR - COMPRESS OPTIONS. Compress is a whole-PDF effect,
           so selecting it opens this quality picker rather than running
