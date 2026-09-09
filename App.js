@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 712;
+const BUILD_NUMBER = 713;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7093,6 +7093,8 @@ function App() {
   const [pdfCompressing, setPdfCompressing] = useState(false);
   const [pdfReorderModeActive, setPdfReorderModeActive] = useState(false);
   const [pdfMoreToolsMenuVisible, setPdfMoreToolsMenuVisible] = useState(false);
+  const pdfMoreToolsButtonRef = useRef(null);
+  const [pdfMoreToolsMenuPosition, setPdfMoreToolsMenuPosition] = useState({ top: 140, left: 20 });
   // Generic multi-select mode for per-page tools (Crop is the first,
   // built so future per-page tools reuse the same selection UI rather
   // than each inventing their own). null when inactive; a string tool
@@ -11730,8 +11732,8 @@ function App() {
 
     if (!isImage) {
       const thumbnails = Platform.OS === 'web'
-        ? await generateWebPdfThumbnails(uri)
-        : await generateNativePdfThumbnails(uri);
+        ? await generateWebPdfThumbnails(uri, 1.5)
+        : await generateNativePdfThumbnails(uri, 900);
       setPdfEditorPages((prev) => prev.map((p) => {
         if (p.sourceFileIndex !== sourceIndex) return p;
         const t = thumbnails ? thumbnails[p.sourcePageIndex] : null;
@@ -19522,18 +19524,29 @@ function App() {
                           {pdfReorderModeActive ? 'Done Reordering' : 'Reorder'}
                         </Text>
                       </BouncyButton>
+                      <View ref={pdfMoreToolsButtonRef} collapsable={false}>
                       <BouncyButton
                         style={{
                           flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 14,
                           borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border
                         }}
-                        onPress={() => setPdfMoreToolsMenuVisible(true)}
+                        onPress={() => {
+                          if (pdfMoreToolsButtonRef.current) {
+                            pdfMoreToolsButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
+                              setPdfMoreToolsMenuPosition({ top: pageY + height + 6, left: pageX });
+                              setPdfMoreToolsMenuVisible(true);
+                            });
+                          } else {
+                            setPdfMoreToolsMenuVisible(true);
+                          }
+                        }}
                         accessibilityRole="button"
                         accessibilityLabel="More PDF tools"
                       >
                         <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>More Tools</Text>
                         <ChevronDownSVG color={toolsTheme.textSecondary} size={13} />
                       </BouncyButton>
+                      </View>
                     </View>
                   )}
 
@@ -19584,7 +19597,7 @@ function App() {
                       <View
                         key={page.id}
                         style={{
-                          width: '100%', backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 8,
+                          width: '100%', backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 8, position: 'relative',
                           borderWidth: pdfDragIndex === index ? 2 : (isNewSourceBoundary ? 2 : 1),
                           borderColor: pdfDragIndex === index
                             ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6')
@@ -19631,18 +19644,34 @@ function App() {
                           )}
                           {pdfSelectModeTool && (
                             <View style={{
-                              position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11,
-                              alignItems: 'center', justifyContent: 'center',
-                              backgroundColor: pdfSelectedPageIds.includes(page.id) ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'rgba(0,0,0,0.4)',
-                              borderWidth: pdfSelectedPageIds.includes(page.id) ? 0 : 1.5, borderColor: '#FFFFFF'
+                              position: 'absolute', top: 10, right: 10, paddingVertical: 6, paddingHorizontal: 12,
+                              borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 5,
+                              backgroundColor: pdfSelectedPageIds.includes(page.id)
+                                ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6')
+                                : 'rgba(0,0,0,0.55)',
+                              borderWidth: pdfSelectedPageIds.includes(page.id) ? 0 : 1.5,
+                              borderColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'
                             }}>
                               {pdfSelectedPageIds.includes(page.id) && (
-                                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '800' }}>✓</Text>
+                                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>✓</Text>
                               )}
+                              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                                {pdfSelectedPageIds.includes(page.id) ? `Page ${index + 1} Selected` : `Select Page ${index + 1}`}
+                              </Text>
                             </View>
                           )}
                         </View>
                         </BouncyButton>
+                        {!pdfReorderModeActive && (
+                          <View style={{
+                            position: 'absolute', top: -8, left: -8, minWidth: 26, height: 26, borderRadius: 13,
+                            paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center',
+                            backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                            borderWidth: 2, borderColor: toolsTheme.surface
+                          }}>
+                            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>{index + 1}</Text>
+                          </View>
+                        )}
                         {pdfReorderModeActive ? (
                           <FocusableTextInput
                             style={{
@@ -19656,11 +19685,7 @@ function App() {
                             onSubmitEditing={(e) => handleReorderByTypedPosition(page.id, parseInt(e.nativeEvent.text, 10))}
                             accessibilityLabel={`Move page to position, currently ${index + 1}`}
                           />
-                        ) : (
-                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 10, textAlign: 'center', marginTop: 4 }}>
-                            {index + 1}
-                          </Text>
-                        )}
+                        ) : null}
                         {pdfReorderModeActive ? (
                           <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 4 }}>
                             <BouncyButton
@@ -20239,7 +20264,7 @@ function App() {
             onResponderRelease={() => setPdfMoreToolsMenuVisible(false)}
           >
             <View style={{
-              position: 'absolute', top: Platform.OS === 'web' ? 140 : 160, alignSelf: 'center',
+              position: 'absolute', top: pdfMoreToolsMenuPosition.top, left: pdfMoreToolsMenuPosition.left,
               backgroundColor: toolsTheme.surface, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border,
               minWidth: 200, paddingVertical: 6, overflow: 'hidden'
             }}>
