@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 728;
+const BUILD_NUMBER = 730;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -4422,6 +4422,17 @@ const getFileSizeBytes = async (uri) => {
 // fall through to JPEG for anything else) - the extra formats below are
 // purely to show an accurate original-format label rather than silently
 // mislabeling e.g. a HEIC photo as "JPEG".
+// Shared by every "here's what's about to happen" download-confirm
+// modal across Tools (Compressor, Converter, PDF Editor) - one
+// formatting function so a size always reads the same way everywhere
+// rather than each caller rolling its own KB/MB rounding.
+const formatBytes = (n) => {
+  if (n == null) return '—';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+};
+
 const detectImageFormat = (mimeType, uri) => {
   const source = (mimeType || uri || '').toLowerCase();
   if (source.includes('png')) return 'PNG';
@@ -4524,6 +4535,16 @@ const convertImageFormat = async (uri, format) => {
 };
 
 const COMPRESSOR_MAX_ITERATIONS = 8;
+
+// PDF Editor soft limits - none of these block anything outright, they
+// just warn before a genuinely large operation starts (upfront, where a
+// decision is still useful) or after the fact (where warning is all
+// that's left to do, since the cost already happened). Deliberately
+// generous rather than restrictive - the goal is "know what you're
+// getting into," not "stop the user from doing legitimate work."
+const PDF_LARGE_UPLOAD_WARN_BYTES = 40 * 1024 * 1024; // 40MB of newly-picked PDFs in one batch
+const PDF_MANY_CONTAINERS_WARN_COUNT = 5; // total containers that would be open at once, including the new ones
+const PDF_LARGE_PAGE_COUNT_WARN = 150; // pages in a single document, checked after it's already loaded (nothing left to warn about beforehand)
 const COMPRESSOR_MIN_QUALITY = 0.35;
 const COMPRESSOR_MIN_SCALE = 0.3;
 
@@ -7468,6 +7489,15 @@ function App() {
   // Captured after a successful PDF export so the post-export interstitial
   // can offer an explicit "Open PDF" button - export itself only ever
   // downloads/saves, never opens anything on its own.
+  // Shared by Compressor/Converter/QR's download confirm - same idea as
+  // PDF Editor's export-confirm modal (show what's about to happen
+  // before it happens), generalized since none of these three need
+  // PDF's full edit-history summary, just a title + a couple of rows
+  // and/or a short note, plus whatever function actually runs the
+  // download once confirmed.
+  const [toolsDownloadConfirmVisible, setToolsDownloadConfirmVisible] = useState(false);
+  const [toolsDownloadConfirmInfo, setToolsDownloadConfirmInfo] = useState(null); // { title, rows: [{label,value}], note, onConfirm }
+
   const [lastExportedPdf, setLastExportedPdf] = useState(null); // { uri, filename } | null - set once the pending export below has actually been downloaded/shared
   const [pdfPendingExport, setPdfPendingExport] = useState(null); // [{ bytes, filename }] | null - assembled but NOT yet saved; the interstitial's "Download PDF" button is what actually triggers the save
   const [pdfCombineOrderVisible, setPdfCombineOrderVisible] = useState(false);
@@ -11999,7 +12029,7 @@ function App() {
     }
   };
 
-  const handleDownloadAllCompressed = async () => {
+  const runDownloadAllCompressed = async () => {
     const done = compressorFiles.filter((f) => f.status === 'done' && f.resultUri);
     for (const f of done) {
       await handleDownloadCompressedImage(f);
@@ -12010,9 +12040,37 @@ function App() {
     }
   };
 
-  const handleSingleCompressedDownload = async (file) => {
+  const handleDownloadAllCompressed = () => {
+    const done = compressorFiles.filter((f) => f.status === 'done' && f.resultUri);
+    if (done.length === 0) return;
+    const totalOriginal = done.reduce((sum, f) => sum + (f.originalSize || 0), 0);
+    const totalResult = done.reduce((sum, f) => sum + (f.resultSize || 0), 0);
+    setToolsDownloadConfirmInfo({
+      title: `Download ${done.length} Image${done.length > 1 ? 's' : ''}?`,
+      rows: [
+        { label: 'Original', value: formatBytes(totalOriginal) },
+        { label: 'Compressed', value: formatBytes(totalResult) }
+      ],
+      onConfirm: runDownloadAllCompressed
+    });
+    setToolsDownloadConfirmVisible(true);
+  };
+
+  const runSingleCompressedDownload = async (file) => {
     await handleDownloadCompressedImage(file);
     maybeShowToolsDownloadInterstitial(false);
+  };
+
+  const handleSingleCompressedDownload = (file) => {
+    setToolsDownloadConfirmInfo({
+      title: 'Download Image?',
+      rows: [
+        { label: 'Original', value: formatBytes(file.originalSize) },
+        { label: 'Compressed', value: formatBytes(file.resultSize) }
+      ],
+      onConfirm: () => runSingleCompressedDownload(file)
+    });
+    setToolsDownloadConfirmVisible(true);
   };
 
   // TOOLS: Image Converter handlers - same collect-then-process pattern
@@ -12163,12 +12221,21 @@ function App() {
     }
   };
 
-  const handleSingleConvertedDownload = async (file) => {
+  const runSingleConvertedDownload = async (file) => {
     await handleDownloadConvertedImage(file);
     maybeShowToolsDownloadInterstitial(true);
   };
 
-  const handleDownloadAllConverted = async () => {
+  const handleSingleConvertedDownload = (file) => {
+    setToolsDownloadConfirmInfo({
+      title: 'Download Image?',
+      rows: [{ label: 'Format', value: `${file.originalFormat} → ${converterFormat}` }],
+      onConfirm: () => runSingleConvertedDownload(file)
+    });
+    setToolsDownloadConfirmVisible(true);
+  };
+
+  const runDownloadAllConverted = async () => {
     const done = converterFiles.filter((f) => f.status === 'done' && f.resultUri);
     for (const f of done) {
       await handleDownloadConvertedImage(f);
@@ -12177,6 +12244,18 @@ function App() {
       triggerHaptic('success');
       maybeShowToolsDownloadInterstitial(true);
     }
+  };
+
+  const handleDownloadAllConverted = () => {
+    const done = converterFiles.filter((f) => f.status === 'done' && f.resultUri);
+    if (done.length === 0) return;
+    const fromFormats = [...new Set(done.map((f) => f.originalFormat))];
+    setToolsDownloadConfirmInfo({
+      title: `Download ${done.length} Image${done.length > 1 ? 's' : ''}?`,
+      rows: [{ label: 'Format', value: `${fromFormats.join('/')} → ${converterFormat}` }],
+      onConfirm: runDownloadAllConverted
+    });
+    setToolsDownloadConfirmVisible(true);
   };
 
   // TOOLS: PDF Editor handlers. Each uploaded PDF (or set of photos added
@@ -12247,6 +12326,9 @@ function App() {
       return null;
     }
     const pageCount = doc.getPageCount();
+    if (pageCount > PDF_LARGE_PAGE_COUNT_WARN) {
+      showToast(`Loaded - ${pageCount} pages is a lot, things may run slower than usual.`);
+    }
     const containerId = `container_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const newPages = Array.from({ length: pageCount }, (_, i) => ({
       id: `${containerId}_${i}_${Math.random().toString(36).slice(2)}`,
@@ -12370,8 +12452,30 @@ function App() {
     }
     const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', multiple: true, copyToCacheDirectory: true });
     if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+    const incomingSize = result.assets.reduce((sum, a) => sum + (a.size || 0), 0);
+    const existingSize = pdfContainers.reduce((sum, c) => sum + (c.originalSize || 0), 0);
+    const resultingCount = pdfContainers.length + result.assets.length;
+    const sizeIsLarge = incomingSize > PDF_LARGE_UPLOAD_WARN_BYTES;
+    const countIsLarge = resultingCount > PDF_MANY_CONTAINERS_WARN_COUNT;
+
+    if (sizeIsLarge || countIsLarge) {
+      const reasons = [];
+      if (sizeIsLarge) reasons.push(`${formatBytes(incomingSize)} of new PDFs`);
+      if (countIsLarge) reasons.push(`${resultingCount} PDFs open at once`);
+      showAppAlert(
+        'Large Upload',
+        `This is ${reasons.join(' and ')}${existingSize > 0 ? ` (plus ${formatBytes(existingSize)} already loaded)` : ''}. It may take a while to process and use significant memory. Continue?`,
+        [{ text: 'Cancel' }, { text: 'Continue', onPress: () => loadPickedPdfAssets(result.assets) }]
+      );
+      return;
+    }
+    await loadPickedPdfAssets(result.assets);
+  };
+
+  const loadPickedPdfAssets = async (assets) => {
     setPdfEditorLoading(true);
-    for (const asset of result.assets) {
+    for (const asset of assets) {
       // Each picked file becomes its own container, stacked after
       // whatever's already uploaded - asset.name is the original
       // filename DocumentPicker reports, used as that container's label.
@@ -12513,6 +12617,14 @@ function App() {
     pushPdfHistorySnapshot('Remove PDF');
     triggerHaptic('warning');
     setPdfContainers((prev) => prev.filter((c) => c.id !== containerId));
+    // The high-res cache isn't keyed by container, only by page position
+    // within whichever container happens to be active - clearing it here
+    // too (not just in clearAllPdfContainers) closes a real leak: without
+    // this, removing ONE container while it wasn't the active one left
+    // any high-res renders it had generated sitting in memory
+    // indefinitely, orphaned with no container left to ever reference
+    // them again.
+    setPdfFullscreenHighResCache({});
     showToast('PDF removed.');
   };
 
@@ -13290,7 +13402,7 @@ function App() {
 
   const currentQrValue = () => buildQrContentString(qrContentType, qrFields);
 
-  const handleDownloadQrPng = async () => {
+  const runDownloadQrPng = async () => {
     const value = currentQrValue();
     if (!value) {
       showToast('Fill in the fields first.');
@@ -13347,6 +13459,20 @@ function App() {
     }
   };
 
+  const handleDownloadQrPng = () => {
+    const value = currentQrValue();
+    if (!value) {
+      showToast('Fill in the fields first.');
+      return;
+    }
+    setToolsDownloadConfirmInfo({
+      title: 'Download QR Code?',
+      note: "Scan it once to confirm it opens the right link before you share or print it - once downloaded there's no record of what it was supposed to point to.",
+      onConfirm: runDownloadQrPng
+    });
+    setToolsDownloadConfirmVisible(true);
+  };
+
   // SVG export is web-only - react-native-svg renders genuine DOM <svg>
   // elements on web, so the on-screen ref can be serialized directly via
   // XMLSerializer (guaranteed pixel-identical to what's shown, since it
@@ -13355,7 +13481,7 @@ function App() {
   // vector export stays a web-only feature, which matches its real use
   // case anyway (printing at any size), not something native users
   // typically need.
-  const handleDownloadQrSvg = () => {
+  const runDownloadQrSvg = () => {
     const value = currentQrValue();
     if (!value) {
       showToast('Fill in the fields first.');
@@ -13381,6 +13507,20 @@ function App() {
       console.warn('QR SVG export failed:', e);
       showToast('Could not download SVG - try again.');
     }
+  };
+
+  const handleDownloadQrSvg = () => {
+    const value = currentQrValue();
+    if (!value) {
+      showToast('Fill in the fields first.');
+      return;
+    }
+    setToolsDownloadConfirmInfo({
+      title: 'Download QR Code?',
+      note: "Scan it once to confirm it opens the right link before you share or print it - once downloaded there's no record of what it was supposed to point to.",
+      onConfirm: runDownloadQrSvg
+    });
+    setToolsDownloadConfirmVisible(true);
   };
 
   const pickMultipleShowcaseImages = async () => {
@@ -20816,6 +20956,23 @@ function App() {
                     </View>
                   )}
 
+                  {/* Ambient heads-up once cumulative loaded PDF size gets
+                      large across the session - not a blocking dialog,
+                      just a standing reminder to export/clear what's
+                      already been dealt with, since nothing here evicts
+                      memory automatically once a PDF's been loaded. */}
+                  {(() => {
+                    const totalLoadedSize = pdfContainers.reduce((sum, c) => sum + (c.originalSize || 0), 0);
+                    if (totalLoadedSize <= PDF_LARGE_UPLOAD_WARN_BYTES * 2) return null;
+                    return (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(245,158,11,0.12)', borderRadius: 10, padding: 10, marginTop: 4 }}>
+                        <Text style={{ color: '#F59E0B', fontSize: 11.5, flex: 1 }}>
+                          {formatBytes(totalLoadedSize)} loaded across {pdfContainers.length} PDF{pdfContainers.length === 1 ? '' : 's'} - export or clear ones you're done with to free up memory.
+                        </Text>
+                      </View>
+                    );
+                  })()}
+
                   {/* CONTAINER TABS - one uploaded PDF (or photo set) per
                       container, shown as its own tab once there's more
                       than one - the "x" removes just that container
@@ -21066,6 +21223,22 @@ function App() {
                               {containerPages.map((page, index) => {
                                 const isNewSourceBoundary = index > 0 && page.sourceFileIndex !== containerPages[index - 1].sourceFileIndex;
                                 const isActive = page.id === activePage.id;
+                                // Not true viewport-based virtualization
+                                // (that would need scroll-position
+                                // tracking, which risks interacting badly
+                                // with the drag-to-reorder handlers below)
+                                // - this is a simpler proxy that still
+                                // catches the real cost for a large
+                                // document: decoding and keeping resident
+                                // potentially hundreds of thumbnail images
+                                // at once. Pages far from whichever one is
+                                // currently active show a plain number
+                                // instead of decoding their image; jumping
+                                // to that area (which changes the active
+                                // page) brings the real thumbnails back.
+                                // Small/typical documents never hit this
+                                // at all - every page renders normally.
+                                const isNearActive = containerPages.length <= 60 || Math.abs(index - activeIndex) <= 40;
                                 return (
                                   <View
                                     key={page.id}
@@ -21096,8 +21269,10 @@ function App() {
                                       <View style={{ width: '100%', aspectRatio: 0.75, borderRadius: 6, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                                         {page.thumbnailLoading ? (
                                           <ActivityIndicator color={toolsTheme.accent} size="small" />
-                                        ) : page.thumbnailUri ? (
+                                        ) : page.thumbnailUri && isNearActive ? (
                                           <Image source={{ uri: page.thumbnailUri }} style={{ width: '100%', height: '100%', transform: [{ rotate: `${page.rotation}deg` }] }} resizeMode="contain" />
+                                        ) : page.thumbnailUri ? (
+                                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, fontWeight: '700' }}>{index + 1}</Text>
                                         ) : (
                                           <PdfIconSVG size={20} color={toolsTheme.textSecondary} />
                                         )}
@@ -22010,16 +22185,69 @@ function App() {
         </Modal>
       )}
 
+      {/* TOOLS DOWNLOAD CONFIRM - shared by Compressor/Converter/QR, same
+          "here's what's about to happen before it happens" idea as PDF
+          Editor's export confirm below, just generic (title + optional
+          rows + optional note) since none of these three need a full
+          edit-history summary. */}
+      {toolsDownloadConfirmVisible && toolsDownloadConfirmInfo && (
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setToolsDownloadConfirmVisible(false)}>
+          <View
+            style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => setToolsDownloadConfirmVisible(false)}
+          >
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+              )
+            )}
+            <View
+              style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+              onStartShouldSetResponder={() => Platform.OS === 'web'}
+              onResponderRelease={() => {}}
+            >
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>{toolsDownloadConfirmInfo.title}</Text>
+              {toolsDownloadConfirmInfo.note && (
+                <Text style={styles.confirmSubText}>{toolsDownloadConfirmInfo.note}</Text>
+              )}
+              {toolsDownloadConfirmInfo.rows && toolsDownloadConfirmInfo.rows.length > 0 && (
+                <View style={{ width: '100%', backgroundColor: theme.surface, borderRadius: 10, padding: 12, marginTop: 8, marginBottom: 16, gap: 8 }}>
+                  {toolsDownloadConfirmInfo.rows.map((row) => (
+                    <View key={row.label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={{ color: theme.textSecondary, fontSize: 11.5, fontWeight: '600' }}>{row.label}</Text>
+                      <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{row.value}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: toolsDownloadConfirmInfo.note && !toolsDownloadConfirmInfo.rows ? 16 : 0 }}>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                  onPress={() => setToolsDownloadConfirmVisible(false)}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+                </BouncyButton>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD' }]}
+                  onPress={() => { const info = toolsDownloadConfirmInfo; setToolsDownloadConfirmVisible(false); info.onConfirm(); }}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.confirmDeleteText}>Download</Text>
+                </BouncyButton>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
       {/* PDF EDITOR - EXPORT CONFIRM. Shown before every export - lists
           every distinct edit applied this session, and the original vs.
           current file size if Compress was one of them. */}
       {pdfExportConfirmVisible && pdfExportSummary && (() => {
-        const formatBytes = (n) => {
-          if (n == null) return '—';
-          if (n < 1024) return `${n} B`;
-          if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-          return `${(n / (1024 * 1024)).toFixed(2)} MB`;
-        };
         const EDIT_LABEL_TEXT = {
           'Compress PDF': 'Compressed',
           'Add page numbers': 'Page numbers added',
