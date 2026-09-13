@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 730;
+const BUILD_NUMBER = 734;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -4426,6 +4426,17 @@ const getFileSizeBytes = async (uri) => {
 // modal across Tools (Compressor, Converter, PDF Editor) - one
 // formatting function so a size always reads the same way everywhere
 // rather than each caller rolling its own KB/MB rounding.
+// Shared by any loop doing real per-item work across several files/pages
+// in one batch (PDF thumbnail rendering already has its own copy of this
+// inside pdfThumbnails.web.js, for a module that needs to stay
+// self-contained - this one's for everything else in this file that
+// processes multiple items back to back and needs to let the browser
+// paint/respond between them, same reasoning as there: an await on a
+// promise only yields once that promise's own work is done, so without
+// an explicit yield, a tight loop of several expensive operations still
+// runs as one uninterrupted block from the browser's perspective.
+const yieldToBrowser = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 const formatBytes = (n) => {
   if (n == null) return '—';
   if (n < 1024) return `${n} B`;
@@ -4554,9 +4565,21 @@ const compressImageToTarget = async (uri, { targetBytes, maxWidth, maxHeight, fo
     format === 'WEBP' ? ImageManipulator.SaveFormat.WEBP :
     ImageManipulator.SaveFormat.JPEG;
 
-  const originalSize = await new Promise((resolve, reject) => {
-    Image.getSize(uri, (w, h) => resolve({ w, h }), reject);
-  });
+  const originalSize = await Promise.race([
+    new Promise((resolve, reject) => {
+      Image.getSize(uri, (w, h) => resolve({ w, h }), reject);
+    }),
+    // Image.getSize is a callback-based native bridge call, not
+    // something with a documented guarantee that one of resolve/reject
+    // always fires - same shape of risk as the pdf.js worker fetch that
+    // turned out to hang indefinitely (see pdfThumbnails.web.js), just
+    // without concrete evidence this one ever actually has. Cheap
+    // insurance either way: the caller (compressOneFile) already wraps
+    // this whole function in a try/catch that marks just that one file
+    // as failed and moves on, so a timeout here integrates for free
+    // rather than needing its own handling.
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Image.getSize timed out')), 15000))
+  ]);
 
   let quality = 0.9;
   let scale = 1;
@@ -6165,13 +6188,17 @@ function App() {
   // does).
   const [donateModalContext, setDonateModalContext] = useState('portfolio'); // 'portfolio' | 'tools'
   const [toolsInterstitialOfferCompress, setToolsInterstitialOfferCompress] = useState(false);
-  // Slim mode: the interstitial still shows every time (it's never fully
-  // skipped anymore), but with the donation ask collapsed down to one
-  // line with a "donate here" link, once the user has said they don't
-  // want to see the full pitch today. Whichever PDF-Editor Download/Open
-  // button is relevant still shows either way - only the donation
-  // content itself toggles.
+  // Slim mode: decided once, when the interstitial opens, from whatever
+  // was persisted last time - it does NOT change mid-viewing anymore.
+  // Checking "don't show again today" below takes effect starting next
+  // time the interstitial opens, not this one - this popup keeps
+  // showing full donation content regardless of what gets checked here.
   const [toolsInterstitialSlim, setToolsInterstitialSlim] = useState(false);
+  // Purely the checkbox's own visual state for THIS viewing - separate
+  // from toolsInterstitialSlim above on purpose, since checking it no
+  // longer collapses the current view; without its own state the
+  // checkbox would have no way to show it registered the tap.
+  const [toolsHideDonationChecked, setToolsHideDonationChecked] = useState(false);
   const TOOLS_INTERSTITIAL_DISMISSED_KEY = 'tools_interstitial_dismissed_date';
 
   // pendingFiles (PDF Editor's export paths only): an array of
@@ -6179,8 +6206,8 @@ function App() {
   // download/share only happens when the user presses "Download PDF"
   // inside this interstitial (or checks "don't show donation again
   // today," which triggers it immediately as part of that same action -
-  // see handleHideDonationToday), never automatically just from Export
-  // being confirmed.
+  // see handleToggleHideDonationToday), never automatically just from
+  // Export being confirmed.
   const maybeShowToolsDownloadInterstitial = async (offerCompress = false, pendingFiles = null) => {
     setLastExportedPdf(null);
     let hideDonationToday = false;
@@ -6193,6 +6220,7 @@ function App() {
     }
 
     setToolsInterstitialSlim(hideDonationToday);
+    setToolsHideDonationChecked(false); // fresh viewing, fresh checkbox state - never carries over from a previous open
     setPdfPendingExport(pendingFiles); // null for non-PDF callers (Compressor/Converter/QR) - they keep their own immediate download buttons, unaffected by this
     setDonateModalContext('tools');
     setToolsInterstitialOfferCompress(offerCompress);
@@ -6200,22 +6228,26 @@ function App() {
     setDonateModalVisible(true);
   };
 
-  // The interstitial's "don't show donation again today" checkbox - not
-  // a plain dismiss, it also immediately runs whatever the interstitial
-  // was waiting on (the pending PDF download, if there is one) rather
-  // than requiring a separate button press after checking it. The
-  // preference itself persists (today only), but the interstitial keeps
-  // showing every time either way - just collapsed to slim mode, with
-  // its own small "donate here" link back to full mode for that one
-  // viewing if they change their mind.
-  const handleHideDonationToday = async () => {
+  // The interstitial's "don't show donation again today" checkbox - a
+  // real toggle (not one-way), and importantly it does NOT collapse the
+  // popup that's currently open; toolsInterstitialSlim was already fixed
+  // for this viewing back when the popup opened, and stays that way
+  // regardless of what gets checked here. What checking it DOES do
+  // immediately, in this same viewing, is run whatever the interstitial
+  // was waiting on (the pending PDF download, if there is one) - the
+  // preference just also persists for every interstitial after this one.
+  const handleToggleHideDonationToday = async (nextChecked) => {
+    setToolsHideDonationChecked(nextChecked);
     try {
-      await AsyncStorage.setItem(TOOLS_INTERSTITIAL_DISMISSED_KEY, new Date().toDateString());
+      if (nextChecked) {
+        await AsyncStorage.setItem(TOOLS_INTERSTITIAL_DISMISSED_KEY, new Date().toDateString());
+      } else {
+        await AsyncStorage.removeItem(TOOLS_INTERSTITIAL_DISMISSED_KEY);
+      }
     } catch (e) {
       console.warn('Could not persist interstitial dismissal:', e);
     }
-    setToolsInterstitialSlim(true);
-    if (pdfPendingExport && pdfPendingExport.length > 0) {
+    if (nextChecked && pdfPendingExport && pdfPendingExport.length > 0) {
       handleDownloadPendingExport();
     }
   };
@@ -7529,6 +7561,25 @@ function App() {
   // looked at.
   const [pdfFullscreenHighResCache, setPdfFullscreenHighResCache] = useState({});
   const [pdfFullscreenHighResLoading, setPdfFullscreenHighResLoading] = useState(false);
+  // Caps how many rendered pages stay resident at once - without this,
+  // paging through a large document one page at a time (each one a full
+  // JPEG data URL at 2.5x scale) grows this cache without any ceiling
+  // for as long as that container stays open. Object key order is
+  // reliably insertion order for string keys in JS, so re-deriving
+  // eviction order from the object itself on every write means none of
+  // the several places that already reset this cache wholesale (`{}`)
+  // need any changes - clearing it already clears the order along with it.
+  const PDF_HIGH_RES_CACHE_LIMIT = 15;
+  const addToPdfHighResCache = (key, value) => {
+    setPdfFullscreenHighResCache((prev) => {
+      const { [key]: _dropped, ...rest } = prev; // if key's already cached, drop and re-add so it moves to the "most recent" end instead of risking eviction while still being viewed
+      const keys = Object.keys(rest);
+      const trimmed = keys.length >= PDF_HIGH_RES_CACHE_LIMIT
+        ? Object.fromEntries(keys.slice(keys.length - PDF_HIGH_RES_CACHE_LIMIT + 1).map((k) => [k, rest[k]]))
+        : rest;
+      return { ...trimmed, [key]: value };
+    });
+  };
 
   useEffect(() => {
     setPdfFullscreenHighResCache({});
@@ -7551,7 +7602,7 @@ function App() {
     render.then((result) => {
       if (cancelled) return;
       if (result) {
-        setPdfFullscreenHighResCache((prev) => ({ ...prev, [cacheKey]: result }));
+        addToPdfHighResCache(cacheKey, result);
       }
       setPdfFullscreenHighResLoading(false);
     });
@@ -7578,7 +7629,7 @@ function App() {
     render.then((result) => {
       if (cancelled) return;
       if (result) {
-        setPdfFullscreenHighResCache((prev) => ({ ...prev, [cacheKey]: result }));
+        addToPdfHighResCache(cacheKey, result);
       }
       setPdfFullscreenHighResLoading(false);
     });
@@ -12270,8 +12321,24 @@ function App() {
   // whole-array snapshot (rather than per-container history) is what
   // makes "Undo, regardless of which container it touched" and Merge's
   // undo both work for free from the same mechanism.
+  //
+  // Capped rather than growing forever - each entry doesn't just hold
+  // lightweight diff data, it holds real references to whatever
+  // PDFDocument objects existed in every container at that point in
+  // time. A long editing session (rotate a few pages, delete some, crop,
+  // compress...) with an uncapped stack means every superseded version
+  // of those documents stays reachable - and therefore un-garbage-
+  // collectable - for as long as it sits in history, even though
+  // undoing more than a few steps back is rare in practice. Capping at
+  // 15 bounds that growth; going past it just means the oldest state
+  // quietly becomes unreachable, the same tradeoff most apps make with
+  // undo depth.
+  const PDF_UNDO_HISTORY_LIMIT = 15;
   const pushPdfHistorySnapshot = (label) => {
-    setPdfEditorHistory((prev) => [...prev, { containers: pdfContainers, label }]);
+    setPdfEditorHistory((prev) => {
+      const next = [...prev, { containers: pdfContainers, label }];
+      return next.length > PDF_UNDO_HISTORY_LIMIT ? next.slice(next.length - PDF_UNDO_HISTORY_LIMIT) : next;
+    });
   };
 
   const handleUndoPdfEdit = () => {
@@ -12377,6 +12444,17 @@ function App() {
             };
           }));
         });
+        // If the render timed out or failed partway through (see the
+        // timeout guard in pdfThumbnails.web.js), whichever pages never
+        // got an onPageReady callback above would otherwise sit on a
+        // spinner forever - this is what "stuck" actually looked like.
+        // Clearing the flag here regardless of outcome means a page that
+        // genuinely couldn't be rendered shows the plain PDF icon
+        // instead, which is an honest state rather than a stuck one.
+        setPdfContainers((prev) => prev.map((c) => {
+          if (c.id !== containerId) return c;
+          return { ...c, pages: c.pages.map((p) => (p.thumbnailLoading ? { ...p, thumbnailLoading: false } : p)) };
+        }));
       } else {
         const thumbnails = await generateNativePdfThumbnails(uri, 160);
         setPdfContainers((prev) => prev.map((c) => {
@@ -12421,6 +12499,13 @@ function App() {
         rotation: 0,
         thumbnailLoading: false
       });
+      // Embedding a full-resolution photo into a fresh PDFDocument is
+      // real, non-trivial work per image - without yielding here, a
+      // large multi-photo selection runs this whole loop as one
+      // uninterrupted block, the same class of "browser looks frozen
+      // even though it's technically still working" issue the PDF
+      // thumbnail rendering loop had before it got the same treatment.
+      if (i < uris.length - 1) await yieldToBrowser();
     }
     if (docs.length === 0) {
       showToast('Could not open those photos - try again.');
@@ -12493,7 +12578,8 @@ function App() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
-      quality: 1
+      selectionLimit: 30, // Compressor/Converter already cap their own pickers at 10 for the same reason - this one's more generous since a photo-built "document" reasonably has more pages, but was previously fully uncapped, which combined with quality:1 below meant no real ceiling on how much work one "Add Images" press could trigger
+      quality: 0.8 // was 1 (full native camera resolution) - each photo becomes an embedded PDF page image, and full resolution is rarely needed for that; this is a picker-level downscale (free - the OS does it during selection), so every downstream step (embedding, memory, container size) benefits proportionally without any extra processing added here
     });
     if (result.canceled || !result.assets || result.assets.length === 0) return;
     setPdfEditorLoading(true);
@@ -12772,7 +12858,7 @@ function App() {
       // the browser to paint the progress text below or respond to
       // anything else, which is exactly what "circling for a long time"
       // with no visible feedback looked like.
-      if (done < total) await new Promise((resolve) => setTimeout(resolve, 0));
+      if (done < total) await yieldToBrowser();
     }
 
     if (compressedPageDocs.length === 0) return null;
@@ -12934,12 +13020,14 @@ function App() {
   };
 
   // Gives a rebuilt in-memory PDFDocument a real URI to render thumbnails
-  // from - generateWebPdfThumbnails/generateNativePdfThumbnails both only
-  // ever get called with an actual file/blob URI elsewhere in this file
-  // (never raw bytes), so operations that rebuild a document from scratch
-  // (Page Numbers, Crop) need this to get fresh thumbnails the same way a
-  // newly-picked PDF does, rather than leaving each page's thumbnailUri
-  // pointing at its stale pre-edit render.
+  // from - native only at this point (its two call sites are both the
+  // native branch of their respective thumbnail regens); web passes
+  // bytes straight into generateWebPdfThumbnails since that function
+  // accepts raw bytes directly (see pdfThumbnails.web.js), so it never
+  // needs a temp blob URI at all anymore. The web branch below is
+  // unreachable as a result - left in rather than restructured, since
+  // removing it buys no performance and this function still needs to
+  // exist for native regardless.
   const pdfBytesToTempUri = async (bytes) => {
     if (Platform.OS === 'web') {
       const blob = new Blob([bytes], { type: 'application/pdf' });
@@ -24027,20 +24115,27 @@ function App() {
                         <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Dismiss</Text>
                       </BouncyButton>
                       {/* Only meaningful while donation content is actually
-                          showing - slim mode has already made this choice,
-                          so there's nothing to check here in that state. */}
+                          showing - slim mode has already made this choice
+                          for THIS viewing, so there's nothing to toggle
+                          here in that state. Checking this doesn't change
+                          what's currently on screen - it only affects the
+                          next time this interstitial opens. */}
                       {!toolsInterstitialSlim && (
                         <BouncyButton
                           style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                          onPress={handleHideDonationToday}
+                          onPress={() => handleToggleHideDonationToday(!toolsHideDonationChecked)}
                           accessibilityRole="checkbox"
                           accessibilityLabel="Don't show donation again today"
-                          accessibilityState={{ checked: false }}
+                          accessibilityState={{ checked: toolsHideDonationChecked }}
                         >
                           <View style={{
                             width: 16, height: 16, borderRadius: 4, borderWidth: 1.5,
-                            borderColor: theme.border, alignItems: 'center', justifyContent: 'center'
-                          }} />
+                            borderColor: toolsHideDonationChecked ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                            backgroundColor: toolsHideDonationChecked ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
+                            alignItems: 'center', justifyContent: 'center'
+                          }}>
+                            {toolsHideDonationChecked && <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800', lineHeight: 12 }}>✓</Text>}
+                          </View>
                           <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>Don't show donation again today</Text>
                         </BouncyButton>
                       )}

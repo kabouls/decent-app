@@ -58,6 +58,30 @@
 //    yielding between pages - showing page 1 the moment it's ready
 //    (typically well under a second) makes the difference between
 //    "stuck" and "loading."
+//
+// 5. A hard timeout around every await that can hang indefinitely. This
+//    is the actual fix for "stuck on Sharpening forever" - workerSrc
+//    above points at unpkg.com, an external CDN fetched fresh on every
+//    call with zero timeout of its own. If that fetch ever stalls (slow
+//    network, an ad-blocker or corporate firewall blocking unpkg, a
+//    brief offline moment), pdfjsLib.getDocument(...).promise simply
+//    never settles - not rejects, never resolves either - which means
+//    every .then() in App.js that would clear a loading spinner never
+//    fires, forever, regardless of how well-written that calling code
+//    is. No amount of try/catch on the CALLER's side can fix a promise
+//    that never settles; the guard has to live here, at the actual
+//    unbounded operation. withTimeout can't cancel the underlying
+//    fetch/worker call once started (there's no plumbed-through
+//    AbortController for this), so a timeout means the abandoned
+//    operation keeps running invisibly in the background rather than
+//    truly stopping - but the caller gets an honest failure back
+//    instead of hanging forever, which is what actually matters here.
+const PDF_RENDER_TIMEOUT_MS = 20000;
+const withTimeout = (promise, label) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), PDF_RENDER_TIMEOUT_MS))
+]);
+
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber = null, onPageReady = null) => {
@@ -66,17 +90,18 @@ export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber =
     const pdfjsLib = await import('pdfjs-dist');
     pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
     const isBytes = source instanceof Uint8Array || (typeof ArrayBuffer !== 'undefined' && source instanceof ArrayBuffer);
-    pdf = isBytes
-      ? await pdfjsLib.getDocument({ data: source }).promise
-      : await pdfjsLib.getDocument({ url: source }).promise;
+    const loadPromise = isBytes
+      ? pdfjsLib.getDocument({ data: source }).promise
+      : pdfjsLib.getDocument({ url: source }).promise;
+    pdf = await withTimeout(loadPromise, 'PDF document load');
 
     const renderOnePage = async (num) => {
-      const page = await pdf.getPage(num);
+      const page = await withTimeout(pdf.getPage(num), `Page ${num} fetch`);
       const viewport = page.getViewport({ scale });
       const canvas = document.createElement('canvas');
       canvas.width = viewport.width;
       canvas.height = viewport.height;
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      await withTimeout(page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise, `Page ${num} render`);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
       page.cleanup();
       return dataUrl;
