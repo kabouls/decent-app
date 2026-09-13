@@ -34,7 +34,7 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-function buildHtml({ title, description, image, url, jsonLd }) {
+function buildHtml({ title, description, image, url, jsonLd, bodyContent }) {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -54,8 +54,21 @@ function buildHtml({ title, description, image, url, jsonLd }) {
 <meta name="twitter:image" content="${escapeHtml(image)}">
 <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
 </head>
-<body></body>
+<body>${bodyContent || ''}</body>
 </html>`;
+}
+
+// Canonical/og:url need to be a single, stable form regardless of how a
+// crawler actually reached the page - stripping query strings (so a
+// ?utm_source=... link doesn't get treated as a separate canonical page
+// from the plain one) and always using SITE_URL's host rather than
+// whatever host the incoming request happened to use (so a non-www hit,
+// if one ever reaches this middleware before any host-level redirect,
+// can't produce a www/non-www canonical split). request.url was used
+// directly for this everywhere before - same fix applies to portfolios
+// and profiles below, not just /tools.
+function canonicalUrl(path) {
+  return `${SITE_URL}${path}`;
 }
 
 const DEFAULT_META = {
@@ -71,26 +84,47 @@ const CACHE_HEADERS = { 'Cache-Control': 'public, max-age=3600, s-maxage=3600' }
 // match the URL slug used by the app's own client-side router (see
 // TOOLS_ROUTE_SLUGS in App.js) so the two stay in sync by construction
 // rather than by convention alone.
+//
+// `image` is per-tool (falls back to DEFAULT_META.image via `|| ` below
+// if left unset) so a shared link to the PDF editor doesn't look
+// visually identical to a shared portfolio link in social previews -
+// add real asset paths here once dedicated per-tool images exist rather
+// than leaving every tool on the same generic one indefinitely.
+//
+// `blurb` is the visible body copy the bot-facing page actually renders
+// - previously this page shipped with an empty <body>, meta tags only.
+// Google specifically still works fine either way (it renders the real
+// JS app on a second pass and sees the full page there), but plenty of
+// other crawlers - most AI-answer bots (ClaudeBot, PerplexityBot,
+// GPTBot), and Bing less reliably than Google - never execute JS at
+// all, so this response IS the entire page they ever see. A title and
+// meta description alone gives a relevance algorithm almost nothing to
+// evaluate a page against search intent with.
 const TOOLS_META = {
   '': {
     title: 'Free Tools for Designers & Job Seekers | DECENT',
     description: 'Free image compressor, QR code generator, image converter, and PDF editor. No signup, no ads, no limits - everything runs on your device.',
+    blurb: 'Four free tools that run entirely in your browser or the DECENT app: compress images to a target size, generate custom QR codes, convert between JPEG/PNG/WEBP, and edit PDFs - merge, reorder, rotate, crop, and compress pages. No account, no upload to a server, no limits.',
   },
   'image-compressor': {
     title: 'Free Image Compressor - Shrink Photos to Any Size | DECENT Tools',
     description: 'Compress images to a target file size for free. No signup, no upload - runs entirely in your browser or the DECENT app.',
+    blurb: 'Compress JPEG, PNG, or WEBP images down to a target file size in kilobytes - useful for application portals, email attachment limits, or anywhere with a strict upload cap. Processes entirely on your device; nothing is uploaded to a server.',
   },
   'qr-code-generator': {
     title: 'Free QR Code Generator - Customizable, No Signup | DECENT Tools',
     description: 'Generate QR codes for URLs, WiFi, contact cards, and more. Custom colors, logo, and export as PNG or SVG - completely free.',
+    blurb: 'Generate a QR code for a URL, WiFi network, contact card (vCard), or plain text. Customize the color, dot style, and add a logo in the center, then export as PNG or SVG. Free, with no account required.',
   },
   'image-converter': {
     title: 'Free Image Converter - JPEG, PNG, WEBP | DECENT Tools',
     description: 'Convert images between JPEG, PNG, and WEBP for free, in batches of up to 10. No signup, nothing uploaded anywhere.',
+    blurb: 'Convert images between JPEG, PNG, and WEBP formats, up to 10 at a time. Runs entirely on your device - nothing is uploaded anywhere. Free, no account required.',
   },
   'pdf-editor': {
     title: 'Free PDF Editor - Merge, Reorder, Rotate Pages | DECENT Tools',
     description: 'Merge PDFs and photos into one document, reorder pages, rotate, and delete - free, no signup, no software to install.',
+    blurb: 'Merge multiple PDFs and photos into a single document, reorder and rotate pages, crop, delete, add page numbers, and compress the result to a target file size. Free, with no account or software install required.',
   },
 };
 
@@ -135,19 +169,21 @@ export default async function middleware(request) {
         const title = p.user_name ? `${p.title} by ${p.user_name} | DECENT` : `${p.title} | DECENT`;
         const description = (p.brief || `A ${typeLabel} portfolio by ${p.user_name || 'a designer'} on DECENT.`).slice(0, 160);
         const image = p.cover_url || DEFAULT_META.image;
+        const pageUrl = canonicalUrl(path);
         return new Response(
           buildHtml({
             title,
             description,
             image,
-            url: request.url,
+            url: pageUrl,
+            bodyContent: `<h1>${escapeHtml(p.title)}</h1><p>${escapeHtml(description)}</p>`,
             jsonLd: {
               '@context': 'https://schema.org',
               '@type': 'CreativeWork',
               name: p.title,
               description,
               image,
-              url: request.url,
+              url: pageUrl,
               ...(p.user_name ? {
                 author: {
                   '@type': 'Person',
@@ -168,19 +204,21 @@ export default async function middleware(request) {
       if (profile) {
         const description = (profile.bio || `Check out ${profile.name}'s portfolios on DECENT.`).slice(0, 160);
         const image = profile.avatar_url || DEFAULT_META.image;
+        const pageUrl = canonicalUrl(path);
         return new Response(
           buildHtml({
             title: `${profile.name} on DECENT`,
             description,
             image,
-            url: request.url,
+            url: pageUrl,
+            bodyContent: `<h1>${escapeHtml(profile.name)}</h1><p>${escapeHtml(description)}</p>`,
             jsonLd: {
               '@context': 'https://schema.org',
               '@type': 'Person',
               name: profile.name,
               description,
               image,
-              url: request.url,
+              url: pageUrl,
             },
           }),
           { headers: { 'content-type': 'text/html; charset=utf-8', ...CACHE_HEADERS } }
@@ -196,19 +234,22 @@ export default async function middleware(request) {
     const slug = path === '/tools' ? '' : path.slice('/tools/'.length).replace(/\/$/, '');
     const meta = TOOLS_META[slug];
     if (meta) {
+      const pageUrl = canonicalUrl(path);
       return new Response(
         buildHtml({
           title: meta.title,
           description: meta.description,
-          image: DEFAULT_META.image,
-          url: request.url,
+          image: meta.image || DEFAULT_META.image,
+          url: pageUrl,
+          bodyContent: `<h1>${escapeHtml(meta.title.split(' | ')[0])}</h1><p>${escapeHtml(meta.blurb || meta.description)}</p>`,
           jsonLd: {
             '@context': 'https://schema.org',
             '@type': 'WebApplication',
             name: meta.title.split(' | ')[0],
             description: meta.description,
-            url: request.url,
+            url: pageUrl,
             applicationCategory: 'UtilitiesApplication',
+            operatingSystem: 'Any', // commonly required for Google's rich-result eligibility for WebApplication/SoftwareApplication markup - correct data without this can still just never trigger the rich snippet
             offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
           },
         }),
@@ -223,7 +264,8 @@ export default async function middleware(request) {
   return new Response(
     buildHtml({
       ...DEFAULT_META,
-      url: request.url,
+      url: canonicalUrl(path),
+      bodyContent: `<h1>${escapeHtml(DEFAULT_META.title)}</h1><p>${escapeHtml(DEFAULT_META.description)}</p>`,
       jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'DECENT', url: SITE_URL },
     }),
     { headers: { 'content-type': 'text/html; charset=utf-8', ...CACHE_HEADERS } }
