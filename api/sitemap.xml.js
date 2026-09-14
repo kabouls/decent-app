@@ -26,7 +26,14 @@ export default async function handler() {
     supaGet('profiles?select=handle,updated_at&handle=not.is.null')
   ]);
 
-  const staticUrls = ['', '/for-you', '/circle', '/search'];
+  // Keep this in sync with TOOLS_META's keys in middleware.js (and, one
+  // level further back, TOOLS_ROUTE_SLUGS in App.js) - all three describe
+  // the same five URLs and have no shared source to stay in sync
+  // automatically, so a new tool added to one needs adding to all three.
+  const staticUrls = [
+    '', '/for-you', '/circle', '/search',
+    '/tools', '/tools/pdf-editor', '/tools/image-compressor', '/tools/image-converter', '/tools/qr-code-generator'
+  ];
 
   const urls = [
     ...staticUrls.map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>`),
