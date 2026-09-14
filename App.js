@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 735;
+const BUILD_NUMBER = 736;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7486,6 +7486,15 @@ function App() {
   // { containerName, done, total } | null - shown next to the spinner
   // while compressing so a many-page document doesn't just look stuck.
   const [pdfCompressProgress, setPdfCompressProgress] = useState(null);
+  // Crop and Page Numbers previously tracked no busy state of their own
+  // at all - meaning Export (and anything else) could be pressed mid-
+  // operation while one of them was still rebuilding the document.
+  // These, plus pdfCompressing/pdfEditorLoading/pdfEditorExporting/
+  // pdfExportSummaryLoading below, all feed into one derived "is
+  // anything happening right now" flag so Export can't be pressed out
+  // from under whichever operation is actually in flight.
+  const [pdfCropApplying, setPdfCropApplying] = useState(false);
+  const [pdfPageNumbersApplying, setPdfPageNumbersApplying] = useState(false);
   // Compress is a whole-PDF effect - clicking it opens this options
   // popup (quality preset) rather than running immediately, same
   // category as any future whole-document tool.
@@ -7561,6 +7570,18 @@ function App() {
   const [pdfActivePageId, setPdfActivePageId] = useState(null);
   const [pdfEditorLoading, setPdfEditorLoading] = useState(false);
   const [pdfEditorExporting, setPdfEditorExporting] = useState(false);
+  // One derived label covering every PDF Editor operation that mutates
+  // the document - Export reads this to disable itself and show what's
+  // actually happening, rather than only ever guarding against its own
+  // in-flight export. Declared after every state it reads, since these
+  // are plain const reads evaluated top-to-bottom on each render, not
+  // hoisted the way the useState calls above it are.
+  const pdfBusyLabel = pdfCompressing ? 'Compressing'
+    : pdfCropApplying ? 'Cropping'
+    : pdfPageNumbersApplying ? 'Numbering'
+    : pdfEditorLoading ? 'Loading'
+    : (pdfEditorExporting || pdfExportSummaryLoading) ? 'Exporting'
+    : null;
   const [pdfDragIndex, setPdfDragIndex] = useState(null);
   const [pdfFullscreenIndex, setPdfFullscreenIndex] = useState(null); // null | index into activePdfContainer.pages
   // Cache of high-res single-page renders, keyed by "sourceFileIndex:
@@ -13113,6 +13134,7 @@ function App() {
   // 2+ containers goes to the existing combine-vs-separate choice.
   const handleExportPdf = async () => {
     if (pdfContainers.length === 0) return;
+    if (pdfBusyLabel) return; // defense in depth - the button is already disabled while this is true, but guard the handler itself too in case something else ever calls it directly
     setPdfExportSummaryLoading(true);
     const summary = await buildPdfExportSummary();
     setPdfExportSummaryLoading(false);
@@ -13356,6 +13378,7 @@ function App() {
     if (!activePdfContainer || activePdfContainer.pages.length === 0) return;
     pushPdfHistorySnapshot('Add page numbers');
     triggerHaptic('light');
+    setPdfPageNumbersApplying(true);
     try {
       const outDoc = await PDFDocument.create();
       const font = await outDoc.embedFont(StandardFonts.Helvetica);
@@ -13397,6 +13420,8 @@ function App() {
       console.warn('Add page numbers failed:', e);
       showToast('Could not add page numbers - try again.');
       triggerHaptic('error');
+    } finally {
+      setPdfPageNumbersApplying(false);
     }
   };
 
@@ -13448,6 +13473,7 @@ function App() {
     if (!activePdfContainer) return;
     pushPdfHistorySnapshot('Crop pages');
     triggerHaptic('light');
+    setPdfCropApplying(true);
     try {
       const outDoc = await PDFDocument.create();
       const pages = activePdfContainer.pages;
@@ -13497,6 +13523,7 @@ function App() {
       setPdfSelectModeTool(null);
       setPdfSelectedPageIds([]);
       setPdfCropQueueIndex(null);
+      setPdfCropApplying(false);
     }
   };
 
@@ -19586,16 +19613,16 @@ function App() {
                           marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
                           backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                          opacity: (pdfEditorExporting || pdfExportSummaryLoading) ? 0.6 : 1
+                          opacity: pdfBusyLabel ? 0.6 : 1
                         }}
                         onPress={handleExportPdf}
-                        disabled={pdfEditorExporting || pdfExportSummaryLoading}
+                        disabled={!!pdfBusyLabel}
                         accessibilityRole="button"
                         accessibilityLabel="Export"
-                        accessibilityState={{ disabled: pdfEditorExporting || pdfExportSummaryLoading, busy: pdfEditorExporting || pdfExportSummaryLoading }}
+                        accessibilityState={{ disabled: !!pdfBusyLabel, busy: !!pdfBusyLabel }}
                       >
-                        {(pdfEditorExporting || pdfExportSummaryLoading) ? (
-                          <ActivityIndicator color="#FFFFFF" size="small" />
+                        {pdfBusyLabel ? (
+                          <><ActivityIndicator color="#FFFFFF" size="small" /><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{pdfBusyLabel}</Text></>
                         ) : (
                           <><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text><ArrowRightIconSVG size={13} color="#FFFFFF" /></>
                         )}
@@ -19659,16 +19686,16 @@ function App() {
                           flexDirection: 'row', alignItems: 'center', gap: 6,
                           paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
                           backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                          opacity: (pdfEditorExporting || pdfExportSummaryLoading) ? 0.6 : 1
+                          opacity: pdfBusyLabel ? 0.6 : 1
                         }}
                         onPress={handleExportPdf}
-                        disabled={pdfEditorExporting || pdfExportSummaryLoading}
+                        disabled={!!pdfBusyLabel}
                         accessibilityRole="button"
                         accessibilityLabel="Export"
-                        accessibilityState={{ disabled: pdfEditorExporting || pdfExportSummaryLoading, busy: pdfEditorExporting || pdfExportSummaryLoading }}
+                        accessibilityState={{ disabled: !!pdfBusyLabel, busy: !!pdfBusyLabel }}
                       >
-                        {(pdfEditorExporting || pdfExportSummaryLoading) ? (
-                          <ActivityIndicator color="#FFFFFF" size="small" />
+                        {pdfBusyLabel ? (
+                          <><ActivityIndicator color="#FFFFFF" size="small" /><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{pdfBusyLabel}</Text></>
                         ) : (
                           <><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text><ArrowRightIconSVG size={13} color="#FFFFFF" /></>
                         )}

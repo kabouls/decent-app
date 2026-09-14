@@ -112,10 +112,26 @@ export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber =
     }
 
     const thumbnails = [];
+    // One try/catch per page here, not just the outer one around the
+    // whole function - a single page timing out or failing to render
+    // (a corrupt page, an unusually complex one hitting the per-page
+    // timeout above) used to throw all the way out to the outer catch,
+    // which abandoned every remaining page even though everything
+    // before it had already succeeded and updated its own thumbnail via
+    // onPageReady. On a 200-page document, one bad page partway through
+    // meant everything after it silently never rendered - this is what
+    // "only ~20 of 200 pages loaded" actually was. Now one bad page is
+    // just skipped (still counted, still yielded past), not a batch-
+    // ending failure.
     for (let i = 1; i <= pdf.numPages; i++) {
-      const dataUrl = await renderOnePage(i);
+      let dataUrl = null;
+      try {
+        dataUrl = await renderOnePage(i);
+      } catch (e) {
+        console.warn(`Page ${i} failed to render, skipping it and continuing with the rest:`, e);
+      }
       thumbnails.push(dataUrl);
-      if (onPageReady) onPageReady(i - 1, dataUrl); // 0-indexed, matching how callers index their own page arrays
+      if (onPageReady) onPageReady(i - 1, dataUrl); // 0-indexed, matching how callers index their own page arrays - dataUrl may be null here, callers already treat that as "no thumbnail" (falls back to placeholder), same as any other failure
       if (i < pdf.numPages) await tick();
     }
     return thumbnails;
