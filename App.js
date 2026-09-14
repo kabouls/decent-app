@@ -52,6 +52,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { PDFDocument, degrees, StandardFonts, rgb } from 'pdf-lib';
 import { generateWebPdfThumbnails, generateNativePdfThumbnails } from './pdfThumbnails';
+import PdfNativePreview from './PdfNativePreview';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { decode } from 'base64-arraybuffer';
 import { BlurView } from 'expo-blur';
@@ -157,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 737;
+const BUILD_NUMBER = 738;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7620,6 +7621,14 @@ function App() {
   }, [pdfActiveContainerId]);
 
   useEffect(() => {
+    // Web-only now - native has its own separate effect right below,
+    // building a real one-page PDF for PdfNativePreview to render
+    // instead of a rasterized thumbnail image. Calling
+    // generateNativePdfThumbnails here would just resolve to null every
+    // time (native thumbnail generation was removed - see
+    // pdfThumbnails.native.js), so there's nothing left for this
+    // specific effect to do on that platform.
+    if (Platform.OS !== 'web') return;
     if (pdfFullscreenIndex === null || !activePdfContainer) return;
     const page = activePdfContainer.pages[pdfFullscreenIndex];
     if (!page) return;
@@ -7630,16 +7639,63 @@ function App() {
 
     let cancelled = false;
     setPdfFullscreenHighResLoading(true);
-    const render = Platform.OS === 'web'
-      ? generateWebPdfThumbnails(meta.uri, 2.5, page.sourcePageIndex + 1)
-      : generateNativePdfThumbnails(meta.uri, 1600, page.sourcePageIndex + 1);
-    render.then((result) => {
+    generateWebPdfThumbnails(meta.uri, 2.5, page.sourcePageIndex + 1).then((result) => {
       if (cancelled) return;
       if (result) {
         addToPdfHighResCache(cacheKey, result);
       }
       setPdfFullscreenHighResLoading(false);
     });
+    return () => { cancelled = true; };
+  }, [pdfFullscreenIndex, activePdfContainer]);
+
+  // Native's equivalent of the web effect above - but since there's no
+  // native rasterize-to-thumbnail step anymore, this builds an actual
+  // one-page PDF file (same copyPages + rotation logic used everywhere
+  // else in this file for rebuilding a document) and hands PdfView a
+  // real local file to render, rather than an image. This is the fix
+  // for native PDF preview: not a smarter thumbnail, a genuine native
+  // PDF view pointed at a temp file that reflects the CURRENT edited
+  // state of just this one page.
+  const [pdfNativePreviewUri, setPdfNativePreviewUri] = useState(null);
+  const [pdfNativePreviewError, setPdfNativePreviewError] = useState(null);
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    setPdfNativePreviewUri(null);
+    setPdfNativePreviewError(null);
+    if (pdfFullscreenIndex === null || !activePdfContainer) return;
+    const page = activePdfContainer.pages[pdfFullscreenIndex];
+    if (!page) return;
+    const meta = activePdfContainer.sourceMeta[page.sourceFileIndex];
+    if (!meta) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        let outDoc;
+        if (meta.isImage) {
+          // PdfView needs an actual PDF file, not a raw image - wrap it
+          // as a genuine one-page PDF the same way the rest of the app
+          // already treats picked photos, rather than teaching this one
+          // preview path to also handle a non-PDF source.
+          outDoc = await loadImageAsPdfDoc(meta.uri);
+        } else {
+          outDoc = await PDFDocument.create();
+          const [copiedPage] = await outDoc.copyPages(activePdfContainer.sourceDocs[page.sourceFileIndex], [page.sourcePageIndex]);
+          if (page.rotation) {
+            const current = copiedPage.getRotation().angle || 0;
+            copiedPage.setRotation(degrees((current + page.rotation) % 360));
+          }
+          outDoc.addPage(copiedPage);
+        }
+        const bytes = await outDoc.save();
+        const tempUri = await pdfBytesToTempUri(bytes);
+        if (!cancelled) setPdfNativePreviewUri(tempUri);
+      } catch (e) {
+        console.warn('Native PDF preview build failed:', e);
+        if (!cancelled) setPdfNativePreviewError('Could not preview this page.');
+      }
+    })();
     return () => { cancelled = true; };
   }, [pdfFullscreenIndex, activePdfContainer]);
 
@@ -21689,6 +21745,36 @@ function App() {
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
               {(() => {
                 const currentPage = containerPages[pdfFullscreenIndex];
+                // Native renders an actual PdfView against a real
+                // one-page temp file (built by the effect above),
+                // instead of a rasterized thumbnail image - this is the
+                // real fix, not a nicer placeholder. Web is completely
+                // unchanged below.
+                if (Platform.OS !== 'web') {
+                  if (pdfNativePreviewError) {
+                    return (
+                      <View style={{ alignItems: 'center', gap: 8 }}>
+                        <PdfIconSVG size={64} color="#64748B" />
+                        <Text style={{ color: '#94A3B8', fontSize: 11.5 }}>{pdfNativePreviewError}</Text>
+                      </View>
+                    );
+                  }
+                  if (!pdfNativePreviewUri) {
+                    return (
+                      <View style={{ alignItems: 'center', gap: 8 }}>
+                        <ActivityIndicator color="#F8FAFC" size="small" />
+                        <Text style={{ color: '#94A3B8', fontSize: 11.5 }}>Loading preview...</Text>
+                      </View>
+                    );
+                  }
+                  return (
+                    <PdfNativePreview
+                      uri={pdfNativePreviewUri}
+                      style={{ width: '100%', height: '100%' }}
+                      onError={(e) => setPdfNativePreviewError((e && e.message) || 'Could not load this page.')}
+                    />
+                  );
+                }
                 const highResUri = pdfFullscreenHighResCache[`${currentPage.sourceFileIndex}:${currentPage.sourcePageIndex}`];
                 const displayUri = highResUri || currentPage.thumbnailUri;
                 return displayUri ? (
