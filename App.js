@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 739;
+const BUILD_NUMBER = 740;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -13193,7 +13193,24 @@ function App() {
       return URL.createObjectURL(blob);
     }
     const uri = `${FileSystem.cacheDirectory}tmp_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`;
-    const base64 = btoa(String.fromCharCode(...bytes));
+    // String.fromCharCode(...bytes) blows the call stack for anything
+    // beyond a few KB - spreading a large typed array into a function
+    // call pushes every single byte as its own stack argument, and
+    // every JS engine (Hermes included, React Native's default) caps
+    // how many arguments one call can take well below what a real PDF's
+    // byte count needs. This was a latent bug in this function the whole
+    // time on native, not something newly introduced - crop and page
+    // numbers' native thumbnail regeneration both call this too, with
+    // potentially even larger byte counts than a single preview page.
+    // Chunking the conversion (a fixed, safe number of bytes per call,
+    // built up incrementally) avoids ever making one call with more
+    // arguments than the engine allows, regardless of total file size.
+    const CHUNK_SIZE = 8192;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK_SIZE));
+    }
+    const base64 = btoa(binary);
     await FileSystem.writeAsStringAsync(uri, base64, { encoding: FileSystem.EncodingType.Base64 });
     return uri;
   };
