@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 740;
+const BUILD_NUMBER = 741;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3731,6 +3731,64 @@ const WebImageCropModal = ({ visible, imageUri, aspect, onConfirm, onCancel, the
 // one always closes over the current insets/aspectLocked/naturalSize -
 // see ZoomPanImage's comment above about frozen refs for why memoizing
 // this via useRef(...).current would reintroduce that exact bug here.
+// Native-only grid-card preview - renders a real, live PdfView for one
+// page's small thumbnail slot, instead of a plain placeholder icon.
+// Deliberately a genuine top-level component, not something defined
+// inside the main App component's render body - that exact mistake
+// (an inline component redefined on every parent render, torn down and
+// remounted each time) is what broke the crop drag handles earlier in
+// this project, and would do the same thing here: each remount would
+// rebuild the temp PDF and reset PdfView's internal state constantly
+// instead of once per page.
+//
+// Only ever used when the caller has already decided the page count is
+// small enough to be safe (see the threshold check at the call site in
+// the main render) - each instance mounts a real native PDF view, and
+// mounting many of those simultaneously in a long scrolling grid is a
+// genuine memory/performance risk this component has no way to protect
+// against on its own. It renders whatever it's given; the caller is
+// responsible for only handing it a page when doing so is safe.
+const PdfGridCardPreview = React.memo(({ container, page }) => {
+  const [uri, setUri] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setUri(null);
+    setFailed(false);
+    (async () => {
+      try {
+        const meta = container.sourceMeta[page.sourceFileIndex];
+        if (!meta) throw new Error('Missing source for this page');
+        let outDoc;
+        if (meta.isImage) {
+          outDoc = await loadImageAsPdfDoc(meta.uri);
+        } else {
+          outDoc = await PDFDocument.create();
+          const [copiedPage] = await outDoc.copyPages(container.sourceDocs[page.sourceFileIndex], [page.sourcePageIndex]);
+          if (page.rotation) {
+            const current = copiedPage.getRotation().angle || 0;
+            copiedPage.setRotation(degrees((current + page.rotation) % 360));
+          }
+          outDoc.addPage(copiedPage);
+        }
+        const bytes = await outDoc.save();
+        const tempUri = await pdfBytesToTempUri(bytes);
+        if (!cancelled) setUri(tempUri);
+      } catch (e) {
+        console.warn('Grid card preview build failed:', e);
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [container.id, page.id, page.sourceFileIndex, page.sourcePageIndex, page.rotation]);
+
+  if (failed || !uri) {
+    return <PdfIconSVG size={28} color="#94A3B8" />;
+  }
+  return <PdfNativePreview uri={uri} style={{ width: '100%', height: '100%' }} onError={() => setFailed(true)} />;
+});
+
 const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConfirm, onCancel, viewportWidth, styles }) => {
   const [naturalSize, setNaturalSize] = useState(null);
   const [insets, setInsets] = useState({ top: 0, bottom: 0, left: 0, right: 0 });
@@ -4485,6 +4543,37 @@ const fetchBytesFromUri = async (uri) => {
   return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 };
 
+// Module-level (not defined inside the main App component) specifically
+// so genuinely top-level components - like PdfGridCardPreview further
+// below - can call it too, without needing App's internal state/closure
+// access. Writes a PDFDocument's bytes to a real temp file on native, or
+// a blob URL on web, for anything that needs to hand a real URI to a
+// native view or similar consumer instead of just holding bytes in
+// memory.
+const pdfBytesToTempUri = async (bytes) => {
+  if (Platform.OS === 'web') {
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    return URL.createObjectURL(blob);
+  }
+  const uri = `${FileSystem.cacheDirectory}tmp_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`;
+  // String.fromCharCode(...bytes) blows the call stack for anything
+  // beyond a few KB - spreading a large typed array into a function
+  // call pushes every single byte as its own stack argument, and every
+  // JS engine (Hermes included, React Native's default) caps how many
+  // arguments one call can take well below what a real PDF's byte count
+  // needs. Chunking the conversion (a fixed, safe number of bytes per
+  // call, built up incrementally) avoids ever making one call with more
+  // arguments than the engine allows, regardless of total file size.
+  const CHUNK_SIZE = 8192;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK_SIZE));
+  }
+  const base64 = btoa(binary);
+  await FileSystem.writeAsStringAsync(uri, base64, { encoding: FileSystem.EncodingType.Base64 });
+  return uri;
+};
+
 // Wraps a single picked image as a one-page PDF, then loads it as a real
 // PDFDocument - this normalizes every source (whether originally a real
 // PDF or a photo) into the same PDFDocument shape, so the rest of the
@@ -4570,6 +4659,13 @@ const COMPRESSOR_MAX_ITERATIONS = 8;
 const PDF_LARGE_UPLOAD_WARN_BYTES = 40 * 1024 * 1024; // 40MB of newly-picked PDFs in one batch
 const PDF_MANY_CONTAINERS_WARN_COUNT = 5; // total containers that would be open at once, including the new ones
 const PDF_LARGE_PAGE_COUNT_WARN = 150; // pages in a single document, checked after it's already loaded (nothing left to warn about beforehand)
+// Native's grid view renders a real live PdfView per card only up to
+// this many pages - beyond it, every card mounting its own native PDF
+// view simultaneously in a long scrolling list is a genuine memory/
+// performance risk with no virtualization to offset it. Deliberately
+// small and conservative since this hasn't been tested against a large
+// document's worth of simultaneously-mounted native views.
+const PDF_NATIVE_GRID_PREVIEW_MAX_PAGES = 12;
 const COMPRESSOR_MIN_QUALITY = 0.35;
 const COMPRESSOR_MIN_SCALE = 0.3;
 
@@ -7698,7 +7794,12 @@ function App() {
         // there's no way to see console output from a production APK -
         // this is the only way to actually see what's failing without
         // a dev-tools connection to the device.
-        if (!cancelled) setPdfNativePreviewError(`Build error: ${(e && e.message) || String(e)}`);
+        // Was surfacing the raw error text on-screen while diagnosing
+        // the call-stack crash this build fixed (see pdfBytesToTempUri)
+        // - now that the actual bug is confirmed fixed, back to a plain
+        // message; console.warn above still has the real detail if this
+        // ever needs debugging again.
+        if (!cancelled) setPdfNativePreviewError('Could not preview this page.');
       }
     })();
     return () => { cancelled = true; };
@@ -13183,37 +13284,12 @@ function App() {
   // native branch of their respective thumbnail regens); web passes
   // bytes straight into generateWebPdfThumbnails since that function
   // accepts raw bytes directly (see pdfThumbnails.web.js), so it never
-  // needs a temp blob URI at all anymore. The web branch below is
-  // unreachable as a result - left in rather than restructured, since
-  // removing it buys no performance and this function still needs to
-  // exist for native regardless.
-  const pdfBytesToTempUri = async (bytes) => {
-    if (Platform.OS === 'web') {
-      const blob = new Blob([bytes], { type: 'application/pdf' });
-      return URL.createObjectURL(blob);
-    }
-    const uri = `${FileSystem.cacheDirectory}tmp_${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`;
-    // String.fromCharCode(...bytes) blows the call stack for anything
-    // beyond a few KB - spreading a large typed array into a function
-    // call pushes every single byte as its own stack argument, and
-    // every JS engine (Hermes included, React Native's default) caps
-    // how many arguments one call can take well below what a real PDF's
-    // byte count needs. This was a latent bug in this function the whole
-    // time on native, not something newly introduced - crop and page
-    // numbers' native thumbnail regeneration both call this too, with
-    // potentially even larger byte counts than a single preview page.
-    // Chunking the conversion (a fixed, safe number of bytes per call,
-    // built up incrementally) avoids ever making one call with more
-    // arguments than the engine allows, regardless of total file size.
-    const CHUNK_SIZE = 8192;
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK_SIZE));
-    }
-    const base64 = btoa(binary);
-    await FileSystem.writeAsStringAsync(uri, base64, { encoding: FileSystem.EncodingType.Base64 });
-    return uri;
-  };
+  // needs a temp blob URI at all anymore. The web branch is unreachable
+  // as a result - left in rather than restructured, since removing it
+  // buys no performance and this function still needs to exist for
+  // native regardless. Hoisted to module level above (still named
+  // pdfBytesToTempUri) so PdfGridCardPreview can call it too - this is
+  // just documenting where the real implementation now lives.
 
   // Assembles the bytes for one container's export WITHOUT saving them -
   // the actual savePdfBytes call now only happens from
@@ -21599,6 +21675,8 @@ function App() {
                                 style={{ width: '100%', height: '100%', transform: [{ rotate: `${page.rotation}deg` }] }}
                                 resizeMode="contain"
                               />
+                            ) : Platform.OS !== 'web' && containerPages.length <= PDF_NATIVE_GRID_PREVIEW_MAX_PAGES ? (
+                              <PdfGridCardPreview container={activePdfContainer} page={page} />
                             ) : (
                               <PdfIconSVG size={28} color={toolsTheme.textSecondary} />
                             )}
@@ -21793,7 +21871,7 @@ function App() {
                     <PdfNativePreview
                       uri={pdfNativePreviewUri}
                       style={{ width: '100%', height: '100%' }}
-                      onError={(e) => setPdfNativePreviewError(`PdfView error${e && e.code ? ` (${e.code})` : ''}: ${(e && e.message) || 'unknown'}`)}
+                      onError={(e) => { console.warn('PdfView error:', e); setPdfNativePreviewError('Could not load this page.'); }}
                     />
                   );
                 }
