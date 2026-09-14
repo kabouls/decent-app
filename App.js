@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 738;
+const BUILD_NUMBER = 739;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7693,7 +7693,12 @@ function App() {
         if (!cancelled) setPdfNativePreviewUri(tempUri);
       } catch (e) {
         console.warn('Native PDF preview build failed:', e);
-        if (!cancelled) setPdfNativePreviewError('Could not preview this page.');
+        // Temporarily surfacing the real error text on-screen (normally
+        // this would just be a generic "couldn't preview" message) since
+        // there's no way to see console output from a production APK -
+        // this is the only way to actually see what's failing without
+        // a dev-tools connection to the device.
+        if (!cancelled) setPdfNativePreviewError(`Build error: ${(e && e.message) || String(e)}`);
       }
     })();
     return () => { cancelled = true; };
@@ -21771,7 +21776,7 @@ function App() {
                     <PdfNativePreview
                       uri={pdfNativePreviewUri}
                       style={{ width: '100%', height: '100%' }}
-                      onError={(e) => setPdfNativePreviewError((e && e.message) || 'Could not load this page.')}
+                      onError={(e) => setPdfNativePreviewError(`PdfView error${e && e.code ? ` (${e.code})` : ''}: ${(e && e.message) || 'unknown'}`)}
                     />
                   );
                 }
