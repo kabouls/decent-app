@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 734;
+const BUILD_NUMBER = 735;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -4489,6 +4489,17 @@ const fetchBytesFromUri = async (uri) => {
 // PDF or a photo) into the same PDFDocument shape, so the rest of the
 // editor (page count, copyPages, rotation) never needs to special-case
 // "this one's actually an image."
+// Pixel-to-point conversion assumption for any photo becoming a PDF
+// page. Without this, a picture's raw pixel dimensions were being used
+// directly as the page's point dimensions (1 pixel = 1 point) - since a
+// PDF point is 1/72 inch, a completely ordinary 1200x1600px photo turned
+// into a roughly 16.7 x 22.2 INCH page, several times larger than any
+// real paper size. 150 DPI is a reasonable middle ground for "a photo
+// someone picked from their camera roll" - high enough to stay sharp at
+// normal viewing/printing size, without assuming a specific scan
+// resolution that may not match the actual source.
+const IMAGE_PDF_PAGE_DPI = 150;
+
 const loadImageAsPdfDoc = async (imageUri) => {
   const doc = await PDFDocument.create();
   const bytes = await fetchBytesFromUri(imageUri);
@@ -4501,8 +4512,10 @@ const loadImageAsPdfDoc = async (imageUri) => {
     // whole import over a format guess.
     embedded = await doc.embedPng(bytes);
   }
-  const page = doc.addPage([embedded.width, embedded.height]);
-  page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height });
+  const pageWidth = (embedded.width / IMAGE_PDF_PAGE_DPI) * 72;
+  const pageHeight = (embedded.height / IMAGE_PDF_PAGE_DPI) * 72;
+  const page = doc.addPage([pageWidth, pageHeight]);
+  page.drawImage(embedded, { x: 0, y: 0, width: pageWidth, height: pageHeight });
   return doc;
 };
 
@@ -12808,10 +12821,19 @@ function App() {
   // on total failure) rather than touching state directly, so
   // handleCompressPdf below can run this against several containers in a
   // loop and commit them all in a single setPdfContainers call.
+  // Builds the compressed result directly into ONE shared PDFDocument,
+  // embedding each compressed JPEG straight onto its own page within
+  // that same document, rather than creating a separate PDFDocument per
+  // page and merging them later. That two-step approach (create N
+  // standalone one-page documents, then cross-document copyPages them
+  // together at export time) turned out to genuinely bloat file size on
+  // large documents, not just add overhead - a 200-page, 204MB test PDF
+  // came back over 1GB after "compression." Doing it in one pass, into
+  // one document, from the start avoids that entirely.
   const compressOneContainer = async (container, preset, onProgress) => {
     const renderCache = {}; // sourceFileIndex -> array of high-res page image URIs, scoped to this one container
     const bytesCache = {}; // sourceFileIndex -> already-fetched bytes, so a multi-page source only gets fetched once here
-    const compressedPageDocs = [];
+    const outDoc = await PDFDocument.create();
     const compressedThumbnailUris = [];
     const total = container.pages.length;
     let done = 0;
@@ -12841,12 +12863,21 @@ function App() {
       const compressed = await compressImageToTarget(renderedUri, {
         targetBytes: preset.targetBytes, maxWidth: preset.maxWidth, maxHeight: preset.maxHeight, format: 'JPEG'
       });
-      const pageDoc = await loadImageAsPdfDoc(compressed.uri);
+
+      const compressedBytes = await fetchBytesFromUri(compressed.uri);
+      let embedded;
+      try {
+        embedded = await outDoc.embedJpg(compressedBytes);
+      } catch (e) {
+        embedded = await outDoc.embedPng(compressedBytes);
+      }
+      const pageWidth = (embedded.width / IMAGE_PDF_PAGE_DPI) * 72;
+      const pageHeight = (embedded.height / IMAGE_PDF_PAGE_DPI) * 72;
+      const pdfPage = outDoc.addPage([pageWidth, pageHeight]);
+      pdfPage.drawImage(embedded, { x: 0, y: 0, width: pageWidth, height: pageHeight });
       if (page.rotation) {
-        const [pdfPage] = pageDoc.getPages();
         pdfPage.setRotation(degrees(page.rotation % 360));
       }
-      compressedPageDocs.push(pageDoc);
       compressedThumbnailUris.push(compressed.uri);
 
       done += 1;
@@ -12861,17 +12892,17 @@ function App() {
       if (done < total) await yieldToBrowser();
     }
 
-    if (compressedPageDocs.length === 0) return null;
+    if (compressedThumbnailUris.length === 0) return null;
 
     return {
       ...container,
-      sourceDocs: compressedPageDocs,
-      sourceMeta: compressedPageDocs.map(() => ({ uri: null, isImage: true })),
-      pages: compressedPageDocs.map((_, i) => ({
+      sourceDocs: [outDoc], // one shared document now, not one per page
+      sourceMeta: [{ uri: null, isImage: true }],
+      pages: compressedThumbnailUris.map((thumbnailUri, i) => ({
         id: `${Date.now()}_compressed_${i}_${Math.random().toString(36).slice(2)}`,
-        sourceFileIndex: i,
-        sourcePageIndex: 0,
-        thumbnailUri: compressedThumbnailUris[i],
+        sourceFileIndex: 0, // every page now points at the same shared doc, indexed by position within it
+        sourcePageIndex: i,
+        thumbnailUri,
         rotation: 0,
         thumbnailLoading: false
       }))
@@ -22380,19 +22411,39 @@ function App() {
                 ) : (
                   <Text style={styles.confirmSubText}>No edits have been made - this exports the PDF as loaded.</Text>
                 )}
-                {hasSizeInfo && (
-                  <View style={{ width: '100%', backgroundColor: theme.surface, borderRadius: 10, padding: 12, marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <View>
-                      <Text style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase' }}>Original</Text>
-                      <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>{formatBytes(pdfExportSummary.originalSize)}</Text>
-                    </View>
-                    <ArrowRightIconSVG size={14} color={theme.textSecondary} />
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase' }}>Compressed</Text>
-                      <Text style={{ color: '#22C55E', fontSize: 14, fontWeight: '700' }}>{formatBytes(pdfExportSummary.currentSize)}</Text>
-                    </View>
-                  </View>
-                )}
+                {hasSizeInfo && (() => {
+                  const grew = pdfExportSummary.currentSize >= pdfExportSummary.originalSize;
+                  return (
+                    <>
+                      <View style={{ width: '100%', backgroundColor: theme.surface, borderRadius: 10, padding: 12, marginBottom: grew ? 8 : 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View>
+                          <Text style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase' }}>Original</Text>
+                          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>{formatBytes(pdfExportSummary.originalSize)}</Text>
+                        </View>
+                        <ArrowRightIconSVG size={14} color={theme.textSecondary} />
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase' }}>{grew ? 'Result' : 'Compressed'}</Text>
+                          <Text style={{ color: grew ? '#F59E0B' : '#22C55E', fontSize: 14, fontWeight: '700' }}>{formatBytes(pdfExportSummary.currentSize)}</Text>
+                        </View>
+                      </View>
+                      {/* Compress's own algorithm always keeps whichever
+                          attempt came out smallest, so this can only
+                          happen at the re-assembly step, not inside
+                          compression itself - showing this honestly
+                          instead of quietly labeling a bigger file
+                          "Compressed" in green (which is what this
+                          modal used to do unconditionally) is the
+                          actual fix; the underlying assembly path has
+                          separately been rebuilt to not do this, but
+                          this stays as a backstop regardless. */}
+                      {grew && (
+                        <Text style={{ color: '#F59E0B', fontSize: 11.5, marginBottom: 16 }}>
+                          This came out larger than the original, not smaller - you may want to skip compressing this file, or try a smaller custom target size.
+                        </Text>
+                      )}
+                    </>
+                  );
+                })()}
                 <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
                   <BouncyButton
                     style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
