@@ -157,7 +157,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 736;
+const BUILD_NUMBER = 737;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -12947,9 +12947,33 @@ function App() {
     triggerHaptic('light');
     try {
       const updates = {};
+      const noImprovementNames = [];
       for (const cid of targets) {
         const container = pdfContainers.find((c) => c.id === cid);
         if (!container) continue;
+
+        // The actual guarantee lives here: measure what this container
+        // would export as RIGHT NOW (not the stale originalSize from
+        // whenever it was first uploaded, which could be well out of
+        // date if other edits happened since), compress it, then only
+        // accept the result if it's genuinely smaller than that. Some
+        // source content - especially pages that reuse the same
+        // embedded image many times in the original PDF - can come out
+        // LARGER once every page is independently flattened to its own
+        // JPEG, which is an inherent limit of render-then-recompress,
+        // not something retrying harder fixes. Rather than presenting
+        // that as a successful "compression," this keeps the container
+        // completely untouched and says so plainly.
+        let beforeSize = container.originalSize;
+        try {
+          const beforeBytes = await assemblePdfFromPages(container.sourceDocs, container.pages);
+          beforeSize = beforeBytes.length;
+        } catch (e) {
+          // Fall back to the stored originalSize if a fresh measurement
+          // fails for any reason - still a real comparison, just
+          // possibly stale, rather than skipping the check entirely.
+        }
+
         // "Whole Document" mode targets the FINAL FILE's total size, not
         // each page individually - since every page still compresses
         // independently under the hood (there's no single combined
@@ -12965,16 +12989,38 @@ function App() {
         const compressed = await compressOneContainer(container, preset, (done, total) => {
           setPdfCompressProgress({ containerName: container.name, done, total });
         });
-        if (compressed) updates[cid] = compressed;
+        if (!compressed) continue;
+
+        const compressedBytes = await compressed.sourceDocs[0].save();
+        if (compressedBytes.length >= beforeSize) {
+          noImprovementNames.push(container.name);
+          continue; // not applied - the container stays exactly as it was
+        }
+        updates[cid] = compressed;
       }
-      if (Object.keys(updates).length === 0) {
+
+      const appliedCount = Object.keys(updates).length;
+      if (appliedCount === 0 && noImprovementNames.length > 0) {
+        showToast(
+          noImprovementNames.length > 1
+            ? `Compression didn't shrink these files - left as-is.`
+            : `Compression didn't shrink "${noImprovementNames[0]}" - left as-is.`
+        );
+        triggerHaptic('error');
+        return;
+      }
+      if (appliedCount === 0) {
         showToast('Could not compress - try again.');
         triggerHaptic('error');
         return;
       }
       setPdfContainers((prev) => prev.map((c) => updates[c.id] || c));
       setPdfFullscreenHighResCache({});
-      showToast(targets.length > 1 ? 'PDFs compressed.' : 'PDF compressed.');
+      if (noImprovementNames.length > 0) {
+        showToast(`Compressed ${appliedCount > 1 ? `${appliedCount} PDFs` : 'PDF'} - ${noImprovementNames.length > 1 ? 'some others' : `"${noImprovementNames[0]}"`} didn't shrink, so left as-is.`);
+      } else {
+        showToast(targets.length > 1 ? 'PDFs compressed.' : 'PDF compressed.');
+      }
       triggerHaptic('success');
     } catch (e) {
       console.warn('PDF compression failed:', e);
