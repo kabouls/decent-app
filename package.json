@@ -6,6 +6,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "postinstall": "node scripts/patch-pdf-thumbnail.js",
     "vercel-build": "mkdir -p public/ffmpeg public/assets && cp node_modules/@ffmpeg/ffmpeg/dist/umd/ffmpeg.js node_modules/@ffmpeg/ffmpeg/dist/umd/814.ffmpeg.js node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.js node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.wasm public/ffmpeg/ && cp assets/og-default.png public/assets/ && npx expo export -p web"
   },
   "dependencies": {
@@ -59,6 +60,7 @@
     "@babel/preset-react": "^7.29.7",
     "@types/react": "~19.1.10",
     "eslint-plugin-react-native-a11y": "^3.5.1",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   }
 }
