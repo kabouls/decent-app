@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 741;
+const BUILD_NUMBER = 744;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -2104,8 +2104,6 @@ const TOOLS_TRANSLATIONS = {
     convertAll: 'Convert All',
     converting: 'Converting...',
     moreToolsComingSoon: 'More tools coming soon',
-    popularTools: 'Popular Tools',
-    allTools: 'All Tools',
     moreTools: 'More Tools',
     nothingHereYet: 'Nothing here yet',
     addFilesToStart: 'Add files on the left to get started',
@@ -2188,8 +2186,6 @@ const TOOLS_TRANSLATIONS = {
     convertAll: 'Konversi Semua',
     converting: 'Mengonversi...',
     moreToolsComingSoon: 'Alat lainnya akan segera hadir',
-    popularTools: 'Alat Populer',
-    allTools: 'Semua Alat',
     moreTools: 'Alat Lainnya',
     nothingHereYet: 'Belum ada apa-apa di sini',
     addFilesToStart: 'Tambahkan file di sebelah kiri untuk memulai',
@@ -7597,8 +7593,7 @@ function App() {
   // category as any future whole-document tool.
   const [pdfCompressOptionsVisible, setPdfCompressOptionsVisible] = useState(false);
   const [pdfCompressQuality, setPdfCompressQuality] = useState('medium'); // 'low' | 'medium' | 'high' | 'custom'
-  const [pdfCompressCustomKB, setPdfCompressCustomKB] = useState(''); // target size in KB - meaning depends on pdfCompressCustomMode
-  const [pdfCompressCustomMode, setPdfCompressCustomMode] = useState('page'); // 'page' | 'whole' - only used when pdfCompressQuality === 'custom'
+  const [pdfCompressCustomKB, setPdfCompressCustomKB] = useState(''); // target size in KB, for the whole document - only used when pdfCompressQuality === 'custom'
   const [pdfCompressUndoConfirmVisible, setPdfCompressUndoConfirmVisible] = useState(false);
   const [pdfPageNumbersUndoConfirmVisible, setPdfPageNumbersUndoConfirmVisible] = useState(false);
   const [pdfClearConfirmVisible, setPdfClearConfirmVisible] = useState(false);
@@ -13095,7 +13090,7 @@ function App() {
   // containerIds is optional - omit it (or pass none) to compress just
   // the active container, the one-container fast path with no select
   // step. With 2+ ids, each compresses independently; nothing flattens.
-  const handleCompressPdf = async (quality, containerIds, customKB, customMode = 'page') => {
+  const handleCompressPdf = async (quality, containerIds, customKB, customMode = 'whole') => {
     const targets = containerIds && containerIds.length > 0
       ? containerIds
       : (activePdfContainer ? [activePdfContainer.id] : []);
@@ -19922,11 +19917,7 @@ function App() {
                     {tt('toolsHubIntro')}
                   </Text>
 
-                  <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '800', marginTop: 10 }}>
-                    {tt('popularTools')}
-                  </Text>
-
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 10 }}>
                     <BouncyButton
                       style={[
                         {
@@ -20014,33 +20005,6 @@ function App() {
                       </View>
                       <ChevronRightSVG color={toolsTheme.accent} size={18} />
                     </BouncyButton>
-                  </View>
-
-                  <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '800', marginTop: 22 }}>
-                    {tt('allTools')}
-                  </Text>
-
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                    {ALL_TOOLS_LIST.map(({ key, label, Icon }) => (
-                      <BouncyButton
-                        key={key}
-                        style={[
-                          {
-                            alignItems: 'center', gap: 8,
-                            backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                            borderRadius: 14, padding: 14
-                          },
-                          isWebWide ? { width: '23%' } : { width: '48%' }
-                        ]}
-                        onPress={() => requestSwitchTool(key)}
-                        accessibilityRole="button"
-                      >
-                        <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                          <Icon size={18} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                        </View>
-                        <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700', textAlign: 'center' }}>{label}</Text>
-                      </BouncyButton>
-                    ))}
                   </View>
                 </>
               )}
@@ -21912,13 +21876,21 @@ function App() {
               </BouncyButton>
 
               <BouncyButton
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
-                onPress={() => rotatePdfEditorPage(containerPages[pdfFullscreenIndex].id)}
+                style={{ width: 36, height: 36, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+                onPress={() => rotatePdfEditorPage(containerPages[pdfFullscreenIndex].id, -1)}
                 accessibilityRole="button"
-                accessibilityLabel="Rotate page"
+                accessibilityLabel="Rotate counter-clockwise"
               >
-                <RotateIconSVG color="#F8FAFC" size={16} />
-                <Text style={{ color: '#F8FAFC', fontSize: 13, fontWeight: '600' }}>Rotate</Text>
+                <RotateCCWIconSVG color="#F8FAFC" size={16} />
+              </BouncyButton>
+
+              <BouncyButton
+                style={{ width: 36, height: 36, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+                onPress={() => rotatePdfEditorPage(containerPages[pdfFullscreenIndex].id, 1)}
+                accessibilityRole="button"
+                accessibilityLabel="Rotate clockwise"
+              >
+                <RotateCWIconSVG color="#F8FAFC" size={16} />
               </BouncyButton>
 
               <BouncyButton
@@ -22365,25 +22337,8 @@ function App() {
                 </BouncyButton>
                 {pdfCompressQuality === 'custom' && (
                   <View style={{ paddingLeft: 4 }}>
-                    <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: theme.border, overflow: 'hidden', alignSelf: 'flex-start', marginBottom: 10 }}>
-                      {[{ key: 'page', label: 'Per Page' }, { key: 'whole', label: 'Whole Document' }].map((opt) => (
-                        <BouncyButton
-                          key={opt.key}
-                          style={{
-                            paddingHorizontal: 12, paddingVertical: 6,
-                            backgroundColor: pdfCompressCustomMode === opt.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
-                          }}
-                          onPress={() => setPdfCompressCustomMode(opt.key)}
-                          accessibilityRole="button"
-                          accessibilityLabel={opt.label}
-                          accessibilityState={{ selected: pdfCompressCustomMode === opt.key }}
-                        >
-                          <Text style={{ color: pdfCompressCustomMode === opt.key ? '#FFFFFF' : theme.text, fontSize: 11.5, fontWeight: '700' }}>{opt.label}</Text>
-                        </BouncyButton>
-                      ))}
-                    </View>
                     <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>
-                      {pdfCompressCustomMode === 'whole' ? 'Target Size for the Whole PDF (KB)' : tt('customSizeLabel')}
+                      Target Size for the Whole PDF (KB)
                     </Text>
                     <FocusableTextInput
                       style={styles.formInput}
@@ -22392,12 +22347,10 @@ function App() {
                       value={pdfCompressCustomKB}
                       onChangeText={(t) => setPdfCompressCustomKB(t.replace(/[^0-9]/g, ''))}
                       keyboardType="number-pad"
-                      accessibilityLabel={pdfCompressCustomMode === 'whole' ? 'Custom target file size in KB, for the whole document' : 'Custom target file size in KB, per page'}
+                      accessibilityLabel="Custom target file size in KB, for the whole document"
                     />
                     <Text style={{ color: theme.textSecondary, fontSize: 10.5, marginTop: 4 }}>
-                      {pdfCompressCustomMode === 'whole'
-                        ? `Divided evenly across however many pages the document has when compressed.`
-                        : 'Applies per page, not to the whole document.'}
+                      Divided evenly across however many pages the document has when compressed.
                     </Text>
                   </View>
                 )}
@@ -22419,7 +22372,7 @@ function App() {
                   onPress={() => {
                     const ids = pdfContainerSelectModeTool === 'compress' ? pdfSelectedContainerIds : undefined;
                     setPdfCompressOptionsVisible(false);
-                    handleCompressPdf(pdfCompressQuality, ids, pdfCompressCustomKB, pdfCompressCustomMode);
+                    handleCompressPdf(pdfCompressQuality, ids, pdfCompressCustomKB, 'whole');
                   }}
                   disabled={pdfCompressQuality === 'custom' && !pdfCompressCustomKB}
                   accessibilityRole="button"
