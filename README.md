@@ -11,7 +11,7 @@ One clean link. Real, clickable Figma prototypes embedded right in the page — 
 ### 🔗 [decent.ink](https://decent.ink)
 
 <a href="https://decent.ink"><img src="https://img.shields.io/badge/🌐_Try_it_now-decent.ink-8B5CF6?style=flat" height="45"></a>
-<a href="https://expo.dev/artifacts/eas/400loQ6A2z2EbIaTmSZxnocjLxLLGSeuGCaCdUOapOo.apk"><img src="https://img.shields.io/badge/📱_Android_APK-Download-8B5CF6?style=flat" height="45"></a>
+<a href="https://expo.dev/artifacts/eas/79O8MInvG2ECqaLz6UGa9THfqpcCjEdez56xnnjzRcg.apk"><img src="https://img.shields.io/badge/📱_Android_APK-Download-8B5CF6?style=flat" height="45"></a>
 <a href="https://www.virustotal.com/gui/file/b165c6911f4e75874245f0889995f4f3cb1f33dff7b64484ea2f4d3d0a27c090/detection"><img src="https://img.shields.io/badge/🛡️_VirusTotal-Scan_Report-8B5CF6?style=flat" height="45"></a>
 
 </div>
