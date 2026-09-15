@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 760;
+const BUILD_NUMBER = 761;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -22604,27 +22604,57 @@ function App() {
                 {pdfContainerSelectModeTool === 'compress' && pdfSelectedContainerIds.length > 1 ? `Compress ${pdfSelectedContainerIds.length} PDFs` : 'Compress PDF'}
               </Text>
               <Text style={styles.confirmSubText}>Choose a quality level:</Text>
-              <View style={{ width: '100%', gap: 8, marginTop: 4, marginBottom: pdfCompressQuality === 'custom' ? 8 : 16 }}>
-                {Object.entries(PDF_COMPRESS_PRESETS).map(([key, preset]) => (
-                  <BouncyButton
-                    key={key}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                      padding: 12, borderRadius: 12, borderWidth: 1.5,
-                      borderColor: pdfCompressQuality === key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                      backgroundColor: pdfCompressQuality === key ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
-                    }}
-                    onPress={() => setPdfCompressQuality(key)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: pdfCompressQuality === key }}
-                  >
-                    <View>
-                      <Text style={{ color: theme.text, fontSize: 13.5, fontWeight: '700' }}>{preset.label}</Text>
-                      <Text style={{ color: theme.textSecondary, fontSize: 11.5, marginTop: 2 }}>{preset.desc}</Text>
-                    </View>
-                    {pdfCompressQuality === key && <Text style={{ color: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', fontSize: 15, fontWeight: '800' }}>✓</Text>}
-                  </BouncyButton>
-                ))}
+              {(() => {
+                // Real numbers, not made up - each preset's actual
+                // per-page targetBytes times however many pages are
+                // actually about to be compressed (one container, or
+                // every selected one when compressing several at once),
+                // capped at the current size since Compress never makes
+                // a file bigger than it already is (see the b737
+                // guarantee in compressOneContainer/handleCompressPdf) -
+                // without the cap, a small/already-compressed file could
+                // show an "estimate" larger than what it actually is
+                // right now, which would be a genuinely misleading
+                // number to put next to a compression preset.
+                const targets = (pdfContainerSelectModeTool === 'compress' && pdfSelectedContainerIds.length > 0)
+                  ? pdfContainers.filter((c) => pdfSelectedContainerIds.includes(c.id))
+                  : (activePdfContainer ? [activePdfContainer] : []);
+                const pageCount = targets.reduce((sum, c) => sum + c.pages.length, 0);
+                const currentSize = targets.reduce((sum, c) => sum + (c.originalSize || 0), 0);
+                const estimates = {};
+                if (pageCount > 0) {
+                  Object.entries(PDF_COMPRESS_PRESETS).forEach(([key, preset]) => {
+                    const rawEstimate = preset.targetBytes * pageCount;
+                    estimates[key] = currentSize > 0 ? Math.min(rawEstimate, currentSize) : rawEstimate;
+                  });
+                }
+                return (
+                  <View style={{ width: '100%', gap: 8, marginTop: 4, marginBottom: pdfCompressQuality === 'custom' ? 8 : 16 }}>
+                    {Object.entries(PDF_COMPRESS_PRESETS).map(([key, preset]) => (
+                      <BouncyButton
+                        key={key}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                          padding: 12, borderRadius: 12, borderWidth: 1.5,
+                          borderColor: pdfCompressQuality === key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                          backgroundColor: pdfCompressQuality === key ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
+                        }}
+                        onPress={() => setPdfCompressQuality(key)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: pdfCompressQuality === key }}
+                      >
+                        <View>
+                          <Text style={{ color: theme.text, fontSize: 13.5, fontWeight: '700' }}>{preset.label}</Text>
+                          <Text style={{ color: theme.textSecondary, fontSize: 11.5, marginTop: 2 }}>{preset.desc}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          {estimates[key] != null && (
+                            <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>~{formatBytes(estimates[key])}</Text>
+                          )}
+                          {pdfCompressQuality === key && <Text style={{ color: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', fontSize: 15, fontWeight: '800' }}>✓</Text>}
+                        </View>
+                      </BouncyButton>
+                    ))}
                 <BouncyButton
                   style={{
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -22662,6 +22692,8 @@ function App() {
                   </View>
                 )}
               </View>
+                );
+              })()}
               <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
