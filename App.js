@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 754;
+const BUILD_NUMBER = 756;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7996,8 +7996,22 @@ function App() {
   // should show as active, not just whichever ran most recently. Undo
   // only pops the last entry, so this naturally turns off exactly the
   // one that got undone and leaves earlier ones highlighted.
-  const isPdfCompressActive = pdfEditorHistory.some((h) => h.label === 'Compress PDF');
-  const isPdfPageNumbersActive = pdfEditorHistory.some((h) => h.label === 'Add page numbers');
+  //
+  // Scoped to entries AFTER the most recent 'Clear all PDFs' snapshot,
+  // not the whole history - pdfEditorHistory is one flat stack for the
+  // entire session, never reset on Clear (Clear pushes ITS OWN entry
+  // onto it, so Clear can be undone - wiping the array would break
+  // that). Without this scoping, clearing everything and uploading a
+  // brand new PDF still showed Compress/Page Numbers as "active" on the
+  // new file, because an old 'Compress PDF' entry from the PREVIOUS
+  // document was still sitting in the array. A clear is a genuine reset
+  // point - nothing before it should count toward what's "active" now.
+  const pdfHistorySinceLastClear = (() => {
+    const lastClearIndex = pdfEditorHistory.map((h) => h.label).lastIndexOf('Clear all PDFs');
+    return lastClearIndex === -1 ? pdfEditorHistory : pdfEditorHistory.slice(lastClearIndex + 1);
+  })();
+  const isPdfCompressActive = pdfHistorySinceLastClear.some((h) => h.label === 'Compress PDF');
+  const isPdfPageNumbersActive = pdfHistorySinceLastClear.some((h) => h.label === 'Add page numbers');
 
   const [toolsMenuVisible, setToolsMenuVisible] = useState(false);
   const [leaveToolsConfirmVisible, setLeaveToolsConfirmVisible] = useState(false);
@@ -13048,11 +13062,57 @@ function App() {
   // still worth keeping here since it's a much bigger, one-shot loss
   // (every container, not just one) that a single accidental tap could
   // trigger.
+  //
+  // Resets every other piece of PDF Editor session state too, not just
+  // the containers - previously this only cleared pdfContainers and the
+  // high-res cache, which left real stale state behind: pdfPendingExport
+  // and lastExportedPdf in particular kept pointing at the PREVIOUS
+  // PDF's already-compressed bytes, so uploading a fresh PDF after
+  // Clear and hitting Export/Download could still serve the old
+  // compressed file instead of the new one. pdfCompressQuality/
+  // pdfCompressCustomKB (the last-used preset) reset too, for a
+  // genuinely fresh start rather than leftovers from whatever was open
+  // before. pdfEditorHistory (the undo stack) is deliberately NOT wiped
+  // here - Clear itself pushes onto it via pushPdfHistorySnapshot above,
+  // specifically so Clear can be undone; see isPdfCompressActive/
+  // isPdfPageNumbersActive below for how stale entries from BEFORE a
+  // clear are kept from incorrectly showing as "active" on whatever gets
+  // uploaded next, without needing to destroy the undo trail.
   const clearAllPdfContainers = () => {
     pushPdfHistorySnapshot('Clear all PDFs');
     triggerHaptic('warning');
     setPdfContainers([]);
     setPdfFullscreenHighResCache({});
+    pdfHighResCacheRef.current = {};
+    clearPdfDocumentCache();
+    setPdfCompressing(false);
+    setPdfCompressProgress(null);
+    setPdfCropApplying(false);
+    setPdfPageNumbersApplying(false);
+    setPdfCompressOptionsVisible(false);
+    setPdfCompressQuality('medium');
+    setPdfCompressCustomKB('');
+    setPdfSelectModeTool(null);
+    setPdfSelectedPageIds([]);
+    setPdfCropQueueIndex(null);
+    setPdfCropInsetsByPageId({});
+    setPdfSelectedContainerIds([]);
+    setPdfContainerSelectModeTool(null);
+    setPdfExportChoiceVisible(false);
+    setPdfExportConfirmVisible(false);
+    setPdfExportSummary(null);
+    setPdfExportSummaryLoading(false);
+    setPdfPendingExport(null);
+    setLastExportedPdf(null);
+    setPdfCombineOrderVisible(false);
+    setPdfCombineOrderIds([]);
+    setPdfAddPageMenuVisible(false);
+    setPdfAddPageAfterIndex(null);
+    setPdfEditorLoading(false);
+    setPdfEditorExporting(false);
+    setPdfDragIndex(null);
+    setPdfNativePreviewUri(null);
+    setPdfNativePreviewError(null);
     showToast('Cleared.');
   };
 
@@ -24324,8 +24384,8 @@ function App() {
               </BouncyButton>
             </View>
 
-            <View style={{ padding: 18 }}>
-              <View>
+            <View style={{ padding: 18, flex: 1 }}>
+              <View style={{ flex: 1 }}>
                 {donateModalContext === 'tools' && toolsInterstitialSlim ? (
                   // SLIM MODE - collapses the whole donation ask down to
                   // one line with an inline link back to the full version,
@@ -24551,7 +24611,7 @@ function App() {
                     {pdfPendingExport && (
                       <BouncyButton
                         style={{
-                          marginTop: 14, width: '100%', paddingVertical: 12, borderRadius: 99, alignItems: 'center',
+                          marginTop: 'auto', width: '100%', paddingVertical: 12, borderRadius: 99, alignItems: 'center',
                           backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD'
                         }}
                         onPress={handleDownloadPendingExport}
@@ -24565,7 +24625,7 @@ function App() {
                     {!pdfPendingExport && lastExportedPdf && (
                       <BouncyButton
                         style={{
-                          marginTop: 14, width: '100%', paddingVertical: 12, borderRadius: 99, alignItems: 'center',
+                          marginTop: 'auto', width: '100%', paddingVertical: 12, borderRadius: 99, alignItems: 'center',
                           backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD'
                         }}
                         onPress={handleOpenLastExportedPdf}
