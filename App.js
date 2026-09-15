@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 756;
+const BUILD_NUMBER = 757;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -4633,8 +4633,9 @@ const loadSourceAsPdfDoc = async (uri, isImage) => {
 // objects (one per originally-picked file/image), kept alive in state
 // for the whole editing session specifically so this step can pull
 // from them without re-reading files from disk each time.
-const assemblePdfFromPages = async (sourceDocs, pages) => {
+const assemblePdfFromPages = async (sourceDocs, pages, onProgress = null) => {
   const outDoc = await PDFDocument.create();
+  let done = 0;
   for (const p of pages) {
     const [copiedPage] = await outDoc.copyPages(sourceDocs[p.sourceFileIndex], [p.sourcePageIndex]);
     if (p.rotation) {
@@ -4642,6 +4643,8 @@ const assemblePdfFromPages = async (sourceDocs, pages) => {
       copiedPage.setRotation(degrees((current + p.rotation) % 360));
     }
     outDoc.addPage(copiedPage);
+    done += 1;
+    if (onProgress) onProgress(done, pages.length);
   }
   return outDoc.save();
 };
@@ -7634,6 +7637,17 @@ function App() {
   // from under whichever operation is actually in flight.
   const [pdfCropApplying, setPdfCropApplying] = useState(false);
   const [pdfPageNumbersApplying, setPdfPageNumbersApplying] = useState(false);
+  // Same { done, total } shape as pdfCompressProgress above, for the two
+  // other per-page rebuild operations that previously had no progress
+  // signal at all beyond a bare spinner - Crop and Page Numbers both
+  // already loop one page at a time doing real, individually-timed work
+  // (copyPages + a real edit per page), so this is genuine progress, not
+  // a simulated/fake percentage.
+  const [pdfCropProgress, setPdfCropProgress] = useState(null);
+  const [pdfPageNumbersProgress, setPdfPageNumbersProgress] = useState(null);
+  // Export's own real progress - assemblePdfFromPages loops per page the
+  // same way, see its onProgress param.
+  const [pdfExportProgress, setPdfExportProgress] = useState(null);
   // Compress is a whole-PDF effect - clicking it opens this options
   // popup (quality preset) rather than running immediately, same
   // category as any future whole-document tool.
@@ -7719,6 +7733,36 @@ function App() {
     : pdfPageNumbersApplying ? 'Numbering'
     : pdfEditorLoading ? 'Loading'
     : (pdfEditorExporting || pdfExportSummaryLoading) ? 'Exporting'
+    : null;
+  // Real per-page progress for whichever operation pdfBusyLabel is
+  // currently naming - every one of these loops one page at a time doing
+  // genuine, individually-timed work (copyPages, a real edit, a render),
+  // so this is an actual measured percentage, not a simulated/fake one.
+  // Loading has no dedicated progress state of its own - it's derived
+  // straight from the pages array instead, since each page already
+  // tracks its own real thumbnailLoading flag as it renders (see
+  // addPdfContainerFromSource) and files are loaded one at a time (see
+  // loadPickedPdfAssets), so at most one container has any pages still
+  // loading while this label is showing.
+  const pdfLoadingProgress = (() => {
+    if (!pdfEditorLoading) return null;
+    for (let i = pdfContainers.length - 1; i >= 0; i--) {
+      const c = pdfContainers[i];
+      const total = c.pages.length;
+      if (total === 0) continue;
+      const remaining = c.pages.filter((p) => p.thumbnailLoading).length;
+      if (remaining > 0) return { done: total - remaining, total };
+    }
+    return null;
+  })();
+  const pdfBusyProgress = pdfCompressing ? pdfCompressProgress
+    : pdfCropApplying ? pdfCropProgress
+    : pdfPageNumbersApplying ? pdfPageNumbersProgress
+    : pdfEditorLoading ? pdfLoadingProgress
+    : pdfEditorExporting ? pdfExportProgress
+    : null;
+  const pdfBusyPercent = pdfBusyProgress && pdfBusyProgress.total > 0
+    ? Math.round((pdfBusyProgress.done / pdfBusyProgress.total) * 100)
     : null;
   const [pdfDragIndex, setPdfDragIndex] = useState(null);
   const [pdfFullscreenIndex, setPdfFullscreenIndex] = useState(null); // null | index into activePdfContainer.pages
@@ -13489,7 +13533,9 @@ function App() {
   // handleDownloadPendingExport, once the user presses "Download PDF" in
   // the interstitial.
   const exportOneContainer = async (container) => {
-    const bytes = await assemblePdfFromPages(container.sourceDocs, container.pages);
+    const bytes = await assemblePdfFromPages(container.sourceDocs, container.pages, (done, total) => {
+      setPdfExportProgress({ done, total });
+    });
     const filename = `${(container.name || 'document').replace(/\.pdf$/i, '')}.pdf`;
     return { bytes, filename };
   };
@@ -13546,6 +13592,7 @@ function App() {
 
   const exportActiveOrGivenContainer = async (container) => {
     setPdfEditorExporting(true);
+    setPdfExportProgress(null);
     try {
       const file = await exportOneContainer(container);
       await maybeShowToolsDownloadInterstitial(false, [file]);
@@ -13556,6 +13603,7 @@ function App() {
       triggerHaptic('error');
     } finally {
       setPdfEditorExporting(false);
+      setPdfExportProgress(null);
     }
   };
 
@@ -13567,6 +13615,7 @@ function App() {
   const handleExportEachSeparately = async () => {
     setPdfExportChoiceVisible(false);
     setPdfEditorExporting(true);
+    setPdfExportProgress(null);
     try {
       const files = [];
       for (const container of pdfContainers) {
@@ -13580,6 +13629,7 @@ function App() {
       triggerHaptic('error');
     } finally {
       setPdfEditorExporting(false);
+      setPdfExportProgress(null);
     }
   };
 
@@ -13772,6 +13822,7 @@ function App() {
     pushPdfHistorySnapshot('Add page numbers');
     triggerHaptic('light');
     setPdfPageNumbersApplying(true);
+    setPdfPageNumbersProgress(null);
     try {
       const outDoc = await PDFDocument.create();
       const font = await outDoc.embedFont(StandardFonts.Helvetica);
@@ -13788,6 +13839,7 @@ function App() {
         const { width } = copiedPage.getSize();
         const textWidth = font.widthOfTextAtSize(label, 10);
         copiedPage.drawText(label, { x: (width - textWidth) / 2, y: 20, size: 10, font, color: rgb(0, 0, 0) });
+        setPdfPageNumbersProgress({ done: i + 1, total: pages.length });
       }
 
       const targetId = activePdfContainer.id;
@@ -13815,6 +13867,7 @@ function App() {
       triggerHaptic('error');
     } finally {
       setPdfPageNumbersApplying(false);
+      setPdfPageNumbersProgress(null);
     }
   };
 
@@ -13867,9 +13920,11 @@ function App() {
     pushPdfHistorySnapshot('Crop pages');
     triggerHaptic('light');
     setPdfCropApplying(true);
+    setPdfCropProgress(null);
     try {
       const outDoc = await PDFDocument.create();
       const pages = activePdfContainer.pages;
+      let done = 0;
       for (const page of pages) {
         const [copiedPage] = await outDoc.copyPages(activePdfContainer.sourceDocs[page.sourceFileIndex], [page.sourcePageIndex]);
         if (page.rotation) {
@@ -13887,6 +13942,8 @@ function App() {
           );
         }
         outDoc.addPage(copiedPage);
+        done += 1;
+        setPdfCropProgress({ done, total: pages.length });
       }
 
       const targetId = activePdfContainer.id;
@@ -13917,6 +13974,7 @@ function App() {
       setPdfSelectedPageIds([]);
       setPdfCropQueueIndex(null);
       setPdfCropApplying(false);
+      setPdfCropProgress(null);
     }
   };
 
@@ -20015,7 +20073,7 @@ function App() {
                         accessibilityState={{ disabled: !!pdfBusyLabel, busy: !!pdfBusyLabel }}
                       >
                         {pdfBusyLabel ? (
-                          <><ActivityIndicator color="#FFFFFF" size="small" /><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{pdfBusyLabel}</Text></>
+                          <><ActivityIndicator color="#FFFFFF" size="small" /><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{pdfBusyLabel}{pdfBusyPercent != null ? ` ${pdfBusyPercent}%` : ''}</Text></>
                         ) : (
                           <><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text><ArrowRightIconSVG size={13} color="#FFFFFF" /></>
                         )}
@@ -20088,7 +20146,7 @@ function App() {
                         accessibilityState={{ disabled: !!pdfBusyLabel, busy: !!pdfBusyLabel }}
                       >
                         {pdfBusyLabel ? (
-                          <><ActivityIndicator color="#FFFFFF" size="small" /><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{pdfBusyLabel}</Text></>
+                          <><ActivityIndicator color="#FFFFFF" size="small" /><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{pdfBusyLabel}{pdfBusyPercent != null ? ` ${pdfBusyPercent}%` : ''}</Text></>
                         ) : (
                           <><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text><ArrowRightIconSVG size={13} color="#FFFFFF" /></>
                         )}
@@ -21268,7 +21326,7 @@ function App() {
                       {pdfEditorLoading && (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 }}>
                           <ActivityIndicator color={toolsTheme.accent} size="small" />
-                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 12 }}>{tt('loadingPdf')}</Text>
+                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 12 }}>{tt('loadingPdf')}{pdfBusyPercent != null ? ` ${pdfBusyPercent}%` : ''}</Text>
                         </View>
                       )}
                     </>
@@ -21344,7 +21402,7 @@ function App() {
                               <ActivityIndicator color={isPdfCompressActive ? '#FFFFFF' : toolsTheme.textSecondary} size="small" />
                               {pdfCompressProgress && (
                                 <Text style={{ color: isPdfCompressActive ? '#FFFFFF' : toolsTheme.text, fontSize: 12, fontWeight: '600' }}>
-                                  {pdfCompressProgress.done}/{pdfCompressProgress.total}
+                                  {pdfCompressProgress.done}/{pdfCompressProgress.total} ({Math.round((pdfCompressProgress.done / pdfCompressProgress.total) * 100)}%)
                                 </Text>
                               )}
                             </>
