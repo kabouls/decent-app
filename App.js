@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 746;
+const BUILD_NUMBER = 751;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7707,6 +7707,32 @@ function App() {
     });
   };
 
+  // Quietly renders the page immediately before and after `pageIndex`
+  // once the current page's own high-res render has finished, so paging
+  // forward/back often finds the result already sitting in cache instead
+  // of showing "Sharpening..." again. Deliberately does NOT touch
+  // pdfFullscreenHighResLoading - this must stay invisible and never
+  // block or flicker the UI for the page actually on screen. Only ever
+  // prefetches the two immediate neighbors, not the whole document, to
+  // avoid wasting render work on pages that may never be visited. Web
+  // only - native's preview path is a completely different mechanism
+  // (temp one-page PDF file + PdfView), not this image-cache system.
+  const prefetchNeighborPdfHighRes = (container, pageIndex) => {
+    if (Platform.OS !== 'web' || !container) return;
+    [pageIndex + 1, pageIndex - 1].forEach((neighborIndex) => {
+      const neighborPage = container.pages[neighborIndex];
+      if (!neighborPage) return;
+      const neighborKey = `${neighborPage.sourceFileIndex}:${neighborPage.sourcePageIndex}`;
+      if (pdfFullscreenHighResCache[neighborKey]) return; // closure snapshot - worst case is one redundant render, never incorrect
+      const neighborMeta = container.sourceMeta[neighborPage.sourceFileIndex];
+      if (!neighborMeta || neighborMeta.isImage) return;
+      const neighborDocCacheKey = `${container.id}:${neighborPage.sourceFileIndex}`;
+      generateWebPdfThumbnails(neighborMeta.uri, 2.5, neighborPage.sourcePageIndex + 1, null, neighborDocCacheKey).then((neighborResult) => {
+        if (neighborResult) addToPdfHighResCache(neighborKey, neighborResult);
+      });
+    });
+  };
+
   useEffect(() => {
     setPdfFullscreenHighResCache({});
     clearPdfDocumentCache(); // drop any parsed pdfjs document kept alive from the previous container - see the cacheKey usage below
@@ -7747,6 +7773,7 @@ function App() {
         addToPdfHighResCache(cacheKey, result);
       }
       setPdfFullscreenHighResLoading(false);
+      prefetchNeighborPdfHighRes(activePdfContainer, pdfFullscreenIndex);
     });
     return () => { cancelled = true; };
   }, [pdfFullscreenIndex, activePdfContainer]);
@@ -7825,8 +7852,14 @@ function App() {
 
     let cancelled = false;
     setPdfFullscreenHighResLoading(true);
+    // Same docCacheKey fix as the fullscreen viewer's effect above - this
+    // pane was rendering meta.uri fresh (re-fetch + re-parse) on every
+    // page click, with no caching at all. Desktop wide-layout users click
+    // through pages via this rail-driven main pane, not the fullscreen
+    // Modal, so this was the actual slow path for anyone on a wide screen.
+    const docCacheKey = `${pdfActiveContainerId}:${page.sourceFileIndex}`;
     const render = Platform.OS === 'web'
-      ? generateWebPdfThumbnails(meta.uri, 2.5, page.sourcePageIndex + 1)
+      ? generateWebPdfThumbnails(meta.uri, 2.5, page.sourcePageIndex + 1, null, docCacheKey)
       : generateNativePdfThumbnails(meta.uri, 1600, page.sourcePageIndex + 1);
     render.then((result) => {
       if (cancelled) return;
@@ -7834,6 +7867,10 @@ function App() {
         addToPdfHighResCache(cacheKey, result);
       }
       setPdfFullscreenHighResLoading(false);
+      if (Platform.OS === 'web') {
+        const pageIndex = activePdfContainer.pages.findIndex((p) => p.id === pdfActivePageId);
+        if (pageIndex !== -1) prefetchNeighborPdfHighRes(activePdfContainer, pageIndex);
+      }
     });
     return () => { cancelled = true; };
   }, [pdfActivePageId, isWebWide, activePdfContainer]);
@@ -12637,7 +12674,13 @@ function App() {
         showToast('Large file - this may take a moment to process.');
       }
       if (Platform.OS === 'web') {
-        await generateWebPdfThumbnails(fetchedBytes || uri, 0.3, null, (pageIndex, dataUrl) => {
+        // Large documents (100+ pages) get a lower rail-thumbnail scale -
+        // these are already just navigation thumbnails, not the reading
+        // view, so the extra sharpness from 0.3 is the least valuable
+        // exactly where total rasterization work (pages x scale) is
+        // highest. Below the threshold, unchanged at 0.3.
+        const railScale = pageCount > 100 ? 0.2 : 0.3;
+        await generateWebPdfThumbnails(fetchedBytes || uri, railScale, null, (pageIndex, dataUrl) => {
           setPdfContainers((prev) => prev.map((c) => {
             if (c.id !== containerId) return c; // container may have been removed while this was rendering - no-op rather than resurrect it
             return {

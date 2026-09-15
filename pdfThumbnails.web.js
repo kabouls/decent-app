@@ -129,7 +129,16 @@ export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber =
   let pdf = cacheKey ? pdfDocumentCache.get(cacheKey) : null;
   try {
     const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+    // Self-hosted, not unpkg.com. Was fetched fresh from an external CDN
+    // on every first-load - a genuine third-party dependency AND the
+    // actual root cause the 20s withTimeout above exists to guard
+    // against (an unreachable/blocked/stalled CDN request that never
+    // settles). The file at /pdf.worker.min.mjs is copied from this
+    // exact installed pdfjs-dist version - if pdfjs-dist is ever
+    // upgraded, this file must be re-copied from the new
+    // node_modules/pdfjs-dist/build/pdf.worker.min.mjs to match, or the
+    // API/worker version mismatch will break PDF rendering entirely.
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
     if (!pdf) {
       const isBytes = source instanceof Uint8Array || (typeof ArrayBuffer !== 'undefined' && source instanceof ArrayBuffer);
       const loadPromise = isBytes
@@ -152,7 +161,13 @@ export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber =
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       await withTimeout(page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise, `Page ${num} render`);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      // 0.6, not the original 0.7 - shared by both the rail-thumbnail loop
+      // (scale 0.3, where this barely matters) and the high-res single-
+      // page render (scale 2.5, where a smaller/faster JPEG encode is a
+      // real, if modest, win). Difference is close to imperceptible on
+      // photo-heavy pages, more visible on dense text - worth watching
+      // for complaints specifically on text-heavy documents.
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
       page.cleanup();
       return dataUrl;
     };
