@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 759;
+const BUILD_NUMBER = 760;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7851,6 +7851,28 @@ function App() {
     }
   };
 
+  // Clears every layer of the high-res preview cache together - the
+  // visible state mirror, the ref-based full cache (including any
+  // prefetched-but-unseen entries, see pdfHighResCacheRef above), and
+  // the parsed pdfjs document cache (pdfThumbnails.web.js). All three
+  // are keyed off container/sourceFileIndex/sourcePageIndex, and every
+  // edit that rebuilds a container's sourceDocs (Compress, Crop, Page
+  // Numbers, etc.) keeps sourceFileIndex at 0 and reuses the same page
+  // positions for the rebuilt shared document - meaning old cached
+  // entries collide with the NEW content under the exact same keys
+  // unless all three layers are cleared together. Clearing only the
+  // state mirror (what every call site here used to do, before the
+  // ref cache existed) left the ref cache holding the PRE-edit render,
+  // which the fullscreen/wide-pane preview effects then instantly
+  // promoted as still valid - this is what made the main page preview
+  // keep showing an uncropped page even though the rail thumbnail (a
+  // separate, always-freshly-rendered thing) updated correctly.
+  const resetPdfHighResCaches = () => {
+    setPdfFullscreenHighResCache({});
+    pdfHighResCacheRef.current = {};
+    clearPdfDocumentCache();
+  };
+
   // Quietly renders the page immediately before and after `pageIndex`
   // once the current page's own high-res render has finished, so paging
   // forward/back often finds the result already sitting in cache instead
@@ -7878,9 +7900,7 @@ function App() {
   };
 
   useEffect(() => {
-    setPdfFullscreenHighResCache({});
-    pdfHighResCacheRef.current = {};
-    clearPdfDocumentCache(); // drop any parsed pdfjs document kept alive from the previous container - see the cacheKey usage below
+    resetPdfHighResCaches(); // active container changed - drop any parsed pdfjs document and cached renders kept alive from the previous one
   }, [pdfActiveContainerId]);
 
   useEffect(() => {
@@ -8134,7 +8154,7 @@ function App() {
       if (activeTool === 'pdfEditor') {
         setPdfContainers([]);
         setPdfEditorHistory([]);
-        setPdfFullscreenHighResCache({});
+        resetPdfHighResCaches();
         setPdfSelectModeTool(null);
         setPdfSelectedPageIds([]);
         setPdfContainerSelectModeTool(null);
@@ -12760,7 +12780,7 @@ function App() {
       if (prev.length === 0) return prev;
       const last = prev[prev.length - 1];
       setPdfContainers(last.containers);
-      setPdfFullscreenHighResCache({});
+      resetPdfHighResCaches();
       triggerHaptic('light');
       return prev.slice(0, -1);
     });
@@ -13130,7 +13150,7 @@ function App() {
     // any high-res renders it had generated sitting in memory
     // indefinitely, orphaned with no container left to ever reference
     // them again.
-    setPdfFullscreenHighResCache({});
+    resetPdfHighResCaches();
     showToast('PDF removed.');
   };
 
@@ -13159,9 +13179,7 @@ function App() {
     pushPdfHistorySnapshot('Clear all PDFs');
     triggerHaptic('warning');
     setPdfContainers([]);
-    setPdfFullscreenHighResCache({});
-    pdfHighResCacheRef.current = {};
-    clearPdfDocumentCache();
+    resetPdfHighResCaches();
     setPdfCompressing(false);
     setPdfCompressProgress(null);
     setPdfCropApplying(false);
@@ -13248,7 +13266,7 @@ function App() {
       return [...before, mergedContainer, ...after];
     });
     setPdfActiveContainerId(mergedContainer.id);
-    setPdfFullscreenHighResCache({});
+    resetPdfHighResCaches();
     cancelContainerSelectFlow();
     triggerHaptic('success');
     showToast('PDFs merged.');
@@ -13447,7 +13465,7 @@ function App() {
         return;
       }
       setPdfContainers((prev) => prev.map((c) => updates[c.id] || c));
-      setPdfFullscreenHighResCache({});
+      resetPdfHighResCaches();
       if (noImprovementNames.length > 0) {
         showToast(`Compressed ${appliedCount > 1 ? `${appliedCount} PDFs` : 'PDF'} - ${noImprovementNames.length > 1 ? 'some others' : `"${noImprovementNames[0]}"`} didn't shrink, so left as-is.`);
       } else {
@@ -13890,7 +13908,7 @@ function App() {
       setPdfContainers((prev) => prev.map((c) => (
         c.id === targetId ? { ...c, sourceDocs: [outDoc], sourceMeta: [{ uri: null, isImage: false }], pages: newPages } : c
       )));
-      setPdfFullscreenHighResCache({});
+      resetPdfHighResCaches();
 
       showToast('Page numbers added.');
       triggerHaptic('success');
@@ -13994,7 +14012,7 @@ function App() {
       setPdfContainers((prev) => prev.map((c) => (
         c.id === targetId ? { ...c, sourceDocs: [outDoc], sourceMeta: [{ uri: null, isImage: false }], pages: newPages } : c
       )));
-      setPdfFullscreenHighResCache({});
+      resetPdfHighResCaches();
 
       showToast('Crop applied.');
       triggerHaptic('success');
