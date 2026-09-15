@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 752;
+const BUILD_NUMBER = 754;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -4531,6 +4531,21 @@ const detectImageFormat = (mimeType, uri) => {
 // pdf-lib itself only understands byte arrays, not URIs.
 const fetchBytesFromUri = async (uri) => {
   if (Platform.OS === 'web') {
+    // data: URIs (what ImageManipulator's web output and canvas-rendered
+    // pages both actually are) decode straight from the base64 payload
+    // already in the string - same fix as getFileSizeBytes above, and
+    // for the same reason: a fetch()+arrayBuffer() round trip against a
+    // data: URI doesn't hit the network, but still pays real overhead to
+    // get there. Compress calls this once per page (compressed.uri is
+    // always a data: URI on web), so this was a real per-page cost, not
+    // a one-off.
+    if (uri.startsWith('data:')) {
+      const base64 = uri.slice(uri.indexOf(',') + 1);
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
     const res = await fetch(uri);
     const buf = await res.arrayBuffer();
     return new Uint8Array(buf);
@@ -4693,10 +4708,30 @@ const compressImageToTarget = async (uri, { targetBytes, maxWidth, maxHeight, fo
 
   for (let i = 0; i < COMPRESSOR_MAX_ITERATIONS; i++) {
     const actions = [];
-    const targetWidth = maxWidth ? Math.min(maxWidth, Math.round(originalSize.w * scale)) : Math.round(originalSize.w * scale);
-    const targetHeight = maxHeight ? Math.min(maxHeight, Math.round(originalSize.h * scale)) : undefined;
+    // Real "contain within maxWidth x maxHeight" fit - whichever
+    // dimension is more constraining wins. Previously this only ever
+    // resized by width (`maxHeight && !maxWidth` is false the moment
+    // maxWidth is also set, which every real preset does) - maxHeight
+    // was silently dead code. For a normal Letter/A4 page that's a
+    // minor miss; for a page much taller than wide (a full website
+    // screenshot saved as one very tall PDF page, the same page shape
+    // seen earlier this project), width-only resizing left the actual
+    // image still thousands of pixels tall even after "resizing" -
+    // real, avoidable extra encode cost on every iteration, and a real
+    // reason an oversized page could burn through many iterations
+    // without ever reaching a small target like Low's 80KB.
+    let targetWidth = Math.round(originalSize.w * scale);
+    let targetHeight = Math.round(originalSize.h * scale);
+    if (maxWidth && targetWidth > maxWidth) {
+      targetHeight = Math.round(targetHeight * (maxWidth / targetWidth));
+      targetWidth = maxWidth;
+    }
+    if (maxHeight && targetHeight > maxHeight) {
+      targetWidth = Math.round(targetWidth * (maxHeight / targetHeight));
+      targetHeight = maxHeight;
+    }
     if (scale < 1 || maxWidth || maxHeight) {
-      actions.push({ resize: maxHeight && !maxWidth ? { height: targetHeight } : { width: targetWidth } });
+      actions.push({ resize: { width: targetWidth, height: targetHeight } });
     }
 
     const result = await ImageManipulator.manipulateAsync(uri, actions, {
@@ -4719,11 +4754,22 @@ const compressImageToTarget = async (uri, { targetBytes, maxWidth, maxHeight, fo
     // an unchanged quality value.
     if (saveFormat === ImageManipulator.SaveFormat.PNG) {
       scale -= 0.15;
-    } else if (quality > COMPRESSOR_MIN_QUALITY) {
-      quality -= 0.12;
+    } else if (i === 0) {
+      // One honest quality-only retry first - cheap, and often enough on
+      // its own for a page that's only slightly over target.
+      quality = 0.7;
     } else {
+      // From here on, drop quality AND scale together each pass, instead
+      // of exhausting quality alone first. Previously this loop spent up
+      // to 6 of its 8 iterations purely lowering quality at FULL image
+      // size before ever reducing dimensions - the one lever that
+      // actually moves the needle for an oversized or image-heavy page.
+      // Combined reduction converges in far fewer iterations for exactly
+      // the pages that were taking minutes before, and every later
+      // iteration is also genuinely cheaper to encode since the image is
+      // smaller by then, not just re-quality'd at full size again.
+      quality = Math.max(COMPRESSOR_MIN_QUALITY, quality - 0.15);
       scale -= 0.15;
-      quality = 0.6;
     }
 
     if (scale <= COMPRESSOR_MIN_SCALE) break;
