@@ -84,16 +84,47 @@ const withTimeout = (promise, label) => Promise.race([
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber = null, onPageReady = null) => {
-  let pdf = null;
+// Keeps a parsed pdfjs document alive across multiple single-page renders
+// of the SAME source, keyed by a caller-supplied cacheKey. Before this,
+// the fullscreen high-res viewer called getDocument() + .destroy() on
+// every single page open - flipping from page 4 to page 5 of the same
+// PDF re-fetched the file over the network and re-parsed the entire
+// document from scratch just to render one different page out of it.
+// With a cacheKey, that fetch+parse happens once per source, and every
+// later page in that same session just calls .getPage() on the doc
+// that's already sitting in memory. Callers that pass no cacheKey (the
+// full-document rail-thumbnail loop) keep the old behavior exactly -
+// they already walk every page in one pass and destroy the doc when done.
+const pdfDocumentCache = new Map();
+
+export const clearPdfDocumentCache = (cacheKey = null) => {
+  if (cacheKey === null) {
+    for (const pdf of pdfDocumentCache.values()) {
+      try { pdf.destroy(); } catch (e) { /* best-effort cleanup */ }
+    }
+    pdfDocumentCache.clear();
+    return;
+  }
+  const pdf = pdfDocumentCache.get(cacheKey);
+  if (pdf) {
+    try { pdf.destroy(); } catch (e) { /* best-effort cleanup */ }
+    pdfDocumentCache.delete(cacheKey);
+  }
+};
+
+export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber = null, onPageReady = null, cacheKey = null) => {
+  let pdf = cacheKey ? pdfDocumentCache.get(cacheKey) : null;
   try {
     const pdfjsLib = await import('pdfjs-dist');
     pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
-    const isBytes = source instanceof Uint8Array || (typeof ArrayBuffer !== 'undefined' && source instanceof ArrayBuffer);
-    const loadPromise = isBytes
-      ? pdfjsLib.getDocument({ data: source }).promise
-      : pdfjsLib.getDocument({ url: source }).promise;
-    pdf = await withTimeout(loadPromise, 'PDF document load');
+    if (!pdf) {
+      const isBytes = source instanceof Uint8Array || (typeof ArrayBuffer !== 'undefined' && source instanceof ArrayBuffer);
+      const loadPromise = isBytes
+        ? pdfjsLib.getDocument({ data: source }).promise
+        : pdfjsLib.getDocument({ url: source }).promise;
+      pdf = await withTimeout(loadPromise, 'PDF document load');
+      if (cacheKey) pdfDocumentCache.set(cacheKey, pdf);
+    }
 
     const renderOnePage = async (num) => {
       const page = await withTimeout(pdf.getPage(num), `Page ${num} fetch`);
@@ -137,9 +168,16 @@ export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber =
     return thumbnails;
   } catch (e) {
     console.warn('Web PDF thumbnail generation failed:', e);
+    if (cacheKey) clearPdfDocumentCache(cacheKey); // a doc that failed mid-load/render isn't safe to keep cached and reuse next time
     return null;
   } finally {
-    if (pdf) {
+    // A cached doc is intentionally NOT destroyed here - it's kept alive
+    // in pdfDocumentCache for the next page render with the same
+    // cacheKey, and only destroyed when the caller explicitly calls
+    // clearPdfDocumentCache (App.js does this when the active PDF
+    // container changes, same place it already resets the high-res
+    // image cache).
+    if (pdf && !cacheKey) {
       try { pdf.destroy(); } catch (e) { /* best-effort cleanup, nothing to do if this itself fails */ }
     }
   }
