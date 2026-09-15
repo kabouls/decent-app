@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 751;
+const BUILD_NUMBER = 752;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7696,15 +7696,36 @@ function App() {
   // the several places that already reset this cache wholesale (`{}`)
   // need any changes - clearing it already clears the order along with it.
   const PDF_HIGH_RES_CACHE_LIMIT = 15;
-  const addToPdfHighResCache = (key, value) => {
-    setPdfFullscreenHighResCache((prev) => {
-      const { [key]: _dropped, ...rest } = prev; // if key's already cached, drop and re-add so it moves to the "most recent" end instead of risking eviction while still being viewed
-      const keys = Object.keys(rest);
-      const trimmed = keys.length >= PDF_HIGH_RES_CACHE_LIMIT
-        ? Object.fromEntries(keys.slice(keys.length - PDF_HIGH_RES_CACHE_LIMIT + 1).map((k) => [k, rest[k]]))
-        : rest;
-      return { ...trimmed, [key]: value };
-    });
+
+  const trimHighResCache = (obj, key, value) => {
+    const { [key]: _dropped, ...rest } = obj; // if key's already cached, drop and re-add so it moves to the "most recent" end instead of risking eviction while still being viewed
+    const keys = Object.keys(rest);
+    const trimmed = keys.length >= PDF_HIGH_RES_CACHE_LIMIT
+      ? Object.fromEntries(keys.slice(keys.length - PDF_HIGH_RES_CACHE_LIMIT + 1).map((k) => [k, rest[k]]))
+      : rest;
+    return { ...trimmed, [key]: value };
+  };
+
+  // Full cache including BACKGROUND-prefetched pages not currently on
+  // screen - a ref, not state, specifically so a prefetch result never
+  // triggers React to re-run this entire ~32k-line component's render
+  // just because a page nobody is looking at yet finished rendering.
+  // pdfFullscreenHighResCache (state, above) mirrors only the entries
+  // actually needed to paint the page(s) currently visible - see
+  // addToPdfHighResCache below for how the two stay in sync.
+  const pdfHighResCacheRef = useRef({});
+
+  // isVisible=true (the default, used for the page actually on screen)
+  // writes to both the ref AND state, so it paints. isVisible=false (used
+  // only by background prefetch, below) writes to the ref only - the
+  // result becomes an instant cache hit the moment the user actually
+  // navigates there, without ever having caused a re-render while it sat
+  // unseen in the background.
+  const addToPdfHighResCache = (key, value, isVisible = true) => {
+    pdfHighResCacheRef.current = trimHighResCache(pdfHighResCacheRef.current, key, value);
+    if (isVisible) {
+      setPdfFullscreenHighResCache((prev) => trimHighResCache(prev, key, value));
+    }
   };
 
   // Quietly renders the page immediately before and after `pageIndex`
@@ -7723,18 +7744,19 @@ function App() {
       const neighborPage = container.pages[neighborIndex];
       if (!neighborPage) return;
       const neighborKey = `${neighborPage.sourceFileIndex}:${neighborPage.sourcePageIndex}`;
-      if (pdfFullscreenHighResCache[neighborKey]) return; // closure snapshot - worst case is one redundant render, never incorrect
+      if (pdfHighResCacheRef.current[neighborKey]) return; // already rendered (viewed or prefetched) - ref is the real source of truth, not the state mirror
       const neighborMeta = container.sourceMeta[neighborPage.sourceFileIndex];
       if (!neighborMeta || neighborMeta.isImage) return;
       const neighborDocCacheKey = `${container.id}:${neighborPage.sourceFileIndex}`;
       generateWebPdfThumbnails(neighborMeta.uri, 2.5, neighborPage.sourcePageIndex + 1, null, neighborDocCacheKey).then((neighborResult) => {
-        if (neighborResult) addToPdfHighResCache(neighborKey, neighborResult);
+        if (neighborResult) addToPdfHighResCache(neighborKey, neighborResult, false); // false: background result, no re-render while it's not the page on screen
       });
     });
   };
 
   useEffect(() => {
     setPdfFullscreenHighResCache({});
+    pdfHighResCacheRef.current = {};
     clearPdfDocumentCache(); // drop any parsed pdfjs document kept alive from the previous container - see the cacheKey usage below
   }, [pdfActiveContainerId]);
 
@@ -7751,9 +7773,18 @@ function App() {
     const page = activePdfContainer.pages[pdfFullscreenIndex];
     if (!page) return;
     const cacheKey = `${page.sourceFileIndex}:${page.sourcePageIndex}`;
-    if (pdfFullscreenHighResCache[cacheKey]) return; // already rendered this exact page
+    if (pdfFullscreenHighResCache[cacheKey]) return; // already visible - nothing to do
     const meta = activePdfContainer.sourceMeta[page.sourceFileIndex];
     if (!meta || meta.isImage) return; // images are already full-res, nothing to render
+
+    if (pdfHighResCacheRef.current[cacheKey]) {
+      // Background prefetch already rendered this exact page while it was
+      // still a neighbor - promote it straight to visible state instead of
+      // rendering it all over again. One cheap state write, no network/CPU
+      // work, no "Sharpening" spinner.
+      addToPdfHighResCache(cacheKey, pdfHighResCacheRef.current[cacheKey], true);
+      return;
+    }
 
     let cancelled = false;
     setPdfFullscreenHighResLoading(true);
@@ -7846,9 +7877,16 @@ function App() {
     const page = activePdfContainer.pages.find((p) => p.id === pdfActivePageId);
     if (!page) return;
     const cacheKey = `${page.sourceFileIndex}:${page.sourcePageIndex}`;
-    if (pdfFullscreenHighResCache[cacheKey]) return;
+    if (pdfFullscreenHighResCache[cacheKey]) return; // already visible - nothing to do
     const meta = activePdfContainer.sourceMeta[page.sourceFileIndex];
     if (!meta || meta.isImage) return;
+
+    if (pdfHighResCacheRef.current[cacheKey]) {
+      // Same instant-promotion path as the fullscreen viewer's effect -
+      // background prefetch already has it, just show it.
+      addToPdfHighResCache(cacheKey, pdfHighResCacheRef.current[cacheKey], true);
+      return;
+    }
 
     let cancelled = false;
     setPdfFullscreenHighResLoading(true);
