@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 757;
+const BUILD_NUMBER = 759;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3846,6 +3846,24 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
     });
   };
 
+  // Puts the crop box back to the full, uncropped page. If aspect lock
+  // is on, the locked ratio is recomputed for the full page too (the
+  // same math toggleAspectLock uses, just with every inset at 0) -
+  // otherwise a reset-then-resize would still be constrained to
+  // whatever ratio was locked in BEFORE the reset, which would be a
+  // confusing half-reset.
+  const resetCrop = () => {
+    const next = { top: 0, bottom: 0, left: 0, right: 0 };
+    insetsRef.current = next;
+    setInsets(next);
+    if (aspectLockedRef.current) {
+      const w = naturalSize ? naturalSize.width : frameW;
+      const h = naturalSize ? naturalSize.height : frameH;
+      lockedRatioRef.current = w / h;
+    }
+  };
+  const isCropAtFullPage = !insets.top && !insets.bottom && !insets.left && !insets.right;
+
   const HANDLE_AXES = {
     top: ['top'], bottom: ['bottom'], left: ['left'], right: ['right'],
     tl: ['top', 'left'], tr: ['top', 'right'], bl: ['bottom', 'left'], br: ['bottom', 'right']
@@ -3998,23 +4016,38 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
         </View>
 
         <View style={{ paddingHorizontal: 20, paddingBottom: 12, alignItems: 'center' }}>
-          <BouncyButton
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 16,
-              borderRadius: 99, borderWidth: 1.5,
-              borderColor: aspectLocked ? '#8B5CF6' : 'rgba(255,255,255,0.25)',
-              backgroundColor: aspectLocked ? 'rgba(139,92,246,0.18)' : 'transparent'
-            }}
-            onPress={toggleAspectLock}
-            accessibilityRole="button"
-            accessibilityLabel="Preserve aspect ratio"
-            accessibilityState={{ selected: aspectLocked }}
-          >
-            <LockIconSVG color={aspectLocked ? '#8B5CF6' : '#94A3B8'} size={14} />
-            <Text style={{ color: aspectLocked ? '#8B5CF6' : '#94A3B8', fontSize: 12.5, fontWeight: '700' }}>
-              {aspectLocked ? 'Aspect Ratio Locked' : 'Preserve Aspect Ratio'}
-            </Text>
-          </BouncyButton>
+          <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <BouncyButton
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 16,
+                borderRadius: 99, borderWidth: 1.5,
+                borderColor: aspectLocked ? '#8B5CF6' : 'rgba(255,255,255,0.25)',
+                backgroundColor: aspectLocked ? 'rgba(139,92,246,0.18)' : 'transparent'
+              }}
+              onPress={toggleAspectLock}
+              accessibilityRole="button"
+              accessibilityLabel="Preserve aspect ratio"
+              accessibilityState={{ selected: aspectLocked }}
+            >
+              <LockIconSVG color={aspectLocked ? '#8B5CF6' : '#94A3B8'} size={14} />
+              <Text style={{ color: aspectLocked ? '#8B5CF6' : '#94A3B8', fontSize: 12.5, fontWeight: '700' }}>
+                {aspectLocked ? 'Aspect Ratio Locked' : 'Preserve Aspect Ratio'}
+              </Text>
+            </BouncyButton>
+            <BouncyButton
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 16,
+                borderRadius: 99, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)',
+                opacity: isCropAtFullPage ? 0.45 : 1
+              }}
+              onPress={resetCrop}
+              disabled={isCropAtFullPage}
+              accessibilityRole="button"
+              accessibilityLabel="Reset crop to full page"
+            >
+              <Text style={{ color: '#94A3B8', fontSize: 12.5, fontWeight: '700' }}>Reset Crop</Text>
+            </BouncyButton>
+          </View>
           <Text style={{ color: '#64748B', fontSize: 11, marginTop: 8, textAlign: 'center' }}>
             Drag a corner to resize both sides, an edge for just that side, or the box itself to move it.
           </Text>
@@ -24403,7 +24436,7 @@ function App() {
         visible={true}
         onRequestClose={handleCloseDonateModal}
       >
-        <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
+        <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : (donateModalContext === 'tools' && toolsInterstitialSlim ? { justifyContent: 'center', paddingHorizontal: 16, backgroundColor: 'transparent' } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' })]}
           onStartShouldSetResponder={() => Platform.OS === 'web'}
           onResponderRelease={handleCloseDonateModal}
         >
@@ -24423,7 +24456,19 @@ function App() {
                 />
               )
             )}
-          <SafeAreaView style={[styles.overlayModalContainer, { height: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, maxHeight: undefined, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}
+          <SafeAreaView style={[styles.overlayModalContainer, {
+            // Slim mode (donation ask already dismissed for today, only
+            // the one-line "thanks" + Download PDF button shows) sizes to
+            // its actual content instead of the full interstitial's tall
+            // fixed height - previously it kept the same screen-filling
+            // height regardless, which left a large empty gap below the
+            // button once there was barely any content left to fill it.
+            height: (donateModalContext === 'tools' && toolsInterstitialSlim)
+              ? undefined
+              : (isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40),
+            maxHeight: undefined,
+            ...(isWebWide ? { maxWidth: contentModalWidth } : {})
+          }]}
             // Claims the touch responder so a tap that starts inside the card
             // (e.g. focusing a text field) never bubbles up to the backdrop's
             // dismiss handler. Needed because react-native-web's TextInput
