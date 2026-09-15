@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 745;
+const BUILD_NUMBER = 746;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7735,13 +7735,13 @@ function App() {
     // navigations within the same container/source file, so flipping
     // from page 4 to page 5 doesn't re-fetch the file over the network
     // and re-parse the whole document from scratch just to render one
-    // different page - see pdfThumbnails.web.js. Scale dropped from 2.5
-    // to 2.0: still sharp on a real screen, but noticeably faster to
-    // render on image-heavy pages (product grids, photo scans) since
-    // pdf.js has to decode and draw every embedded raster image at
-    // whatever scale is requested, not just vector/text content.
+    // different page - see pdfThumbnails.web.js. Scale back at 2.5,
+    // full original clarity - the actual browser-lag cause on pages
+    // like tall website-screenshot PDFs is capped in renderOnePage
+    // itself now (MAX_RENDER_DIMENSION), not by lowering scale for
+    // every page including normal ones that were never the problem.
     const docCacheKey = `${pdfActiveContainerId}:${page.sourceFileIndex}`;
-    generateWebPdfThumbnails(meta.uri, 2.0, page.sourcePageIndex + 1, null, docCacheKey).then((result) => {
+    generateWebPdfThumbnails(meta.uri, 2.5, page.sourcePageIndex + 1, null, docCacheKey).then((result) => {
       if (cancelled) return;
       if (result) {
         addToPdfHighResCache(cacheKey, result);

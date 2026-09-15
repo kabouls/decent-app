@@ -84,6 +84,19 @@ const withTimeout = (promise, label) => Promise.race([
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+// Hard ceiling on either canvas side, in pixels. Most pages (Letter, A4,
+// etc.) never get near this and render at the exact requested scale,
+// unaffected. It only kicks in for genuinely oversized pages - the most
+// common real case being a full website screenshot saved as ONE very
+// tall PDF page - where a flat scale multiplier would otherwise produce
+// a canvas several thousand pixels tall packed with many embedded
+// images, which is real, synchronous browser work and the actual likely
+// cause of "opening a page lags the whole browser," not the scale
+// number itself on a normal page. Chosen as a generous ceiling: still
+// sharp on any realistic screen, just stops truly pathological pages
+// from ballooning unbounded.
+const MAX_RENDER_DIMENSION = 3000;
+
 // Keeps a parsed pdfjs document alive across multiple single-page renders
 // of the SAME source, keyed by a caller-supplied cacheKey. Before this,
 // the fullscreen high-res viewer called getDocument() + .destroy() on
@@ -128,7 +141,13 @@ export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber =
 
     const renderOnePage = async (num) => {
       const page = await withTimeout(pdf.getPage(num), `Page ${num} fetch`);
-      const viewport = page.getViewport({ scale });
+      const baseViewport = page.getViewport({ scale });
+      const longestSide = Math.max(baseViewport.width, baseViewport.height);
+      // Only recompute (and re-call getViewport) when actually over the
+      // cap - keeps the normal-page path exactly as cheap as before.
+      const viewport = longestSide > MAX_RENDER_DIMENSION
+        ? page.getViewport({ scale: scale * (MAX_RENDER_DIMENSION / longestSide) })
+        : baseViewport;
       const canvas = document.createElement('canvas');
       canvas.width = viewport.width;
       canvas.height = viewport.height;
