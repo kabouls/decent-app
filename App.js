@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 766;
+const BUILD_NUMBER = 767;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -4523,7 +4523,23 @@ const getFileSizeBytes = async (uri) => {
 // promise only yields once that promise's own work is done, so without
 // an explicit yield, a tight loop of several expensive operations still
 // runs as one uninterrupted block from the browser's perspective.
-const yieldToBrowser = () => new Promise((resolve) => setTimeout(resolve, 0));
+const yieldToBrowser = () => {
+  // Yielding exists purely to let the browser paint the progress text
+  // and process a Cancel tap between pages - there's nothing to keep
+  // responsive when the tab isn't even visible, and a background tab's
+  // setTimeout is throttled by the browser to fire no more than once a
+  // second (Chrome gets more aggressive the longer a tab stays hidden,
+  // eventually clamping to once a minute). Without this check, every
+  // single yield point in Compress/Crop/Page Numbers/Export/Combine
+  // turned into a multi-second stall the moment someone switched tabs
+  // mid-operation - real, compounding delay for zero benefit, since no
+  // one was watching the progress bar anyway. typeof document check
+  // keeps this safe on native, where these same loops also run and
+  // there's no DOM at all - it just always falls through to the normal
+  // setTimeout path there, unchanged.
+  if (typeof document !== 'undefined' && document.hidden) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, 0));
+};
 
 const formatBytes = (n) => {
   if (n == null) return '—';
