@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 761;
+const BUILD_NUMBER = 765;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -4666,10 +4666,11 @@ const loadSourceAsPdfDoc = async (uri, isImage) => {
 // objects (one per originally-picked file/image), kept alive in state
 // for the whole editing session specifically so this step can pull
 // from them without re-reading files from disk each time.
-const assemblePdfFromPages = async (sourceDocs, pages, onProgress = null) => {
+const assemblePdfFromPages = async (sourceDocs, pages, onProgress = null, isCancelled = null) => {
   const outDoc = await PDFDocument.create();
   let done = 0;
   for (const p of pages) {
+    if (isCancelled && isCancelled()) return null; // caller must treat a null return as "cancelled, don't use these bytes"
     const [copiedPage] = await outDoc.copyPages(sourceDocs[p.sourceFileIndex], [p.sourcePageIndex]);
     if (p.rotation) {
       const current = copiedPage.getRotation().angle || 0;
@@ -4678,6 +4679,7 @@ const assemblePdfFromPages = async (sourceDocs, pages, onProgress = null) => {
     outDoc.addPage(copiedPage);
     done += 1;
     if (onProgress) onProgress(done, pages.length);
+    if (done < pages.length) await yieldToBrowser(); // same reasoning as every other per-page loop in this file - a real yield point, not just a microtask await, so Cancel and the progress text both actually get a chance to be seen/processed on a large export
   }
   return outDoc.save();
 };
@@ -7797,6 +7799,22 @@ function App() {
   const pdfBusyPercent = pdfBusyProgress && pdfBusyProgress.total > 0
     ? Math.round((pdfBusyProgress.done / pdfBusyProgress.total) * 100)
     : null;
+  // Real cancellation, not just a disabled UI - checked between pages in
+  // Compress/Page Numbers/Export's per-page loops (all already yield
+  // between pages, so this costs nothing extra to check). Reset to false
+  // at the START of each of those operations, never left stale from a
+  // previous one. Crop and Loading are NOT wired to this: Crop's own
+  // full-screen editor Modal already blocks everything else behind it
+  // for the (usually brief) duration of applying a crop, so there's no
+  // "can't do anything else" gap to close there, just no cancel button -
+  // a real gap, left as a known follow-up rather than rushed in here.
+  // Loading has no per-page callback plumbed into generateWebPdfThumbnails
+  // to hook a cancel check into at all - would need that added first.
+  const pdfOperationCancelledRef = useRef(false);
+  const cancelPdfOperation = () => {
+    pdfOperationCancelledRef.current = true;
+    triggerHaptic('warning');
+  };
   const [pdfDragIndex, setPdfDragIndex] = useState(null);
   const [pdfFullscreenIndex, setPdfFullscreenIndex] = useState(null); // null | index into activePdfContainer.pages
   // Cache of high-res single-page renders, keyed by "sourceFileIndex:
@@ -12043,6 +12061,22 @@ function App() {
       urlSyncSkippedInitialRef.current = true;
       return;
     }
+    // Tools has its own separate URL-sync effect (TOOLS URL SYNC, above)
+    // that owns the address bar entirely while toolsScreenVisible is
+    // true. This effect's own deps (session, userProfile.handle, etc.)
+    // can change for reasons that have nothing to do with navigation -
+    // a background profile refresh, a session token update - and
+    // whenever they did while Tools was open, this effect still fired
+    // and unconditionally replaceState'd to whatever the main feed's
+    // path was (defaulting to /for-you), CLOBBERING the correct
+    // /tools/... URL the other effect had just set. That's what made
+    // the address bar intermittently show /for-you while still visibly
+    // inside Tools - not a typo, a genuine race between two independent
+    // effects that both write to the same address bar with no
+    // awareness of each other. Deferring here, rather than having the
+    // Tools effect fight back on every one of its own re-renders, keeps
+    // one clear owner of the URL at any given moment.
+    if (toolsScreenVisible) return;
     let path = '/for-you';
     // Portfolio and designer-profile modals can both be mounted at once
     // (e.g. opening a designer's profile from on top of an already-open
@@ -12071,7 +12105,7 @@ function App() {
     if (window.location.pathname !== path) {
       window.history.replaceState(window.history.state, document.title, path);
     }
-  }, [bottomNav, modalVisible, activeProject, designerModalVisible, selectedDesigner, topStackedPage, session, userProfile.handle]);
+  }, [bottomNav, modalVisible, activeProject, designerModalVisible, selectedDesigner, topStackedPage, session, userProfile.handle, toolsScreenVisible]);
 
   const handleBackFromDesignerProfile = useCallback(() => {
     if (designerBackStack.length > 0) {
@@ -12786,6 +12820,55 @@ function App() {
     });
   };
 
+  // Undoes a SPECIFIC named edit (e.g. "Compress PDF"), not just
+  // whatever happened most recently - the "X" next to the active
+  // Compress/Page Numbers pill in the toolbar needs this, not
+  // handleUndoPdfEdit above. Previously both of those buttons called the
+  // generic undo, which just pops the LAST history entry regardless of
+  // label - if Compress ran and then Crop ran on top of it, pressing
+  // "Undo Compress" actually undid the Crop instead, since that was the
+  // most recent entry, not the compress one.
+  //
+  // Finds the most recent entry with this label (scoped to history since
+  // the last full Clear, same reasoning as isPdfCompressActive/
+  // isPdfPageNumbersActive above), restores containers to the snapshot
+  // stored right BEFORE that edit, and drops that entry plus everything
+  // after it. Dropping everything after is a real, unavoidable
+  // consequence, not a bug: if a Crop was applied on top of the
+  // compressed pages, there's no way to cleanly "subtract" just the
+  // compress step once something else was built on its result - the
+  // snapshot from before compress simply doesn't know about the crop.
+  // getWarningLabelsFor (below) surfaces this honestly before the user
+  // confirms, rather than silently discarding more than they asked for.
+  const findPdfHistoryIndexForLabel = (label) => {
+    const lastClearIndex = pdfEditorHistory.map((h) => h.label).lastIndexOf('Clear all PDFs');
+    const searchStart = lastClearIndex === -1 ? 0 : lastClearIndex + 1;
+    for (let i = pdfEditorHistory.length - 1; i >= searchStart; i--) {
+      if (pdfEditorHistory[i].label === label) return i;
+    }
+    return -1;
+  };
+  const getPdfUndoWarningLabels = (label) => {
+    const idx = findPdfHistoryIndexForLabel(label);
+    if (idx === -1) return [];
+    return [...new Set(pdfEditorHistory.slice(idx + 1).map((h) => h.label))];
+  };
+  const undoSpecificPdfEdit = (label) => {
+    setPdfEditorHistory((prev) => {
+      const lastClearIndex = prev.map((h) => h.label).lastIndexOf('Clear all PDFs');
+      const searchStart = lastClearIndex === -1 ? 0 : lastClearIndex + 1;
+      let idx = -1;
+      for (let i = prev.length - 1; i >= searchStart; i--) {
+        if (prev[i].label === label) { idx = i; break; }
+      }
+      if (idx === -1) return prev; // nothing to undo - shouldn't normally happen, the button only shows when the corresponding "is active" flag is true
+      setPdfContainers(prev[idx].containers);
+      resetPdfHighResCaches();
+      triggerHaptic('light');
+      return prev.slice(0, idx);
+    });
+  };
+
   // Builds one new container from a single picked file - used for each
   // file "Add PDF" picks (one container per file, stacked after any
   // already uploaded) and is NOT used for "Add Images" (see
@@ -13361,6 +13444,7 @@ function App() {
       // anything else, which is exactly what "circling for a long time"
       // with no visible feedback looked like.
       if (done < total) await yieldToBrowser();
+      if (pdfOperationCancelledRef.current) return null; // stop mid-document - caller treats null the same as "nothing to apply"
     }
 
     if (compressedThumbnailUris.length === 0) return null;
@@ -13394,11 +13478,13 @@ function App() {
     pushPdfHistorySnapshot('Compress PDF');
     setPdfCompressing(true);
     setPdfCompressProgress(null);
+    pdfOperationCancelledRef.current = false;
     triggerHaptic('light');
     try {
       const updates = {};
       const noImprovementNames = [];
       for (const cid of targets) {
+        if (pdfOperationCancelledRef.current) break;
         const container = pdfContainers.find((c) => c.id === cid);
         if (!container) continue;
 
@@ -13439,6 +13525,7 @@ function App() {
         const compressed = await compressOneContainer(container, preset, (done, total) => {
           setPdfCompressProgress({ containerName: container.name, done, total });
         });
+        if (pdfOperationCancelledRef.current) break; // stop entirely - don't start any remaining containers
         if (!compressed) continue;
 
         const compressedBytes = await compressed.sourceDocs[0].save();
@@ -13447,6 +13534,11 @@ function App() {
           continue; // not applied - the container stays exactly as it was
         }
         updates[cid] = compressed;
+      }
+
+      if (pdfOperationCancelledRef.current) {
+        showToast('Compression cancelled - nothing was changed.');
+        return;
       }
 
       const appliedCount = Object.keys(updates).length;
@@ -13586,7 +13678,8 @@ function App() {
   const exportOneContainer = async (container) => {
     const bytes = await assemblePdfFromPages(container.sourceDocs, container.pages, (done, total) => {
       setPdfExportProgress({ done, total });
-    });
+    }, () => pdfOperationCancelledRef.current);
+    if (!bytes) return null; // cancelled mid-assembly
     const filename = `${(container.name || 'document').replace(/\.pdf$/i, '')}.pdf`;
     return { bytes, filename };
   };
@@ -13644,8 +13737,13 @@ function App() {
   const exportActiveOrGivenContainer = async (container) => {
     setPdfEditorExporting(true);
     setPdfExportProgress(null);
+    pdfOperationCancelledRef.current = false;
     try {
       const file = await exportOneContainer(container);
+      if (!file) {
+        showToast('Export cancelled.');
+        return;
+      }
       await maybeShowToolsDownloadInterstitial(false, [file]);
       triggerHaptic('success');
     } catch (e) {
@@ -13667,10 +13765,16 @@ function App() {
     setPdfExportChoiceVisible(false);
     setPdfEditorExporting(true);
     setPdfExportProgress(null);
+    pdfOperationCancelledRef.current = false;
     try {
       const files = [];
       for (const container of pdfContainers) {
-        files.push(await exportOneContainer(container));
+        const file = await exportOneContainer(container);
+        if (!file) {
+          showToast('Export cancelled - nothing was saved.');
+          return;
+        }
+        files.push(file);
       }
       await maybeShowToolsDownloadInterstitial(false, files);
       triggerHaptic('success');
@@ -13708,18 +13812,32 @@ function App() {
   // editable container.
   const handleCombineAndExport = async () => {
     setPdfEditorExporting(true);
+    setPdfExportProgress(null);
+    pdfOperationCancelledRef.current = false;
     try {
       const orderedContainers = pdfCombineOrderIds.map((id) => pdfContainers.find((c) => c.id === id)).filter(Boolean);
+      const totalPages = orderedContainers.reduce((sum, c) => sum + c.pages.length, 0);
       const outDoc = await PDFDocument.create();
+      let done = 0;
+      let cancelled = false;
       for (const container of orderedContainers) {
+        if (cancelled) break;
         for (const page of container.pages) {
+          if (pdfOperationCancelledRef.current) { cancelled = true; break; }
           const [copiedPage] = await outDoc.copyPages(container.sourceDocs[page.sourceFileIndex], [page.sourcePageIndex]);
           if (page.rotation) {
             const current = copiedPage.getRotation().angle || 0;
             copiedPage.setRotation(degrees((current + page.rotation) % 360));
           }
           outDoc.addPage(copiedPage);
+          done += 1;
+          setPdfExportProgress({ done, total: totalPages });
+          if (done < totalPages) await yieldToBrowser();
         }
+      }
+      if (cancelled) {
+        showToast('Combine cancelled - nothing was saved.');
+        return;
       }
       const bytes = await outDoc.save();
       await maybeShowToolsDownloadInterstitial(false, [{ bytes, filename: 'combined.pdf' }]);
@@ -13731,6 +13849,7 @@ function App() {
       triggerHaptic('error');
     } finally {
       setPdfEditorExporting(false);
+      setPdfExportProgress(null);
     }
   };
 
@@ -13874,11 +13993,13 @@ function App() {
     triggerHaptic('light');
     setPdfPageNumbersApplying(true);
     setPdfPageNumbersProgress(null);
+    pdfOperationCancelledRef.current = false;
     try {
       const outDoc = await PDFDocument.create();
       const font = await outDoc.embedFont(StandardFonts.Helvetica);
       const pages = activePdfContainer.pages;
       for (let i = 0; i < pages.length; i++) {
+        if (pdfOperationCancelledRef.current) break;
         const p = pages[i];
         const [copiedPage] = await outDoc.copyPages(activePdfContainer.sourceDocs[p.sourceFileIndex], [p.sourcePageIndex]);
         if (p.rotation) {
@@ -13891,6 +14012,16 @@ function App() {
         const textWidth = font.widthOfTextAtSize(label, 10);
         copiedPage.drawText(label, { x: (width - textWidth) / 2, y: 20, size: 10, font, color: rgb(0, 0, 0) });
         setPdfPageNumbersProgress({ done: i + 1, total: pages.length });
+        // Wasn't yielding between pages before - meant both the progress
+        // text above and a Cancel button press had no real chance to be
+        // seen/processed until the whole loop finished, on a large
+        // document. Same fix Compress already had for the same reason.
+        if (i < pages.length - 1) await yieldToBrowser();
+      }
+
+      if (pdfOperationCancelledRef.current) {
+        showToast('Cancelled - nothing was changed.');
+        return;
       }
 
       const targetId = activePdfContainer.id;
@@ -13972,11 +14103,13 @@ function App() {
     triggerHaptic('light');
     setPdfCropApplying(true);
     setPdfCropProgress(null);
+    pdfOperationCancelledRef.current = false;
     try {
       const outDoc = await PDFDocument.create();
       const pages = activePdfContainer.pages;
       let done = 0;
       for (const page of pages) {
+        if (pdfOperationCancelledRef.current) break;
         const [copiedPage] = await outDoc.copyPages(activePdfContainer.sourceDocs[page.sourceFileIndex], [page.sourcePageIndex]);
         if (page.rotation) {
           const current = copiedPage.getRotation().angle || 0;
@@ -13995,6 +14128,15 @@ function App() {
         outDoc.addPage(copiedPage);
         done += 1;
         setPdfCropProgress({ done, total: pages.length });
+        // Same reasoning as Page Numbers - genuine per-page work with no
+        // yield point meant a Cancel press (or the progress text itself)
+        // had no real chance to be seen/processed on a large document.
+        if (done < pages.length) await yieldToBrowser();
+      }
+
+      if (pdfOperationCancelledRef.current) {
+        showToast('Cancelled - nothing was changed.');
+        return;
       }
 
       const targetId = activePdfContainer.id;
@@ -22509,7 +22651,14 @@ function App() {
               onResponderRelease={() => {}}
             >
               <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Undo Compress?</Text>
-              <Text style={styles.confirmSubText}>This reverts back to how it was before compressing.</Text>
+              <Text style={styles.confirmSubText}>
+                {(() => {
+                  const also = getPdfUndoWarningLabels('Compress PDF');
+                  return also.length > 0
+                    ? `This reverts back to how it was before compressing - it will also undo ${also.join(', ')}, since ${also.length > 1 ? 'those were' : 'that was'} applied after.`
+                    : 'This reverts back to how it was before compressing.';
+                })()}
+              </Text>
               <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
@@ -22520,7 +22669,7 @@ function App() {
                 </BouncyButton>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
-                  onPress={() => { setPdfCompressUndoConfirmVisible(false); handleUndoPdfEdit(); }}
+                  onPress={() => { setPdfCompressUndoConfirmVisible(false); undoSpecificPdfEdit('Compress PDF'); }}
                   accessibilityRole="button"
                 >
                   <Text style={styles.confirmDeleteText}>Undo</Text>
@@ -22554,7 +22703,14 @@ function App() {
               onResponderRelease={() => {}}
             >
               <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Undo Page Numbers?</Text>
-              <Text style={styles.confirmSubText}>This reverts back to how it was before adding page numbers.</Text>
+              <Text style={styles.confirmSubText}>
+                {(() => {
+                  const also = getPdfUndoWarningLabels('Add page numbers');
+                  return also.length > 0
+                    ? `This reverts back to how it was before adding page numbers - it will also undo ${also.join(', ')}, since ${also.length > 1 ? 'those were' : 'that was'} applied after.`
+                    : 'This reverts back to how it was before adding page numbers.';
+                })()}
+              </Text>
               <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
@@ -22565,12 +22721,52 @@ function App() {
                 </BouncyButton>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
-                  onPress={() => { setPdfPageNumbersUndoConfirmVisible(false); handleUndoPdfEdit(); }}
+                  onPress={() => { setPdfPageNumbersUndoConfirmVisible(false); undoSpecificPdfEdit('Add page numbers'); }}
                   accessibilityRole="button"
                 >
                   <Text style={styles.confirmDeleteText}>Undo</Text>
                 </BouncyButton>
               </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* PDF EDITOR - BUSY BLOCKING OVERLAY. Shown for every long-running
+          PDF Editor operation (Compressing/Cropping/Numbering/Loading/
+          Exporting) - covers the whole screen as its own Modal, which
+          blocks interaction with everything behind it by native Modal
+          semantics, so there's no need to individually disable every
+          other button/tool while one of these is running. Cancel is
+          real, not decorative - wired to pdfOperationCancelledRef, which
+          Compress/Crop/Page Numbers/Export all check between pages (see
+          each handler). Loading has no per-page cancel hook plumbed in
+          yet, so no Cancel button shows for that one specifically - an
+          honest gap, not hidden. */}
+      {!!pdfBusyLabel && (
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => {}}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(11, 15, 23, 0.6)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+            <View style={{
+              backgroundColor: theme.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.border,
+              paddingVertical: 24, paddingHorizontal: 28, alignItems: 'center', gap: 14, minWidth: 240, maxWidth: 320
+            }}>
+              <ActivityIndicator color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} size="large" />
+              <Text style={{ color: theme.text, fontSize: 14.5, fontWeight: '700' }}>
+                {pdfBusyLabel}{pdfBusyPercent != null ? ` ${pdfBusyPercent}%` : '...'}
+              </Text>
+              <Text style={{ color: theme.textSecondary, fontSize: 11.5, textAlign: 'center', lineHeight: 16 }}>
+                Other actions are disabled until this finishes.
+              </Text>
+              {pdfBusyLabel !== 'Loading' && (
+                <BouncyButton
+                  style={{ marginTop: 2, paddingVertical: 9, paddingHorizontal: 24, borderRadius: 99, borderWidth: 1.5, borderColor: '#EF4444' }}
+                  onPress={cancelPdfOperation}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
+                >
+                  <Text style={{ color: '#EF4444', fontSize: 12.5, fontWeight: '700' }}>Cancel</Text>
+                </BouncyButton>
+              )}
             </View>
           </View>
         </Modal>
