@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 765;
+const BUILD_NUMBER = 766;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7756,6 +7756,14 @@ function App() {
   // separate full-screen Modal driven by pdfFullscreenIndex instead.
   const [pdfActivePageId, setPdfActivePageId] = useState(null);
   const [pdfEditorLoading, setPdfEditorLoading] = useState(false);
+  // Set at the start of loadPickedPdfAssets when the incoming batch's
+  // total size crosses this - purely informational (unlike
+  // PDF_LARGE_UPLOAD_WARN_BYTES above, which gates an actual "continue?"
+  // confirmation before loading even starts), just so the busy overlay
+  // can say "this is a big file" instead of leaving someone watching a
+  // slow, silent progress bar with no idea whether that's expected.
+  const PDF_BIG_FILE_LOADING_WARN_BYTES = 20 * 1024 * 1024;
+  const [pdfLoadingIsLargeFile, setPdfLoadingIsLargeFile] = useState(false);
   const [pdfEditorExporting, setPdfEditorExporting] = useState(false);
   // One derived label covering every PDF Editor operation that mutates
   // the document - Export reads this to disable itself and show what's
@@ -13083,6 +13091,7 @@ function App() {
 
   const loadPickedPdfAssets = async (assets) => {
     setPdfEditorLoading(true);
+    setPdfLoadingIsLargeFile(assets.reduce((sum, a) => sum + (a.size || 0), 0) > PDF_BIG_FILE_LOADING_WARN_BYTES);
     for (const asset of assets) {
       // Each picked file becomes its own container, stacked after
       // whatever's already uploaded - asset.name is the original
@@ -13090,6 +13099,7 @@ function App() {
       await addPdfContainerFromSource(asset.uri, false, asset.name);
     }
     setPdfEditorLoading(false);
+    setPdfLoadingIsLargeFile(false);
   };
 
   const pickPdfEditorImages = async () => {
@@ -22754,6 +22764,11 @@ function App() {
               <Text style={{ color: theme.text, fontSize: 14.5, fontWeight: '700' }}>
                 {pdfBusyLabel}{pdfBusyPercent != null ? ` ${pdfBusyPercent}%` : '...'}
               </Text>
+              {pdfBusyLabel === 'Loading' && pdfLoadingIsLargeFile && (
+                <Text style={{ color: toolsThemeMode === 'light' ? '#6D28D9' : '#A78BFA', fontSize: 11.5, textAlign: 'center', lineHeight: 16, fontWeight: '600' }}>
+                  This is a big file - it might take a while.
+                </Text>
+              )}
               <Text style={{ color: theme.textSecondary, fontSize: 11.5, textAlign: 'center', lineHeight: 16 }}>
                 Other actions are disabled until this finishes.
               </Text>
