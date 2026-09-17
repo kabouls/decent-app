@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 774;
+const BUILD_NUMBER = 776;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -239,6 +239,11 @@ const KO_FI_URL = 'https://ko-fi.com/iputra07';
 // that doesn't explicitly set this stays exactly as it was before this
 // change - only the Play Store build profile should set this to 'playstore'.
 const DONATIONS_ENABLED = process.env.EXPO_PUBLIC_DECENT_DISTRIBUTION !== 'playstore';
+// Opposite direction from DONATIONS_ENABLED, same mechanism - ads are
+// ONLY for the Play Store build, never the sideload/GitHub one. Defaults
+// to disabled (false) for every other profile, same reasoning as above:
+// nothing changes unless a profile explicitly opts in.
+const ADS_ENABLED = process.env.EXPO_PUBLIC_DECENT_DISTRIBUTION === 'playstore';
 const GITHUB_URL = 'https://github.com/kabouls/decent-app';
 
 const SCREEN_WIDTH = Platform.OS === 'web' ? Math.min(RAW_WINDOW_WIDTH, 480) : RAW_WINDOW_WIDTH;
@@ -628,6 +633,16 @@ const ImageFilledIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
     <Rect x="2" y="3" width="20" height="18" rx="3" fill={color} />
     <Circle cx="8" cy="9" r="2" fill="#0B0F17" />
     <Path d="M4 18l6-6 4 4 6-7v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" fill="#0B0F17" />
+  </Svg>
+));
+
+const ResumeIconSVG = React.memo(({ size = 18, color = '#FFFFFF' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Rect x="4" y="2" width="16" height="20" rx="2" stroke={color} strokeWidth="2" />
+    <Circle cx="9" cy="8" r="2" stroke={color} strokeWidth="1.6" />
+    <Path d="M6.5 13.5C6.5 12 7.5 11 9 11C10.5 11 11.5 12 11.5 13.5" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+    <Path d="M14 8H17" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+    <Path d="M7 17H17" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
   </Svg>
 ));
 
@@ -2089,6 +2104,8 @@ const TOOLS_TRANSLATIONS = {
     imageConverterDesc: 'Convert photos between JPEG, PNG, and WEBP - batch up to 10 at once',
     pdfEditor: 'PDF Editor',
     pdfEditorDesc: 'Merge PDFs, reorder pages, delete, and rotate - export as one file',
+    resumeMaker: 'Resume Maker',
+    resumeMakerDesc: 'Fill in your info, pick a template, export as PDF',
     pdfEditorIntro: 'Add PDF files or photos to build your document. Drag to reorder, tap to rotate or remove a page. Nothing leaves your device.',
     addPdf: 'Add PDF',
     addImages: 'Add Images',
@@ -2171,6 +2188,8 @@ const TOOLS_TRANSLATIONS = {
     imageConverterDesc: 'Konversi foto antara JPEG, PNG, dan WEBP - hingga 10 sekaligus',
     pdfEditor: 'Editor PDF',
     pdfEditorDesc: 'Gabungkan PDF, atur ulang halaman, hapus, dan putar - ekspor sebagai satu file',
+    resumeMaker: 'Pembuat Resume',
+    resumeMakerDesc: 'Isi info Anda, pilih template, ekspor sebagai PDF',
     pdfEditorIntro: 'Tambahkan file PDF atau foto untuk membuat dokumen Anda. Seret untuk mengatur ulang, ketuk untuk memutar atau menghapus halaman. Tidak ada yang meninggalkan perangkat Anda.',
     addPdf: 'Tambah PDF',
     addImages: 'Tambah Gambar',
@@ -3454,7 +3473,7 @@ const ProjectCard = React.memo(({
   );
 });
 
-const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, pinnedCount, styles, cardWidth, showReadOnlyPin, emptyMessage }) => {
+const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, pinnedCount, styles, cardWidth, showReadOnlyPin, emptyMessage, theme, onDismissAd }) => {
   // b527: was previously silently rendering nothing at all for an empty
   // items array - matches TwoRowHorizontalGrid's own empty state below,
   // just with an emptyMessage prop so each call site can give
@@ -3470,23 +3489,37 @@ const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerPr
   return (
     <View style={styles.grid}>
       {items.map((item) => (
-        <ProjectCard
-          key={item.id}
-          item={item}
-          onPress={onPress}
-          onToggleLike={onToggleLike}
-          onOpenDesignerProfile={onOpenDesignerProfile}
-          onToggleFollow={onToggleFollow}
-          isFollowing={followedDesigners ? followedDesigners.includes(item.ownerId) : false}
-          followsMe={!!item.followsMe}
-          isOwnContent={!!currentUserId && item.ownerId === currentUserId}
-          showPinControl={showPinControl}
-          onTogglePin={onTogglePin}
-          pinnedCount={pinnedCount}
-          showReadOnlyPin={showReadOnlyPin}
-          customWidth={cardWidth}
-          styles={styles}
-        />
+        item.isAd ? (
+          // Only ever present in the For You feed's own items array (see
+          // forYouProjectsWithAds) - every other ProjectGrid call site
+          // passes a plain projects array with no isAd entries at all,
+          // so this branch is unreachable there, not just unused.
+          <NativeAdCard
+            key={item.id}
+            onDismiss={() => onDismissAd && onDismissAd(item.id)}
+            customWidth={cardWidth}
+            styles={styles}
+            theme={theme}
+          />
+        ) : (
+          <ProjectCard
+            key={item.id}
+            item={item}
+            onPress={onPress}
+            onToggleLike={onToggleLike}
+            onOpenDesignerProfile={onOpenDesignerProfile}
+            onToggleFollow={onToggleFollow}
+            isFollowing={followedDesigners ? followedDesigners.includes(item.ownerId) : false}
+            followsMe={!!item.followsMe}
+            isOwnContent={!!currentUserId && item.ownerId === currentUserId}
+            showPinControl={showPinControl}
+            onTogglePin={onTogglePin}
+            pinnedCount={pinnedCount}
+            showReadOnlyPin={showReadOnlyPin}
+            customWidth={cardWidth}
+            styles={styles}
+          />
+        )
       ))}
     </View>
   );
@@ -3527,6 +3560,123 @@ const SwipeToDismiss = ({ onDismiss, children }) => {
     </Animated.View>
   );
 };
+
+// In-feed native ad card - For You only (see the interleaving logic
+// where forYouProjectsWithAds is built; every other ProjectGrid call
+// site never produces isAd items at all, so this component never
+// mounts anywhere else).
+//
+// react-native-google-mobile-ads is required lazily, inside the effect,
+// NOT as a top-level static import. This project's own incident history
+// (b752 era) is a direct lesson here: a top-level import of a native
+// module that isn't linked on every build profile crashed the ENTIRE
+// app on launch, not just the feature using it - not hypothetical, it
+// already happened once. ADS_ENABLED is only true on the playstore
+// profile, so the sideload build never even attempts this require, and
+// the try/catch means even a genuinely broken/missing native binding on
+// the playstore build just fails to show an ad instead of taking
+// anything else down with it.
+//
+// Asset API verified directly against the library's own docs (not
+// guessed): nativeAd.headline / .body / .cta / .icon.url are the real
+// property names, NativeAssetType.HEADLINE/BODY/CTA/ICON the real enum
+// values. Critically, an asset view registered via NativeAsset must be
+// a DIRECT child with no wrapping View/TouchableOpacity around it - the
+// SDK's own click/impression tracking breaks if you do, per the
+// library's explicit "Do/Don't" example. The CTA "button" look below is
+// done by styling the Text itself (padding/backgroundColor/borderRadius
+// all work directly on RN Text), not by wrapping it.
+//
+// The AD badge and dismiss X are deliberately siblings of NativeAdView,
+// not descendants of it - keeping them completely outside the ad's own
+// view hierarchy so there's no chance of interfering with its
+// click/impression tracking, which would be a real policy problem, not
+// just a bug.
+const NativeAdCard = React.memo(({ onDismiss, customWidth, styles, theme }) => {
+  const [nativeAd, setNativeAd] = useState(null);
+  const [AdMobModule, setAdMobModule] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!ADS_ENABLED || Platform.OS === 'web') return;
+    let cancelled = false;
+    let createdAd = null;
+    try {
+      const AdMob = require('react-native-google-mobile-ads');
+      AdMob.NativeAd.createForAdRequest(AdMob.TestIds.NATIVE) // TODO: swap for the real Native ad unit ID once one exists in AdMob - see the ADMOB_NATIVE_AD_UNIT_ID constant below
+        .then((ad) => {
+          if (cancelled) { ad.destroy(); return; }
+          createdAd = ad;
+          setAdMobModule(AdMob);
+          setNativeAd(ad);
+        })
+        .catch(() => { if (!cancelled) setFailed(true); });
+    } catch (e) {
+      setFailed(true);
+    }
+    return () => {
+      cancelled = true;
+      if (createdAd) createdAd.destroy(); // frees native resources - the docs are explicit this should always happen, not just on error paths
+    };
+  }, []);
+
+  if (!ADS_ENABLED || Platform.OS === 'web' || failed || !nativeAd || !AdMobModule) return null;
+
+  const { NativeAdView, NativeAsset, NativeMediaView, NativeAssetType } = AdMobModule;
+
+  return (
+    <View style={[styles.card, customWidth ? { width: customWidth } : null, { overflow: 'hidden' }]}>
+      <View style={{
+        position: 'absolute', top: 8, left: 8, zIndex: 2,
+        backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3,
+        flexDirection: 'row', alignItems: 'center', gap: 4
+      }}>
+        <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>AD</Text>
+      </View>
+      <BouncyButton
+        style={{
+          position: 'absolute', top: 8, right: 8, zIndex: 2,
+          width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(0,0,0,0.65)',
+          alignItems: 'center', justifyContent: 'center'
+        }}
+        onPress={onDismiss}
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss ad"
+      >
+        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '800' }}>✕</Text>
+      </BouncyButton>
+      <NativeAdView nativeAd={nativeAd}>
+        <NativeMediaView style={{ width: '100%', aspectRatio: 1.3 }} resizeMode="cover" />
+        <View style={{ padding: 12, gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {nativeAd.icon && (
+              <NativeAsset assetType={NativeAssetType.ICON}>
+                <Image source={{ uri: nativeAd.icon.url }} style={{ width: 28, height: 28, borderRadius: 8 }} />
+              </NativeAsset>
+            )}
+            <NativeAsset assetType={NativeAssetType.HEADLINE}>
+              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700', flexShrink: 1 }} numberOfLines={1}>{nativeAd.headline}</Text>
+            </NativeAsset>
+          </View>
+          {nativeAd.body ? (
+            <NativeAsset assetType={NativeAssetType.BODY}>
+              <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16 }} numberOfLines={2}>{nativeAd.body}</Text>
+            </NativeAsset>
+          ) : null}
+          {nativeAd.cta ? (
+            <NativeAsset assetType={NativeAssetType.CTA}>
+              <Text style={{
+                color: '#FFFFFF', fontSize: 12, fontWeight: '700', backgroundColor: '#8B5CF6',
+                borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
+                alignSelf: 'flex-start', marginTop: 6, overflow: 'hidden'
+              }}>{nativeAd.cta}</Text>
+            </NativeAsset>
+          ) : null}
+        </View>
+      </NativeAdView>
+    </View>
+  );
+});
 
 // Web-only image crop tool. expo-image-picker's allowsEditing/aspect crop
 // step is a no-op on web (confirmed via its own web implementation - it
@@ -5902,6 +6052,21 @@ function App() {
     ? { backgroundColor: themeMode === 'light' ? 'rgba(255,255,255,0.75)' : 'rgba(30,35,48,0.75)' }
     : null;
 
+  // AdMob SDK init - once, on mount. Same lazy-require + try/catch
+  // safety as NativeAdCard itself, for the same reason: this must never
+  // be able to crash app startup on a build where the native module
+  // isn't linked (only the playstore profile actually needs it).
+  useEffect(() => {
+    if (!ADS_ENABLED || Platform.OS === 'web') return;
+    try {
+      const AdMob = require('react-native-google-mobile-ads');
+      AdMob.default().initialize();
+    } catch (e) {
+      // Silently skip - a missing/broken native binding here should
+      // never take down the rest of the app over an ads feature.
+    }
+  }, []);
+
   // --- Responsive breakpoints (web only) ---
   // Native ignores all of this entirely (viewportWidth stays at the device
   // width from launch, isDesktop/isTablet are always false there since
@@ -7600,7 +7765,7 @@ function App() {
   // hands off to always agree on what each URL means.
   const TOOLS_ROUTE_SLUGS = {
     hub: '', imageCompressor: 'image-compressor', qrGenerator: 'qr-code-generator',
-    imageConverter: 'image-converter', pdfEditor: 'pdf-editor'
+    imageConverter: 'image-converter', pdfEditor: 'pdf-editor', resumeMaker: 'resume-maker'
   };
   const toolsUrlInitializedRef = useRef(false);
   const toolsPreviousPathRef = useRef('/');
@@ -8394,7 +8559,8 @@ function App() {
     { key: 'imageCompressor', label: tt('imageCompressor'), Icon: ImageIconSVG },
     { key: 'qrGenerator', label: tt('qrGenerator'), Icon: QrIconSVG },
     { key: 'imageConverter', label: tt('imageConverter'), Icon: SwapIconSVG },
-    { key: 'pdfEditor', label: tt('pdfEditor'), Icon: PdfIconSVG }
+    { key: 'pdfEditor', label: tt('pdfEditor'), Icon: PdfIconSVG },
+    { key: 'resumeMaker', label: tt('resumeMaker'), Icon: ResumeIconSVG }
   ];
   const setToolsLanguagePersisted = (lang) => {
     setToolsLanguage(lang);
@@ -16134,6 +16300,29 @@ function App() {
     return scored.sort((a, b) => b._highlightScore - a._highlightScore);
   }, [projects, categoryFilter, blockedIds, mutedIds, forYouTypeFilter, excludeAiGeneratedContent]);
 
+  // For You ad interleaving - ONLY this feed, never any other ProjectGrid
+  // call site (own profile, a designer's profile, liked posts, etc.).
+  // Dismissed ads are tracked per-session (component state, not
+  // persisted) - an ad being dismissed doesn't need to be remembered
+  // forever, since a fresh load pulls different ad content anyway, and
+  // persisting it would mean plumbing per-user dismissal state into
+  // Supabase for something with no real long-term value.
+  const [dismissedAdIds, setDismissedAdIds] = useState(() => new Set());
+  const dismissForYouAd = (id) => setDismissedAdIds((prev) => new Set(prev).add(id));
+  const forYouProjectsWithAds = useMemo(() => {
+    if (!ADS_ENABLED) return forYouCategoryFilteredProjects; // sideload build - never even builds the interleaved array
+    const withAds = [];
+    const AD_INTERVAL = 8;
+    forYouCategoryFilteredProjects.forEach((item, i) => {
+      withAds.push(item);
+      if ((i + 1) % AD_INTERVAL === 0) {
+        const adId = `ad-${Math.floor(i / AD_INTERVAL)}`;
+        if (!dismissedAdIds.has(adId)) withAds.push({ id: adId, isAd: true });
+      }
+    });
+    return withAds;
+  }, [forYouCategoryFilteredProjects, dismissedAdIds]);
+
   const followedProjects = useMemo(() => {
     return projects.filter((p) => {
       if (selectedFollowedDesigner) {
@@ -17996,13 +18185,15 @@ function App() {
 
               <View onLayout={isWebWide ? debouncedLayoutWidthSetter(forYouGridWidthTimerRef, setForYouGridWidth) : undefined}>
               <ProjectGrid
-                items={forYouCategoryFilteredProjects}
+                items={forYouProjectsWithAds}
                 onPress={openProjectModal}
                 onToggleLike={toggleLike}
                 onOpenDesignerProfile={openDesignerProfileById}
                 onToggleFollow={isWebWide ? toggleFollowDesigner : undefined}
                 followedDesigners={followedDesigners}
                 currentUserId={session ? session.user.id : null}
+                theme={theme}
+                onDismissAd={dismissForYouAd}
                 // For You specifically: mobile web stays single-column,
                 // tablet stays the shared default. Wide web now fills the
                 // available width with as many fixed-ish-width columns as
@@ -20614,7 +20805,7 @@ function App() {
                     </BouncyButton>
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 12 }}>/</Text>
                     <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '800' }}>
-                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : tt('pdfEditor')}
+                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : activeTool === 'resumeMaker' ? tt('resumeMaker') : tt('pdfEditor')}
                     </Text>
                     {activeTool === 'pdfEditor' && pdfContainers.length > 0 && (
                       <BouncyButton
@@ -20687,7 +20878,7 @@ function App() {
                 {activeTool !== 'hub' && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: toolsTheme.bg }}>
                     <Text style={{ color: toolsTheme.text, fontSize: 17, fontWeight: '800' }}>
-                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : tt('pdfEditor')}
+                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : activeTool === 'resumeMaker' ? tt('resumeMaker') : tt('pdfEditor')}
                     </Text>
                     {activeTool === 'pdfEditor' && pdfContainers.length > 0 && (
                       <BouncyButton
@@ -20816,6 +21007,28 @@ function App() {
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('pdfEditor')}</Text>
                         <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('pdfEditorDesc')}</Text>
+                      </View>
+                      <ChevronRightSVG color={toolsTheme.accent} size={18} />
+                    </BouncyButton>
+
+                    <BouncyButton
+                      style={[
+                        {
+                          flexDirection: 'row', alignItems: 'center', gap: 14,
+                          backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
+                          borderRadius: 16, padding: 16
+                        },
+                        isWebWide ? { width: '48.5%' } : { width: '100%' }
+                      ]}
+                      onPress={() => requestSwitchTool('resumeMaker')}
+                      accessibilityRole="button"
+                    >
+                      <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                        <ResumeIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('resumeMaker')}</Text>
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('resumeMakerDesc')}</Text>
                       </View>
                       <ChevronRightSVG color={toolsTheme.accent} size={18} />
                     </BouncyButton>
@@ -21812,6 +22025,24 @@ function App() {
                     </View>
                   </View>
                 )}
+                </View>
+              )}
+
+              {/* RESUME MAKER - shell only for now. Real, navigable
+                  screen (header/breadcrumb/More Tools footer all already
+                  work via ALL_TOOLS_LIST + the title ternaries above) -
+                  the actual form wizard (Personal Info -> Experience/
+                  Education -> Skills/Links -> Review & Export) and the
+                  expo-print PDF generation are deliberately NOT built
+                  yet, staged as their own separate piece of work rather
+                  than rushed in alongside the tool's registration. */}
+              {activeTool === 'resumeMaker' && (
+                <View style={{ gap: 14, alignItems: 'center', paddingVertical: 40 }}>
+                  <ResumeIconSVG size={40} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
+                  <Text style={{ color: toolsTheme.text, fontSize: 16, fontWeight: '700', textAlign: 'center' }}>Resume Maker is coming soon</Text>
+                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, textAlign: 'center', maxWidth: 320, lineHeight: 18 }}>
+                    Fill in your info, pick a template, and export a real PDF - including an optional QR code to your DECENT portfolio if you're logged in.
+                  </Text>
                 </View>
               )}
 
