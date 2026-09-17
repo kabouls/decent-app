@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 773;
+const BUILD_NUMBER = 774;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7770,6 +7770,8 @@ function App() {
   const [pdfSplitEveryN, setPdfSplitEveryN] = useState('1');
   const [pdfWatermarkModalVisible, setPdfWatermarkModalVisible] = useState(false);
   const [pdfWatermarkText, setPdfWatermarkText] = useState('');
+  const [pdfWatermarkOpacity, setPdfWatermarkOpacity] = useState(0.3);
+  const [pdfWatermarkPattern, setPdfWatermarkPattern] = useState('single'); // 'single' | 'repeated'
   const pdfMoreToolsButtonRef = useRef(null);
   const [pdfMoreToolsMenuPosition, setPdfMoreToolsMenuPosition] = useState({ top: 140, left: 20 });
 
@@ -14393,6 +14395,8 @@ function App() {
       const font = await outDoc.embedFont(StandardFonts.HelveticaBold);
       const pages = activePdfContainer.pages;
       const text = pdfWatermarkText.trim();
+      const opacity = pdfWatermarkOpacity;
+      const pattern = pdfWatermarkPattern;
       let done = 0;
       for (const page of pages) {
         if (pdfOperationCancelledRef.current) break;
@@ -14402,17 +14406,34 @@ function App() {
           copiedPage.setRotation(degrees((current + page.rotation) % 360));
         }
         const { width, height } = copiedPage.getSize();
-        const size = Math.min(width, height) / Math.max(6, text.length * 0.6);
-        const textWidth = font.widthOfTextAtSize(text, size);
-        copiedPage.drawText(text, {
-          x: (width - textWidth) / 2,
-          y: height / 2,
-          size,
-          font,
-          color: rgb(0.5, 0.5, 0.5),
-          opacity: 0.3,
-          rotate: degrees(45)
-        });
+        if (pattern === 'repeated') {
+          // Smaller instances tiled in a plain grid, rotated 45deg like
+          // the single-mark version - deliberately not offsetting
+          // alternate rows into a brick pattern or trying to perfectly
+          // center each instance; a real repeating watermark doesn't
+          // need to be pixel-precise, and the simpler grid is far less
+          // that can go wrong.
+          const size = Math.min(width, height) / 14;
+          const stepX = width / 2.2;
+          const stepY = height / 5;
+          for (let y = stepY / 2; y < height + stepY; y += stepY) {
+            for (let x = -stepX / 2; x < width + stepX; x += stepX) {
+              copiedPage.drawText(text, { x, y, size, font, color: rgb(0.5, 0.5, 0.5), opacity, rotate: degrees(45) });
+            }
+          }
+        } else {
+          const size = Math.min(width, height) / Math.max(6, text.length * 0.6);
+          const textWidth = font.widthOfTextAtSize(text, size);
+          copiedPage.drawText(text, {
+            x: (width - textWidth) / 2,
+            y: height / 2,
+            size,
+            font,
+            color: rgb(0.5, 0.5, 0.5),
+            opacity,
+            rotate: degrees(45)
+          });
+        }
         outDoc.addPage(copiedPage);
         done += 1;
         if (done < pages.length) await yieldToBrowser();
@@ -14431,7 +14452,7 @@ function App() {
         thumbnailUri: (thumbnails && thumbnails[i]) || p.thumbnailUri
       }));
       setPdfContainers((prev) => prev.map((c) => (
-        c.id === targetId ? { ...c, sourceDocs: [outDoc], sourceMeta: [{ uri: null, isImage: false }], pages: newPages, watermarkText: text } : c
+        c.id === targetId ? { ...c, sourceDocs: [outDoc], sourceMeta: [{ uri: null, isImage: false }], pages: newPages, watermarkText: text, watermarkOpacity: opacity, watermarkPattern: pattern } : c
       )));
       resetPdfHighResCaches();
       showToast('Watermark applied.');
@@ -14462,8 +14483,12 @@ function App() {
   const editPdfWatermark = () => {
     if (!activePdfContainer) return;
     const previousText = activePdfContainer.watermarkText || '';
+    const previousOpacity = activePdfContainer.watermarkOpacity ?? 0.3;
+    const previousPattern = activePdfContainer.watermarkPattern || 'single';
     undoSpecificPdfEdit('Add watermark');
     setPdfWatermarkText(previousText);
+    setPdfWatermarkOpacity(previousOpacity);
+    setPdfWatermarkPattern(previousPattern);
     setPdfWatermarkModalVisible(true);
   };
 
@@ -23345,7 +23370,7 @@ function App() {
               </BouncyButton>
               <BouncyButton
                 style={{ paddingHorizontal: 16, paddingVertical: 12 }}
-                onPress={() => { setPdfMoreToolsMenuVisible(false); setPdfWatermarkText(''); setPdfWatermarkModalVisible(true); }}
+                onPress={() => { setPdfMoreToolsMenuVisible(false); setPdfWatermarkText(''); setPdfWatermarkOpacity(0.3); setPdfWatermarkPattern('single'); setPdfWatermarkModalVisible(true); }}
                 accessibilityRole="button"
               >
                 <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Add Watermark</Text>
@@ -23488,9 +23513,11 @@ function App() {
       )}
 
       {/* PDF EDITOR - WATERMARK. One diagonal, semi-transparent line of
-          text across every page - no position/opacity/size controls,
-          deliberately, to keep this a real one-sitting feature rather
-          than its own small design tool. */}
+          text across every page, or a repeated grid of smaller copies -
+          opacity and pattern as simple preset buttons (matching how
+          Compress's quality picker already works in this app), not a
+          slider or a color/position picker - keeps this a real
+          one-sitting feature rather than its own small design tool. */}
       {pdfWatermarkModalVisible && (
         <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfWatermarkModalVisible(false)}>
           <View
@@ -23520,6 +23547,47 @@ function App() {
                 onChangeText={setPdfWatermarkText}
                 autoFocus={Platform.OS === 'web'}
               />
+
+              <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600', marginTop: 16, alignSelf: 'flex-start' }}>OPACITY</Text>
+              <View style={{ flexDirection: 'row', gap: 8, width: '100%', marginTop: 6 }}>
+                {[{ label: 'Light', value: 0.15 }, { label: 'Medium', value: 0.3 }, { label: 'Dark', value: 0.5 }].map((opt) => (
+                  <BouncyButton
+                    key={opt.label}
+                    style={{
+                      flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
+                      borderWidth: 1.5,
+                      borderColor: pdfWatermarkOpacity === opt.value ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                      backgroundColor: pdfWatermarkOpacity === opt.value ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
+                    }}
+                    onPress={() => setPdfWatermarkOpacity(opt.value)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: pdfWatermarkOpacity === opt.value }}
+                  >
+                    <Text style={{ color: pdfWatermarkOpacity === opt.value ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.text, fontSize: 13, fontWeight: '700' }}>{opt.label}</Text>
+                  </BouncyButton>
+                ))}
+              </View>
+
+              <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600', marginTop: 16, alignSelf: 'flex-start' }}>PATTERN</Text>
+              <View style={{ flexDirection: 'row', gap: 8, width: '100%', marginTop: 6 }}>
+                {[{ label: 'Single', value: 'single' }, { label: 'Repeated', value: 'repeated' }].map((opt) => (
+                  <BouncyButton
+                    key={opt.label}
+                    style={{
+                      flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
+                      borderWidth: 1.5,
+                      borderColor: pdfWatermarkPattern === opt.value ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                      backgroundColor: pdfWatermarkPattern === opt.value ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
+                    }}
+                    onPress={() => setPdfWatermarkPattern(opt.value)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: pdfWatermarkPattern === opt.value }}
+                  >
+                    <Text style={{ color: pdfWatermarkPattern === opt.value ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.text, fontSize: 13, fontWeight: '700' }}>{opt.label}</Text>
+                  </BouncyButton>
+                ))}
+              </View>
+
               <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
@@ -23535,6 +23603,7 @@ function App() {
                   accessibilityRole="button"
                 >
                   <Text style={styles.confirmDeleteText}>Apply</Text>
+
                 </BouncyButton>
               </View>
             </View>
