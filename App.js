@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 771;
+const BUILD_NUMBER = 773;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7985,6 +7985,22 @@ function App() {
   // avoid wasting render work on pages that may never be visited. Web
   // only - native's preview path is a completely different mechanism
   // (temp one-page PDF file + PdfView), not this image-cache system.
+  // Resolves what to actually pass to generateWebPdfThumbnails for a
+  // given source file. meta.uri is null for any container that's been
+  // rebuilt via pdf-lib (Crop, Page Numbers, Compress, Watermark all
+  // replace sourceMeta with { uri: null } after rebuilding) - passing
+  // null straight through silently failed to render at all, since null
+  // isn't a Uint8Array/ArrayBuffer (so it took the URL-fetch path with a
+  // null URL) and isn't a real uri either. The page then stayed stuck
+  // showing its low-res rail thumbnail (meant for a small tile, not the
+  // full preview pane) instead of ever getting a real high-res render.
+  // Falls back to serializing the in-memory PDFDocument when there's no
+  // uri to fetch from.
+  const resolvePdfHighResSource = (container, sourceFileIndex) => {
+    const meta = container.sourceMeta[sourceFileIndex];
+    return meta.uri ? Promise.resolve(meta.uri) : container.sourceDocs[sourceFileIndex].save();
+  };
+
   const prefetchNeighborPdfHighRes = (container, pageIndex) => {
     if (Platform.OS !== 'web' || !container) return;
     [pageIndex + 1, pageIndex - 1].forEach((neighborIndex) => {
@@ -7995,7 +8011,9 @@ function App() {
       const neighborMeta = container.sourceMeta[neighborPage.sourceFileIndex];
       if (!neighborMeta || neighborMeta.isImage) return;
       const neighborDocCacheKey = `${container.id}:${neighborPage.sourceFileIndex}`;
-      generateWebPdfThumbnails(neighborMeta.uri, 2.5, neighborPage.sourcePageIndex + 1, null, neighborDocCacheKey).then((neighborResult) => {
+      resolvePdfHighResSource(container, neighborPage.sourceFileIndex).then((source) => (
+        generateWebPdfThumbnails(source, 2.5, neighborPage.sourcePageIndex + 1, null, neighborDocCacheKey)
+      )).then((neighborResult) => {
         if (neighborResult) addToPdfHighResCache(neighborKey, neighborResult, false); // false: background result, no re-render while it's not the page on screen
       });
     });
@@ -8043,7 +8061,9 @@ function App() {
     // itself now (MAX_RENDER_DIMENSION), not by lowering scale for
     // every page including normal ones that were never the problem.
     const docCacheKey = `${pdfActiveContainerId}:${page.sourceFileIndex}`;
-    generateWebPdfThumbnails(meta.uri, 2.5, page.sourcePageIndex + 1, null, docCacheKey).then((result) => {
+    resolvePdfHighResSource(activePdfContainer, page.sourceFileIndex).then((source) => (
+      generateWebPdfThumbnails(source, 2.5, page.sourcePageIndex + 1, null, docCacheKey)
+    )).then((result) => {
       if (cancelled) return;
       if (result) {
         addToPdfHighResCache(cacheKey, result);
@@ -8142,7 +8162,9 @@ function App() {
     // Modal, so this was the actual slow path for anyone on a wide screen.
     const docCacheKey = `${pdfActiveContainerId}:${page.sourceFileIndex}`;
     const render = Platform.OS === 'web'
-      ? generateWebPdfThumbnails(meta.uri, 2.5, page.sourcePageIndex + 1, null, docCacheKey)
+      ? resolvePdfHighResSource(activePdfContainer, page.sourceFileIndex).then((source) => (
+          generateWebPdfThumbnails(source, 2.5, page.sourcePageIndex + 1, null, docCacheKey)
+        ))
       : generateNativePdfThumbnails(meta.uri, 1600, page.sourcePageIndex + 1);
     render.then((result) => {
       if (cancelled) return;
@@ -8211,6 +8233,11 @@ function App() {
   })();
   const isPdfCompressActive = pdfHistorySinceLastClear.some((h) => h.label === 'Compress PDF');
   const isPdfPageNumbersActive = pdfHistorySinceLastClear.some((h) => h.label === 'Add page numbers');
+  // Watermark has no toolbar button of its own (it lives in More Tools),
+  // so unlike Compress/Page Numbers it has nowhere natural to show an
+  // "active" indicator on itself. That's the whole reason for the
+  // dedicated slot to the left of Compress - see its render below.
+  const isPdfWatermarkActive = pdfHistorySinceLastClear.some((h) => h.label === 'Add watermark');
 
   const [toolsMenuVisible, setToolsMenuVisible] = useState(false);
   const [leaveToolsConfirmVisible, setLeaveToolsConfirmVisible] = useState(false);
@@ -14404,7 +14431,7 @@ function App() {
         thumbnailUri: (thumbnails && thumbnails[i]) || p.thumbnailUri
       }));
       setPdfContainers((prev) => prev.map((c) => (
-        c.id === targetId ? { ...c, sourceDocs: [outDoc], sourceMeta: [{ uri: null, isImage: false }], pages: newPages } : c
+        c.id === targetId ? { ...c, sourceDocs: [outDoc], sourceMeta: [{ uri: null, isImage: false }], pages: newPages, watermarkText: text } : c
       )));
       resetPdfHighResCaches();
       showToast('Watermark applied.');
@@ -14424,6 +14451,22 @@ function App() {
   // failed native library attempts), so this is an honest gap, not a
   // hidden one: the More Tools entry itself is web-only, not a button
   // that silently does nothing on native.
+  // Opens the watermark modal pre-filled with whatever's currently
+  // applied, for the "edit" side of the left-of-Compress active pill.
+  // Reverts the existing watermark FIRST, not just before showing the
+  // modal - applyPdfWatermark always draws fresh onto activePdfContainer
+  // .pages as they are right now, so without this, editing would draw a
+  // SECOND watermark on top of the first instead of replacing it.
+  // undoSpecificPdfEdit already handles finding the right history entry
+  // and restoring the pre-watermark pages.
+  const editPdfWatermark = () => {
+    if (!activePdfContainer) return;
+    const previousText = activePdfContainer.watermarkText || '';
+    undoSpecificPdfEdit('Add watermark');
+    setPdfWatermarkText(previousText);
+    setPdfWatermarkModalVisible(true);
+  };
+
   const handleExportPdfAsImages = async () => {
     if (!activePdfContainer || Platform.OS !== 'web') return;
     setPdfEditorExporting(true);
@@ -21856,6 +21899,37 @@ function App() {
                           </BouncyButton>
                           <View style={{ width: 1, height: 20, backgroundColor: toolsTheme.border, marginHorizontal: 2 }} />
                         </>
+                      )}
+                      {/* Watermark has no toolbar button of its own (it
+                          lives in More Tools) - this is its dedicated
+                          "active" slot, positioned left of Compress since
+                          that's the one fixed anchor point every layout
+                          already has. Left side of the pill edits (reverts
+                          then reopens pre-filled), the X undoes outright. */}
+                      {isPdfWatermarkActive && (
+                        <View style={{
+                          flexDirection: 'row', alignItems: 'center', borderRadius: 99, overflow: 'hidden',
+                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD'
+                        }}>
+                          <BouncyButton
+                            style={{ paddingLeft: 12, paddingVertical: 8 }}
+                            onPress={() => undoSpecificPdfEdit('Add watermark')}
+                            accessibilityRole="button"
+                            accessibilityLabel="Remove watermark"
+                          >
+                            <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+                              <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', lineHeight: 11 }}>✕</Text>
+                            </View>
+                          </BouncyButton>
+                          <BouncyButton
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingLeft: 6, paddingRight: 14 }}
+                            onPress={editPdfWatermark}
+                            accessibilityRole="button"
+                            accessibilityLabel="Edit watermark"
+                          >
+                            <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>Watermark</Text>
+                          </BouncyButton>
+                        </View>
                       )}
                       <View style={{
                         flexDirection: 'row', alignItems: 'center', borderRadius: 99, overflow: 'hidden',
