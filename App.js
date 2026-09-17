@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 768;
+const BUILD_NUMBER = 769;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -11546,7 +11546,14 @@ function App() {
   const fetchUserListTab = async (designer, tab) => {
     setUserListLoading(true);
     setUserListItems([]);
-    if (!designer.id) {
+    // designer itself, not just designer.id, could be missing - this threw
+    // "Cannot read properties of undefined (reading 'id')" if this ever ran
+    // before userListTargetDesigner was actually set (e.g. the modal
+    // rendering from restored/stale state before openFollowersModal or
+    // openFollowingModal had run). Not confirmed as the exact cause of the
+    // current production crash (that one's error type doesn't quite match),
+    // but a real gap either way.
+    if (!designer || !designer.id) {
       setUserListLoading(false);
       return;
     }
