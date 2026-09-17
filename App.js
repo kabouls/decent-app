@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 767;
+const BUILD_NUMBER = 768;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -4876,7 +4876,38 @@ const FocusableTextInput = React.memo(({ style, onFocus, onBlur, ...props }) => 
       autoComplete="off"
       {...props}
       style={[style, focused && { borderColor: '#8B5CF6', borderWidth: 1.5 }]}
-      onFocus={(e) => { setFocused(true); if (onFocus) onFocus(e); }}
+      onFocus={(e) => {
+        setFocused(true);
+        // Real keyboard-awareness for web (mobile and tablet both) - the
+        // browser's own default "scroll a focused input into view"
+        // behavior only reliably covers plain in-flow layouts. A screen
+        // using fixed/absolute-positioned overlays (the PDF Editor's busy
+        // modal, for one) can leave a focused field sitting behind the
+        // on-screen keyboard with nothing rescuing it. This is genuinely
+        // global rather than a per-screen patch: FocusableTextInput is the
+        // shared component behind every text field in the app (68 call
+        // sites), so one fix here covers all of them, not just whichever
+        // screens someone remembers to wrap individually.
+        //
+        // Native (iOS/Android) is explicitly NOT covered by this - there's
+        // no DOM node or scrollIntoView equivalent here, and this
+        // component has no reference to whichever ScrollView contains it
+        // to scroll that instead. Native needs a different, larger fix
+        // (a library dependency, or wrapping each screen's own scroll
+        // container individually) - flagged as separate, unstarted work,
+        // not something this shared leaf component can do on its own.
+        if (Platform.OS === 'web') {
+          const target = e.target; // captured now, not read inside the timeout - safe regardless of React's event-pooling behavior in whatever version this runs on
+          if (target && typeof target.scrollIntoView === 'function') {
+            // Delay lets the on-screen keyboard actually open and resize
+            // the viewport first - scrolling immediately targets the
+            // PRE-keyboard viewport and can undershoot where the field
+            // ends up once the keyboard is actually showing.
+            setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+          }
+        }
+        if (onFocus) onFocus(e);
+      }}
       onBlur={(e) => { setFocused(false); if (onBlur) onBlur(e); }}
     />
   );
@@ -5209,7 +5240,16 @@ function AuthScreen({ onCancel } = {}) {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior="padding"
+      // 'padding' was applied unconditionally, including on Android where
+      // this specific behavior is known to interact badly with the
+      // software keyboard (it was written for iOS's lack of an automatic
+      // resize). Android already gets keyboard handling from its own
+      // window resize behavior, so it needs no explicit behavior here at
+      // all - passing 'padding' to it was actively wrong, not just
+      // redundant. Web ignores this prop entirely (no native keyboard
+      // event to react to) - the real web fix lives in
+      // FocusableTextInput's onFocus handler above instead.
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
     <SafeAreaView style={[{ flex: 1, backgroundColor: theme.bg, justifyContent: 'center', padding: 24 }, Platform.OS === 'web' && { backgroundColor: theme.bg, padding: 0 }]}>
     <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', maxWidth: 480, alignSelf: 'center', backgroundColor: theme.bg, justifyContent: 'center', padding: 24 } : { flex: 1, justifyContent: 'center' }}>
