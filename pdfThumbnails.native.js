@@ -4,6 +4,20 @@
 
 export const generateWebPdfThumbnails = async () => null;
 
+// A real, silent no-op - not a stub standing in for missing work. The
+// parsed-pdfjs-document cache this clears only ever exists on web
+// (pdfjsLib is a web-only library, never loaded here), so there's
+// nothing to clear on native. This export was simply missing entirely
+// until now: App.js imports clearPdfDocumentCache unconditionally from
+// './pdfThumbnails' and calls it on every single app mount (see
+// resetPdfHighResCaches's useEffect, keyed on pdfActiveContainerId,
+// which fires once after every mount regardless of which screen is
+// showing) - without an export here, that import resolved to undefined
+// on native and threw "undefined is not a function" on literally every
+// launch, before the user ever touched PDF Editor. Confirmed via a
+// build bisection (b744 clean, everything after b752 broken) - this
+// function was added to the web file in b752 and never mirrored here.
+
 // Native PDF page thumbnails are intentionally disabled for now.
 //
 // This previously used react-native-pdf-thumbnail, which turned out to
@@ -31,3 +45,5 @@ export const generateWebPdfThumbnails = async () => null;
 // onto a library that has already cost three separate build failures
 // while explicitly telling us it isn't meant to work here.
 export const generateNativePdfThumbnails = async () => null;
+
+export const clearPdfDocumentCache = () => {};
