@@ -158,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 770;
+const BUILD_NUMBER = 771;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -4682,7 +4682,7 @@ const loadSourceAsPdfDoc = async (uri, isImage) => {
 // objects (one per originally-picked file/image), kept alive in state
 // for the whole editing session specifically so this step can pull
 // from them without re-reading files from disk each time.
-const assemblePdfFromPages = async (sourceDocs, pages, onProgress = null, isCancelled = null) => {
+const assemblePdfFromPages = async (sourceDocs, pages, onProgress = null, isCancelled = null, metadata = null) => {
   const outDoc = await PDFDocument.create();
   let done = 0;
   for (const p of pages) {
@@ -4696,6 +4696,17 @@ const assemblePdfFromPages = async (sourceDocs, pages, onProgress = null, isCanc
     done += 1;
     if (onProgress) onProgress(done, pages.length);
     if (done < pages.length) await yieldToBrowser(); // same reasoning as every other per-page loop in this file - a real yield point, not just a microtask await, so Cancel and the progress text both actually get a chance to be seen/processed on a large export
+  }
+  // Metadata (title/author/subject) is a DOCUMENT-level property, not a
+  // page-level one - PDFDocument.create() above always starts blank
+  // regardless of what the source pages' original documents had, so
+  // there's no page-copying operation that could carry it over on its
+  // own. Applying it here, right before save, is the one place in this
+  // function's whole lifecycle where it can actually take effect.
+  if (metadata) {
+    if (metadata.title) outDoc.setTitle(metadata.title);
+    if (metadata.author) outDoc.setAuthor(metadata.author);
+    if (metadata.subject) outDoc.setSubject(metadata.subject);
   }
   return outDoc.save();
 };
@@ -7750,6 +7761,15 @@ function App() {
   const [pdfClearConfirmVisible, setPdfClearConfirmVisible] = useState(false);
   const [pdfTabCloseConfirmId, setPdfTabCloseConfirmId] = useState(null); // container id pending removal via its tab's x
   const [pdfMoreToolsMenuVisible, setPdfMoreToolsMenuVisible] = useState(false);
+  // New "More Tools" entries - each reuses the same rebuild-via-pdf-lib
+  // pattern already established by Compress/Page Numbers/Crop, rather
+  // than inventing a new one.
+  const [pdfMetadataModalVisible, setPdfMetadataModalVisible] = useState(false);
+  const [pdfMetadataDraft, setPdfMetadataDraft] = useState({ title: '', author: '', subject: '' });
+  const [pdfSplitModalVisible, setPdfSplitModalVisible] = useState(false);
+  const [pdfSplitEveryN, setPdfSplitEveryN] = useState('1');
+  const [pdfWatermarkModalVisible, setPdfWatermarkModalVisible] = useState(false);
+  const [pdfWatermarkText, setPdfWatermarkText] = useState('');
   const pdfMoreToolsButtonRef = useRef(null);
   const [pdfMoreToolsMenuPosition, setPdfMoreToolsMenuPosition] = useState({ top: 140, left: 20 });
 
@@ -13751,7 +13771,7 @@ function App() {
   const exportOneContainer = async (container) => {
     const bytes = await assemblePdfFromPages(container.sourceDocs, container.pages, (done, total) => {
       setPdfExportProgress({ done, total });
-    }, () => pdfOperationCancelledRef.current);
+    }, () => pdfOperationCancelledRef.current, container.metadata || null);
     if (!bytes) return null; // cancelled mid-assembly
     const filename = `${(container.name || 'document').replace(/\.pdf$/i, '')}.pdf`;
     return { bytes, filename };
@@ -14244,6 +14264,210 @@ function App() {
     }
   };
 
+  // PDF EDITOR - MORE TOOLS: Metadata, Split, Watermark. Each reuses an
+  // existing pattern (metadata rides through assemblePdfFromPages at
+  // export time; Split and Watermark both rebuild via pdf-lib the same
+  // way Compress/Page Numbers/Crop already do) rather than inventing a
+  // new mechanism per tool.
+
+  // Metadata doesn't touch pages at all - just stores title/author/
+  // subject on the container itself, applied later at actual export
+  // time (see assemblePdfFromPages's metadata param) since a fresh
+  // PDFDocument.create() always starts blank regardless of the source's
+  // original metadata.
+  const openPdfMetadataEditor = () => {
+    if (!activePdfContainer) return;
+    setPdfMetadataDraft(activePdfContainer.metadata || { title: '', author: '', subject: '' });
+    setPdfMetadataModalVisible(true);
+  };
+  const savePdfMetadata = () => {
+    if (!activePdfContainer) return;
+    const targetId = activePdfContainer.id;
+    setPdfContainers((prev) => prev.map((c) => (c.id === targetId ? { ...c, metadata: { ...pdfMetadataDraft } } : c)));
+    setPdfMetadataModalVisible(false);
+    showToast('Metadata saved - applies when you export.');
+    triggerHaptic('success');
+  };
+
+  // Splits the active container into multiple new containers of N pages
+  // each (last one gets the remainder). Doesn't touch the original
+  // container - adds new ones after it, same as how Merge/Add PDF both
+  // already add rather than replace, so nothing is destroyed by mistake.
+  const handleSplitPdf = async () => {
+    if (!activePdfContainer) return;
+    const n = Math.max(1, parseInt(pdfSplitEveryN, 10) || 1);
+    const pages = activePdfContainer.pages;
+    if (n >= pages.length) {
+      showToast(`This PDF only has ${pages.length} page${pages.length === 1 ? '' : 's'} - nothing to split.`);
+      return;
+    }
+    setPdfSplitModalVisible(false);
+    setPdfEditorLoading(true);
+    pdfOperationCancelledRef.current = false;
+    try {
+      const chunks = [];
+      for (let i = 0; i < pages.length; i += n) chunks.push(pages.slice(i, i + n));
+
+      const newContainers = [];
+      for (let ci = 0; ci < chunks.length; ci++) {
+        if (pdfOperationCancelledRef.current) break;
+        const chunkPages = chunks[ci];
+        const outBytes = await assemblePdfFromPages(activePdfContainer.sourceDocs, chunkPages, null, () => pdfOperationCancelledRef.current);
+        if (!outBytes) break; // cancelled mid-chunk
+        const outDoc = await PDFDocument.load(outBytes);
+        const thumbnails = Platform.OS === 'web'
+          ? await generateWebPdfThumbnails(outBytes, 0.3)
+          : await generateNativePdfThumbnails(await pdfBytesToTempUri(outBytes), 160);
+        const remappedPages = chunkPages.map((p, i) => ({
+          ...p, id: `${Date.now()}_${ci}_${i}_${Math.random().toString(36).slice(2)}`,
+          sourceFileIndex: 0, sourcePageIndex: i, rotation: 0,
+          thumbnailUri: (thumbnails && thumbnails[i]) || p.thumbnailUri
+        }));
+        newContainers.push({
+          id: `${Date.now()}_${ci}_${Math.random().toString(36).slice(2)}`,
+          name: `${(activePdfContainer.name || 'document').replace(/\.pdf$/i, '')} (${ci + 1} of ${chunks.length})`,
+          sourceDocs: [outDoc],
+          sourceMeta: [{ uri: null, isImage: false }],
+          pages: remappedPages,
+          originalSize: outBytes.length,
+          metadata: null
+        });
+        if (ci < chunks.length - 1) await yieldToBrowser();
+      }
+      if (pdfOperationCancelledRef.current || newContainers.length === 0) {
+        showToast('Split cancelled - nothing was changed.');
+        return;
+      }
+      setPdfContainers((prev) => [...prev, ...newContainers]);
+      showToast(`Split into ${newContainers.length} PDFs.`);
+      triggerHaptic('success');
+    } catch (e) {
+      console.warn('Split failed:', e);
+      showToast('Could not split this PDF - try again.');
+      triggerHaptic('error');
+    } finally {
+      setPdfEditorLoading(false);
+    }
+  };
+
+  // Draws a single diagonal, semi-transparent line of text across every
+  // page, roughly centered - the simplest watermark shape that's still
+  // genuinely useful (a document-wide mark, not per-page position
+  // control), same "rebuild the whole document" pattern as Page Numbers.
+  const applyPdfWatermark = async () => {
+    if (!activePdfContainer || !pdfWatermarkText.trim()) return;
+    pushPdfHistorySnapshot('Add watermark');
+    setPdfWatermarkModalVisible(false);
+    triggerHaptic('light');
+    setPdfEditorLoading(true);
+    pdfOperationCancelledRef.current = false;
+    try {
+      const outDoc = await PDFDocument.create();
+      const font = await outDoc.embedFont(StandardFonts.HelveticaBold);
+      const pages = activePdfContainer.pages;
+      const text = pdfWatermarkText.trim();
+      let done = 0;
+      for (const page of pages) {
+        if (pdfOperationCancelledRef.current) break;
+        const [copiedPage] = await outDoc.copyPages(activePdfContainer.sourceDocs[page.sourceFileIndex], [page.sourcePageIndex]);
+        if (page.rotation) {
+          const current = copiedPage.getRotation().angle || 0;
+          copiedPage.setRotation(degrees((current + page.rotation) % 360));
+        }
+        const { width, height } = copiedPage.getSize();
+        const size = Math.min(width, height) / Math.max(6, text.length * 0.6);
+        const textWidth = font.widthOfTextAtSize(text, size);
+        copiedPage.drawText(text, {
+          x: (width - textWidth) / 2,
+          y: height / 2,
+          size,
+          font,
+          color: rgb(0.5, 0.5, 0.5),
+          opacity: 0.3,
+          rotate: degrees(45)
+        });
+        outDoc.addPage(copiedPage);
+        done += 1;
+        if (done < pages.length) await yieldToBrowser();
+      }
+      if (pdfOperationCancelledRef.current) {
+        showToast('Cancelled - nothing was changed.');
+        return;
+      }
+      const targetId = activePdfContainer.id;
+      const outBytes = await outDoc.save();
+      const thumbnails = Platform.OS === 'web'
+        ? await generateWebPdfThumbnails(outBytes, 0.3)
+        : await generateNativePdfThumbnails(await pdfBytesToTempUri(outBytes), 160);
+      const newPages = pages.map((p, i) => ({
+        ...p, sourceFileIndex: 0, sourcePageIndex: i, rotation: 0,
+        thumbnailUri: (thumbnails && thumbnails[i]) || p.thumbnailUri
+      }));
+      setPdfContainers((prev) => prev.map((c) => (
+        c.id === targetId ? { ...c, sourceDocs: [outDoc], sourceMeta: [{ uri: null, isImage: false }], pages: newPages } : c
+      )));
+      resetPdfHighResCaches();
+      showToast('Watermark applied.');
+      triggerHaptic('success');
+    } catch (e) {
+      console.warn('Watermark failed:', e);
+      showToast('Could not apply watermark - try again.');
+      triggerHaptic('error');
+    } finally {
+      setPdfEditorLoading(false);
+    }
+  };
+
+  // Renders every page as a real downloadable image - web only. Native
+  // has no page-rendering capability at all right now (see
+  // pdfThumbnails.native.js - real thumbnails were abandoned after three
+  // failed native library attempts), so this is an honest gap, not a
+  // hidden one: the More Tools entry itself is web-only, not a button
+  // that silently does nothing on native.
+  const handleExportPdfAsImages = async () => {
+    if (!activePdfContainer || Platform.OS !== 'web') return;
+    setPdfEditorExporting(true);
+    setPdfExportProgress(null);
+    pdfOperationCancelledRef.current = false;
+    try {
+      const container = activePdfContainer;
+      const meta = container.sourceMeta[0];
+      const bytes = meta.uri ? null : await container.sourceDocs[0].save();
+      const source = meta.uri || bytes;
+      const total = container.pages.length;
+      // Same cacheKey reasoning as the fullscreen viewer's high-res
+      // render (see pdfThumbnails.web.js) - without it, exporting every
+      // page as an image would re-fetch and re-parse the whole PDF from
+      // scratch on every single page instead of once for the batch.
+      const docCacheKey = `export-images-${container.id}`;
+      for (let i = 0; i < total; i++) {
+        if (pdfOperationCancelledRef.current) break;
+        const dataUrl = await generateWebPdfThumbnails(source, 2.5, container.pages[i].sourcePageIndex + 1, null, docCacheKey);
+        if (dataUrl) {
+          const link = document.createElement('a');
+          link.href = dataUrl;
+          link.download = `${(container.name || 'page').replace(/\.pdf$/i, '')}-page-${i + 1}.jpg`;
+          link.click();
+        }
+        setPdfExportProgress({ done: i + 1, total });
+        if (i < total - 1) await yieldToBrowser();
+      }
+      clearPdfDocumentCache(docCacheKey); // done with this batch - don't leave the parsed document cached indefinitely
+      if (pdfOperationCancelledRef.current) {
+        showToast('Cancelled.');
+        return;
+      }
+      showToast(`Saved ${total} image${total === 1 ? '' : 's'}.`);
+      triggerHaptic('success');
+    } catch (e) {
+      console.warn('Export as images failed:', e);
+      showToast('Could not export pages as images - try again.');
+      triggerHaptic('error');
+    } finally {
+      setPdfEditorExporting(false);
+      setPdfExportProgress(null);
+    }
+  };
 
   // TOOLS: QR Code Generator handlers.
   const pickQrLogo = async () => {
@@ -21684,60 +21908,46 @@ function App() {
                           thumbnail (rail tile or list tile) always shows
                           its own up/down + typeable-number pill, see
                           renderPdfReorderPill. */}
-                      {isWebWide ? (
-                        <>
-                          <View style={{
-                            flexDirection: 'row', alignItems: 'center', borderRadius: 99, overflow: 'hidden',
-                            backgroundColor: isPdfPageNumbersActive ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent',
-                            borderWidth: isPdfPageNumbersActive ? 0 : 1,
-                            borderColor: toolsTheme.border
-                          }}>
-                            {isPdfPageNumbersActive && (
-                              <BouncyButton
-                                style={{ paddingLeft: 12, paddingVertical: 8 }}
-                                onPress={() => setPdfPageNumbersUndoConfirmVisible(true)}
-                                accessibilityRole="button"
-                                accessibilityLabel="Undo page numbers"
-                              >
-                                <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-                                  <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', lineHeight: 11 }}>✕</Text>
-                                </View>
-                              </BouncyButton>
-                            )}
-                            <BouncyButton
-                              style={{
-                                flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8,
-                                paddingLeft: isPdfPageNumbersActive ? 6 : 14, paddingRight: 14
-                              }}
-                              onPress={handleAddPageNumbers}
-                              accessibilityRole="button"
-                              accessibilityLabel="Add page numbers"
-                              accessibilityState={{ selected: isPdfPageNumbersActive }}
-                            >
-                              <Text style={{ color: isPdfPageNumbersActive ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Page Numbers</Text>
-                            </BouncyButton>
-                          </View>
+                      <BouncyButton
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                        onPress={() => { cancelContainerSelectFlow(); setPdfSelectedPageIds([]); setPdfSelectModeTool('crop'); }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Crop pages"
+                      >
+                        <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Crop Pages</Text>
+                      </BouncyButton>
+                      <View style={{
+                        flexDirection: 'row', alignItems: 'center', borderRadius: 99, overflow: 'hidden',
+                        backgroundColor: isPdfPageNumbersActive ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent',
+                        borderWidth: isPdfPageNumbersActive ? 0 : 1,
+                        borderColor: toolsTheme.border
+                      }}>
+                        {isPdfPageNumbersActive && (
                           <BouncyButton
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                            onPress={() => { cancelContainerSelectFlow(); setPdfSelectedPageIds([]); setPdfSelectModeTool('crop'); }}
+                            style={{ paddingLeft: 12, paddingVertical: 8 }}
+                            onPress={() => setPdfPageNumbersUndoConfirmVisible(true)}
                             accessibilityRole="button"
-                            accessibilityLabel="Crop pages"
+                            accessibilityLabel="Undo page numbers"
                           >
-                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Crop Pages</Text>
+                            <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+                              <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', lineHeight: 11 }}>✕</Text>
+                            </View>
                           </BouncyButton>
-                          {pdfContainers.length > 1 && (
-                            <BouncyButton
-                              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                              onPress={() => startContainerSelectFlow('merge')}
-                              accessibilityRole="button"
-                              accessibilityLabel="Merge PDFs"
-                            >
-                              <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Merge PDFs</Text>
-                            </BouncyButton>
-                          )}
-                        </>
-                      ) : (
-                        <View ref={pdfMoreToolsButtonRef} collapsable={false}>
+                        )}
+                        <BouncyButton
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8,
+                            paddingLeft: isPdfPageNumbersActive ? 6 : 14, paddingRight: 14
+                          }}
+                          onPress={handleAddPageNumbers}
+                          accessibilityRole="button"
+                          accessibilityLabel="Add page numbers"
+                          accessibilityState={{ selected: isPdfPageNumbersActive }}
+                        >
+                          <Text style={{ color: isPdfPageNumbersActive ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Page Numbers</Text>
+                        </BouncyButton>
+                      </View>
+                      <View ref={pdfMoreToolsButtonRef} collapsable={false}>
                         <BouncyButton
                           style={{
                             flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 14,
@@ -21759,8 +21969,7 @@ function App() {
                           <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>More Tools</Text>
                           <ChevronDownSVG color={toolsTheme.textSecondary} size={13} />
                         </BouncyButton>
-                        </View>
-                      )}
+                      </View>
                       {/* Global undo - pops the most recent operation
                           regardless of which container it touched. */}
                       {pdfEditorHasPendingChanges && (
@@ -23037,25 +23246,6 @@ function App() {
               backgroundColor: toolsTheme.surface, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border,
               minWidth: 200, paddingVertical: 6, overflow: 'hidden'
             }}>
-              <BouncyButton
-                style={{ paddingHorizontal: 16, paddingVertical: 12 }}
-                onPress={() => { setPdfMoreToolsMenuVisible(false); handleAddPageNumbers(); }}
-                accessibilityRole="button"
-              >
-                <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Add Page Numbers</Text>
-              </BouncyButton>
-              <BouncyButton
-                style={{ paddingHorizontal: 16, paddingVertical: 12 }}
-                onPress={() => {
-                  setPdfMoreToolsMenuVisible(false);
-                  cancelContainerSelectFlow();
-                  setPdfSelectedPageIds([]);
-                  setPdfSelectModeTool('crop');
-                }}
-                accessibilityRole="button"
-              >
-                <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Crop Pages</Text>
-              </BouncyButton>
               {pdfContainers.length > 1 && (
                 <BouncyButton
                   style={{ paddingHorizontal: 16, paddingVertical: 12 }}
@@ -23065,10 +23255,219 @@ function App() {
                   <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Merge PDFs</Text>
                 </BouncyButton>
               )}
+              <BouncyButton
+                style={{ paddingHorizontal: 16, paddingVertical: 12 }}
+                onPress={() => { setPdfMoreToolsMenuVisible(false); openPdfMetadataEditor(); }}
+                accessibilityRole="button"
+              >
+                <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Edit Metadata</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={{ paddingHorizontal: 16, paddingVertical: 12 }}
+                onPress={() => { setPdfMoreToolsMenuVisible(false); setPdfSplitEveryN('1'); setPdfSplitModalVisible(true); }}
+                accessibilityRole="button"
+              >
+                <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Split PDF</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={{ paddingHorizontal: 16, paddingVertical: 12 }}
+                onPress={() => { setPdfMoreToolsMenuVisible(false); setPdfWatermarkText(''); setPdfWatermarkModalVisible(true); }}
+                accessibilityRole="button"
+              >
+                <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Add Watermark</Text>
+              </BouncyButton>
+              {Platform.OS === 'web' && (
+                <BouncyButton
+                  style={{ paddingHorizontal: 16, paddingVertical: 12 }}
+                  onPress={() => { setPdfMoreToolsMenuVisible(false); handleExportPdfAsImages(); }}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Export Pages as Images</Text>
+                </BouncyButton>
+              )}
             </View>
           </View>
         </Modal>
       )}
+
+      {/* PDF EDITOR - EDIT METADATA. Title/Author/Subject only apply at
+          actual export time (see assemblePdfFromPages) - saving here
+          just stores the draft on the container. */}
+      {pdfMetadataModalVisible && (
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfMetadataModalVisible(false)}>
+          <View
+            style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => setPdfMetadataModalVisible(false)}
+          >
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+              )
+            )}
+            <View
+              style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+              onStartShouldSetResponder={() => Platform.OS === 'web'}
+              onResponderRelease={() => {}}
+            >
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Edit Metadata</Text>
+              <Text style={styles.confirmSubText}>Applies to the file when you export - doesn't change anything until then.</Text>
+              <View style={{ width: '100%', gap: 10, marginTop: 14 }}>
+                <FocusableTextInput
+                  style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15 }}
+                  placeholder="Title"
+                  placeholderTextColor={theme.textSecondary}
+                  value={pdfMetadataDraft.title}
+                  onChangeText={(t) => setPdfMetadataDraft((prev) => ({ ...prev, title: t }))}
+                />
+                <FocusableTextInput
+                  style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15 }}
+                  placeholder="Author"
+                  placeholderTextColor={theme.textSecondary}
+                  value={pdfMetadataDraft.author}
+                  onChangeText={(t) => setPdfMetadataDraft((prev) => ({ ...prev, author: t }))}
+                />
+                <FocusableTextInput
+                  style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15 }}
+                  placeholder="Subject"
+                  placeholderTextColor={theme.textSecondary}
+                  value={pdfMetadataDraft.subject}
+                  onChangeText={(t) => setPdfMetadataDraft((prev) => ({ ...prev, subject: t }))}
+                />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                  onPress={() => setPdfMetadataModalVisible(false)}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+                </BouncyButton>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }]}
+                  onPress={savePdfMetadata}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.confirmDeleteText}>Save</Text>
+                </BouncyButton>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* PDF EDITOR - SPLIT. "Every N pages" - the simplest split shape
+          that's still genuinely useful; a specific-page-ranges picker is
+          a bigger, separate UI this deliberately doesn't try to be. */}
+      {pdfSplitModalVisible && (
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfSplitModalVisible(false)}>
+          <View
+            style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => setPdfSplitModalVisible(false)}
+          >
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+              )
+            )}
+            <View
+              style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+              onStartShouldSetResponder={() => Platform.OS === 'web'}
+              onResponderRelease={() => {}}
+            >
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Split PDF</Text>
+              <Text style={styles.confirmSubText}>
+                {activePdfContainer ? `Split every ${pdfSplitEveryN || '1'} page(s) into its own PDF - ${activePdfContainer.pages.length} pages total.` : 'Split into separate PDFs.'}
+              </Text>
+              <FocusableTextInput
+                style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15, marginTop: 14, textAlign: 'center' }}
+                placeholder="Pages per file"
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="number-pad"
+                value={pdfSplitEveryN}
+                onChangeText={(t) => setPdfSplitEveryN(t.replace(/[^0-9]/g, ''))}
+              />
+              <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                  onPress={() => setPdfSplitModalVisible(false)}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+                </BouncyButton>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }]}
+                  onPress={handleSplitPdf}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.confirmDeleteText}>Split</Text>
+                </BouncyButton>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* PDF EDITOR - WATERMARK. One diagonal, semi-transparent line of
+          text across every page - no position/opacity/size controls,
+          deliberately, to keep this a real one-sitting feature rather
+          than its own small design tool. */}
+      {pdfWatermarkModalVisible && (
+        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfWatermarkModalVisible(false)}>
+          <View
+            style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
+            onStartShouldSetResponder={() => Platform.OS === 'web'}
+            onResponderRelease={() => setPdfWatermarkModalVisible(false)}
+          >
+            {Platform.OS !== 'web' && (
+              lightweightMode ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
+              ) : (
+                <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+              )
+            )}
+            <View
+              style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
+              onStartShouldSetResponder={() => Platform.OS === 'web'}
+              onResponderRelease={() => {}}
+            >
+              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Add Watermark</Text>
+              <Text style={styles.confirmSubText}>Applies to every page - e.g. "DRAFT" or "CONFIDENTIAL".</Text>
+              <FocusableTextInput
+                style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15, marginTop: 14, textAlign: 'center' }}
+                placeholder="Watermark text"
+                placeholderTextColor={theme.textSecondary}
+                value={pdfWatermarkText}
+                onChangeText={setPdfWatermarkText}
+                autoFocus={Platform.OS === 'web'}
+              />
+              <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                  onPress={() => setPdfWatermarkModalVisible(false)}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
+                </BouncyButton>
+                <BouncyButton
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: pdfWatermarkText.trim() ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border }]}
+                  onPress={applyPdfWatermark}
+                  disabled={!pdfWatermarkText.trim()}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.confirmDeleteText}>Apply</Text>
+                </BouncyButton>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
 
       {/* PDF EDITOR - ADD PAGE MENU. "+ Page" now offers pulling pages in
           from another PDF/photo, not just a blank page - always spliced
