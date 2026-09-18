@@ -159,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 783;
+const BUILD_NUMBER = 784;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7757,7 +7757,7 @@ function App() {
     const e = escapeResumeHtml;
     const contactLine = [data.email, data.phone, data.location].filter(Boolean).map(e).join(' &nbsp;|&nbsp; ');
     const experienceHtml = data.experience.map((exp) => `
-      <div style="margin-bottom: 14px;">
+      <div style="margin-bottom: 14px; page-break-inside: avoid;">
         <div style="display: flex; justify-content: space-between; align-items: baseline;">
           <span style="font-weight: 700; font-size: 13px;">${e(exp.role)}${exp.role && exp.company ? ' &middot; ' : ''}${e(exp.company)}</span>
           <span style="font-size: 11px; color: #666;">${e(exp.startDate)}${exp.startDate ? ' - ' : ''}${exp.current ? 'Present' : e(exp.endDate)}</span>
@@ -7766,7 +7766,7 @@ function App() {
       </div>
     `).join('');
     const educationHtml = data.education.map((edu) => `
-      <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: baseline;">
+      <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: baseline; page-break-inside: avoid;">
         <span style="font-weight: 700; font-size: 13px;">${e(edu.degree)}${edu.degree && edu.school ? ' &middot; ' : ''}${e(edu.school)}</span>
         <span style="font-size: 11px; color: #666;">${e(edu.startDate)}${edu.startDate ? ' - ' : ''}${e(edu.endDate)}</span>
       </div>
@@ -7781,8 +7781,23 @@ function App() {
 
     return `
       <html>
-        <head><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-        <body style="font-family: Helvetica, Arial, sans-serif; color: #111; padding: 36px 44px; margin: 0;">
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <style>
+            /* US Letter, matching PDF Editor's own blank-page convention
+               elsewhere in this app - the margin here IS the page's
+               whitespace, so body needs none of its own. Overflow onto
+               page 2+ is handled entirely by the browser/print engine's
+               native pagination against this @page rule - no manual
+               height math needed, and it's the same mechanism whether
+               this renders via window.print() on web or expo-print's
+               native renderer, since both are WebView-based and respect
+               standard CSS paged-media rules. */
+            @page { size: letter; margin: 0.75in; }
+            body { margin: 0; }
+          </style>
+        </head>
+        <body style="font-family: Helvetica, Arial, sans-serif; color: #111;">
           <div style="display: flex; align-items: center; gap: 18px; margin-bottom: 20px;">
             ${data.photoUri ? `<img src="${data.photoUri}" style="width: 72px; height: 72px; border-radius: 36px; object-fit: cover;" />` : ''}
             <div>
