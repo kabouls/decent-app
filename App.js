@@ -159,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 780;
+const BUILD_NUMBER = 781;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7734,6 +7734,128 @@ function App() {
       showToast('Could not generate QR code - try again.');
     } finally {
       setResumeQrGenerating(false);
+    }
+  };
+
+  // Every field below is raw user text - without escaping, a name or
+  // description containing "<", ">", "&" would either break the HTML
+  // structure or, worse, let arbitrary markup through into what
+  // ultimately becomes a real PDF. Every interpolated field goes
+  // through this first, no exceptions.
+  const escapeResumeHtml = (str) => String(str || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  // One clean, single-column, ATS-friendly template - deliberately the
+  // only one for now, matching how Watermark stayed to simple presets
+  // rather than a full design tool. Plain HTML/CSS, not a component -
+  // expo-print takes a single HTML string, so building it as a string
+  // here is the natural fit, not a shortcut.
+  const buildResumeHtml = (data) => {
+    const e = escapeResumeHtml;
+    const contactLine = [data.email, data.phone, data.location].filter(Boolean).map(e).join(' &nbsp;|&nbsp; ');
+    const experienceHtml = data.experience.map((exp) => `
+      <div style="margin-bottom: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <span style="font-weight: 700; font-size: 13px;">${e(exp.role)}${exp.role && exp.company ? ' &middot; ' : ''}${e(exp.company)}</span>
+          <span style="font-size: 11px; color: #666;">${e(exp.startDate)}${exp.startDate ? ' - ' : ''}${exp.current ? 'Present' : e(exp.endDate)}</span>
+        </div>
+        ${exp.description ? `<div style="font-size: 11.5px; color: #333; margin-top: 3px; white-space: pre-wrap;">${e(exp.description)}</div>` : ''}
+      </div>
+    `).join('');
+    const educationHtml = data.education.map((edu) => `
+      <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: baseline;">
+        <span style="font-weight: 700; font-size: 13px;">${e(edu.degree)}${edu.degree && edu.school ? ' &middot; ' : ''}${e(edu.school)}</span>
+        <span style="font-size: 11px; color: #666;">${e(edu.startDate)}${edu.startDate ? ' - ' : ''}${e(edu.endDate)}</span>
+      </div>
+    `).join('');
+    const skillsHtml = data.skills.map((s) => `<span style="display: inline-block; background: #F3F0FF; color: #6D28D9; font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 99px; margin: 0 6px 6px 0;">${e(s)}</span>`).join('');
+    const links = [
+      data.links.website ? { label: 'Website', value: data.links.website } : null,
+      data.links.linkedin ? { label: 'LinkedIn', value: data.links.linkedin } : null,
+      data.links.github ? { label: 'GitHub', value: data.links.github } : null
+    ].filter(Boolean);
+    const linksHtml = links.map((l) => `<div style="font-size: 11.5px; margin-bottom: 3px;"><span style="color: #666;">${e(l.label)}:</span> ${e(l.value)}</div>`).join('');
+
+    return `
+      <html>
+        <head><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+        <body style="font-family: Helvetica, Arial, sans-serif; color: #111; padding: 36px 44px; margin: 0;">
+          <div style="display: flex; align-items: center; gap: 18px; margin-bottom: 20px;">
+            ${data.photoUri ? `<img src="${data.photoUri}" style="width: 72px; height: 72px; border-radius: 36px; object-fit: cover;" />` : ''}
+            <div>
+              <div style="font-size: 22px; font-weight: 700;">${e(data.name) || 'Your Name'}</div>
+              ${data.title ? `<div style="font-size: 13.5px; color: #6D28D9; font-weight: 600; margin-top: 2px;">${e(data.title)}</div>` : ''}
+              ${contactLine ? `<div style="font-size: 11px; color: #666; margin-top: 4px;">${contactLine}</div>` : ''}
+            </div>
+          </div>
+
+          ${data.experience.length > 0 ? `
+            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6D28D9; border-bottom: 1.5px solid #E5E0FF; padding-bottom: 4px; margin-bottom: 10px; margin-top: 22px;">Experience</div>
+            ${experienceHtml}
+          ` : ''}
+
+          ${data.education.length > 0 ? `
+            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6D28D9; border-bottom: 1.5px solid #E5E0FF; padding-bottom: 4px; margin-bottom: 10px; margin-top: 22px;">Education</div>
+            ${educationHtml}
+          ` : ''}
+
+          ${data.skills.length > 0 ? `
+            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6D28D9; border-bottom: 1.5px solid #E5E0FF; padding-bottom: 4px; margin-bottom: 10px; margin-top: 22px;">Skills</div>
+            <div>${skillsHtml}</div>
+          ` : ''}
+
+          ${links.length > 0 || data.qrImageUri ? `
+            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6D28D9; border-bottom: 1.5px solid #E5E0FF; padding-bottom: 4px; margin-bottom: 10px; margin-top: 22px;">Links</div>
+            <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+              <div>${linksHtml}</div>
+              ${data.qrImageUri ? `<img src="${data.qrImageUri}" style="width: 64px; height: 64px;" />` : ''}
+            </div>
+          ` : ''}
+        </body>
+      </html>
+    `;
+  };
+
+  const [resumeExporting, setResumeExporting] = useState(false);
+  // Print.printToFileAsync behaves genuinely differently by platform,
+  // not just a styling difference: on native it silently writes a PDF
+  // to the cache directory and returns a uri to share; on web it opens
+  // the browser's own print dialog instead (Save as PDF is the user's
+  // own choice there, not automatic) - both lazy-required, not a
+  // top-level import, same reasoning as expo-sharing/expo-document-
+  // picker above: no real eas build has happened yet this whole
+  // session, so the native binding doesn't exist on the installed app,
+  // and an eager top-level import would crash the whole app on launch
+  // exactly like the b752 incident. expo-print having real web support
+  // (unlike the AdMob library) only protects against a DIFFERENT class
+  // of problem - Metro's bundler choking on native-only internals - not
+  // this one.
+  const handleExportResume = async () => {
+    setResumeExporting(true);
+    try {
+      const html = buildResumeHtml(resumeData);
+      const PrintModule = require('expo-print');
+      if (Platform.OS === 'web') {
+        await PrintModule.printToFileAsync({ html });
+        showToast('Choose "Save as PDF" in the print dialog to download.');
+      } else {
+        const { uri } = await PrintModule.printToFileAsync({ html });
+        const Sharing = require('expo-sharing');
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Save Resume' });
+        } else {
+          showToast('Sharing is not available on this device.');
+        }
+      }
+      triggerHaptic('success');
+    } catch (e) {
+      console.warn('Resume export failed:', e);
+      showToast('Could not export resume - try again.');
+      triggerHaptic('error');
+    } finally {
+      setResumeExporting(false);
     }
   };
 
@@ -22447,12 +22569,34 @@ function App() {
                     </View>
                   )}
 
-                  {resumeWizardStep > 3 && (
-                    <View style={{ gap: 14, alignItems: 'center', paddingVertical: 30 }}>
-                      <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700', textAlign: 'center' }}>Review & Export - coming soon</Text>
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, textAlign: 'center', maxWidth: 320, lineHeight: 18 }}>
-                        This step isn't built yet. Everything else is saved though - it'll carry over once export is ready.
+                  {resumeWizardStep === 4 && (
+                    <View style={{ gap: 20 }}>
+                      <View style={{ gap: 10, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 12, padding: 16 }}>
+                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>{resumeData.name || 'Your Name'}</Text>
+                        {!!resumeData.title && <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5 }}>{resumeData.title}</Text>}
+                        <View style={{ height: 1, backgroundColor: toolsTheme.border, marginVertical: 4 }} />
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5 }}>
+                          {resumeData.experience.length} experience {resumeData.experience.length === 1 ? 'entry' : 'entries'} &middot; {resumeData.education.length} education {resumeData.education.length === 1 ? 'entry' : 'entries'} &middot; {resumeData.skills.length} {resumeData.skills.length === 1 ? 'skill' : 'skills'}
+                        </Text>
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5 }}>
+                          {resumeData.qrImageUri ? 'QR code included' : 'No QR code'}
+                        </Text>
+                      </View>
+
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>
+                        {Platform.OS === 'web'
+                          ? 'Exporting opens your browser\'s print dialog - choose "Save as PDF" there.'
+                          : 'Exporting generates a PDF you can save or share.'}
                       </Text>
+
+                      <BouncyButton
+                        style={{ paddingVertical: 14, borderRadius: 10, alignItems: 'center', backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', opacity: resumeExporting ? 0.5 : 1 }}
+                        onPress={handleExportResume}
+                        disabled={resumeExporting}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>{resumeExporting ? 'Exporting...' : 'Export as PDF'}</Text>
+                      </BouncyButton>
                     </View>
                   )}
 
