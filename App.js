@@ -52,6 +52,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { PDFDocument, degrees, StandardFonts, rgb } from 'pdf-lib';
 import { generateWebPdfThumbnails, generateNativePdfThumbnails, clearPdfDocumentCache } from './pdfThumbnails';
+import { NativeAdCard, initAds } from './adsModule';
 import PdfNativePreview from './PdfNativePreview';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { decode } from 'base64-arraybuffer';
@@ -158,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 776;
+const BUILD_NUMBER = 777;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -3561,123 +3562,6 @@ const SwipeToDismiss = ({ onDismiss, children }) => {
   );
 };
 
-// In-feed native ad card - For You only (see the interleaving logic
-// where forYouProjectsWithAds is built; every other ProjectGrid call
-// site never produces isAd items at all, so this component never
-// mounts anywhere else).
-//
-// react-native-google-mobile-ads is required lazily, inside the effect,
-// NOT as a top-level static import. This project's own incident history
-// (b752 era) is a direct lesson here: a top-level import of a native
-// module that isn't linked on every build profile crashed the ENTIRE
-// app on launch, not just the feature using it - not hypothetical, it
-// already happened once. ADS_ENABLED is only true on the playstore
-// profile, so the sideload build never even attempts this require, and
-// the try/catch means even a genuinely broken/missing native binding on
-// the playstore build just fails to show an ad instead of taking
-// anything else down with it.
-//
-// Asset API verified directly against the library's own docs (not
-// guessed): nativeAd.headline / .body / .cta / .icon.url are the real
-// property names, NativeAssetType.HEADLINE/BODY/CTA/ICON the real enum
-// values. Critically, an asset view registered via NativeAsset must be
-// a DIRECT child with no wrapping View/TouchableOpacity around it - the
-// SDK's own click/impression tracking breaks if you do, per the
-// library's explicit "Do/Don't" example. The CTA "button" look below is
-// done by styling the Text itself (padding/backgroundColor/borderRadius
-// all work directly on RN Text), not by wrapping it.
-//
-// The AD badge and dismiss X are deliberately siblings of NativeAdView,
-// not descendants of it - keeping them completely outside the ad's own
-// view hierarchy so there's no chance of interfering with its
-// click/impression tracking, which would be a real policy problem, not
-// just a bug.
-const NativeAdCard = React.memo(({ onDismiss, customWidth, styles, theme }) => {
-  const [nativeAd, setNativeAd] = useState(null);
-  const [AdMobModule, setAdMobModule] = useState(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    if (!ADS_ENABLED || Platform.OS === 'web') return;
-    let cancelled = false;
-    let createdAd = null;
-    try {
-      const AdMob = require('react-native-google-mobile-ads');
-      AdMob.NativeAd.createForAdRequest(AdMob.TestIds.NATIVE) // TODO: swap for the real Native ad unit ID once one exists in AdMob - see the ADMOB_NATIVE_AD_UNIT_ID constant below
-        .then((ad) => {
-          if (cancelled) { ad.destroy(); return; }
-          createdAd = ad;
-          setAdMobModule(AdMob);
-          setNativeAd(ad);
-        })
-        .catch(() => { if (!cancelled) setFailed(true); });
-    } catch (e) {
-      setFailed(true);
-    }
-    return () => {
-      cancelled = true;
-      if (createdAd) createdAd.destroy(); // frees native resources - the docs are explicit this should always happen, not just on error paths
-    };
-  }, []);
-
-  if (!ADS_ENABLED || Platform.OS === 'web' || failed || !nativeAd || !AdMobModule) return null;
-
-  const { NativeAdView, NativeAsset, NativeMediaView, NativeAssetType } = AdMobModule;
-
-  return (
-    <View style={[styles.card, customWidth ? { width: customWidth } : null, { overflow: 'hidden' }]}>
-      <View style={{
-        position: 'absolute', top: 8, left: 8, zIndex: 2,
-        backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3,
-        flexDirection: 'row', alignItems: 'center', gap: 4
-      }}>
-        <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>AD</Text>
-      </View>
-      <BouncyButton
-        style={{
-          position: 'absolute', top: 8, right: 8, zIndex: 2,
-          width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(0,0,0,0.65)',
-          alignItems: 'center', justifyContent: 'center'
-        }}
-        onPress={onDismiss}
-        accessibilityRole="button"
-        accessibilityLabel="Dismiss ad"
-      >
-        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '800' }}>✕</Text>
-      </BouncyButton>
-      <NativeAdView nativeAd={nativeAd}>
-        <NativeMediaView style={{ width: '100%', aspectRatio: 1.3 }} resizeMode="cover" />
-        <View style={{ padding: 12, gap: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {nativeAd.icon && (
-              <NativeAsset assetType={NativeAssetType.ICON}>
-                <Image source={{ uri: nativeAd.icon.url }} style={{ width: 28, height: 28, borderRadius: 8 }} />
-              </NativeAsset>
-            )}
-            <NativeAsset assetType={NativeAssetType.HEADLINE}>
-              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700', flexShrink: 1 }} numberOfLines={1}>{nativeAd.headline}</Text>
-            </NativeAsset>
-          </View>
-          {nativeAd.body ? (
-            <NativeAsset assetType={NativeAssetType.BODY}>
-              <Text style={{ color: theme.textSecondary, fontSize: 12, lineHeight: 16 }} numberOfLines={2}>{nativeAd.body}</Text>
-            </NativeAsset>
-          ) : null}
-          {nativeAd.cta ? (
-            <NativeAsset assetType={NativeAssetType.CTA}>
-              <Text style={{
-                color: '#FFFFFF', fontSize: 12, fontWeight: '700', backgroundColor: '#8B5CF6',
-                borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
-                alignSelf: 'flex-start', marginTop: 6, overflow: 'hidden'
-              }}>{nativeAd.cta}</Text>
-            </NativeAsset>
-          ) : null}
-        </View>
-      </NativeAdView>
-    </View>
-  );
-});
-
 // Web-only image crop tool. expo-image-picker's allowsEditing/aspect crop
 // step is a no-op on web (confirmed via its own web implementation - it
 // silently returns the raw file, no OS crop screen exists to fall back
@@ -6052,19 +5936,16 @@ function App() {
     ? { backgroundColor: themeMode === 'light' ? 'rgba(255,255,255,0.75)' : 'rgba(30,35,48,0.75)' }
     : null;
 
-  // AdMob SDK init - once, on mount. Same lazy-require + try/catch
-  // safety as NativeAdCard itself, for the same reason: this must never
-  // be able to crash app startup on a build where the native module
-  // isn't linked (only the playstore profile actually needs it).
+  // AdMob SDK init - once, on mount. The actual require() lives inside
+  // initAds, in adsModule.native.js, NOT here - Metro's web bundler
+  // walks into whatever a require() points at regardless of any runtime
+  // conditional around it, and react-native-google-mobile-ads' own
+  // internals aren't resolvable on web at all. Calling the already-
+  // platform-split initAds() (a no-op on adsModule.web.js) is what
+  // actually keeps that out of the web bundle, not the ADS_ENABLED
+  // check alone - see adsModule.native.js for the full reasoning.
   useEffect(() => {
-    if (!ADS_ENABLED || Platform.OS === 'web') return;
-    try {
-      const AdMob = require('react-native-google-mobile-ads');
-      AdMob.default().initialize();
-    } catch (e) {
-      // Silently skip - a missing/broken native binding here should
-      // never take down the rest of the app over an ads feature.
-    }
+    initAds();
   }, []);
 
   // --- Responsive breakpoints (web only) ---
