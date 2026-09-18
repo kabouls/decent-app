@@ -159,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 782;
+const BUILD_NUMBER = 783;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7820,28 +7820,43 @@ function App() {
   };
 
   const [resumeExporting, setResumeExporting] = useState(false);
-  // Print.printToFileAsync behaves genuinely differently by platform,
-  // not just a styling difference: on native it silently writes a PDF
-  // to the cache directory and returns a uri to share; on web it opens
-  // the browser's own print dialog instead (Save as PDF is the user's
-  // own choice there, not automatic) - both lazy-required, not a
-  // top-level import, same reasoning as expo-sharing/expo-document-
-  // picker above: no real eas build has happened yet this whole
-  // session, so the native binding doesn't exist on the installed app,
-  // and an eager top-level import would crash the whole app on launch
-  // exactly like the b752 incident. expo-print having real web support
-  // (unlike the AdMob library) only protects against a DIFFERENT class
-  // of problem - Metro's bundler choking on native-only internals - not
-  // this one.
+  // Web and native genuinely need different implementations here, not
+  // just different options to the same call. expo-print's documented
+  // web behavior turned out to mean something different in practice
+  // than its docs implied: Print.printToFileAsync's html option is
+  // effectively ignored on web - it opens the print dialog for
+  // whatever's currently rendered on the page, not the custom template
+  // string passed in (confirmed directly: the printed output was the
+  // live Resume Maker screen itself - header, step tabs, Export button
+  // and all - not the resume template). That only works as intended on
+  // native, where printToFileAsync silently writes a real PDF from the
+  // given html to the cache directory. For web, print the template by
+  // opening a new window, writing the html into THAT document directly,
+  // and calling print() on it - a standard, well-established technique
+  // for printing custom content that has nothing to do with the current
+  // page, completely bypassing expo-print's web path.
   const handleExportResume = async () => {
     setResumeExporting(true);
     try {
       const html = buildResumeHtml(resumeData);
-      const PrintModule = require('expo-print');
       if (Platform.OS === 'web') {
-        await PrintModule.printToFileAsync({ html });
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+          showToast('Please allow popups for this site to export your resume.');
+          return;
+        }
+        printWindow.document.write(html);
+        printWindow.document.close();
+        printWindow.focus();
+        // Wait for the new document (including the photo/QR images) to
+        // actually finish loading before printing - printing too early
+        // can catch images mid-load and show them blank.
+        printWindow.onload = () => {
+          printWindow.print();
+        };
         showToast('Choose "Save as PDF" in the print dialog to download.');
       } else {
+        const PrintModule = require('expo-print');
         const { uri } = await PrintModule.printToFileAsync({ html });
         const Sharing = require('expo-sharing');
         const canShare = await Sharing.isAvailableAsync();
