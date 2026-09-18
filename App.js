@@ -52,7 +52,6 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { PDFDocument, degrees, StandardFonts, rgb } from 'pdf-lib';
 import { generateWebPdfThumbnails, generateNativePdfThumbnails, clearPdfDocumentCache } from './pdfThumbnails';
-import { NativeAdCard, initAds } from './adsModule';
 import PdfNativePreview from './PdfNativePreview';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { decode } from 'base64-arraybuffer';
@@ -159,7 +158,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 781;
+const BUILD_NUMBER = 761;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -240,11 +239,6 @@ const KO_FI_URL = 'https://ko-fi.com/iputra07';
 // that doesn't explicitly set this stays exactly as it was before this
 // change - only the Play Store build profile should set this to 'playstore'.
 const DONATIONS_ENABLED = process.env.EXPO_PUBLIC_DECENT_DISTRIBUTION !== 'playstore';
-// Opposite direction from DONATIONS_ENABLED, same mechanism - ads are
-// ONLY for the Play Store build, never the sideload/GitHub one. Defaults
-// to disabled (false) for every other profile, same reasoning as above:
-// nothing changes unless a profile explicitly opts in.
-const ADS_ENABLED = process.env.EXPO_PUBLIC_DECENT_DISTRIBUTION === 'playstore';
 const GITHUB_URL = 'https://github.com/kabouls/decent-app';
 
 const SCREEN_WIDTH = Platform.OS === 'web' ? Math.min(RAW_WINDOW_WIDTH, 480) : RAW_WINDOW_WIDTH;
@@ -634,16 +628,6 @@ const ImageFilledIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
     <Rect x="2" y="3" width="20" height="18" rx="3" fill={color} />
     <Circle cx="8" cy="9" r="2" fill="#0B0F17" />
     <Path d="M4 18l6-6 4 4 6-7v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" fill="#0B0F17" />
-  </Svg>
-));
-
-const ResumeIconSVG = React.memo(({ size = 18, color = '#FFFFFF' }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Rect x="4" y="2" width="16" height="20" rx="2" stroke={color} strokeWidth="2" />
-    <Circle cx="9" cy="8" r="2" stroke={color} strokeWidth="1.6" />
-    <Path d="M6.5 13.5C6.5 12 7.5 11 9 11C10.5 11 11.5 12 11.5 13.5" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
-    <Path d="M14 8H17" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
-    <Path d="M7 17H17" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
   </Svg>
 ));
 
@@ -2105,8 +2089,6 @@ const TOOLS_TRANSLATIONS = {
     imageConverterDesc: 'Convert photos between JPEG, PNG, and WEBP - batch up to 10 at once',
     pdfEditor: 'PDF Editor',
     pdfEditorDesc: 'Merge PDFs, reorder pages, delete, and rotate - export as one file',
-    resumeMaker: 'Resume Maker',
-    resumeMakerDesc: 'Fill in your info, pick a template, export as PDF',
     pdfEditorIntro: 'Add PDF files or photos to build your document. Drag to reorder, tap to rotate or remove a page. Nothing leaves your device.',
     addPdf: 'Add PDF',
     addImages: 'Add Images',
@@ -2189,8 +2171,6 @@ const TOOLS_TRANSLATIONS = {
     imageConverterDesc: 'Konversi foto antara JPEG, PNG, dan WEBP - hingga 10 sekaligus',
     pdfEditor: 'Editor PDF',
     pdfEditorDesc: 'Gabungkan PDF, atur ulang halaman, hapus, dan putar - ekspor sebagai satu file',
-    resumeMaker: 'Pembuat Resume',
-    resumeMakerDesc: 'Isi info Anda, pilih template, ekspor sebagai PDF',
     pdfEditorIntro: 'Tambahkan file PDF atau foto untuk membuat dokumen Anda. Seret untuk mengatur ulang, ketuk untuk memutar atau menghapus halaman. Tidak ada yang meninggalkan perangkat Anda.',
     addPdf: 'Tambah PDF',
     addImages: 'Tambah Gambar',
@@ -3474,7 +3454,7 @@ const ProjectCard = React.memo(({
   );
 });
 
-const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, pinnedCount, styles, cardWidth, showReadOnlyPin, emptyMessage, theme, onDismissAd }) => {
+const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerProfile, onToggleFollow, followedDesigners, currentUserId, showPinControl, onTogglePin, pinnedCount, styles, cardWidth, showReadOnlyPin, emptyMessage }) => {
   // b527: was previously silently rendering nothing at all for an empty
   // items array - matches TwoRowHorizontalGrid's own empty state below,
   // just with an emptyMessage prop so each call site can give
@@ -3490,37 +3470,23 @@ const ProjectGrid = React.memo(({ items, onPress, onToggleLike, onOpenDesignerPr
   return (
     <View style={styles.grid}>
       {items.map((item) => (
-        item.isAd ? (
-          // Only ever present in the For You feed's own items array (see
-          // forYouProjectsWithAds) - every other ProjectGrid call site
-          // passes a plain projects array with no isAd entries at all,
-          // so this branch is unreachable there, not just unused.
-          <NativeAdCard
-            key={item.id}
-            onDismiss={() => onDismissAd && onDismissAd(item.id)}
-            customWidth={cardWidth}
-            styles={styles}
-            theme={theme}
-          />
-        ) : (
-          <ProjectCard
-            key={item.id}
-            item={item}
-            onPress={onPress}
-            onToggleLike={onToggleLike}
-            onOpenDesignerProfile={onOpenDesignerProfile}
-            onToggleFollow={onToggleFollow}
-            isFollowing={followedDesigners ? followedDesigners.includes(item.ownerId) : false}
-            followsMe={!!item.followsMe}
-            isOwnContent={!!currentUserId && item.ownerId === currentUserId}
-            showPinControl={showPinControl}
-            onTogglePin={onTogglePin}
-            pinnedCount={pinnedCount}
-            showReadOnlyPin={showReadOnlyPin}
-            customWidth={cardWidth}
-            styles={styles}
-          />
-        )
+        <ProjectCard
+          key={item.id}
+          item={item}
+          onPress={onPress}
+          onToggleLike={onToggleLike}
+          onOpenDesignerProfile={onOpenDesignerProfile}
+          onToggleFollow={onToggleFollow}
+          isFollowing={followedDesigners ? followedDesigners.includes(item.ownerId) : false}
+          followsMe={!!item.followsMe}
+          isOwnContent={!!currentUserId && item.ownerId === currentUserId}
+          showPinControl={showPinControl}
+          onTogglePin={onTogglePin}
+          pinnedCount={pinnedCount}
+          showReadOnlyPin={showReadOnlyPin}
+          customWidth={cardWidth}
+          styles={styles}
+        />
       ))}
     </View>
   );
@@ -4557,23 +4523,7 @@ const getFileSizeBytes = async (uri) => {
 // promise only yields once that promise's own work is done, so without
 // an explicit yield, a tight loop of several expensive operations still
 // runs as one uninterrupted block from the browser's perspective.
-const yieldToBrowser = () => {
-  // Yielding exists purely to let the browser paint the progress text
-  // and process a Cancel tap between pages - there's nothing to keep
-  // responsive when the tab isn't even visible, and a background tab's
-  // setTimeout is throttled by the browser to fire no more than once a
-  // second (Chrome gets more aggressive the longer a tab stays hidden,
-  // eventually clamping to once a minute). Without this check, every
-  // single yield point in Compress/Crop/Page Numbers/Export/Combine
-  // turned into a multi-second stall the moment someone switched tabs
-  // mid-operation - real, compounding delay for zero benefit, since no
-  // one was watching the progress bar anyway. typeof document check
-  // keeps this safe on native, where these same loops also run and
-  // there's no DOM at all - it just always falls through to the normal
-  // setTimeout path there, unchanged.
-  if (typeof document !== 'undefined' && document.hidden) return Promise.resolve();
-  return new Promise((resolve) => setTimeout(resolve, 0));
-};
+const yieldToBrowser = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const formatBytes = (n) => {
   if (n == null) return '—';
@@ -4716,11 +4666,10 @@ const loadSourceAsPdfDoc = async (uri, isImage) => {
 // objects (one per originally-picked file/image), kept alive in state
 // for the whole editing session specifically so this step can pull
 // from them without re-reading files from disk each time.
-const assemblePdfFromPages = async (sourceDocs, pages, onProgress = null, isCancelled = null, metadata = null) => {
+const assemblePdfFromPages = async (sourceDocs, pages, onProgress = null) => {
   const outDoc = await PDFDocument.create();
   let done = 0;
   for (const p of pages) {
-    if (isCancelled && isCancelled()) return null; // caller must treat a null return as "cancelled, don't use these bytes"
     const [copiedPage] = await outDoc.copyPages(sourceDocs[p.sourceFileIndex], [p.sourcePageIndex]);
     if (p.rotation) {
       const current = copiedPage.getRotation().angle || 0;
@@ -4729,18 +4678,6 @@ const assemblePdfFromPages = async (sourceDocs, pages, onProgress = null, isCanc
     outDoc.addPage(copiedPage);
     done += 1;
     if (onProgress) onProgress(done, pages.length);
-    if (done < pages.length) await yieldToBrowser(); // same reasoning as every other per-page loop in this file - a real yield point, not just a microtask await, so Cancel and the progress text both actually get a chance to be seen/processed on a large export
-  }
-  // Metadata (title/author/subject) is a DOCUMENT-level property, not a
-  // page-level one - PDFDocument.create() above always starts blank
-  // regardless of what the source pages' original documents had, so
-  // there's no page-copying operation that could carry it over on its
-  // own. Applying it here, right before save, is the one place in this
-  // function's whole lifecycle where it can actually take effect.
-  if (metadata) {
-    if (metadata.title) outDoc.setTitle(metadata.title);
-    if (metadata.author) outDoc.setAuthor(metadata.author);
-    if (metadata.subject) outDoc.setSubject(metadata.subject);
   }
   return outDoc.save();
 };
@@ -4921,38 +4858,7 @@ const FocusableTextInput = React.memo(({ style, onFocus, onBlur, ...props }) => 
       autoComplete="off"
       {...props}
       style={[style, focused && { borderColor: '#8B5CF6', borderWidth: 1.5 }]}
-      onFocus={(e) => {
-        setFocused(true);
-        // Real keyboard-awareness for web (mobile and tablet both) - the
-        // browser's own default "scroll a focused input into view"
-        // behavior only reliably covers plain in-flow layouts. A screen
-        // using fixed/absolute-positioned overlays (the PDF Editor's busy
-        // modal, for one) can leave a focused field sitting behind the
-        // on-screen keyboard with nothing rescuing it. This is genuinely
-        // global rather than a per-screen patch: FocusableTextInput is the
-        // shared component behind every text field in the app (68 call
-        // sites), so one fix here covers all of them, not just whichever
-        // screens someone remembers to wrap individually.
-        //
-        // Native (iOS/Android) is explicitly NOT covered by this - there's
-        // no DOM node or scrollIntoView equivalent here, and this
-        // component has no reference to whichever ScrollView contains it
-        // to scroll that instead. Native needs a different, larger fix
-        // (a library dependency, or wrapping each screen's own scroll
-        // container individually) - flagged as separate, unstarted work,
-        // not something this shared leaf component can do on its own.
-        if (Platform.OS === 'web') {
-          const target = e.target; // captured now, not read inside the timeout - safe regardless of React's event-pooling behavior in whatever version this runs on
-          if (target && typeof target.scrollIntoView === 'function') {
-            // Delay lets the on-screen keyboard actually open and resize
-            // the viewport first - scrolling immediately targets the
-            // PRE-keyboard viewport and can undershoot where the field
-            // ends up once the keyboard is actually showing.
-            setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
-          }
-        }
-        if (onFocus) onFocus(e);
-      }}
+      onFocus={(e) => { setFocused(true); if (onFocus) onFocus(e); }}
       onBlur={(e) => { setFocused(false); if (onBlur) onBlur(e); }}
     />
   );
@@ -5285,16 +5191,7 @@ function AuthScreen({ onCancel } = {}) {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      // 'padding' was applied unconditionally, including on Android where
-      // this specific behavior is known to interact badly with the
-      // software keyboard (it was written for iOS's lack of an automatic
-      // resize). Android already gets keyboard handling from its own
-      // window resize behavior, so it needs no explicit behavior here at
-      // all - passing 'padding' to it was actively wrong, not just
-      // redundant. Web ignores this prop entirely (no native keyboard
-      // event to react to) - the real web fix lives in
-      // FocusableTextInput's onFocus handler above instead.
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
     >
     <SafeAreaView style={[{ flex: 1, backgroundColor: theme.bg, justifyContent: 'center', padding: 24 }, Platform.OS === 'web' && { backgroundColor: theme.bg, padding: 0 }]}>
     <View style={Platform.OS === 'web' ? { flex: 1, width: '100%', maxWidth: 480, alignSelf: 'center', backgroundColor: theme.bg, justifyContent: 'center', padding: 24 } : { flex: 1, justifyContent: 'center' }}>
@@ -5935,18 +5832,6 @@ function App() {
   const fancyConfirmCardOverlay = !lightweightMode
     ? { backgroundColor: themeMode === 'light' ? 'rgba(255,255,255,0.75)' : 'rgba(30,35,48,0.75)' }
     : null;
-
-  // AdMob SDK init - once, on mount. The actual require() lives inside
-  // initAds, in adsModule.native.js, NOT here - Metro's web bundler
-  // walks into whatever a require() points at regardless of any runtime
-  // conditional around it, and react-native-google-mobile-ads' own
-  // internals aren't resolvable on web at all. Calling the already-
-  // platform-split initAds() (a no-op on adsModule.web.js) is what
-  // actually keeps that out of the web bundle, not the ADS_ENABLED
-  // check alone - see adsModule.native.js for the full reasoning.
-  useEffect(() => {
-    initAds();
-  }, []);
 
   // --- Responsive breakpoints (web only) ---
   // Native ignores all of this entirely (viewportWidth stays at the device
@@ -7551,313 +7436,6 @@ function App() {
   };
 
   const [formStep, setFormStep] = useState(1);
-  // Resume Maker - own wizard state, deliberately separate from
-  // formStep above (that one belongs to the portfolio upload wizard,
-  // a completely different flow). Same numbered-step shape though,
-  // matching that wizard's own pattern rather than inventing a new one.
-  // Steps 2-4 are still honest "coming soon" placeholders - only
-  // Personal Info (step 1) is real so far; the rest is staged,
-  // deliberate follow-up work, not rushed in alongside this.
-  const [resumeWizardStep, setResumeWizardStep] = useState(1);
-  const [resumeData, setResumeData] = useState({
-    name: '', title: '', email: '', phone: '', location: '', photoUri: null,
-    experience: [], education: [], skills: [],
-    links: { website: '', linkedin: '', github: '' },
-    qrImageUri: null, qrSource: null // qrSource: 'upload' | 'generated' | 'decent' - which of the 3 options produced qrImageUri, shown back to the user when they revisit this step
-  });
-  const updateResumeField = (key, value) => setResumeData((prev) => ({ ...prev, [key]: value }));
-  const pickResumePhoto = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      showAppAlert('Permission Denied', 'Media library access is required to pick a photo.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8
-    });
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      updateResumeField('photoUri', result.assets[0].uri);
-    }
-  };
-  // Experience/Education - both repeatable entry lists, same shape of
-  // helper trio each (add/remove/update-one-field). Dates are kept as
-  // plain free-text fields ("Jan 2020") rather than a real date picker -
-  // real resumes often use exactly that level of precision anyway
-  // (season/month-year, not a specific day), and it avoids pulling in a
-  // whole new native date-picker dependency for something free text
-  // already handles fine.
-  const addResumeExperience = () => setResumeData((prev) => ({
-    ...prev,
-    experience: [...prev.experience, { id: `exp-${Date.now()}`, company: '', role: '', startDate: '', endDate: '', current: false, description: '' }]
-  }));
-  const removeResumeExperience = (id) => setResumeData((prev) => ({ ...prev, experience: prev.experience.filter((e) => e.id !== id) }));
-  const updateResumeExperience = (id, key, value) => setResumeData((prev) => ({
-    ...prev,
-    experience: prev.experience.map((e) => (e.id === id ? { ...e, [key]: value } : e))
-  }));
-  const addResumeEducation = () => setResumeData((prev) => ({
-    ...prev,
-    education: [...prev.education, { id: `edu-${Date.now()}`, school: '', degree: '', startDate: '', endDate: '' }]
-  }));
-  const removeResumeEducation = (id) => setResumeData((prev) => ({ ...prev, education: prev.education.filter((e) => e.id !== id) }));
-  const updateResumeEducation = (id, key, value) => setResumeData((prev) => ({
-    ...prev,
-    education: prev.education.map((e) => (e.id === id ? { ...e, [key]: value } : e))
-  }));
-  const addResumeSkill = (text) => {
-    const skill = text.trim();
-    if (!skill || resumeData.skills.includes(skill)) return;
-    setResumeData((prev) => ({ ...prev, skills: [...prev.skills, skill] }));
-  };
-  const removeResumeSkill = (skill) => setResumeData((prev) => ({ ...prev, skills: prev.skills.filter((s) => s !== skill) }));
-  const updateResumeLink = (key, value) => setResumeData((prev) => ({ ...prev, links: { ...prev.links, [key]: value } }));
-
-  // Resume QR - three ways to get a QR image into the resume, one
-  // helper each. All three converge on the same place: resumeData.
-  // qrImageUri (a real image URI/data URL to embed) + qrSource (which
-  // path produced it, so revisiting this step shows the right label).
-  //
-  // Options 2 and 3 both need to rasterize a QR headlessly (no on-screen
-  // component to grab), which only renderToolsQrToCanvasAsync can do -
-  // and that function is Canvas-API-based, so web-only, same honest
-  // gap already established for Export Pages as Images and auto-crop
-  // earlier tonight. Option 1 (upload) has no such limit.
-  const [resumeQrGenerating, setResumeQrGenerating] = useState(false);
-  const [resumeSkillInput, setResumeSkillInput] = useState('');
-  // Option 2: the full QR Generator tool, reused as-is rather than
-  // rebuilt inside the wizard. Switching activeTool does NOT reset
-  // resumeData/resumeWizardStep - both live in App()'s own top-level
-  // state, same as activeTool itself, so navigating away and back
-  // doesn't lose wizard progress on its own. This flag is the only new
-  // piece needed: it tells QR Generator's own screen "you were opened
-  // from the wizard", so it can show one extra button (capture + return)
-  // alongside its normal Download buttons, without changing anything
-  // else about how QR Generator works.
-  const [qrGeneratorReturnToResume, setQrGeneratorReturnToResume] = useState(false);
-  const openQrGeneratorForResume = () => {
-    setQrGeneratorReturnToResume(true);
-    setActiveTool('qrGenerator');
-  };
-  const useGeneratedQrForResume = async () => {
-    const value = currentQrValue();
-    if (!value) {
-      showToast('Fill in the fields first.');
-      return;
-    }
-    setResumeQrGenerating(true);
-    try {
-      const canvas = await renderToolsQrToCanvasAsync(value, 600, {
-        color: qrColor, backgroundColor: qrBackgroundColor, dotStyle: qrDotStyle, logoUri: qrLogoUri
-      });
-      setResumeData((prev) => ({ ...prev, qrImageUri: canvas.toDataURL('image/png'), qrSource: 'generated' }));
-      setQrGeneratorReturnToResume(false);
-      setActiveTool('resumeMaker');
-      showToast('QR code added to your resume.');
-      triggerHaptic('success');
-    } catch (e) {
-      console.warn('QR capture for resume failed:', e);
-      showToast('Could not use this QR code - try again.');
-    } finally {
-      setResumeQrGenerating(false);
-    }
-  };
-  // Safety reset: if the person leaves QR Generator any other way (Tools
-  // hub, switching straight to a different tool, browser back) instead
-  // of the capture button above, this flag would otherwise stay stuck
-  // true - and the next time they open QR Generator normally, for
-  // something unrelated to a resume, the "Use This QR" button would
-  // spuriously still be there.
-  useEffect(() => {
-    if (activeTool !== 'qrGenerator' && qrGeneratorReturnToResume) {
-      setQrGeneratorReturnToResume(false);
-    }
-  }, [activeTool]);
-
-  // Option 1: upload an existing QR image. Resized (not aggressively
-  // compressed) to a sensible max dimension, PNG not JPEG - a QR code's
-  // scannability depends on sharp high-contrast edges, which lossy JPEG
-  // compression can genuinely break. Keeping this format-safe matters
-  // more here than squeezing extra bytes out of what's already a small
-  // image once resized.
-  const pickResumeQrUpload = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      showAppAlert('Permission Denied', 'Media library access is required to pick a QR image.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 1
-    });
-    if (result.canceled || !result.assets || result.assets.length === 0) return;
-    setResumeQrGenerating(true);
-    try {
-      const resized = await ImageManipulator.manipulateAsync(
-        result.assets[0].uri,
-        [{ resize: { width: 600 } }],
-        { compress: 1, format: ImageManipulator.SaveFormat.PNG }
-      );
-      setResumeData((prev) => ({ ...prev, qrImageUri: resized.uri, qrSource: 'upload' }));
-    } catch (e) {
-      console.warn('QR upload resize failed:', e);
-      showToast('Could not process that image - try again.');
-    } finally {
-      setResumeQrGenerating(false);
-    }
-  };
-
-  // Option 3: the logged-in DECENT portfolio QR, web-only (see comment
-  // above). "Decent style" vs "plain" differ by color/dot-style only
-  // (purple, rounded vs black, square) - CircularQRCode's on-screen
-  // logo badge is drawn as an SVG vector path (DECENT_LOGO_PATH_D), not
-  // a raster image file, so there's no actual image URI to pass as
-  // renderToolsQrToCanvasAsync's logoUri here without a real asset to
-  // point at. Keeping the distinction to color/dots is honest about
-  // what's actually available rather than guessing at a path.
-  const generateResumeDecentQr = async (style) => {
-    if (Platform.OS !== 'web' || !session || !userProfile.handle) return;
-    setResumeQrGenerating(true);
-    try {
-      const url = `${DECENT_APP_DOMAIN}/@${userProfile.handle}`;
-      const canvas = await renderToolsQrToCanvasAsync(url, 600, {
-        color: style === 'decent' ? '#8B5CF6' : '#000000',
-        backgroundColor: '#FFFFFF',
-        dotStyle: style === 'decent' ? 'round' : 'square',
-        logoUri: null
-      });
-      setResumeData((prev) => ({ ...prev, qrImageUri: canvas.toDataURL('image/png'), qrSource: 'decent' }));
-    } catch (e) {
-      console.warn('Portfolio QR generation failed:', e);
-      showToast('Could not generate QR code - try again.');
-    } finally {
-      setResumeQrGenerating(false);
-    }
-  };
-
-  // Every field below is raw user text - without escaping, a name or
-  // description containing "<", ">", "&" would either break the HTML
-  // structure or, worse, let arbitrary markup through into what
-  // ultimately becomes a real PDF. Every interpolated field goes
-  // through this first, no exceptions.
-  const escapeResumeHtml = (str) => String(str || '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-
-  // One clean, single-column, ATS-friendly template - deliberately the
-  // only one for now, matching how Watermark stayed to simple presets
-  // rather than a full design tool. Plain HTML/CSS, not a component -
-  // expo-print takes a single HTML string, so building it as a string
-  // here is the natural fit, not a shortcut.
-  const buildResumeHtml = (data) => {
-    const e = escapeResumeHtml;
-    const contactLine = [data.email, data.phone, data.location].filter(Boolean).map(e).join(' &nbsp;|&nbsp; ');
-    const experienceHtml = data.experience.map((exp) => `
-      <div style="margin-bottom: 14px;">
-        <div style="display: flex; justify-content: space-between; align-items: baseline;">
-          <span style="font-weight: 700; font-size: 13px;">${e(exp.role)}${exp.role && exp.company ? ' &middot; ' : ''}${e(exp.company)}</span>
-          <span style="font-size: 11px; color: #666;">${e(exp.startDate)}${exp.startDate ? ' - ' : ''}${exp.current ? 'Present' : e(exp.endDate)}</span>
-        </div>
-        ${exp.description ? `<div style="font-size: 11.5px; color: #333; margin-top: 3px; white-space: pre-wrap;">${e(exp.description)}</div>` : ''}
-      </div>
-    `).join('');
-    const educationHtml = data.education.map((edu) => `
-      <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: baseline;">
-        <span style="font-weight: 700; font-size: 13px;">${e(edu.degree)}${edu.degree && edu.school ? ' &middot; ' : ''}${e(edu.school)}</span>
-        <span style="font-size: 11px; color: #666;">${e(edu.startDate)}${edu.startDate ? ' - ' : ''}${e(edu.endDate)}</span>
-      </div>
-    `).join('');
-    const skillsHtml = data.skills.map((s) => `<span style="display: inline-block; background: #F3F0FF; color: #6D28D9; font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 99px; margin: 0 6px 6px 0;">${e(s)}</span>`).join('');
-    const links = [
-      data.links.website ? { label: 'Website', value: data.links.website } : null,
-      data.links.linkedin ? { label: 'LinkedIn', value: data.links.linkedin } : null,
-      data.links.github ? { label: 'GitHub', value: data.links.github } : null
-    ].filter(Boolean);
-    const linksHtml = links.map((l) => `<div style="font-size: 11.5px; margin-bottom: 3px;"><span style="color: #666;">${e(l.label)}:</span> ${e(l.value)}</div>`).join('');
-
-    return `
-      <html>
-        <head><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-        <body style="font-family: Helvetica, Arial, sans-serif; color: #111; padding: 36px 44px; margin: 0;">
-          <div style="display: flex; align-items: center; gap: 18px; margin-bottom: 20px;">
-            ${data.photoUri ? `<img src="${data.photoUri}" style="width: 72px; height: 72px; border-radius: 36px; object-fit: cover;" />` : ''}
-            <div>
-              <div style="font-size: 22px; font-weight: 700;">${e(data.name) || 'Your Name'}</div>
-              ${data.title ? `<div style="font-size: 13.5px; color: #6D28D9; font-weight: 600; margin-top: 2px;">${e(data.title)}</div>` : ''}
-              ${contactLine ? `<div style="font-size: 11px; color: #666; margin-top: 4px;">${contactLine}</div>` : ''}
-            </div>
-          </div>
-
-          ${data.experience.length > 0 ? `
-            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6D28D9; border-bottom: 1.5px solid #E5E0FF; padding-bottom: 4px; margin-bottom: 10px; margin-top: 22px;">Experience</div>
-            ${experienceHtml}
-          ` : ''}
-
-          ${data.education.length > 0 ? `
-            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6D28D9; border-bottom: 1.5px solid #E5E0FF; padding-bottom: 4px; margin-bottom: 10px; margin-top: 22px;">Education</div>
-            ${educationHtml}
-          ` : ''}
-
-          ${data.skills.length > 0 ? `
-            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6D28D9; border-bottom: 1.5px solid #E5E0FF; padding-bottom: 4px; margin-bottom: 10px; margin-top: 22px;">Skills</div>
-            <div>${skillsHtml}</div>
-          ` : ''}
-
-          ${links.length > 0 || data.qrImageUri ? `
-            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6D28D9; border-bottom: 1.5px solid #E5E0FF; padding-bottom: 4px; margin-bottom: 10px; margin-top: 22px;">Links</div>
-            <div style="display: flex; justify-content: space-between; align-items: flex-end;">
-              <div>${linksHtml}</div>
-              ${data.qrImageUri ? `<img src="${data.qrImageUri}" style="width: 64px; height: 64px;" />` : ''}
-            </div>
-          ` : ''}
-        </body>
-      </html>
-    `;
-  };
-
-  const [resumeExporting, setResumeExporting] = useState(false);
-  // Print.printToFileAsync behaves genuinely differently by platform,
-  // not just a styling difference: on native it silently writes a PDF
-  // to the cache directory and returns a uri to share; on web it opens
-  // the browser's own print dialog instead (Save as PDF is the user's
-  // own choice there, not automatic) - both lazy-required, not a
-  // top-level import, same reasoning as expo-sharing/expo-document-
-  // picker above: no real eas build has happened yet this whole
-  // session, so the native binding doesn't exist on the installed app,
-  // and an eager top-level import would crash the whole app on launch
-  // exactly like the b752 incident. expo-print having real web support
-  // (unlike the AdMob library) only protects against a DIFFERENT class
-  // of problem - Metro's bundler choking on native-only internals - not
-  // this one.
-  const handleExportResume = async () => {
-    setResumeExporting(true);
-    try {
-      const html = buildResumeHtml(resumeData);
-      const PrintModule = require('expo-print');
-      if (Platform.OS === 'web') {
-        await PrintModule.printToFileAsync({ html });
-        showToast('Choose "Save as PDF" in the print dialog to download.');
-      } else {
-        const { uri } = await PrintModule.printToFileAsync({ html });
-        const Sharing = require('expo-sharing');
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Save Resume' });
-        } else {
-          showToast('Sharing is not available on this device.');
-        }
-      }
-      triggerHaptic('success');
-    } catch (e) {
-      console.warn('Resume export failed:', e);
-      showToast('Could not export resume - try again.');
-      triggerHaptic('error');
-    } finally {
-      setResumeExporting(false);
-    }
-  };
 
   // Auto-trigger: fires when the wizard is open and formStep changes,
   // showing that step's tutorial the first time it's reached (no-ops
@@ -7953,7 +7531,7 @@ function App() {
   // hands off to always agree on what each URL means.
   const TOOLS_ROUTE_SLUGS = {
     hub: '', imageCompressor: 'image-compressor', qrGenerator: 'qr-code-generator',
-    imageConverter: 'image-converter', pdfEditor: 'pdf-editor', resumeMaker: 'resume-maker'
+    imageConverter: 'image-converter', pdfEditor: 'pdf-editor'
   };
   const toolsUrlInitializedRef = useRef(false);
   const toolsPreviousPathRef = useRef('/');
@@ -8114,17 +7692,6 @@ function App() {
   const [pdfClearConfirmVisible, setPdfClearConfirmVisible] = useState(false);
   const [pdfTabCloseConfirmId, setPdfTabCloseConfirmId] = useState(null); // container id pending removal via its tab's x
   const [pdfMoreToolsMenuVisible, setPdfMoreToolsMenuVisible] = useState(false);
-  // New "More Tools" entries - each reuses the same rebuild-via-pdf-lib
-  // pattern already established by Compress/Page Numbers/Crop, rather
-  // than inventing a new one.
-  const [pdfMetadataModalVisible, setPdfMetadataModalVisible] = useState(false);
-  const [pdfMetadataDraft, setPdfMetadataDraft] = useState({ title: '', author: '', subject: '' });
-  const [pdfSplitModalVisible, setPdfSplitModalVisible] = useState(false);
-  const [pdfSplitEveryN, setPdfSplitEveryN] = useState('1');
-  const [pdfWatermarkModalVisible, setPdfWatermarkModalVisible] = useState(false);
-  const [pdfWatermarkText, setPdfWatermarkText] = useState('');
-  const [pdfWatermarkOpacity, setPdfWatermarkOpacity] = useState(0.3);
-  const [pdfWatermarkPattern, setPdfWatermarkPattern] = useState('single'); // 'single' | 'repeated'
   const pdfMoreToolsButtonRef = useRef(null);
   const [pdfMoreToolsMenuPosition, setPdfMoreToolsMenuPosition] = useState({ top: 140, left: 20 });
 
@@ -8187,14 +7754,6 @@ function App() {
   // separate full-screen Modal driven by pdfFullscreenIndex instead.
   const [pdfActivePageId, setPdfActivePageId] = useState(null);
   const [pdfEditorLoading, setPdfEditorLoading] = useState(false);
-  // Set at the start of loadPickedPdfAssets when the incoming batch's
-  // total size crosses this - purely informational (unlike
-  // PDF_LARGE_UPLOAD_WARN_BYTES above, which gates an actual "continue?"
-  // confirmation before loading even starts), just so the busy overlay
-  // can say "this is a big file" instead of leaving someone watching a
-  // slow, silent progress bar with no idea whether that's expected.
-  const PDF_BIG_FILE_LOADING_WARN_BYTES = 20 * 1024 * 1024;
-  const [pdfLoadingIsLargeFile, setPdfLoadingIsLargeFile] = useState(false);
   const [pdfEditorExporting, setPdfEditorExporting] = useState(false);
   // One derived label covering every PDF Editor operation that mutates
   // the document - Export reads this to disable itself and show what's
@@ -8238,22 +7797,6 @@ function App() {
   const pdfBusyPercent = pdfBusyProgress && pdfBusyProgress.total > 0
     ? Math.round((pdfBusyProgress.done / pdfBusyProgress.total) * 100)
     : null;
-  // Real cancellation, not just a disabled UI - checked between pages in
-  // Compress/Page Numbers/Export's per-page loops (all already yield
-  // between pages, so this costs nothing extra to check). Reset to false
-  // at the START of each of those operations, never left stale from a
-  // previous one. Crop and Loading are NOT wired to this: Crop's own
-  // full-screen editor Modal already blocks everything else behind it
-  // for the (usually brief) duration of applying a crop, so there's no
-  // "can't do anything else" gap to close there, just no cancel button -
-  // a real gap, left as a known follow-up rather than rushed in here.
-  // Loading has no per-page callback plumbed into generateWebPdfThumbnails
-  // to hook a cancel check into at all - would need that added first.
-  const pdfOperationCancelledRef = useRef(false);
-  const cancelPdfOperation = () => {
-    pdfOperationCancelledRef.current = true;
-    triggerHaptic('warning');
-  };
   const [pdfDragIndex, setPdfDragIndex] = useState(null);
   const [pdfFullscreenIndex, setPdfFullscreenIndex] = useState(null); // null | index into activePdfContainer.pages
   // Cache of high-res single-page renders, keyed by "sourceFileIndex:
@@ -8340,22 +7883,6 @@ function App() {
   // avoid wasting render work on pages that may never be visited. Web
   // only - native's preview path is a completely different mechanism
   // (temp one-page PDF file + PdfView), not this image-cache system.
-  // Resolves what to actually pass to generateWebPdfThumbnails for a
-  // given source file. meta.uri is null for any container that's been
-  // rebuilt via pdf-lib (Crop, Page Numbers, Compress, Watermark all
-  // replace sourceMeta with { uri: null } after rebuilding) - passing
-  // null straight through silently failed to render at all, since null
-  // isn't a Uint8Array/ArrayBuffer (so it took the URL-fetch path with a
-  // null URL) and isn't a real uri either. The page then stayed stuck
-  // showing its low-res rail thumbnail (meant for a small tile, not the
-  // full preview pane) instead of ever getting a real high-res render.
-  // Falls back to serializing the in-memory PDFDocument when there's no
-  // uri to fetch from.
-  const resolvePdfHighResSource = (container, sourceFileIndex) => {
-    const meta = container.sourceMeta[sourceFileIndex];
-    return meta.uri ? Promise.resolve(meta.uri) : container.sourceDocs[sourceFileIndex].save();
-  };
-
   const prefetchNeighborPdfHighRes = (container, pageIndex) => {
     if (Platform.OS !== 'web' || !container) return;
     [pageIndex + 1, pageIndex - 1].forEach((neighborIndex) => {
@@ -8366,9 +7893,7 @@ function App() {
       const neighborMeta = container.sourceMeta[neighborPage.sourceFileIndex];
       if (!neighborMeta || neighborMeta.isImage) return;
       const neighborDocCacheKey = `${container.id}:${neighborPage.sourceFileIndex}`;
-      resolvePdfHighResSource(container, neighborPage.sourceFileIndex).then((source) => (
-        generateWebPdfThumbnails(source, 2.5, neighborPage.sourcePageIndex + 1, null, neighborDocCacheKey)
-      )).then((neighborResult) => {
+      generateWebPdfThumbnails(neighborMeta.uri, 2.5, neighborPage.sourcePageIndex + 1, null, neighborDocCacheKey).then((neighborResult) => {
         if (neighborResult) addToPdfHighResCache(neighborKey, neighborResult, false); // false: background result, no re-render while it's not the page on screen
       });
     });
@@ -8416,9 +7941,7 @@ function App() {
     // itself now (MAX_RENDER_DIMENSION), not by lowering scale for
     // every page including normal ones that were never the problem.
     const docCacheKey = `${pdfActiveContainerId}:${page.sourceFileIndex}`;
-    resolvePdfHighResSource(activePdfContainer, page.sourceFileIndex).then((source) => (
-      generateWebPdfThumbnails(source, 2.5, page.sourcePageIndex + 1, null, docCacheKey)
-    )).then((result) => {
+    generateWebPdfThumbnails(meta.uri, 2.5, page.sourcePageIndex + 1, null, docCacheKey).then((result) => {
       if (cancelled) return;
       if (result) {
         addToPdfHighResCache(cacheKey, result);
@@ -8517,9 +8040,7 @@ function App() {
     // Modal, so this was the actual slow path for anyone on a wide screen.
     const docCacheKey = `${pdfActiveContainerId}:${page.sourceFileIndex}`;
     const render = Platform.OS === 'web'
-      ? resolvePdfHighResSource(activePdfContainer, page.sourceFileIndex).then((source) => (
-          generateWebPdfThumbnails(source, 2.5, page.sourcePageIndex + 1, null, docCacheKey)
-        ))
+      ? generateWebPdfThumbnails(meta.uri, 2.5, page.sourcePageIndex + 1, null, docCacheKey)
       : generateNativePdfThumbnails(meta.uri, 1600, page.sourcePageIndex + 1);
     render.then((result) => {
       if (cancelled) return;
@@ -8588,11 +8109,6 @@ function App() {
   })();
   const isPdfCompressActive = pdfHistorySinceLastClear.some((h) => h.label === 'Compress PDF');
   const isPdfPageNumbersActive = pdfHistorySinceLastClear.some((h) => h.label === 'Add page numbers');
-  // Watermark has no toolbar button of its own (it lives in More Tools),
-  // so unlike Compress/Page Numbers it has nowhere natural to show an
-  // "active" indicator on itself. That's the whole reason for the
-  // dedicated slot to the left of Compress - see its render below.
-  const isPdfWatermarkActive = pdfHistorySinceLastClear.some((h) => h.label === 'Add watermark');
 
   const [toolsMenuVisible, setToolsMenuVisible] = useState(false);
   const [leaveToolsConfirmVisible, setLeaveToolsConfirmVisible] = useState(false);
@@ -8747,8 +8263,7 @@ function App() {
     { key: 'imageCompressor', label: tt('imageCompressor'), Icon: ImageIconSVG },
     { key: 'qrGenerator', label: tt('qrGenerator'), Icon: QrIconSVG },
     { key: 'imageConverter', label: tt('imageConverter'), Icon: SwapIconSVG },
-    { key: 'pdfEditor', label: tt('pdfEditor'), Icon: PdfIconSVG },
-    { key: 'resumeMaker', label: tt('resumeMaker'), Icon: ResumeIconSVG }
+    { key: 'pdfEditor', label: tt('pdfEditor'), Icon: PdfIconSVG }
   ];
   const setToolsLanguagePersisted = (lang) => {
     setToolsLanguage(lang);
@@ -11949,14 +11464,7 @@ function App() {
   const fetchUserListTab = async (designer, tab) => {
     setUserListLoading(true);
     setUserListItems([]);
-    // designer itself, not just designer.id, could be missing - this threw
-    // "Cannot read properties of undefined (reading 'id')" if this ever ran
-    // before userListTargetDesigner was actually set (e.g. the modal
-    // rendering from restored/stale state before openFollowersModal or
-    // openFollowingModal had run). Not confirmed as the exact cause of the
-    // current production crash (that one's error type doesn't quite match),
-    // but a real gap either way.
-    if (!designer || !designer.id) {
+    if (!designer.id) {
       setUserListLoading(false);
       return;
     }
@@ -12535,22 +12043,6 @@ function App() {
       urlSyncSkippedInitialRef.current = true;
       return;
     }
-    // Tools has its own separate URL-sync effect (TOOLS URL SYNC, above)
-    // that owns the address bar entirely while toolsScreenVisible is
-    // true. This effect's own deps (session, userProfile.handle, etc.)
-    // can change for reasons that have nothing to do with navigation -
-    // a background profile refresh, a session token update - and
-    // whenever they did while Tools was open, this effect still fired
-    // and unconditionally replaceState'd to whatever the main feed's
-    // path was (defaulting to /for-you), CLOBBERING the correct
-    // /tools/... URL the other effect had just set. That's what made
-    // the address bar intermittently show /for-you while still visibly
-    // inside Tools - not a typo, a genuine race between two independent
-    // effects that both write to the same address bar with no
-    // awareness of each other. Deferring here, rather than having the
-    // Tools effect fight back on every one of its own re-renders, keeps
-    // one clear owner of the URL at any given moment.
-    if (toolsScreenVisible) return;
     let path = '/for-you';
     // Portfolio and designer-profile modals can both be mounted at once
     // (e.g. opening a designer's profile from on top of an already-open
@@ -12579,7 +12071,7 @@ function App() {
     if (window.location.pathname !== path) {
       window.history.replaceState(window.history.state, document.title, path);
     }
-  }, [bottomNav, modalVisible, activeProject, designerModalVisible, selectedDesigner, topStackedPage, session, userProfile.handle, toolsScreenVisible]);
+  }, [bottomNav, modalVisible, activeProject, designerModalVisible, selectedDesigner, topStackedPage, session, userProfile.handle]);
 
   const handleBackFromDesignerProfile = useCallback(() => {
     if (designerBackStack.length > 0) {
@@ -13294,55 +12786,6 @@ function App() {
     });
   };
 
-  // Undoes a SPECIFIC named edit (e.g. "Compress PDF"), not just
-  // whatever happened most recently - the "X" next to the active
-  // Compress/Page Numbers pill in the toolbar needs this, not
-  // handleUndoPdfEdit above. Previously both of those buttons called the
-  // generic undo, which just pops the LAST history entry regardless of
-  // label - if Compress ran and then Crop ran on top of it, pressing
-  // "Undo Compress" actually undid the Crop instead, since that was the
-  // most recent entry, not the compress one.
-  //
-  // Finds the most recent entry with this label (scoped to history since
-  // the last full Clear, same reasoning as isPdfCompressActive/
-  // isPdfPageNumbersActive above), restores containers to the snapshot
-  // stored right BEFORE that edit, and drops that entry plus everything
-  // after it. Dropping everything after is a real, unavoidable
-  // consequence, not a bug: if a Crop was applied on top of the
-  // compressed pages, there's no way to cleanly "subtract" just the
-  // compress step once something else was built on its result - the
-  // snapshot from before compress simply doesn't know about the crop.
-  // getWarningLabelsFor (below) surfaces this honestly before the user
-  // confirms, rather than silently discarding more than they asked for.
-  const findPdfHistoryIndexForLabel = (label) => {
-    const lastClearIndex = pdfEditorHistory.map((h) => h.label).lastIndexOf('Clear all PDFs');
-    const searchStart = lastClearIndex === -1 ? 0 : lastClearIndex + 1;
-    for (let i = pdfEditorHistory.length - 1; i >= searchStart; i--) {
-      if (pdfEditorHistory[i].label === label) return i;
-    }
-    return -1;
-  };
-  const getPdfUndoWarningLabels = (label) => {
-    const idx = findPdfHistoryIndexForLabel(label);
-    if (idx === -1) return [];
-    return [...new Set(pdfEditorHistory.slice(idx + 1).map((h) => h.label))];
-  };
-  const undoSpecificPdfEdit = (label) => {
-    setPdfEditorHistory((prev) => {
-      const lastClearIndex = prev.map((h) => h.label).lastIndexOf('Clear all PDFs');
-      const searchStart = lastClearIndex === -1 ? 0 : lastClearIndex + 1;
-      let idx = -1;
-      for (let i = prev.length - 1; i >= searchStart; i--) {
-        if (prev[i].label === label) { idx = i; break; }
-      }
-      if (idx === -1) return prev; // nothing to undo - shouldn't normally happen, the button only shows when the corresponding "is active" flag is true
-      setPdfContainers(prev[idx].containers);
-      resetPdfHighResCaches();
-      triggerHaptic('light');
-      return prev.slice(0, idx);
-    });
-  };
-
   // Builds one new container from a single picked file - used for each
   // file "Add PDF" picks (one container per file, stacked after any
   // already uploaded) and is NOT used for "Add Images" (see
@@ -13557,7 +13000,6 @@ function App() {
 
   const loadPickedPdfAssets = async (assets) => {
     setPdfEditorLoading(true);
-    setPdfLoadingIsLargeFile(assets.reduce((sum, a) => sum + (a.size || 0), 0) > PDF_BIG_FILE_LOADING_WARN_BYTES);
     for (const asset of assets) {
       // Each picked file becomes its own container, stacked after
       // whatever's already uploaded - asset.name is the original
@@ -13565,7 +13007,6 @@ function App() {
       await addPdfContainerFromSource(asset.uri, false, asset.name);
     }
     setPdfEditorLoading(false);
-    setPdfLoadingIsLargeFile(false);
   };
 
   const pickPdfEditorImages = async () => {
@@ -13920,7 +13361,6 @@ function App() {
       // anything else, which is exactly what "circling for a long time"
       // with no visible feedback looked like.
       if (done < total) await yieldToBrowser();
-      if (pdfOperationCancelledRef.current) return null; // stop mid-document - caller treats null the same as "nothing to apply"
     }
 
     if (compressedThumbnailUris.length === 0) return null;
@@ -13954,13 +13394,11 @@ function App() {
     pushPdfHistorySnapshot('Compress PDF');
     setPdfCompressing(true);
     setPdfCompressProgress(null);
-    pdfOperationCancelledRef.current = false;
     triggerHaptic('light');
     try {
       const updates = {};
       const noImprovementNames = [];
       for (const cid of targets) {
-        if (pdfOperationCancelledRef.current) break;
         const container = pdfContainers.find((c) => c.id === cid);
         if (!container) continue;
 
@@ -14001,7 +13439,6 @@ function App() {
         const compressed = await compressOneContainer(container, preset, (done, total) => {
           setPdfCompressProgress({ containerName: container.name, done, total });
         });
-        if (pdfOperationCancelledRef.current) break; // stop entirely - don't start any remaining containers
         if (!compressed) continue;
 
         const compressedBytes = await compressed.sourceDocs[0].save();
@@ -14010,11 +13447,6 @@ function App() {
           continue; // not applied - the container stays exactly as it was
         }
         updates[cid] = compressed;
-      }
-
-      if (pdfOperationCancelledRef.current) {
-        showToast('Compression cancelled - nothing was changed.');
-        return;
       }
 
       const appliedCount = Object.keys(updates).length;
@@ -14154,8 +13586,7 @@ function App() {
   const exportOneContainer = async (container) => {
     const bytes = await assemblePdfFromPages(container.sourceDocs, container.pages, (done, total) => {
       setPdfExportProgress({ done, total });
-    }, () => pdfOperationCancelledRef.current, container.metadata || null);
-    if (!bytes) return null; // cancelled mid-assembly
+    });
     const filename = `${(container.name || 'document').replace(/\.pdf$/i, '')}.pdf`;
     return { bytes, filename };
   };
@@ -14213,13 +13644,8 @@ function App() {
   const exportActiveOrGivenContainer = async (container) => {
     setPdfEditorExporting(true);
     setPdfExportProgress(null);
-    pdfOperationCancelledRef.current = false;
     try {
       const file = await exportOneContainer(container);
-      if (!file) {
-        showToast('Export cancelled.');
-        return;
-      }
       await maybeShowToolsDownloadInterstitial(false, [file]);
       triggerHaptic('success');
     } catch (e) {
@@ -14241,16 +13667,10 @@ function App() {
     setPdfExportChoiceVisible(false);
     setPdfEditorExporting(true);
     setPdfExportProgress(null);
-    pdfOperationCancelledRef.current = false;
     try {
       const files = [];
       for (const container of pdfContainers) {
-        const file = await exportOneContainer(container);
-        if (!file) {
-          showToast('Export cancelled - nothing was saved.');
-          return;
-        }
-        files.push(file);
+        files.push(await exportOneContainer(container));
       }
       await maybeShowToolsDownloadInterstitial(false, files);
       triggerHaptic('success');
@@ -14288,32 +13708,18 @@ function App() {
   // editable container.
   const handleCombineAndExport = async () => {
     setPdfEditorExporting(true);
-    setPdfExportProgress(null);
-    pdfOperationCancelledRef.current = false;
     try {
       const orderedContainers = pdfCombineOrderIds.map((id) => pdfContainers.find((c) => c.id === id)).filter(Boolean);
-      const totalPages = orderedContainers.reduce((sum, c) => sum + c.pages.length, 0);
       const outDoc = await PDFDocument.create();
-      let done = 0;
-      let cancelled = false;
       for (const container of orderedContainers) {
-        if (cancelled) break;
         for (const page of container.pages) {
-          if (pdfOperationCancelledRef.current) { cancelled = true; break; }
           const [copiedPage] = await outDoc.copyPages(container.sourceDocs[page.sourceFileIndex], [page.sourcePageIndex]);
           if (page.rotation) {
             const current = copiedPage.getRotation().angle || 0;
             copiedPage.setRotation(degrees((current + page.rotation) % 360));
           }
           outDoc.addPage(copiedPage);
-          done += 1;
-          setPdfExportProgress({ done, total: totalPages });
-          if (done < totalPages) await yieldToBrowser();
         }
-      }
-      if (cancelled) {
-        showToast('Combine cancelled - nothing was saved.');
-        return;
       }
       const bytes = await outDoc.save();
       await maybeShowToolsDownloadInterstitial(false, [{ bytes, filename: 'combined.pdf' }]);
@@ -14325,7 +13731,6 @@ function App() {
       triggerHaptic('error');
     } finally {
       setPdfEditorExporting(false);
-      setPdfExportProgress(null);
     }
   };
 
@@ -14469,13 +13874,11 @@ function App() {
     triggerHaptic('light');
     setPdfPageNumbersApplying(true);
     setPdfPageNumbersProgress(null);
-    pdfOperationCancelledRef.current = false;
     try {
       const outDoc = await PDFDocument.create();
       const font = await outDoc.embedFont(StandardFonts.Helvetica);
       const pages = activePdfContainer.pages;
       for (let i = 0; i < pages.length; i++) {
-        if (pdfOperationCancelledRef.current) break;
         const p = pages[i];
         const [copiedPage] = await outDoc.copyPages(activePdfContainer.sourceDocs[p.sourceFileIndex], [p.sourcePageIndex]);
         if (p.rotation) {
@@ -14488,16 +13891,6 @@ function App() {
         const textWidth = font.widthOfTextAtSize(label, 10);
         copiedPage.drawText(label, { x: (width - textWidth) / 2, y: 20, size: 10, font, color: rgb(0, 0, 0) });
         setPdfPageNumbersProgress({ done: i + 1, total: pages.length });
-        // Wasn't yielding between pages before - meant both the progress
-        // text above and a Cancel button press had no real chance to be
-        // seen/processed until the whole loop finished, on a large
-        // document. Same fix Compress already had for the same reason.
-        if (i < pages.length - 1) await yieldToBrowser();
-      }
-
-      if (pdfOperationCancelledRef.current) {
-        showToast('Cancelled - nothing was changed.');
-        return;
       }
 
       const targetId = activePdfContainer.id;
@@ -14579,13 +13972,11 @@ function App() {
     triggerHaptic('light');
     setPdfCropApplying(true);
     setPdfCropProgress(null);
-    pdfOperationCancelledRef.current = false;
     try {
       const outDoc = await PDFDocument.create();
       const pages = activePdfContainer.pages;
       let done = 0;
       for (const page of pages) {
-        if (pdfOperationCancelledRef.current) break;
         const [copiedPage] = await outDoc.copyPages(activePdfContainer.sourceDocs[page.sourceFileIndex], [page.sourcePageIndex]);
         if (page.rotation) {
           const current = copiedPage.getRotation().angle || 0;
@@ -14604,15 +13995,6 @@ function App() {
         outDoc.addPage(copiedPage);
         done += 1;
         setPdfCropProgress({ done, total: pages.length });
-        // Same reasoning as Page Numbers - genuine per-page work with no
-        // yield point meant a Cancel press (or the progress text itself)
-        // had no real chance to be seen/processed on a large document.
-        if (done < pages.length) await yieldToBrowser();
-      }
-
-      if (pdfOperationCancelledRef.current) {
-        showToast('Cancelled - nothing was changed.');
-        return;
       }
 
       const targetId = activePdfContainer.id;
@@ -14647,249 +14029,6 @@ function App() {
     }
   };
 
-  // PDF EDITOR - MORE TOOLS: Metadata, Split, Watermark. Each reuses an
-  // existing pattern (metadata rides through assemblePdfFromPages at
-  // export time; Split and Watermark both rebuild via pdf-lib the same
-  // way Compress/Page Numbers/Crop already do) rather than inventing a
-  // new mechanism per tool.
-
-  // Metadata doesn't touch pages at all - just stores title/author/
-  // subject on the container itself, applied later at actual export
-  // time (see assemblePdfFromPages's metadata param) since a fresh
-  // PDFDocument.create() always starts blank regardless of the source's
-  // original metadata.
-  const openPdfMetadataEditor = () => {
-    if (!activePdfContainer) return;
-    setPdfMetadataDraft(activePdfContainer.metadata || { title: '', author: '', subject: '' });
-    setPdfMetadataModalVisible(true);
-  };
-  const savePdfMetadata = () => {
-    if (!activePdfContainer) return;
-    const targetId = activePdfContainer.id;
-    setPdfContainers((prev) => prev.map((c) => (c.id === targetId ? { ...c, metadata: { ...pdfMetadataDraft } } : c)));
-    setPdfMetadataModalVisible(false);
-    showToast('Metadata saved - applies when you export.');
-    triggerHaptic('success');
-  };
-
-  // Splits the active container into multiple new containers of N pages
-  // each (last one gets the remainder). Doesn't touch the original
-  // container - adds new ones after it, same as how Merge/Add PDF both
-  // already add rather than replace, so nothing is destroyed by mistake.
-  const handleSplitPdf = async () => {
-    if (!activePdfContainer) return;
-    const n = Math.max(1, parseInt(pdfSplitEveryN, 10) || 1);
-    const pages = activePdfContainer.pages;
-    if (n >= pages.length) {
-      showToast(`This PDF only has ${pages.length} page${pages.length === 1 ? '' : 's'} - nothing to split.`);
-      return;
-    }
-    setPdfSplitModalVisible(false);
-    setPdfEditorLoading(true);
-    pdfOperationCancelledRef.current = false;
-    try {
-      const chunks = [];
-      for (let i = 0; i < pages.length; i += n) chunks.push(pages.slice(i, i + n));
-
-      const newContainers = [];
-      for (let ci = 0; ci < chunks.length; ci++) {
-        if (pdfOperationCancelledRef.current) break;
-        const chunkPages = chunks[ci];
-        const outBytes = await assemblePdfFromPages(activePdfContainer.sourceDocs, chunkPages, null, () => pdfOperationCancelledRef.current);
-        if (!outBytes) break; // cancelled mid-chunk
-        const outDoc = await PDFDocument.load(outBytes);
-        const thumbnails = Platform.OS === 'web'
-          ? await generateWebPdfThumbnails(outBytes, 0.3)
-          : await generateNativePdfThumbnails(await pdfBytesToTempUri(outBytes), 160);
-        const remappedPages = chunkPages.map((p, i) => ({
-          ...p, id: `${Date.now()}_${ci}_${i}_${Math.random().toString(36).slice(2)}`,
-          sourceFileIndex: 0, sourcePageIndex: i, rotation: 0,
-          thumbnailUri: (thumbnails && thumbnails[i]) || p.thumbnailUri
-        }));
-        newContainers.push({
-          id: `${Date.now()}_${ci}_${Math.random().toString(36).slice(2)}`,
-          name: `${(activePdfContainer.name || 'document').replace(/\.pdf$/i, '')} (${ci + 1} of ${chunks.length})`,
-          sourceDocs: [outDoc],
-          sourceMeta: [{ uri: null, isImage: false }],
-          pages: remappedPages,
-          originalSize: outBytes.length,
-          metadata: null
-        });
-        if (ci < chunks.length - 1) await yieldToBrowser();
-      }
-      if (pdfOperationCancelledRef.current || newContainers.length === 0) {
-        showToast('Split cancelled - nothing was changed.');
-        return;
-      }
-      setPdfContainers((prev) => [...prev, ...newContainers]);
-      showToast(`Split into ${newContainers.length} PDFs.`);
-      triggerHaptic('success');
-    } catch (e) {
-      console.warn('Split failed:', e);
-      showToast('Could not split this PDF - try again.');
-      triggerHaptic('error');
-    } finally {
-      setPdfEditorLoading(false);
-    }
-  };
-
-  // Draws a single diagonal, semi-transparent line of text across every
-  // page, roughly centered - the simplest watermark shape that's still
-  // genuinely useful (a document-wide mark, not per-page position
-  // control), same "rebuild the whole document" pattern as Page Numbers.
-  const applyPdfWatermark = async () => {
-    if (!activePdfContainer || !pdfWatermarkText.trim()) return;
-    pushPdfHistorySnapshot('Add watermark');
-    setPdfWatermarkModalVisible(false);
-    triggerHaptic('light');
-    setPdfEditorLoading(true);
-    pdfOperationCancelledRef.current = false;
-    try {
-      const outDoc = await PDFDocument.create();
-      const font = await outDoc.embedFont(StandardFonts.HelveticaBold);
-      const pages = activePdfContainer.pages;
-      const text = pdfWatermarkText.trim();
-      const opacity = pdfWatermarkOpacity;
-      const pattern = pdfWatermarkPattern;
-      let done = 0;
-      for (const page of pages) {
-        if (pdfOperationCancelledRef.current) break;
-        const [copiedPage] = await outDoc.copyPages(activePdfContainer.sourceDocs[page.sourceFileIndex], [page.sourcePageIndex]);
-        if (page.rotation) {
-          const current = copiedPage.getRotation().angle || 0;
-          copiedPage.setRotation(degrees((current + page.rotation) % 360));
-        }
-        const { width, height } = copiedPage.getSize();
-        if (pattern === 'repeated') {
-          // Smaller instances tiled in a plain grid, rotated 45deg like
-          // the single-mark version - deliberately not offsetting
-          // alternate rows into a brick pattern or trying to perfectly
-          // center each instance; a real repeating watermark doesn't
-          // need to be pixel-precise, and the simpler grid is far less
-          // that can go wrong.
-          const size = Math.min(width, height) / 14;
-          const stepX = width / 2.2;
-          const stepY = height / 5;
-          for (let y = stepY / 2; y < height + stepY; y += stepY) {
-            for (let x = -stepX / 2; x < width + stepX; x += stepX) {
-              copiedPage.drawText(text, { x, y, size, font, color: rgb(0.5, 0.5, 0.5), opacity, rotate: degrees(45) });
-            }
-          }
-        } else {
-          const size = Math.min(width, height) / Math.max(6, text.length * 0.6);
-          const textWidth = font.widthOfTextAtSize(text, size);
-          copiedPage.drawText(text, {
-            x: (width - textWidth) / 2,
-            y: height / 2,
-            size,
-            font,
-            color: rgb(0.5, 0.5, 0.5),
-            opacity,
-            rotate: degrees(45)
-          });
-        }
-        outDoc.addPage(copiedPage);
-        done += 1;
-        if (done < pages.length) await yieldToBrowser();
-      }
-      if (pdfOperationCancelledRef.current) {
-        showToast('Cancelled - nothing was changed.');
-        return;
-      }
-      const targetId = activePdfContainer.id;
-      const outBytes = await outDoc.save();
-      const thumbnails = Platform.OS === 'web'
-        ? await generateWebPdfThumbnails(outBytes, 0.3)
-        : await generateNativePdfThumbnails(await pdfBytesToTempUri(outBytes), 160);
-      const newPages = pages.map((p, i) => ({
-        ...p, sourceFileIndex: 0, sourcePageIndex: i, rotation: 0,
-        thumbnailUri: (thumbnails && thumbnails[i]) || p.thumbnailUri
-      }));
-      setPdfContainers((prev) => prev.map((c) => (
-        c.id === targetId ? { ...c, sourceDocs: [outDoc], sourceMeta: [{ uri: null, isImage: false }], pages: newPages, watermarkText: text, watermarkOpacity: opacity, watermarkPattern: pattern } : c
-      )));
-      resetPdfHighResCaches();
-      showToast('Watermark applied.');
-      triggerHaptic('success');
-    } catch (e) {
-      console.warn('Watermark failed:', e);
-      showToast('Could not apply watermark - try again.');
-      triggerHaptic('error');
-    } finally {
-      setPdfEditorLoading(false);
-    }
-  };
-
-  // Renders every page as a real downloadable image - web only. Native
-  // has no page-rendering capability at all right now (see
-  // pdfThumbnails.native.js - real thumbnails were abandoned after three
-  // failed native library attempts), so this is an honest gap, not a
-  // hidden one: the More Tools entry itself is web-only, not a button
-  // that silently does nothing on native.
-  // Opens the watermark modal pre-filled with whatever's currently
-  // applied, for the "edit" side of the left-of-Compress active pill.
-  // Reverts the existing watermark FIRST, not just before showing the
-  // modal - applyPdfWatermark always draws fresh onto activePdfContainer
-  // .pages as they are right now, so without this, editing would draw a
-  // SECOND watermark on top of the first instead of replacing it.
-  // undoSpecificPdfEdit already handles finding the right history entry
-  // and restoring the pre-watermark pages.
-  const editPdfWatermark = () => {
-    if (!activePdfContainer) return;
-    const previousText = activePdfContainer.watermarkText || '';
-    const previousOpacity = activePdfContainer.watermarkOpacity ?? 0.3;
-    const previousPattern = activePdfContainer.watermarkPattern || 'single';
-    undoSpecificPdfEdit('Add watermark');
-    setPdfWatermarkText(previousText);
-    setPdfWatermarkOpacity(previousOpacity);
-    setPdfWatermarkPattern(previousPattern);
-    setPdfWatermarkModalVisible(true);
-  };
-
-  const handleExportPdfAsImages = async () => {
-    if (!activePdfContainer || Platform.OS !== 'web') return;
-    setPdfEditorExporting(true);
-    setPdfExportProgress(null);
-    pdfOperationCancelledRef.current = false;
-    try {
-      const container = activePdfContainer;
-      const meta = container.sourceMeta[0];
-      const bytes = meta.uri ? null : await container.sourceDocs[0].save();
-      const source = meta.uri || bytes;
-      const total = container.pages.length;
-      // Same cacheKey reasoning as the fullscreen viewer's high-res
-      // render (see pdfThumbnails.web.js) - without it, exporting every
-      // page as an image would re-fetch and re-parse the whole PDF from
-      // scratch on every single page instead of once for the batch.
-      const docCacheKey = `export-images-${container.id}`;
-      for (let i = 0; i < total; i++) {
-        if (pdfOperationCancelledRef.current) break;
-        const dataUrl = await generateWebPdfThumbnails(source, 2.5, container.pages[i].sourcePageIndex + 1, null, docCacheKey);
-        if (dataUrl) {
-          const link = document.createElement('a');
-          link.href = dataUrl;
-          link.download = `${(container.name || 'page').replace(/\.pdf$/i, '')}-page-${i + 1}.jpg`;
-          link.click();
-        }
-        setPdfExportProgress({ done: i + 1, total });
-        if (i < total - 1) await yieldToBrowser();
-      }
-      clearPdfDocumentCache(docCacheKey); // done with this batch - don't leave the parsed document cached indefinitely
-      if (pdfOperationCancelledRef.current) {
-        showToast('Cancelled.');
-        return;
-      }
-      showToast(`Saved ${total} image${total === 1 ? '' : 's'}.`);
-      triggerHaptic('success');
-    } catch (e) {
-      console.warn('Export as images failed:', e);
-      showToast('Could not export pages as images - try again.');
-      triggerHaptic('error');
-    } finally {
-      setPdfEditorExporting(false);
-      setPdfExportProgress(null);
-    }
-  };
 
   // TOOLS: QR Code Generator handlers.
   const pickQrLogo = async () => {
@@ -16487,29 +15626,6 @@ function App() {
 
     return scored.sort((a, b) => b._highlightScore - a._highlightScore);
   }, [projects, categoryFilter, blockedIds, mutedIds, forYouTypeFilter, excludeAiGeneratedContent]);
-
-  // For You ad interleaving - ONLY this feed, never any other ProjectGrid
-  // call site (own profile, a designer's profile, liked posts, etc.).
-  // Dismissed ads are tracked per-session (component state, not
-  // persisted) - an ad being dismissed doesn't need to be remembered
-  // forever, since a fresh load pulls different ad content anyway, and
-  // persisting it would mean plumbing per-user dismissal state into
-  // Supabase for something with no real long-term value.
-  const [dismissedAdIds, setDismissedAdIds] = useState(() => new Set());
-  const dismissForYouAd = (id) => setDismissedAdIds((prev) => new Set(prev).add(id));
-  const forYouProjectsWithAds = useMemo(() => {
-    if (!ADS_ENABLED) return forYouCategoryFilteredProjects; // sideload build - never even builds the interleaved array
-    const withAds = [];
-    const AD_INTERVAL = 8;
-    forYouCategoryFilteredProjects.forEach((item, i) => {
-      withAds.push(item);
-      if ((i + 1) % AD_INTERVAL === 0) {
-        const adId = `ad-${Math.floor(i / AD_INTERVAL)}`;
-        if (!dismissedAdIds.has(adId)) withAds.push({ id: adId, isAd: true });
-      }
-    });
-    return withAds;
-  }, [forYouCategoryFilteredProjects, dismissedAdIds]);
 
   const followedProjects = useMemo(() => {
     return projects.filter((p) => {
@@ -18373,15 +17489,13 @@ function App() {
 
               <View onLayout={isWebWide ? debouncedLayoutWidthSetter(forYouGridWidthTimerRef, setForYouGridWidth) : undefined}>
               <ProjectGrid
-                items={forYouProjectsWithAds}
+                items={forYouCategoryFilteredProjects}
                 onPress={openProjectModal}
                 onToggleLike={toggleLike}
                 onOpenDesignerProfile={openDesignerProfileById}
                 onToggleFollow={isWebWide ? toggleFollowDesigner : undefined}
                 followedDesigners={followedDesigners}
                 currentUserId={session ? session.user.id : null}
-                theme={theme}
-                onDismissAd={dismissForYouAd}
                 // For You specifically: mobile web stays single-column,
                 // tablet stays the shared default. Wide web now fills the
                 // available width with as many fixed-ish-width columns as
@@ -20993,7 +20107,7 @@ function App() {
                     </BouncyButton>
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 12 }}>/</Text>
                     <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '800' }}>
-                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : activeTool === 'resumeMaker' ? tt('resumeMaker') : tt('pdfEditor')}
+                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : tt('pdfEditor')}
                     </Text>
                     {activeTool === 'pdfEditor' && pdfContainers.length > 0 && (
                       <BouncyButton
@@ -21066,7 +20180,7 @@ function App() {
                 {activeTool !== 'hub' && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: toolsTheme.bg }}>
                     <Text style={{ color: toolsTheme.text, fontSize: 17, fontWeight: '800' }}>
-                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : activeTool === 'resumeMaker' ? tt('resumeMaker') : tt('pdfEditor')}
+                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : tt('pdfEditor')}
                     </Text>
                     {activeTool === 'pdfEditor' && pdfContainers.length > 0 && (
                       <BouncyButton
@@ -21195,28 +20309,6 @@ function App() {
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('pdfEditor')}</Text>
                         <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('pdfEditorDesc')}</Text>
-                      </View>
-                      <ChevronRightSVG color={toolsTheme.accent} size={18} />
-                    </BouncyButton>
-
-                    <BouncyButton
-                      style={[
-                        {
-                          flexDirection: 'row', alignItems: 'center', gap: 14,
-                          backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                          borderRadius: 16, padding: 16
-                        },
-                        isWebWide ? { width: '48.5%' } : { width: '100%' }
-                      ]}
-                      onPress={() => requestSwitchTool('resumeMaker')}
-                      accessibilityRole="button"
-                    >
-                      <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                        <ResumeIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('resumeMaker')}</Text>
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('resumeMakerDesc')}</Text>
                       </View>
                       <ChevronRightSVG color={toolsTheme.accent} size={18} />
                     </BouncyButton>
@@ -21929,17 +21021,6 @@ function App() {
                           </BouncyButton>
                         )}
                       </View>
-                      {qrGeneratorReturnToResume && Platform.OS === 'web' && (
-                        <BouncyButton
-                          style={[styles.saveAccountSettingsBtn, { marginTop: 10, opacity: (resumeQrGenerating || !currentQrValue()) ? 0.4 : 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }]}
-                          onPress={useGeneratedQrForResume}
-                          disabled={resumeQrGenerating || !currentQrValue()}
-                          accessibilityRole="button"
-                          accessibilityState={{ disabled: resumeQrGenerating || !currentQrValue(), busy: resumeQrGenerating }}
-                        >
-                          <Text style={styles.submitBtnText}>{resumeQrGenerating ? 'Adding to resume...' : 'Use This QR in My Resume'}</Text>
-                        </BouncyButton>
-                      )}
                     </View>
                   )}
                   </>
@@ -21947,24 +21028,6 @@ function App() {
 
                 return (
                   <>
-                    {qrGeneratorReturnToResume && (
-                      <View style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10,
-                        backgroundColor: toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)',
-                        borderWidth: 1, borderColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', marginBottom: 12
-                      }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 12.5, flex: 1 }}>
-                          Building a QR code for your resume - customize it below, then tap "Use This QR in My Resume". Your resume progress is saved.
-                        </Text>
-                        <BouncyButton
-                          onPress={() => { setQrGeneratorReturnToResume(false); setActiveTool('resumeMaker'); }}
-                          accessibilityRole="button"
-                          accessibilityLabel="Cancel and go back to resume"
-                        >
-                          <Text style={{ color: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', fontSize: 12.5, fontWeight: '700' }}>Cancel</Text>
-                        </BouncyButton>
-                      </View>
-                    )}
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
                       {tt('qrIntro')}
                     </Text>
@@ -22245,384 +21308,6 @@ function App() {
                 </View>
               )}
 
-              {/* RESUME MAKER - real wizard shell + Step 1 (Personal
-                  Info). Steps 2-4 are still honest placeholders, staged
-                  as separate follow-up work - see resumeWizardStep. */}
-              {activeTool === 'resumeMaker' && (
-                <View style={{ gap: 20 }}>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {['Personal', 'Experience', 'Skills', 'Review'].map((label, i) => (
-                      <View key={label} style={{ flex: 1, alignItems: 'center', gap: 6 }}>
-                        <View style={{
-                          width: '100%', height: 4, borderRadius: 2,
-                          backgroundColor: resumeWizardStep > i ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
-                        }} />
-                        <Text style={{
-                          fontSize: 11, fontWeight: '600',
-                          color: resumeWizardStep === i + 1 ? toolsTheme.text : toolsTheme.textSecondary
-                        }}>{label}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  {resumeWizardStep === 1 && (
-                    <View style={{ gap: 14 }}>
-                      <BouncyButton
-                        style={{ alignSelf: 'center', width: 88, height: 88, borderRadius: 44, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
-                        onPress={pickResumePhoto}
-                        accessibilityRole="button"
-                        accessibilityLabel="Add photo"
-                      >
-                        {resumeData.photoUri ? (
-                          <Image source={{ uri: resumeData.photoUri }} style={{ width: 88, height: 88 }} />
-                        ) : (
-                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '600', textAlign: 'center' }}>Add{'\n'}Photo</Text>
-                        )}
-                      </BouncyButton>
-                      <FocusableTextInput
-                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
-                        placeholder="Full name"
-                        placeholderTextColor={toolsTheme.textSecondary}
-                        value={resumeData.name}
-                        onChangeText={(t) => updateResumeField('name', t)}
-                      />
-                      <FocusableTextInput
-                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
-                        placeholder="Professional title (e.g. UI/UX Designer)"
-                        placeholderTextColor={toolsTheme.textSecondary}
-                        value={resumeData.title}
-                        onChangeText={(t) => updateResumeField('title', t)}
-                      />
-                      <FocusableTextInput
-                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
-                        placeholder="Email"
-                        placeholderTextColor={toolsTheme.textSecondary}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        value={resumeData.email}
-                        onChangeText={(t) => updateResumeField('email', t)}
-                      />
-                      <FocusableTextInput
-                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
-                        placeholder="Phone"
-                        placeholderTextColor={toolsTheme.textSecondary}
-                        keyboardType="phone-pad"
-                        value={resumeData.phone}
-                        onChangeText={(t) => updateResumeField('phone', t)}
-                      />
-                      <FocusableTextInput
-                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
-                        placeholder="Location (e.g. Jakarta, Indonesia)"
-                        placeholderTextColor={toolsTheme.textSecondary}
-                        value={resumeData.location}
-                        onChangeText={(t) => updateResumeField('location', t)}
-                      />
-                    </View>
-                  )}
-
-                  {resumeWizardStep === 2 && (
-                    <View style={{ gap: 24 }}>
-                      <View style={{ gap: 12 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>Experience</Text>
-                        {resumeData.experience.map((exp) => (
-                          <View key={exp.id} style={{ gap: 8, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 12, padding: 14 }}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-                              <BouncyButton onPress={() => removeResumeExperience(exp.id)} accessibilityRole="button" accessibilityLabel="Remove this experience entry">
-                                <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '700' }}>Remove</Text>
-                              </BouncyButton>
-                            </View>
-                            <FocusableTextInput
-                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                              placeholder="Company"
-                              placeholderTextColor={toolsTheme.textSecondary}
-                              value={exp.company}
-                              onChangeText={(t) => updateResumeExperience(exp.id, 'company', t)}
-                            />
-                            <FocusableTextInput
-                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                              placeholder="Role / title"
-                              placeholderTextColor={toolsTheme.textSecondary}
-                              value={exp.role}
-                              onChangeText={(t) => updateResumeExperience(exp.id, 'role', t)}
-                            />
-                            <View style={{ flexDirection: 'row', gap: 8 }}>
-                              <FocusableTextInput
-                                style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                                placeholder="Start (e.g. Jan 2020)"
-                                placeholderTextColor={toolsTheme.textSecondary}
-                                value={exp.startDate}
-                                onChangeText={(t) => updateResumeExperience(exp.id, 'startDate', t)}
-                              />
-                              {!exp.current && (
-                                <FocusableTextInput
-                                  style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                                  placeholder="End (e.g. Mar 2022)"
-                                  placeholderTextColor={toolsTheme.textSecondary}
-                                  value={exp.endDate}
-                                  onChangeText={(t) => updateResumeExperience(exp.id, 'endDate', t)}
-                                />
-                              )}
-                            </View>
-                            <BouncyButton
-                              style={{
-                                alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99,
-                                borderWidth: 1.5, borderColor: exp.current ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border,
-                                backgroundColor: exp.current ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
-                              }}
-                              onPress={() => updateResumeExperience(exp.id, 'current', !exp.current)}
-                              accessibilityRole="button"
-                              accessibilityState={{ selected: exp.current }}
-                            >
-                              <Text style={{ fontSize: 12, fontWeight: '700', color: exp.current ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.text }}>I currently work here</Text>
-                            </BouncyButton>
-                            <FocusableTextInput
-                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14, minHeight: 70, textAlignVertical: 'top' }}
-                              placeholder="What did you do here?"
-                              placeholderTextColor={toolsTheme.textSecondary}
-                              multiline
-                              value={exp.description}
-                              onChangeText={(t) => updateResumeExperience(exp.id, 'description', t)}
-                            />
-                          </View>
-                        ))}
-                        <BouncyButton
-                          style={{ paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1.5, borderColor: toolsTheme.border, borderStyle: 'dashed' }}
-                          onPress={addResumeExperience}
-                          accessibilityRole="button"
-                        >
-                          <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>+ Add Experience</Text>
-                        </BouncyButton>
-                      </View>
-
-                      <View style={{ gap: 12 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>Education</Text>
-                        {resumeData.education.map((edu) => (
-                          <View key={edu.id} style={{ gap: 8, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 12, padding: 14 }}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-                              <BouncyButton onPress={() => removeResumeEducation(edu.id)} accessibilityRole="button" accessibilityLabel="Remove this education entry">
-                                <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '700' }}>Remove</Text>
-                              </BouncyButton>
-                            </View>
-                            <FocusableTextInput
-                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                              placeholder="School"
-                              placeholderTextColor={toolsTheme.textSecondary}
-                              value={edu.school}
-                              onChangeText={(t) => updateResumeEducation(edu.id, 'school', t)}
-                            />
-                            <FocusableTextInput
-                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                              placeholder="Degree"
-                              placeholderTextColor={toolsTheme.textSecondary}
-                              value={edu.degree}
-                              onChangeText={(t) => updateResumeEducation(edu.id, 'degree', t)}
-                            />
-                            <View style={{ flexDirection: 'row', gap: 8 }}>
-                              <FocusableTextInput
-                                style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                                placeholder="Start year"
-                                placeholderTextColor={toolsTheme.textSecondary}
-                                value={edu.startDate}
-                                onChangeText={(t) => updateResumeEducation(edu.id, 'startDate', t)}
-                              />
-                              <FocusableTextInput
-                                style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                                placeholder="End year"
-                                placeholderTextColor={toolsTheme.textSecondary}
-                                value={edu.endDate}
-                                onChangeText={(t) => updateResumeEducation(edu.id, 'endDate', t)}
-                              />
-                            </View>
-                          </View>
-                        ))}
-                        <BouncyButton
-                          style={{ paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1.5, borderColor: toolsTheme.border, borderStyle: 'dashed' }}
-                          onPress={addResumeEducation}
-                          accessibilityRole="button"
-                        >
-                          <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>+ Add Education</Text>
-                        </BouncyButton>
-                      </View>
-                    </View>
-                  )}
-
-                  {resumeWizardStep === 3 && (
-                    <View style={{ gap: 24 }}>
-                      <View style={{ gap: 10 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>Skills</Text>
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                          {resumeData.skills.map((skill) => (
-                            <View key={skill} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 99, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border }}>
-                              <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>{skill}</Text>
-                              <BouncyButton onPress={() => removeResumeSkill(skill)} accessibilityRole="button" accessibilityLabel={`Remove ${skill}`}>
-                                <Text style={{ color: toolsTheme.textSecondary, fontSize: 13, fontWeight: '700' }}>✕</Text>
-                              </BouncyButton>
-                            </View>
-                          ))}
-                        </View>
-                        <FocusableTextInput
-                          style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
-                          placeholder="Type a skill and press enter (e.g. Figma)"
-                          placeholderTextColor={toolsTheme.textSecondary}
-                          value={resumeSkillInput}
-                          onChangeText={setResumeSkillInput}
-                          onSubmitEditing={() => { addResumeSkill(resumeSkillInput); setResumeSkillInput(''); }}
-                          returnKeyType="done"
-                          blurOnSubmit={false}
-                        />
-                      </View>
-
-                      <View style={{ gap: 10 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>Links</Text>
-                        <FocusableTextInput
-                          style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
-                          placeholder="Website"
-                          placeholderTextColor={toolsTheme.textSecondary}
-                          autoCapitalize="none"
-                          value={resumeData.links.website}
-                          onChangeText={(t) => updateResumeLink('website', t)}
-                        />
-                        <FocusableTextInput
-                          style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
-                          placeholder="LinkedIn"
-                          placeholderTextColor={toolsTheme.textSecondary}
-                          autoCapitalize="none"
-                          value={resumeData.links.linkedin}
-                          onChangeText={(t) => updateResumeLink('linkedin', t)}
-                        />
-                        <FocusableTextInput
-                          style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
-                          placeholder="GitHub"
-                          placeholderTextColor={toolsTheme.textSecondary}
-                          autoCapitalize="none"
-                          value={resumeData.links.github}
-                          onChangeText={(t) => updateResumeLink('github', t)}
-                        />
-                      </View>
-
-                      <View style={{ gap: 10 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>QR Code (optional)</Text>
-                        {resumeData.qrImageUri ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 12, padding: 12 }}>
-                            <Image source={{ uri: resumeData.qrImageUri }} style={{ width: 56, height: 56, borderRadius: 6 }} />
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
-                                {resumeData.qrSource === 'upload' ? 'Uploaded QR' : resumeData.qrSource === 'decent' ? 'DECENT portfolio QR' : 'Generated QR'}
-                              </Text>
-                              <Text style={{ color: toolsTheme.textSecondary, fontSize: 11.5 }}>Will be included on your resume</Text>
-                            </View>
-                            <BouncyButton onPress={() => setResumeData((prev) => ({ ...prev, qrImageUri: null, qrSource: null }))} accessibilityRole="button" accessibilityLabel="Remove QR code">
-                              <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '700' }}>Remove</Text>
-                            </BouncyButton>
-                          </View>
-                        ) : (
-                          <View style={{ gap: 10 }}>
-                            <BouncyButton
-                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: resumeQrGenerating ? 0.5 : 1 }}
-                              onPress={pickResumeQrUpload}
-                              disabled={resumeQrGenerating}
-                              accessibilityRole="button"
-                            >
-                              <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Upload a QR code I already have</Text>
-                              <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
-                            </BouncyButton>
-                            <BouncyButton
-                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: (resumeQrGenerating || Platform.OS !== 'web') ? 0.5 : 1 }}
-                              onPress={openQrGeneratorForResume}
-                              disabled={resumeQrGenerating || Platform.OS !== 'web'}
-                              accessibilityRole="button"
-                            >
-                              <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>
-                                Generate a new QR code{Platform.OS !== 'web' ? ' (web only, for now)' : ''}
-                              </Text>
-                              <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
-                            </BouncyButton>
-                            {session && userProfile.handle && (
-                              <View style={{ gap: 8 }}>
-                                <BouncyButton
-                                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: (resumeQrGenerating || Platform.OS !== 'web') ? 0.5 : 1 }}
-                                  onPress={() => generateResumeDecentQr('decent')}
-                                  disabled={resumeQrGenerating || Platform.OS !== 'web'}
-                                  accessibilityRole="button"
-                                >
-                                  <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>
-                                    Use my DECENT portfolio QR - branded style{Platform.OS !== 'web' ? ' (web only, for now)' : ''}
-                                  </Text>
-                                  <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
-                                </BouncyButton>
-                                <BouncyButton
-                                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: (resumeQrGenerating || Platform.OS !== 'web') ? 0.5 : 1 }}
-                                  onPress={() => generateResumeDecentQr('plain')}
-                                  disabled={resumeQrGenerating || Platform.OS !== 'web'}
-                                  accessibilityRole="button"
-                                >
-                                  <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>
-                                    Use my DECENT portfolio QR - plain style{Platform.OS !== 'web' ? ' (web only, for now)' : ''}
-                                  </Text>
-                                  <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
-                                </BouncyButton>
-                              </View>
-                            )}
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                  )}
-
-                  {resumeWizardStep === 4 && (
-                    <View style={{ gap: 20 }}>
-                      <View style={{ gap: 10, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 12, padding: 16 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>{resumeData.name || 'Your Name'}</Text>
-                        {!!resumeData.title && <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5 }}>{resumeData.title}</Text>}
-                        <View style={{ height: 1, backgroundColor: toolsTheme.border, marginVertical: 4 }} />
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5 }}>
-                          {resumeData.experience.length} experience {resumeData.experience.length === 1 ? 'entry' : 'entries'} &middot; {resumeData.education.length} education {resumeData.education.length === 1 ? 'entry' : 'entries'} &middot; {resumeData.skills.length} {resumeData.skills.length === 1 ? 'skill' : 'skills'}
-                        </Text>
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5 }}>
-                          {resumeData.qrImageUri ? 'QR code included' : 'No QR code'}
-                        </Text>
-                      </View>
-
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>
-                        {Platform.OS === 'web'
-                          ? 'Exporting opens your browser\'s print dialog - choose "Save as PDF" there.'
-                          : 'Exporting generates a PDF you can save or share.'}
-                      </Text>
-
-                      <BouncyButton
-                        style={{ paddingVertical: 14, borderRadius: 10, alignItems: 'center', backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', opacity: resumeExporting ? 0.5 : 1 }}
-                        onPress={handleExportResume}
-                        disabled={resumeExporting}
-                        accessibilityRole="button"
-                      >
-                        <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>{resumeExporting ? 'Exporting...' : 'Export as PDF'}</Text>
-                      </BouncyButton>
-                    </View>
-                  )}
-
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    {resumeWizardStep > 1 && (
-                      <BouncyButton
-                        style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
-                        onPress={() => setResumeWizardStep((s) => Math.max(1, s - 1))}
-                        accessibilityRole="button"
-                      >
-                        <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '700' }}>Back</Text>
-                      </BouncyButton>
-                    )}
-                    {resumeWizardStep < 4 && (
-                      <BouncyButton
-                        style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                        onPress={() => setResumeWizardStep((s) => Math.min(4, s + 1))}
-                        accessibilityRole="button"
-                      >
-                        <Text style={{ color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' }}>Next</Text>
-                      </BouncyButton>
-                    )}
-                  </View>
-                </View>
-              )}
-
               {activeTool === 'pdfEditor' && (
                 <View style={{ gap: 20 }}>
                 <View style={{ gap: 14 }}>
@@ -22733,37 +21418,6 @@ function App() {
                           <View style={{ width: 1, height: 20, backgroundColor: toolsTheme.border, marginHorizontal: 2 }} />
                         </>
                       )}
-                      {/* Watermark has no toolbar button of its own (it
-                          lives in More Tools) - this is its dedicated
-                          "active" slot, positioned left of Compress since
-                          that's the one fixed anchor point every layout
-                          already has. Left side of the pill edits (reverts
-                          then reopens pre-filled), the X undoes outright. */}
-                      {isPdfWatermarkActive && (
-                        <View style={{
-                          flexDirection: 'row', alignItems: 'center', borderRadius: 99, overflow: 'hidden',
-                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD'
-                        }}>
-                          <BouncyButton
-                            style={{ paddingLeft: 12, paddingVertical: 8 }}
-                            onPress={() => undoSpecificPdfEdit('Add watermark')}
-                            accessibilityRole="button"
-                            accessibilityLabel="Remove watermark"
-                          >
-                            <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-                              <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', lineHeight: 11 }}>✕</Text>
-                            </View>
-                          </BouncyButton>
-                          <BouncyButton
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingLeft: 6, paddingRight: 14 }}
-                            onPress={editPdfWatermark}
-                            accessibilityRole="button"
-                            accessibilityLabel="Edit watermark"
-                          >
-                            <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>Watermark</Text>
-                          </BouncyButton>
-                        </View>
-                      )}
                       <View style={{
                         flexDirection: 'row', alignItems: 'center', borderRadius: 99, overflow: 'hidden',
                         backgroundColor: isPdfCompressActive ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent',
@@ -22815,46 +21469,60 @@ function App() {
                           thumbnail (rail tile or list tile) always shows
                           its own up/down + typeable-number pill, see
                           renderPdfReorderPill. */}
-                      <BouncyButton
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                        onPress={() => { cancelContainerSelectFlow(); setPdfSelectedPageIds([]); setPdfSelectModeTool('crop'); }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Crop pages"
-                      >
-                        <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Crop Pages</Text>
-                      </BouncyButton>
-                      <View style={{
-                        flexDirection: 'row', alignItems: 'center', borderRadius: 99, overflow: 'hidden',
-                        backgroundColor: isPdfPageNumbersActive ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent',
-                        borderWidth: isPdfPageNumbersActive ? 0 : 1,
-                        borderColor: toolsTheme.border
-                      }}>
-                        {isPdfPageNumbersActive && (
+                      {isWebWide ? (
+                        <>
+                          <View style={{
+                            flexDirection: 'row', alignItems: 'center', borderRadius: 99, overflow: 'hidden',
+                            backgroundColor: isPdfPageNumbersActive ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent',
+                            borderWidth: isPdfPageNumbersActive ? 0 : 1,
+                            borderColor: toolsTheme.border
+                          }}>
+                            {isPdfPageNumbersActive && (
+                              <BouncyButton
+                                style={{ paddingLeft: 12, paddingVertical: 8 }}
+                                onPress={() => setPdfPageNumbersUndoConfirmVisible(true)}
+                                accessibilityRole="button"
+                                accessibilityLabel="Undo page numbers"
+                              >
+                                <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', lineHeight: 11 }}>✕</Text>
+                                </View>
+                              </BouncyButton>
+                            )}
+                            <BouncyButton
+                              style={{
+                                flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8,
+                                paddingLeft: isPdfPageNumbersActive ? 6 : 14, paddingRight: 14
+                              }}
+                              onPress={handleAddPageNumbers}
+                              accessibilityRole="button"
+                              accessibilityLabel="Add page numbers"
+                              accessibilityState={{ selected: isPdfPageNumbersActive }}
+                            >
+                              <Text style={{ color: isPdfPageNumbersActive ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Page Numbers</Text>
+                            </BouncyButton>
+                          </View>
                           <BouncyButton
-                            style={{ paddingLeft: 12, paddingVertical: 8 }}
-                            onPress={() => setPdfPageNumbersUndoConfirmVisible(true)}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                            onPress={() => { cancelContainerSelectFlow(); setPdfSelectedPageIds([]); setPdfSelectModeTool('crop'); }}
                             accessibilityRole="button"
-                            accessibilityLabel="Undo page numbers"
+                            accessibilityLabel="Crop pages"
                           >
-                            <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-                              <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', lineHeight: 11 }}>✕</Text>
-                            </View>
+                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Crop Pages</Text>
                           </BouncyButton>
-                        )}
-                        <BouncyButton
-                          style={{
-                            flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8,
-                            paddingLeft: isPdfPageNumbersActive ? 6 : 14, paddingRight: 14
-                          }}
-                          onPress={handleAddPageNumbers}
-                          accessibilityRole="button"
-                          accessibilityLabel="Add page numbers"
-                          accessibilityState={{ selected: isPdfPageNumbersActive }}
-                        >
-                          <Text style={{ color: isPdfPageNumbersActive ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Page Numbers</Text>
-                        </BouncyButton>
-                      </View>
-                      <View ref={pdfMoreToolsButtonRef} collapsable={false}>
+                          {pdfContainers.length > 1 && (
+                            <BouncyButton
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                              onPress={() => startContainerSelectFlow('merge')}
+                              accessibilityRole="button"
+                              accessibilityLabel="Merge PDFs"
+                            >
+                              <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Merge PDFs</Text>
+                            </BouncyButton>
+                          )}
+                        </>
+                      ) : (
+                        <View ref={pdfMoreToolsButtonRef} collapsable={false}>
                         <BouncyButton
                           style={{
                             flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 14,
@@ -22876,7 +21544,8 @@ function App() {
                           <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>More Tools</Text>
                           <ChevronDownSVG color={toolsTheme.textSecondary} size={13} />
                         </BouncyButton>
-                      </View>
+                        </View>
+                      )}
                       {/* Global undo - pops the most recent operation
                           regardless of which container it touched. */}
                       {pdfEditorHasPendingChanges && (
@@ -23840,14 +22509,7 @@ function App() {
               onResponderRelease={() => {}}
             >
               <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Undo Compress?</Text>
-              <Text style={styles.confirmSubText}>
-                {(() => {
-                  const also = getPdfUndoWarningLabels('Compress PDF');
-                  return also.length > 0
-                    ? `This reverts back to how it was before compressing - it will also undo ${also.join(', ')}, since ${also.length > 1 ? 'those were' : 'that was'} applied after.`
-                    : 'This reverts back to how it was before compressing.';
-                })()}
-              </Text>
+              <Text style={styles.confirmSubText}>This reverts back to how it was before compressing.</Text>
               <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
@@ -23858,7 +22520,7 @@ function App() {
                 </BouncyButton>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
-                  onPress={() => { setPdfCompressUndoConfirmVisible(false); undoSpecificPdfEdit('Compress PDF'); }}
+                  onPress={() => { setPdfCompressUndoConfirmVisible(false); handleUndoPdfEdit(); }}
                   accessibilityRole="button"
                 >
                   <Text style={styles.confirmDeleteText}>Undo</Text>
@@ -23892,14 +22554,7 @@ function App() {
               onResponderRelease={() => {}}
             >
               <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Undo Page Numbers?</Text>
-              <Text style={styles.confirmSubText}>
-                {(() => {
-                  const also = getPdfUndoWarningLabels('Add page numbers');
-                  return also.length > 0
-                    ? `This reverts back to how it was before adding page numbers - it will also undo ${also.join(', ')}, since ${also.length > 1 ? 'those were' : 'that was'} applied after.`
-                    : 'This reverts back to how it was before adding page numbers.';
-                })()}
-              </Text>
+              <Text style={styles.confirmSubText}>This reverts back to how it was before adding page numbers.</Text>
               <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
@@ -23910,57 +22565,12 @@ function App() {
                 </BouncyButton>
                 <BouncyButton
                   style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
-                  onPress={() => { setPdfPageNumbersUndoConfirmVisible(false); undoSpecificPdfEdit('Add page numbers'); }}
+                  onPress={() => { setPdfPageNumbersUndoConfirmVisible(false); handleUndoPdfEdit(); }}
                   accessibilityRole="button"
                 >
                   <Text style={styles.confirmDeleteText}>Undo</Text>
                 </BouncyButton>
               </View>
-            </View>
-          </View>
-        </Modal>
-      )}
-
-      {/* PDF EDITOR - BUSY BLOCKING OVERLAY. Shown for every long-running
-          PDF Editor operation (Compressing/Cropping/Numbering/Loading/
-          Exporting) - covers the whole screen as its own Modal, which
-          blocks interaction with everything behind it by native Modal
-          semantics, so there's no need to individually disable every
-          other button/tool while one of these is running. Cancel is
-          real, not decorative - wired to pdfOperationCancelledRef, which
-          Compress/Crop/Page Numbers/Export all check between pages (see
-          each handler). Loading has no per-page cancel hook plumbed in
-          yet, so no Cancel button shows for that one specifically - an
-          honest gap, not hidden. */}
-      {!!pdfBusyLabel && (
-        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => {}}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(11, 15, 23, 0.6)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <View style={{
-              backgroundColor: theme.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.border,
-              paddingVertical: 24, paddingHorizontal: 28, alignItems: 'center', gap: 14, minWidth: 240, maxWidth: 320
-            }}>
-              <ActivityIndicator color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} size="large" />
-              <Text style={{ color: theme.text, fontSize: 14.5, fontWeight: '700' }}>
-                {pdfBusyLabel}{pdfBusyPercent != null ? ` ${pdfBusyPercent}%` : '...'}
-              </Text>
-              {pdfBusyLabel === 'Loading' && pdfLoadingIsLargeFile && (
-                <Text style={{ color: toolsThemeMode === 'light' ? '#6D28D9' : '#A78BFA', fontSize: 11.5, textAlign: 'center', lineHeight: 16, fontWeight: '600' }}>
-                  This is a big file - it might take a while.
-                </Text>
-              )}
-              <Text style={{ color: theme.textSecondary, fontSize: 11.5, textAlign: 'center', lineHeight: 16 }}>
-                Other actions are disabled until this finishes.
-              </Text>
-              {pdfBusyLabel !== 'Loading' && (
-                <BouncyButton
-                  style={{ marginTop: 2, paddingVertical: 9, paddingHorizontal: 24, borderRadius: 99, borderWidth: 1.5, borderColor: '#EF4444' }}
-                  onPress={cancelPdfOperation}
-                  accessibilityRole="button"
-                  accessibilityLabel="Cancel"
-                >
-                  <Text style={{ color: '#EF4444', fontSize: 12.5, fontWeight: '700' }}>Cancel</Text>
-                </BouncyButton>
-              )}
             </View>
           </View>
         </Modal>
@@ -24153,6 +22763,25 @@ function App() {
               backgroundColor: toolsTheme.surface, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border,
               minWidth: 200, paddingVertical: 6, overflow: 'hidden'
             }}>
+              <BouncyButton
+                style={{ paddingHorizontal: 16, paddingVertical: 12 }}
+                onPress={() => { setPdfMoreToolsMenuVisible(false); handleAddPageNumbers(); }}
+                accessibilityRole="button"
+              >
+                <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Add Page Numbers</Text>
+              </BouncyButton>
+              <BouncyButton
+                style={{ paddingHorizontal: 16, paddingVertical: 12 }}
+                onPress={() => {
+                  setPdfMoreToolsMenuVisible(false);
+                  cancelContainerSelectFlow();
+                  setPdfSelectedPageIds([]);
+                  setPdfSelectModeTool('crop');
+                }}
+                accessibilityRole="button"
+              >
+                <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Crop Pages</Text>
+              </BouncyButton>
               {pdfContainers.length > 1 && (
                 <BouncyButton
                   style={{ paddingHorizontal: 16, paddingVertical: 12 }}
@@ -24162,263 +22791,10 @@ function App() {
                   <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Merge PDFs</Text>
                 </BouncyButton>
               )}
-              <BouncyButton
-                style={{ paddingHorizontal: 16, paddingVertical: 12 }}
-                onPress={() => { setPdfMoreToolsMenuVisible(false); openPdfMetadataEditor(); }}
-                accessibilityRole="button"
-              >
-                <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Edit Metadata</Text>
-              </BouncyButton>
-              <BouncyButton
-                style={{ paddingHorizontal: 16, paddingVertical: 12 }}
-                onPress={() => { setPdfMoreToolsMenuVisible(false); setPdfSplitEveryN('1'); setPdfSplitModalVisible(true); }}
-                accessibilityRole="button"
-              >
-                <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Split PDF</Text>
-              </BouncyButton>
-              <BouncyButton
-                style={{ paddingHorizontal: 16, paddingVertical: 12 }}
-                onPress={() => { setPdfMoreToolsMenuVisible(false); setPdfWatermarkText(''); setPdfWatermarkOpacity(0.3); setPdfWatermarkPattern('single'); setPdfWatermarkModalVisible(true); }}
-                accessibilityRole="button"
-              >
-                <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Add Watermark</Text>
-              </BouncyButton>
-              {Platform.OS === 'web' && (
-                <BouncyButton
-                  style={{ paddingHorizontal: 16, paddingVertical: 12 }}
-                  onPress={() => { setPdfMoreToolsMenuVisible(false); handleExportPdfAsImages(); }}
-                  accessibilityRole="button"
-                >
-                  <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '600' }}>Export Pages as Images</Text>
-                </BouncyButton>
-              )}
             </View>
           </View>
         </Modal>
       )}
-
-      {/* PDF EDITOR - EDIT METADATA. Title/Author/Subject only apply at
-          actual export time (see assemblePdfFromPages) - saving here
-          just stores the draft on the container. */}
-      {pdfMetadataModalVisible && (
-        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfMetadataModalVisible(false)}>
-          <View
-            style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => setPdfMetadataModalVisible(false)}
-          >
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
-              )
-            )}
-            <View
-              style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
-              onStartShouldSetResponder={() => Platform.OS === 'web'}
-              onResponderRelease={() => {}}
-            >
-              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Edit Metadata</Text>
-              <Text style={styles.confirmSubText}>Applies to the file when you export - doesn't change anything until then.</Text>
-              <View style={{ width: '100%', gap: 10, marginTop: 14 }}>
-                <FocusableTextInput
-                  style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15 }}
-                  placeholder="Title"
-                  placeholderTextColor={theme.textSecondary}
-                  value={pdfMetadataDraft.title}
-                  onChangeText={(t) => setPdfMetadataDraft((prev) => ({ ...prev, title: t }))}
-                />
-                <FocusableTextInput
-                  style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15 }}
-                  placeholder="Author"
-                  placeholderTextColor={theme.textSecondary}
-                  value={pdfMetadataDraft.author}
-                  onChangeText={(t) => setPdfMetadataDraft((prev) => ({ ...prev, author: t }))}
-                />
-                <FocusableTextInput
-                  style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15 }}
-                  placeholder="Subject"
-                  placeholderTextColor={theme.textSecondary}
-                  value={pdfMetadataDraft.subject}
-                  onChangeText={(t) => setPdfMetadataDraft((prev) => ({ ...prev, subject: t }))}
-                />
-              </View>
-              <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
-                <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                  onPress={() => setPdfMetadataModalVisible(false)}
-                  accessibilityRole="button"
-                >
-                  <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
-                </BouncyButton>
-                <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }]}
-                  onPress={savePdfMetadata}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.confirmDeleteText}>Save</Text>
-                </BouncyButton>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
-
-      {/* PDF EDITOR - SPLIT. "Every N pages" - the simplest split shape
-          that's still genuinely useful; a specific-page-ranges picker is
-          a bigger, separate UI this deliberately doesn't try to be. */}
-      {pdfSplitModalVisible && (
-        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfSplitModalVisible(false)}>
-          <View
-            style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => setPdfSplitModalVisible(false)}
-          >
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
-              )
-            )}
-            <View
-              style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
-              onStartShouldSetResponder={() => Platform.OS === 'web'}
-              onResponderRelease={() => {}}
-            >
-              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Split PDF</Text>
-              <Text style={styles.confirmSubText}>
-                {activePdfContainer ? `Split every ${pdfSplitEveryN || '1'} page(s) into its own PDF - ${activePdfContainer.pages.length} pages total.` : 'Split into separate PDFs.'}
-              </Text>
-              <FocusableTextInput
-                style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15, marginTop: 14, textAlign: 'center' }}
-                placeholder="Pages per file"
-                placeholderTextColor={theme.textSecondary}
-                keyboardType="number-pad"
-                value={pdfSplitEveryN}
-                onChangeText={(t) => setPdfSplitEveryN(t.replace(/[^0-9]/g, ''))}
-              />
-              <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
-                <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                  onPress={() => setPdfSplitModalVisible(false)}
-                  accessibilityRole="button"
-                >
-                  <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
-                </BouncyButton>
-                <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }]}
-                  onPress={handleSplitPdf}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.confirmDeleteText}>Split</Text>
-                </BouncyButton>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
-
-      {/* PDF EDITOR - WATERMARK. One diagonal, semi-transparent line of
-          text across every page, or a repeated grid of smaller copies -
-          opacity and pattern as simple preset buttons (matching how
-          Compress's quality picker already works in this app), not a
-          slider or a color/position picker - keeps this a real
-          one-sitting feature rather than its own small design tool. */}
-      {pdfWatermarkModalVisible && (
-        <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => setPdfWatermarkModalVisible(false)}>
-          <View
-            style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => setPdfWatermarkModalVisible(false)}
-          >
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView intensity={55} tint={themeMode === 'light' ? 'light' : 'dark'} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
-              )
-            )}
-            <View
-              style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
-              onStartShouldSetResponder={() => Platform.OS === 'web'}
-              onResponderRelease={() => {}}
-            >
-              <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Add Watermark</Text>
-              <Text style={styles.confirmSubText}>Applies to every page - e.g. "DRAFT" or "CONFIDENTIAL".</Text>
-              <FocusableTextInput
-                style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15, marginTop: 14, textAlign: 'center' }}
-                placeholder="Watermark text"
-                placeholderTextColor={theme.textSecondary}
-                value={pdfWatermarkText}
-                onChangeText={setPdfWatermarkText}
-                autoFocus={Platform.OS === 'web'}
-              />
-
-              <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600', marginTop: 16, alignSelf: 'flex-start' }}>OPACITY</Text>
-              <View style={{ flexDirection: 'row', gap: 8, width: '100%', marginTop: 6 }}>
-                {[{ label: 'Light', value: 0.15 }, { label: 'Medium', value: 0.3 }, { label: 'Dark', value: 0.5 }].map((opt) => (
-                  <BouncyButton
-                    key={opt.label}
-                    style={{
-                      flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
-                      borderWidth: 1.5,
-                      borderColor: pdfWatermarkOpacity === opt.value ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                      backgroundColor: pdfWatermarkOpacity === opt.value ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
-                    }}
-                    onPress={() => setPdfWatermarkOpacity(opt.value)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: pdfWatermarkOpacity === opt.value }}
-                  >
-                    <Text style={{ color: pdfWatermarkOpacity === opt.value ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.text, fontSize: 13, fontWeight: '700' }}>{opt.label}</Text>
-                  </BouncyButton>
-                ))}
-              </View>
-
-              <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600', marginTop: 16, alignSelf: 'flex-start' }}>PATTERN</Text>
-              <View style={{ flexDirection: 'row', gap: 8, width: '100%', marginTop: 6 }}>
-                {[{ label: 'Single', value: 'single' }, { label: 'Repeated', value: 'repeated' }].map((opt) => (
-                  <BouncyButton
-                    key={opt.label}
-                    style={{
-                      flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
-                      borderWidth: 1.5,
-                      borderColor: pdfWatermarkPattern === opt.value ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                      backgroundColor: pdfWatermarkPattern === opt.value ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
-                    }}
-                    onPress={() => setPdfWatermarkPattern(opt.value)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: pdfWatermarkPattern === opt.value }}
-                  >
-                    <Text style={{ color: pdfWatermarkPattern === opt.value ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.text, fontSize: 13, fontWeight: '700' }}>{opt.label}</Text>
-                  </BouncyButton>
-                ))}
-              </View>
-
-              <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 16 }}>
-                <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
-                  onPress={() => setPdfWatermarkModalVisible(false)}
-                  accessibilityRole="button"
-                >
-                  <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
-                </BouncyButton>
-                <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: pdfWatermarkText.trim() ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border }]}
-                  onPress={applyPdfWatermark}
-                  disabled={!pdfWatermarkText.trim()}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.confirmDeleteText}>Apply</Text>
-
-                </BouncyButton>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
-
 
       {/* PDF EDITOR - ADD PAGE MENU. "+ Page" now offers pulling pages in
           from another PDF/photo, not just a blank page - always spliced
