@@ -159,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 778;
+const BUILD_NUMBER = 780;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7560,7 +7560,10 @@ function App() {
   // deliberate follow-up work, not rushed in alongside this.
   const [resumeWizardStep, setResumeWizardStep] = useState(1);
   const [resumeData, setResumeData] = useState({
-    name: '', title: '', email: '', phone: '', location: '', photoUri: null
+    name: '', title: '', email: '', phone: '', location: '', photoUri: null,
+    experience: [], education: [], skills: [],
+    links: { website: '', linkedin: '', github: '' },
+    qrImageUri: null, qrSource: null // qrSource: 'upload' | 'generated' | 'decent' - which of the 3 options produced qrImageUri, shown back to the user when they revisit this step
   });
   const updateResumeField = (key, value) => setResumeData((prev) => ({ ...prev, [key]: value }));
   const pickResumePhoto = async () => {
@@ -7577,6 +7580,160 @@ function App() {
     });
     if (!result.canceled && result.assets && result.assets.length > 0) {
       updateResumeField('photoUri', result.assets[0].uri);
+    }
+  };
+  // Experience/Education - both repeatable entry lists, same shape of
+  // helper trio each (add/remove/update-one-field). Dates are kept as
+  // plain free-text fields ("Jan 2020") rather than a real date picker -
+  // real resumes often use exactly that level of precision anyway
+  // (season/month-year, not a specific day), and it avoids pulling in a
+  // whole new native date-picker dependency for something free text
+  // already handles fine.
+  const addResumeExperience = () => setResumeData((prev) => ({
+    ...prev,
+    experience: [...prev.experience, { id: `exp-${Date.now()}`, company: '', role: '', startDate: '', endDate: '', current: false, description: '' }]
+  }));
+  const removeResumeExperience = (id) => setResumeData((prev) => ({ ...prev, experience: prev.experience.filter((e) => e.id !== id) }));
+  const updateResumeExperience = (id, key, value) => setResumeData((prev) => ({
+    ...prev,
+    experience: prev.experience.map((e) => (e.id === id ? { ...e, [key]: value } : e))
+  }));
+  const addResumeEducation = () => setResumeData((prev) => ({
+    ...prev,
+    education: [...prev.education, { id: `edu-${Date.now()}`, school: '', degree: '', startDate: '', endDate: '' }]
+  }));
+  const removeResumeEducation = (id) => setResumeData((prev) => ({ ...prev, education: prev.education.filter((e) => e.id !== id) }));
+  const updateResumeEducation = (id, key, value) => setResumeData((prev) => ({
+    ...prev,
+    education: prev.education.map((e) => (e.id === id ? { ...e, [key]: value } : e))
+  }));
+  const addResumeSkill = (text) => {
+    const skill = text.trim();
+    if (!skill || resumeData.skills.includes(skill)) return;
+    setResumeData((prev) => ({ ...prev, skills: [...prev.skills, skill] }));
+  };
+  const removeResumeSkill = (skill) => setResumeData((prev) => ({ ...prev, skills: prev.skills.filter((s) => s !== skill) }));
+  const updateResumeLink = (key, value) => setResumeData((prev) => ({ ...prev, links: { ...prev.links, [key]: value } }));
+
+  // Resume QR - three ways to get a QR image into the resume, one
+  // helper each. All three converge on the same place: resumeData.
+  // qrImageUri (a real image URI/data URL to embed) + qrSource (which
+  // path produced it, so revisiting this step shows the right label).
+  //
+  // Options 2 and 3 both need to rasterize a QR headlessly (no on-screen
+  // component to grab), which only renderToolsQrToCanvasAsync can do -
+  // and that function is Canvas-API-based, so web-only, same honest
+  // gap already established for Export Pages as Images and auto-crop
+  // earlier tonight. Option 1 (upload) has no such limit.
+  const [resumeQrGenerating, setResumeQrGenerating] = useState(false);
+  const [resumeSkillInput, setResumeSkillInput] = useState('');
+  // Option 2: the full QR Generator tool, reused as-is rather than
+  // rebuilt inside the wizard. Switching activeTool does NOT reset
+  // resumeData/resumeWizardStep - both live in App()'s own top-level
+  // state, same as activeTool itself, so navigating away and back
+  // doesn't lose wizard progress on its own. This flag is the only new
+  // piece needed: it tells QR Generator's own screen "you were opened
+  // from the wizard", so it can show one extra button (capture + return)
+  // alongside its normal Download buttons, without changing anything
+  // else about how QR Generator works.
+  const [qrGeneratorReturnToResume, setQrGeneratorReturnToResume] = useState(false);
+  const openQrGeneratorForResume = () => {
+    setQrGeneratorReturnToResume(true);
+    setActiveTool('qrGenerator');
+  };
+  const useGeneratedQrForResume = async () => {
+    const value = currentQrValue();
+    if (!value) {
+      showToast('Fill in the fields first.');
+      return;
+    }
+    setResumeQrGenerating(true);
+    try {
+      const canvas = await renderToolsQrToCanvasAsync(value, 600, {
+        color: qrColor, backgroundColor: qrBackgroundColor, dotStyle: qrDotStyle, logoUri: qrLogoUri
+      });
+      setResumeData((prev) => ({ ...prev, qrImageUri: canvas.toDataURL('image/png'), qrSource: 'generated' }));
+      setQrGeneratorReturnToResume(false);
+      setActiveTool('resumeMaker');
+      showToast('QR code added to your resume.');
+      triggerHaptic('success');
+    } catch (e) {
+      console.warn('QR capture for resume failed:', e);
+      showToast('Could not use this QR code - try again.');
+    } finally {
+      setResumeQrGenerating(false);
+    }
+  };
+  // Safety reset: if the person leaves QR Generator any other way (Tools
+  // hub, switching straight to a different tool, browser back) instead
+  // of the capture button above, this flag would otherwise stay stuck
+  // true - and the next time they open QR Generator normally, for
+  // something unrelated to a resume, the "Use This QR" button would
+  // spuriously still be there.
+  useEffect(() => {
+    if (activeTool !== 'qrGenerator' && qrGeneratorReturnToResume) {
+      setQrGeneratorReturnToResume(false);
+    }
+  }, [activeTool]);
+
+  // Option 1: upload an existing QR image. Resized (not aggressively
+  // compressed) to a sensible max dimension, PNG not JPEG - a QR code's
+  // scannability depends on sharp high-contrast edges, which lossy JPEG
+  // compression can genuinely break. Keeping this format-safe matters
+  // more here than squeezing extra bytes out of what's already a small
+  // image once resized.
+  const pickResumeQrUpload = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showAppAlert('Permission Denied', 'Media library access is required to pick a QR image.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1
+    });
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+    setResumeQrGenerating(true);
+    try {
+      const resized = await ImageManipulator.manipulateAsync(
+        result.assets[0].uri,
+        [{ resize: { width: 600 } }],
+        { compress: 1, format: ImageManipulator.SaveFormat.PNG }
+      );
+      setResumeData((prev) => ({ ...prev, qrImageUri: resized.uri, qrSource: 'upload' }));
+    } catch (e) {
+      console.warn('QR upload resize failed:', e);
+      showToast('Could not process that image - try again.');
+    } finally {
+      setResumeQrGenerating(false);
+    }
+  };
+
+  // Option 3: the logged-in DECENT portfolio QR, web-only (see comment
+  // above). "Decent style" vs "plain" differ by color/dot-style only
+  // (purple, rounded vs black, square) - CircularQRCode's on-screen
+  // logo badge is drawn as an SVG vector path (DECENT_LOGO_PATH_D), not
+  // a raster image file, so there's no actual image URI to pass as
+  // renderToolsQrToCanvasAsync's logoUri here without a real asset to
+  // point at. Keeping the distinction to color/dots is honest about
+  // what's actually available rather than guessing at a path.
+  const generateResumeDecentQr = async (style) => {
+    if (Platform.OS !== 'web' || !session || !userProfile.handle) return;
+    setResumeQrGenerating(true);
+    try {
+      const url = `${DECENT_APP_DOMAIN}/@${userProfile.handle}`;
+      const canvas = await renderToolsQrToCanvasAsync(url, 600, {
+        color: style === 'decent' ? '#8B5CF6' : '#000000',
+        backgroundColor: '#FFFFFF',
+        dotStyle: style === 'decent' ? 'round' : 'square',
+        logoUri: null
+      });
+      setResumeData((prev) => ({ ...prev, qrImageUri: canvas.toDataURL('image/png'), qrSource: 'decent' }));
+    } catch (e) {
+      console.warn('Portfolio QR generation failed:', e);
+      showToast('Could not generate QR code - try again.');
+    } finally {
+      setResumeQrGenerating(false);
     }
   };
 
@@ -21650,6 +21807,17 @@ function App() {
                           </BouncyButton>
                         )}
                       </View>
+                      {qrGeneratorReturnToResume && Platform.OS === 'web' && (
+                        <BouncyButton
+                          style={[styles.saveAccountSettingsBtn, { marginTop: 10, opacity: (resumeQrGenerating || !currentQrValue()) ? 0.4 : 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }]}
+                          onPress={useGeneratedQrForResume}
+                          disabled={resumeQrGenerating || !currentQrValue()}
+                          accessibilityRole="button"
+                          accessibilityState={{ disabled: resumeQrGenerating || !currentQrValue(), busy: resumeQrGenerating }}
+                        >
+                          <Text style={styles.submitBtnText}>{resumeQrGenerating ? 'Adding to resume...' : 'Use This QR in My Resume'}</Text>
+                        </BouncyButton>
+                      )}
                     </View>
                   )}
                   </>
@@ -21657,6 +21825,24 @@ function App() {
 
                 return (
                   <>
+                    {qrGeneratorReturnToResume && (
+                      <View style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10,
+                        backgroundColor: toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)',
+                        borderWidth: 1, borderColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', marginBottom: 12
+                      }}>
+                        <Text style={{ color: toolsTheme.text, fontSize: 12.5, flex: 1 }}>
+                          Building a QR code for your resume - customize it below, then tap "Use This QR in My Resume". Your resume progress is saved.
+                        </Text>
+                        <BouncyButton
+                          onPress={() => { setQrGeneratorReturnToResume(false); setActiveTool('resumeMaker'); }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Cancel and go back to resume"
+                        >
+                          <Text style={{ color: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', fontSize: 12.5, fontWeight: '700' }}>Cancel</Text>
+                        </BouncyButton>
+                      </View>
+                    )}
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
                       {tt('qrIntro')}
                     </Text>
@@ -22012,13 +22198,260 @@ function App() {
                     </View>
                   )}
 
-                  {resumeWizardStep > 1 && (
+                  {resumeWizardStep === 2 && (
+                    <View style={{ gap: 24 }}>
+                      <View style={{ gap: 12 }}>
+                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>Experience</Text>
+                        {resumeData.experience.map((exp) => (
+                          <View key={exp.id} style={{ gap: 8, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 12, padding: 14 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                              <BouncyButton onPress={() => removeResumeExperience(exp.id)} accessibilityRole="button" accessibilityLabel="Remove this experience entry">
+                                <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '700' }}>Remove</Text>
+                              </BouncyButton>
+                            </View>
+                            <FocusableTextInput
+                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
+                              placeholder="Company"
+                              placeholderTextColor={toolsTheme.textSecondary}
+                              value={exp.company}
+                              onChangeText={(t) => updateResumeExperience(exp.id, 'company', t)}
+                            />
+                            <FocusableTextInput
+                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
+                              placeholder="Role / title"
+                              placeholderTextColor={toolsTheme.textSecondary}
+                              value={exp.role}
+                              onChangeText={(t) => updateResumeExperience(exp.id, 'role', t)}
+                            />
+                            <View style={{ flexDirection: 'row', gap: 8 }}>
+                              <FocusableTextInput
+                                style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
+                                placeholder="Start (e.g. Jan 2020)"
+                                placeholderTextColor={toolsTheme.textSecondary}
+                                value={exp.startDate}
+                                onChangeText={(t) => updateResumeExperience(exp.id, 'startDate', t)}
+                              />
+                              {!exp.current && (
+                                <FocusableTextInput
+                                  style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
+                                  placeholder="End (e.g. Mar 2022)"
+                                  placeholderTextColor={toolsTheme.textSecondary}
+                                  value={exp.endDate}
+                                  onChangeText={(t) => updateResumeExperience(exp.id, 'endDate', t)}
+                                />
+                              )}
+                            </View>
+                            <BouncyButton
+                              style={{
+                                alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99,
+                                borderWidth: 1.5, borderColor: exp.current ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border,
+                                backgroundColor: exp.current ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
+                              }}
+                              onPress={() => updateResumeExperience(exp.id, 'current', !exp.current)}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected: exp.current }}
+                            >
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: exp.current ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.text }}>I currently work here</Text>
+                            </BouncyButton>
+                            <FocusableTextInput
+                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14, minHeight: 70, textAlignVertical: 'top' }}
+                              placeholder="What did you do here?"
+                              placeholderTextColor={toolsTheme.textSecondary}
+                              multiline
+                              value={exp.description}
+                              onChangeText={(t) => updateResumeExperience(exp.id, 'description', t)}
+                            />
+                          </View>
+                        ))}
+                        <BouncyButton
+                          style={{ paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1.5, borderColor: toolsTheme.border, borderStyle: 'dashed' }}
+                          onPress={addResumeExperience}
+                          accessibilityRole="button"
+                        >
+                          <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>+ Add Experience</Text>
+                        </BouncyButton>
+                      </View>
+
+                      <View style={{ gap: 12 }}>
+                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>Education</Text>
+                        {resumeData.education.map((edu) => (
+                          <View key={edu.id} style={{ gap: 8, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 12, padding: 14 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                              <BouncyButton onPress={() => removeResumeEducation(edu.id)} accessibilityRole="button" accessibilityLabel="Remove this education entry">
+                                <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '700' }}>Remove</Text>
+                              </BouncyButton>
+                            </View>
+                            <FocusableTextInput
+                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
+                              placeholder="School"
+                              placeholderTextColor={toolsTheme.textSecondary}
+                              value={edu.school}
+                              onChangeText={(t) => updateResumeEducation(edu.id, 'school', t)}
+                            />
+                            <FocusableTextInput
+                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
+                              placeholder="Degree"
+                              placeholderTextColor={toolsTheme.textSecondary}
+                              value={edu.degree}
+                              onChangeText={(t) => updateResumeEducation(edu.id, 'degree', t)}
+                            />
+                            <View style={{ flexDirection: 'row', gap: 8 }}>
+                              <FocusableTextInput
+                                style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
+                                placeholder="Start year"
+                                placeholderTextColor={toolsTheme.textSecondary}
+                                value={edu.startDate}
+                                onChangeText={(t) => updateResumeEducation(edu.id, 'startDate', t)}
+                              />
+                              <FocusableTextInput
+                                style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
+                                placeholder="End year"
+                                placeholderTextColor={toolsTheme.textSecondary}
+                                value={edu.endDate}
+                                onChangeText={(t) => updateResumeEducation(edu.id, 'endDate', t)}
+                              />
+                            </View>
+                          </View>
+                        ))}
+                        <BouncyButton
+                          style={{ paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1.5, borderColor: toolsTheme.border, borderStyle: 'dashed' }}
+                          onPress={addResumeEducation}
+                          accessibilityRole="button"
+                        >
+                          <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>+ Add Education</Text>
+                        </BouncyButton>
+                      </View>
+                    </View>
+                  )}
+
+                  {resumeWizardStep === 3 && (
+                    <View style={{ gap: 24 }}>
+                      <View style={{ gap: 10 }}>
+                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>Skills</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                          {resumeData.skills.map((skill) => (
+                            <View key={skill} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 99, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border }}>
+                              <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>{skill}</Text>
+                              <BouncyButton onPress={() => removeResumeSkill(skill)} accessibilityRole="button" accessibilityLabel={`Remove ${skill}`}>
+                                <Text style={{ color: toolsTheme.textSecondary, fontSize: 13, fontWeight: '700' }}>✕</Text>
+                              </BouncyButton>
+                            </View>
+                          ))}
+                        </View>
+                        <FocusableTextInput
+                          style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
+                          placeholder="Type a skill and press enter (e.g. Figma)"
+                          placeholderTextColor={toolsTheme.textSecondary}
+                          value={resumeSkillInput}
+                          onChangeText={setResumeSkillInput}
+                          onSubmitEditing={() => { addResumeSkill(resumeSkillInput); setResumeSkillInput(''); }}
+                          returnKeyType="done"
+                          blurOnSubmit={false}
+                        />
+                      </View>
+
+                      <View style={{ gap: 10 }}>
+                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>Links</Text>
+                        <FocusableTextInput
+                          style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
+                          placeholder="Website"
+                          placeholderTextColor={toolsTheme.textSecondary}
+                          autoCapitalize="none"
+                          value={resumeData.links.website}
+                          onChangeText={(t) => updateResumeLink('website', t)}
+                        />
+                        <FocusableTextInput
+                          style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
+                          placeholder="LinkedIn"
+                          placeholderTextColor={toolsTheme.textSecondary}
+                          autoCapitalize="none"
+                          value={resumeData.links.linkedin}
+                          onChangeText={(t) => updateResumeLink('linkedin', t)}
+                        />
+                        <FocusableTextInput
+                          style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
+                          placeholder="GitHub"
+                          placeholderTextColor={toolsTheme.textSecondary}
+                          autoCapitalize="none"
+                          value={resumeData.links.github}
+                          onChangeText={(t) => updateResumeLink('github', t)}
+                        />
+                      </View>
+
+                      <View style={{ gap: 10 }}>
+                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>QR Code (optional)</Text>
+                        {resumeData.qrImageUri ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 12, padding: 12 }}>
+                            <Image source={{ uri: resumeData.qrImageUri }} style={{ width: 56, height: 56, borderRadius: 6 }} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
+                                {resumeData.qrSource === 'upload' ? 'Uploaded QR' : resumeData.qrSource === 'decent' ? 'DECENT portfolio QR' : 'Generated QR'}
+                              </Text>
+                              <Text style={{ color: toolsTheme.textSecondary, fontSize: 11.5 }}>Will be included on your resume</Text>
+                            </View>
+                            <BouncyButton onPress={() => setResumeData((prev) => ({ ...prev, qrImageUri: null, qrSource: null }))} accessibilityRole="button" accessibilityLabel="Remove QR code">
+                              <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '700' }}>Remove</Text>
+                            </BouncyButton>
+                          </View>
+                        ) : (
+                          <View style={{ gap: 10 }}>
+                            <BouncyButton
+                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: resumeQrGenerating ? 0.5 : 1 }}
+                              onPress={pickResumeQrUpload}
+                              disabled={resumeQrGenerating}
+                              accessibilityRole="button"
+                            >
+                              <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Upload a QR code I already have</Text>
+                              <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
+                            </BouncyButton>
+                            <BouncyButton
+                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: (resumeQrGenerating || Platform.OS !== 'web') ? 0.5 : 1 }}
+                              onPress={openQrGeneratorForResume}
+                              disabled={resumeQrGenerating || Platform.OS !== 'web'}
+                              accessibilityRole="button"
+                            >
+                              <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>
+                                Generate a new QR code{Platform.OS !== 'web' ? ' (web only, for now)' : ''}
+                              </Text>
+                              <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
+                            </BouncyButton>
+                            {session && userProfile.handle && (
+                              <View style={{ gap: 8 }}>
+                                <BouncyButton
+                                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: (resumeQrGenerating || Platform.OS !== 'web') ? 0.5 : 1 }}
+                                  onPress={() => generateResumeDecentQr('decent')}
+                                  disabled={resumeQrGenerating || Platform.OS !== 'web'}
+                                  accessibilityRole="button"
+                                >
+                                  <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>
+                                    Use my DECENT portfolio QR - branded style{Platform.OS !== 'web' ? ' (web only, for now)' : ''}
+                                  </Text>
+                                  <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
+                                </BouncyButton>
+                                <BouncyButton
+                                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: (resumeQrGenerating || Platform.OS !== 'web') ? 0.5 : 1 }}
+                                  onPress={() => generateResumeDecentQr('plain')}
+                                  disabled={resumeQrGenerating || Platform.OS !== 'web'}
+                                  accessibilityRole="button"
+                                >
+                                  <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>
+                                    Use my DECENT portfolio QR - plain style{Platform.OS !== 'web' ? ' (web only, for now)' : ''}
+                                  </Text>
+                                  <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
+                                </BouncyButton>
+                              </View>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  )}
+
+                  {resumeWizardStep > 3 && (
                     <View style={{ gap: 14, alignItems: 'center', paddingVertical: 30 }}>
-                      <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700', textAlign: 'center' }}>
-                        {resumeWizardStep === 2 ? 'Experience & Education' : resumeWizardStep === 3 ? 'Skills & Links' : 'Review & Export'} - coming soon
-                      </Text>
+                      <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700', textAlign: 'center' }}>Review & Export - coming soon</Text>
                       <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, textAlign: 'center', maxWidth: 320, lineHeight: 18 }}>
-                        This step isn't built yet. Personal Info is saved though - it'll carry over once the rest of the wizard is ready.
+                        This step isn't built yet. Everything else is saved though - it'll carry over once export is ready.
                       </Text>
                     </View>
                   )}
