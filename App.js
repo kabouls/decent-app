@@ -159,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 784;
+const BUILD_NUMBER = 785;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -22300,23 +22300,9 @@ function App() {
               {/* RESUME MAKER - real wizard shell + Step 1 (Personal
                   Info). Steps 2-4 are still honest placeholders, staged
                   as separate follow-up work - see resumeWizardStep. */}
-              {activeTool === 'resumeMaker' && (
-                <View style={{ gap: 20 }}>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {['Personal', 'Experience', 'Skills', 'Review'].map((label, i) => (
-                      <View key={label} style={{ flex: 1, alignItems: 'center', gap: 6 }}>
-                        <View style={{
-                          width: '100%', height: 4, borderRadius: 2,
-                          backgroundColor: resumeWizardStep > i ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
-                        }} />
-                        <Text style={{
-                          fontSize: 11, fontWeight: '600',
-                          color: resumeWizardStep === i + 1 ? toolsTheme.text : toolsTheme.textSecondary
-                        }}>{label}</Text>
-                      </View>
-                    ))}
-                  </View>
-
+              {activeTool === 'resumeMaker' && (() => {
+                const stepAndNavBlock = (
+                <>
                   {resumeWizardStep === 1 && (
                     <View style={{ gap: 14 }}>
                       <BouncyButton
@@ -22672,8 +22658,54 @@ function App() {
                       </BouncyButton>
                     )}
                   </View>
-                </View>
-              )}
+                </>
+                );
+
+                const progressIndicator = (
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {['Personal', 'Experience', 'Skills', 'Review'].map((label, i) => (
+                      <View key={label} style={{ flex: 1, alignItems: 'center', gap: 6 }}>
+                        <View style={{
+                          width: '100%', height: 4, borderRadius: 2,
+                          backgroundColor: resumeWizardStep > i ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
+                        }} />
+                        <Text style={{
+                          fontSize: 11, fontWeight: '600',
+                          color: resumeWizardStep === i + 1 ? toolsTheme.text : toolsTheme.textSecondary
+                        }}>{label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                );
+
+                // Wide web only - a live preview of the actual PDF
+                // template, filled with whatever's been entered so far,
+                // sitting next to the form instead of only appearing at
+                // Review. srcDoc on a real iframe is the most literal,
+                // genuinely WYSIWYG way to do this - it's rendering the
+                // exact same buildResumeHtml() output the real export
+                // uses, not an approximation of it, so there's no risk
+                // of the preview and the actual PDF ever disagreeing.
+                return (
+                  <View style={{ gap: 20 }}>
+                    {progressIndicator}
+                    {isWebWide ? (
+                      <View style={{ flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1, backgroundColor: '#FFFFFF', borderRadius: 12, overflow: 'hidden', height: 720 }}>
+                          {React.createElement('iframe', {
+                            srcDoc: buildResumeHtml(resumeData),
+                            title: 'Resume preview',
+                            style: { width: '100%', height: '100%', border: 'none' }
+                          })}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          {stepAndNavBlock}
+                        </View>
+                      </View>
+                    ) : stepAndNavBlock}
+                  </View>
+                );
+              })()}
 
               {activeTool === 'pdfEditor' && (
                 <View style={{ gap: 20 }}>
