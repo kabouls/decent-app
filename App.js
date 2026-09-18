@@ -159,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 777;
+const BUILD_NUMBER = 778;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7551,6 +7551,34 @@ function App() {
   };
 
   const [formStep, setFormStep] = useState(1);
+  // Resume Maker - own wizard state, deliberately separate from
+  // formStep above (that one belongs to the portfolio upload wizard,
+  // a completely different flow). Same numbered-step shape though,
+  // matching that wizard's own pattern rather than inventing a new one.
+  // Steps 2-4 are still honest "coming soon" placeholders - only
+  // Personal Info (step 1) is real so far; the rest is staged,
+  // deliberate follow-up work, not rushed in alongside this.
+  const [resumeWizardStep, setResumeWizardStep] = useState(1);
+  const [resumeData, setResumeData] = useState({
+    name: '', title: '', email: '', phone: '', location: '', photoUri: null
+  });
+  const updateResumeField = (key, value) => setResumeData((prev) => ({ ...prev, [key]: value }));
+  const pickResumePhoto = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showAppAlert('Permission Denied', 'Media library access is required to pick a photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8
+    });
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      updateResumeField('photoUri', result.assets[0].uri);
+    }
+  };
 
   // Auto-trigger: fires when the wizard is open and formStep changes,
   // showing that step's tutorial the first time it's reached (no-ops
@@ -21909,21 +21937,112 @@ function App() {
                 </View>
               )}
 
-              {/* RESUME MAKER - shell only for now. Real, navigable
-                  screen (header/breadcrumb/More Tools footer all already
-                  work via ALL_TOOLS_LIST + the title ternaries above) -
-                  the actual form wizard (Personal Info -> Experience/
-                  Education -> Skills/Links -> Review & Export) and the
-                  expo-print PDF generation are deliberately NOT built
-                  yet, staged as their own separate piece of work rather
-                  than rushed in alongside the tool's registration. */}
+              {/* RESUME MAKER - real wizard shell + Step 1 (Personal
+                  Info). Steps 2-4 are still honest placeholders, staged
+                  as separate follow-up work - see resumeWizardStep. */}
               {activeTool === 'resumeMaker' && (
-                <View style={{ gap: 14, alignItems: 'center', paddingVertical: 40 }}>
-                  <ResumeIconSVG size={40} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                  <Text style={{ color: toolsTheme.text, fontSize: 16, fontWeight: '700', textAlign: 'center' }}>Resume Maker is coming soon</Text>
-                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, textAlign: 'center', maxWidth: 320, lineHeight: 18 }}>
-                    Fill in your info, pick a template, and export a real PDF - including an optional QR code to your DECENT portfolio if you're logged in.
-                  </Text>
+                <View style={{ gap: 20 }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {['Personal', 'Experience', 'Skills', 'Review'].map((label, i) => (
+                      <View key={label} style={{ flex: 1, alignItems: 'center', gap: 6 }}>
+                        <View style={{
+                          width: '100%', height: 4, borderRadius: 2,
+                          backgroundColor: resumeWizardStep > i ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
+                        }} />
+                        <Text style={{
+                          fontSize: 11, fontWeight: '600',
+                          color: resumeWizardStep === i + 1 ? toolsTheme.text : toolsTheme.textSecondary
+                        }}>{label}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  {resumeWizardStep === 1 && (
+                    <View style={{ gap: 14 }}>
+                      <BouncyButton
+                        style={{ alignSelf: 'center', width: 88, height: 88, borderRadius: 44, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+                        onPress={pickResumePhoto}
+                        accessibilityRole="button"
+                        accessibilityLabel="Add photo"
+                      >
+                        {resumeData.photoUri ? (
+                          <Image source={{ uri: resumeData.photoUri }} style={{ width: 88, height: 88 }} />
+                        ) : (
+                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '600', textAlign: 'center' }}>Add{'\n'}Photo</Text>
+                        )}
+                      </BouncyButton>
+                      <FocusableTextInput
+                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
+                        placeholder="Full name"
+                        placeholderTextColor={toolsTheme.textSecondary}
+                        value={resumeData.name}
+                        onChangeText={(t) => updateResumeField('name', t)}
+                      />
+                      <FocusableTextInput
+                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
+                        placeholder="Professional title (e.g. UI/UX Designer)"
+                        placeholderTextColor={toolsTheme.textSecondary}
+                        value={resumeData.title}
+                        onChangeText={(t) => updateResumeField('title', t)}
+                      />
+                      <FocusableTextInput
+                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
+                        placeholder="Email"
+                        placeholderTextColor={toolsTheme.textSecondary}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        value={resumeData.email}
+                        onChangeText={(t) => updateResumeField('email', t)}
+                      />
+                      <FocusableTextInput
+                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
+                        placeholder="Phone"
+                        placeholderTextColor={toolsTheme.textSecondary}
+                        keyboardType="phone-pad"
+                        value={resumeData.phone}
+                        onChangeText={(t) => updateResumeField('phone', t)}
+                      />
+                      <FocusableTextInput
+                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
+                        placeholder="Location (e.g. Jakarta, Indonesia)"
+                        placeholderTextColor={toolsTheme.textSecondary}
+                        value={resumeData.location}
+                        onChangeText={(t) => updateResumeField('location', t)}
+                      />
+                    </View>
+                  )}
+
+                  {resumeWizardStep > 1 && (
+                    <View style={{ gap: 14, alignItems: 'center', paddingVertical: 30 }}>
+                      <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700', textAlign: 'center' }}>
+                        {resumeWizardStep === 2 ? 'Experience & Education' : resumeWizardStep === 3 ? 'Skills & Links' : 'Review & Export'} - coming soon
+                      </Text>
+                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, textAlign: 'center', maxWidth: 320, lineHeight: 18 }}>
+                        This step isn't built yet. Personal Info is saved though - it'll carry over once the rest of the wizard is ready.
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    {resumeWizardStep > 1 && (
+                      <BouncyButton
+                        style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
+                        onPress={() => setResumeWizardStep((s) => Math.max(1, s - 1))}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '700' }}>Back</Text>
+                      </BouncyButton>
+                    )}
+                    {resumeWizardStep < 4 && (
+                      <BouncyButton
+                        style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+                        onPress={() => setResumeWizardStep((s) => Math.min(4, s + 1))}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' }}>Next</Text>
+                      </BouncyButton>
+                    )}
+                  </View>
                 </View>
               )}
 
