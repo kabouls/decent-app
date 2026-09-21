@@ -159,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 791;
+const BUILD_NUMBER = 792;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -8136,6 +8136,22 @@ function App() {
     hub: '', imageCompressor: 'image-compressor', qrGenerator: 'qr-code-generator',
     imageConverter: 'image-converter', pdfEditor: 'pdf-editor', resumeMaker: 'resume-maker'
   };
+  // Same titles as TOOLS_META in middleware.js - duplicated deliberately
+  // (App.js is the client bundle, middleware.js is a separate Edge
+  // Function; there's no shared module between them to import from), same
+  // "no shared source, keep in sync by hand" situation already true of
+  // TOOLS_ROUTE_SLUGS vs middleware's TOOLS_META keys and sitemap's
+  // staticUrls. Used for document.title below - without this, the
+  // browser tab always shows whatever title the page happened to load
+  // with, never updating as someone actually navigates between tools.
+  const TOOLS_TITLES = {
+    hub: 'Free Tools for Designers & Job Seekers | DECENT',
+    imageCompressor: 'Free Image Compressor - Shrink Photos to Any Size | DECENT Tools',
+    qrGenerator: 'Free QR Code Generator - Customizable, No Signup | DECENT Tools',
+    imageConverter: 'Free Image Converter - JPEG, PNG, WEBP | DECENT Tools',
+    pdfEditor: 'Free PDF Editor - Merge, Reorder, Rotate Pages | DECENT Tools',
+    resumeMaker: 'Free Resume Maker - Build & Export a Resume PDF | DECENT Tools',
+  };
   const toolsUrlInitializedRef = useRef(false);
   const toolsPreviousPathRef = useRef('/');
 
@@ -8172,11 +8188,13 @@ function App() {
       if (window.location.pathname !== targetPath) {
         window.history.pushState({}, '', targetPath);
       }
+      document.title = TOOLS_TITLES[activeTool] || TOOLS_TITLES.hub;
     } else if (window.location.pathname.startsWith('/tools')) {
       // Closing Tools - only rewrite the URL if it's currently pointed
       // at a Tools path, so this never clobbers wherever the rest of
       // the app's own navigation already put the address bar.
       window.history.pushState({}, '', toolsPreviousPathRef.current);
+      document.title = 'DECENT';
     }
   }, [toolsScreenVisible, activeTool]);
 

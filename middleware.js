@@ -292,13 +292,28 @@ export default async function middleware(request) {
       const faqHtml = faqs.length > 0
         ? `<h2>Frequently Asked Questions</h2>${faqs.map((f) => `<h3>${escapeHtml(f.q)}</h3><p>${escapeHtml(f.a)}</p>`).join('')}`
         : '';
+      // Real <a href> links to each tool, generated from TOOLS_META's
+      // own keys rather than a separately-maintained list - so this can
+      // never drift out of sync the way the other three "same five URLs,
+      // no shared source" spots in this project already do (see the
+      // comments on TOOLS_ROUTE_SLUGS in App.js and staticUrls in
+      // sitemap.xml.js). Without this, the hub page had zero actual
+      // links to any sub-tool in its crawler-facing HTML - each one was
+      // only discoverable via the sitemap, not via genuine on-page
+      // internal linking, which carries real relevance signal a sitemap
+      // listing alone doesn't.
+      const hubLinksHtml = slug === ''
+        ? `<nav><ul>${Object.keys(TOOLS_META).filter((k) => k !== '').map((k) => (
+            `<li><a href="/tools/${k}">${escapeHtml(TOOLS_META[k].title.split(' | ')[0])}</a></li>`
+          )).join('')}</ul></nav>`
+        : '';
       return new Response(
         buildHtml({
           title: meta.title,
           description: meta.description,
           image: meta.image || DEFAULT_META.image,
           url: pageUrl,
-          bodyContent: `<h1>${escapeHtml(meta.title.split(' | ')[0])}</h1><p>${escapeHtml(meta.blurb || meta.description)}</p>${faqHtml}`,
+          bodyContent: `<h1>${escapeHtml(meta.title.split(' | ')[0])}</h1><p>${escapeHtml(meta.blurb || meta.description)}</p>${hubLinksHtml}${faqHtml}`,
           jsonLd: [
             {
               '@context': 'https://schema.org',
@@ -318,6 +333,19 @@ export default async function middleware(request) {
                 name: f.q,
                 acceptedAnswer: { '@type': 'Answer', text: f.a },
               })),
+            }] : []),
+            // Home > Tools > [Tool] - only for actual sub-tool pages, not
+            // the hub itself (a 2-item breadcrumb ending where it started
+            // isn't meaningful). Enables breadcrumb rich results in
+            // search listings.
+            ...(slug !== '' ? [{
+              '@context': 'https://schema.org',
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'DECENT', item: SITE_URL },
+                { '@type': 'ListItem', position: 2, name: 'Tools', item: canonicalUrl('/tools') },
+                { '@type': 'ListItem', position: 3, name: meta.title.split(' | ')[0], item: pageUrl },
+              ],
             }] : []),
           ],
         }),
