@@ -32,7 +32,7 @@ export default async function handler() {
   // automatically, so a new tool added to one needs adding to all three.
   const staticUrls = [
     '', '/for-you', '/circle', '/search',
-    '/tools', '/tools/pdf-editor', '/tools/image-compressor', '/tools/image-converter', '/tools/qr-code-generator'
+    '/tools', '/tools/pdf-editor', '/tools/image-compressor', '/tools/image-converter', '/tools/qr-code-generator', '/tools/resume-maker'
   ];
 
   const urls = [

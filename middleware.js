@@ -103,8 +103,8 @@ const CACHE_HEADERS = { 'Cache-Control': 'public, max-age=3600, s-maxage=3600' }
 const TOOLS_META = {
   '': {
     title: 'Free Tools for Designers & Job Seekers | DECENT',
-    description: 'Free image compressor, QR code generator, image converter, and PDF editor. No signup, no ads, no limits - everything runs on your device.',
-    blurb: 'Four free tools that run entirely in your browser or the DECENT app: compress images to a target size, generate custom QR codes, convert between JPEG/PNG/WEBP, and edit PDFs - merge, reorder, rotate, crop, and compress pages. No account, no upload to a server, no limits.',
+    description: 'Free image compressor, QR code generator, image converter, PDF editor, and resume maker. No signup, no ads, no limits - everything runs on your device.',
+    blurb: 'Five free tools that run entirely in your browser or the DECENT app: compress images to a target size, generate custom QR codes, convert between JPEG/PNG/WEBP, edit PDFs (merge, reorder, rotate, crop, compress), and build a resume as a PDF. No account, no upload to a server, no limits.',
   },
   'image-compressor': {
     title: 'Free Image Compressor - Shrink Photos to Any Size | DECENT Tools',
@@ -125,6 +125,11 @@ const TOOLS_META = {
     title: 'Free PDF Editor - Merge, Reorder, Rotate Pages | DECENT Tools',
     description: 'Merge PDFs and photos into one document, reorder pages, rotate, and delete - free, no signup, no software to install.',
     blurb: 'Merge multiple PDFs and photos into a single document, reorder and rotate pages, crop, delete, add page numbers, and compress the result to a target file size. Free, with no account or software install required.',
+  },
+  'resume-maker': {
+    title: 'Free Resume Maker - Build & Export a Resume PDF | DECENT Tools',
+    description: 'Build a resume with your experience, education, and skills, then export as a real PDF - free, no signup, no software to install.',
+    blurb: 'Fill in your personal info, work experience, education, and skills, then export a clean, professional resume as a PDF. Optionally include a QR code linking to your DECENT portfolio. Free, with no account or software install required.',
   },
 };
 
