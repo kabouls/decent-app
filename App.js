@@ -159,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 785;
+const BUILD_NUMBER = 787;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7560,7 +7560,7 @@ function App() {
   // deliberate follow-up work, not rushed in alongside this.
   const [resumeWizardStep, setResumeWizardStep] = useState(1);
   const [resumeData, setResumeData] = useState({
-    name: '', title: '', email: '', phone: '', location: '', photoUri: null,
+    name: '', title: '', email: '', phone: '', location: '', photoUri: null, summary: '',
     experience: [], education: [], skills: [],
     links: { website: '', linkedin: '', github: '' },
     qrImageUri: null, qrSource: null // qrSource: 'upload' | 'generated' | 'decent' - which of the 3 options produced qrImageUri, shown back to the user when they revisit this step
@@ -7637,6 +7637,39 @@ function App() {
   // alongside its normal Download buttons, without changing anything
   // else about how QR Generator works.
   const [qrGeneratorReturnToResume, setQrGeneratorReturnToResume] = useState(false);
+  // Native QR capture - mirrors QR Generator's own native download path
+  // exactly (toolsQrExportRef.current.toDataURL(...), same callback
+  // shape), just aimed at a QR that isn't already on-screen anywhere
+  // (the DECENT portfolio QR option, opened directly from Resume
+  // Maker's Step 3). Mounts ToolsQRCode off-screen just long enough to
+  // capture it, then unmounts - same component QR Generator itself
+  // uses, so this isn't a second QR-rendering implementation, just a
+  // second place it gets mounted.
+  const [nativeQrCaptureRequest, setNativeQrCaptureRequest] = useState(null);
+  const nativeQrCaptureRef = useRef(null);
+  const captureNativeQr = (value, options) => new Promise((resolve, reject) => {
+    setNativeQrCaptureRequest({ value, ...options, resolve, reject });
+  });
+  useEffect(() => {
+    if (!nativeQrCaptureRequest) return;
+    // A short delay, not immediate - the ref exists the instant the
+    // component mounts, but the underlying native SVG view needs a beat
+    // to actually finish laying out before toDataURL has real pixels to
+    // read, same reasoning as the delay already used elsewhere in this
+    // file for photo/print-window loads.
+    const timer = setTimeout(() => {
+      if (!nativeQrCaptureRef.current) {
+        nativeQrCaptureRequest.reject(new Error('QR capture ref not ready'));
+        setNativeQrCaptureRequest(null);
+        return;
+      }
+      nativeQrCaptureRef.current.toDataURL((base64) => {
+        nativeQrCaptureRequest.resolve(`data:image/png;base64,${base64}`);
+        setNativeQrCaptureRequest(null);
+      });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [nativeQrCaptureRequest]);
   const openQrGeneratorForResume = () => {
     setQrGeneratorReturnToResume(true);
     setActiveTool('qrGenerator');
@@ -7649,10 +7682,20 @@ function App() {
     }
     setResumeQrGenerating(true);
     try {
-      const canvas = await renderToolsQrToCanvasAsync(value, 600, {
-        color: qrColor, backgroundColor: qrBackgroundColor, dotStyle: qrDotStyle, logoUri: qrLogoUri
-      });
-      setResumeData((prev) => ({ ...prev, qrImageUri: canvas.toDataURL('image/png'), qrSource: 'generated' }));
+      // On native, reuse the QR that's already rendered on-screen in QR
+      // Generator right now (toolsQrExportRef, the same ref its own
+      // download button uses) - no need for the off-screen capture
+      // mechanism here at all, since a real one is already mounted and
+      // visible the moment this button is even reachable.
+      const dataUri = Platform.OS === 'web'
+        ? (await renderToolsQrToCanvasAsync(value, 600, {
+            color: qrColor, backgroundColor: qrBackgroundColor, dotStyle: qrDotStyle, logoUri: qrLogoUri
+          })).toDataURL('image/png')
+        : await new Promise((resolve, reject) => {
+            if (!toolsQrExportRef.current) { reject(new Error('QR not ready')); return; }
+            toolsQrExportRef.current.toDataURL((base64) => resolve(`data:image/png;base64,${base64}`));
+          });
+      setResumeData((prev) => ({ ...prev, qrImageUri: dataUri, qrSource: 'generated' }));
       setQrGeneratorReturnToResume(false);
       setActiveTool('resumeMaker');
       showToast('QR code added to your resume.');
@@ -7718,19 +7761,26 @@ function App() {
   // a raster image file, so there's no actual image URI to pass as
   // renderToolsQrToCanvasAsync's logoUri here without a real asset to
   // point at. Keeping the distinction to color/dots is honest about
-  // what's actually available rather than guessing at a path.
+  // what's actually available rather than guessing at a path. Works on
+  // both platforms - web renders headlessly via canvas, native mounts
+  // ToolsQRCode off-screen and captures it via ref (captureNativeQr),
+  // same component and same technique QR Generator's own native
+  // download already uses.
   const generateResumeDecentQr = async (style) => {
-    if (Platform.OS !== 'web' || !session || !userProfile.handle) return;
+    if (!session || !userProfile.handle) return;
     setResumeQrGenerating(true);
     try {
       const url = `${DECENT_APP_DOMAIN}/@${userProfile.handle}`;
-      const canvas = await renderToolsQrToCanvasAsync(url, 600, {
+      const options = {
         color: style === 'decent' ? '#8B5CF6' : '#000000',
         backgroundColor: '#FFFFFF',
         dotStyle: style === 'decent' ? 'round' : 'square',
         logoUri: null
-      });
-      setResumeData((prev) => ({ ...prev, qrImageUri: canvas.toDataURL('image/png'), qrSource: 'decent' }));
+      };
+      const dataUri = Platform.OS === 'web'
+        ? (await renderToolsQrToCanvasAsync(url, 600, options)).toDataURL('image/png')
+        : await captureNativeQr(url, options);
+      setResumeData((prev) => ({ ...prev, qrImageUri: dataUri, qrSource: 'decent' }));
     } catch (e) {
       console.warn('Portfolio QR generation failed:', e);
       showToast('Could not generate QR code - try again.');
@@ -7748,36 +7798,81 @@ function App() {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-  // One clean, single-column, ATS-friendly template - deliberately the
-  // only one for now, matching how Watermark stayed to simple presets
-  // rather than a full design tool. Plain HTML/CSS, not a component -
-  // expo-print takes a single HTML string, so building it as a string
-  // here is the natural fit, not a shortcut.
+  // Precise match to a reference resume PDF - black and white
+  // throughout except the user's own photo (which keeps its natural
+  // colors), matching the reference's black name-bar header, bold
+  // uppercase section headers with a thin rule beneath, and the
+  // featured-entry/stacked-rest two-column layout for BOTH Experience
+  // and Education. "Featured" is whichever entry is marked current for
+  // experience (falling back to the first entry if none is), or simply
+  // the first entry for education, since education has no current
+  // concept - matches the reference's own example, where the featured
+  // job was the one still in progress. Both columns use
+  // align-items:flex-start so an uneven pair of column heights never
+  // stretches or re-centers either column - the shorter one just ends
+  // where its content ends, top-anchored, exactly as asked.
   const buildResumeHtml = (data) => {
     const e = escapeResumeHtml;
-    const contactLine = [data.email, data.phone, data.location].filter(Boolean).map(e).join(' &nbsp;|&nbsp; ');
-    const experienceHtml = data.experience.map((exp) => `
-      <div style="margin-bottom: 14px; page-break-inside: avoid;">
-        <div style="display: flex; justify-content: space-between; align-items: baseline;">
-          <span style="font-weight: 700; font-size: 13px;">${e(exp.role)}${exp.role && exp.company ? ' &middot; ' : ''}${e(exp.company)}</span>
-          <span style="font-size: 11px; color: #666;">${e(exp.startDate)}${exp.startDate ? ' - ' : ''}${exp.current ? 'Present' : e(exp.endDate)}</span>
+    const contactLine = [data.email, data.phone, data.location].filter(Boolean).map(e).join(' &nbsp;&middot;&nbsp; ');
+
+    const featuredExp = data.experience.find((x) => x.current) || data.experience[0] || null;
+    const restExp = data.experience.filter((x) => !featuredExp || x.id !== featuredExp.id);
+    const featuredEdu = data.education[0] || null;
+    const restEdu = data.education.slice(1);
+
+    const renderFeaturedExp = (exp) => {
+      const bullets = (exp.description || '').split('\n').map((s) => s.trim()).filter(Boolean);
+      return `
+        <div style="page-break-inside: avoid;">
+          <div style="font-weight: 800; font-size: 13.5px; text-transform: uppercase;">${e(exp.role)}</div>
+          <div style="font-size: 12px; color: #444; margin-top: 2px;">${e(exp.company)}${exp.company && exp.startDate ? ' (' : ''}${e(exp.startDate)}${exp.startDate ? ' - ' : ''}${exp.current ? 'Present' : e(exp.endDate)}${exp.company && exp.startDate ? ')' : ''}</div>
+          ${bullets.length > 0 ? `
+            <ul style="margin: 8px 0 0; padding-left: 18px;">
+              ${bullets.map((b) => `<li style="font-size: 11.5px; color: #333; margin-bottom: 4px; line-height: 1.4;">${e(b)}</li>`).join('')}
+            </ul>
+          ` : ''}
         </div>
-        ${exp.description ? `<div style="font-size: 11.5px; color: #333; margin-top: 3px; white-space: pre-wrap;">${e(exp.description)}</div>` : ''}
+      `;
+    };
+    const renderCompactExp = (exp) => `
+      <div style="margin-bottom: 14px; page-break-inside: avoid;">
+        <div style="font-weight: 800; font-size: 12px; text-transform: uppercase;">${e(exp.role)}</div>
+        <div style="font-size: 11px; color: #444; margin-top: 1px;">${e(exp.company)}${exp.company && exp.startDate ? ' (' : ''}${e(exp.startDate)}${exp.startDate ? ' - ' : ''}${exp.current ? 'Present' : e(exp.endDate)}${exp.company && exp.startDate ? ')' : ''}</div>
       </div>
-    `).join('');
-    const educationHtml = data.education.map((edu) => `
-      <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: baseline; page-break-inside: avoid;">
-        <span style="font-weight: 700; font-size: 13px;">${e(edu.degree)}${edu.degree && edu.school ? ' &middot; ' : ''}${e(edu.school)}</span>
-        <span style="font-size: 11px; color: #666;">${e(edu.startDate)}${edu.startDate ? ' - ' : ''}${e(edu.endDate)}</span>
+    `;
+    const renderFeaturedEdu = (edu) => `
+      <div style="page-break-inside: avoid;">
+        <div style="font-weight: 800; font-size: 13.5px; text-transform: uppercase;">${e(edu.degree)}</div>
+        <div style="font-size: 12px; color: #444; margin-top: 2px;">${e(edu.school)}${edu.school && edu.startDate ? ' (' : ''}${e(edu.startDate)}${edu.startDate ? ' - ' : ''}${e(edu.endDate)}${edu.school && edu.startDate ? ')' : ''}</div>
       </div>
-    `).join('');
-    const skillsHtml = data.skills.map((s) => `<span style="display: inline-block; background: #F3F0FF; color: #6D28D9; font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 99px; margin: 0 6px 6px 0;">${e(s)}</span>`).join('');
+    `;
+    const renderCompactEdu = (edu) => `
+      <div style="margin-bottom: 14px; page-break-inside: avoid;">
+        <div style="font-weight: 800; font-size: 12px; text-transform: uppercase;">${e(edu.degree)}</div>
+        <div style="font-size: 11px; color: #444; margin-top: 1px;">${e(edu.school)}${edu.school && edu.startDate ? ' (' : ''}${e(edu.startDate)}${edu.startDate ? ' - ' : ''}${e(edu.endDate)}${edu.school && edu.startDate ? ')' : ''}</div>
+      </div>
+    `;
+
+    const sectionHeader = (label) => `
+      <div style="font-size: 17px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 26px; margin-bottom: 8px;">${label}</div>
+      <div style="border-top: 1.5px solid #ccc; margin-bottom: 16px;"></div>
+    `;
+    const twoColSection = (featuredHtml, restHtmlList) => `
+      <div style="display: flex; gap: 24px; align-items: flex-start;">
+        <div style="flex: 1;">${featuredHtml || ''}</div>
+        <div style="flex: 1;">${restHtmlList.join('')}</div>
+      </div>
+    `;
+
+    const skillsHtml = data.skills.length > 0
+      ? `<ul style="margin: 0; padding-left: 18px; columns: 2;">${data.skills.map((s) => `<li style="font-size: 12px; margin-bottom: 4px;">${e(s)}</li>`).join('')}</ul>`
+      : '';
     const links = [
       data.links.website ? { label: 'Website', value: data.links.website } : null,
       data.links.linkedin ? { label: 'LinkedIn', value: data.links.linkedin } : null,
       data.links.github ? { label: 'GitHub', value: data.links.github } : null
     ].filter(Boolean);
-    const linksHtml = links.map((l) => `<div style="font-size: 11.5px; margin-bottom: 3px;"><span style="color: #666;">${e(l.label)}:</span> ${e(l.value)}</div>`).join('');
+    const linksHtml = links.map((l) => `<div style="font-size: 12px; margin-bottom: 4px;"><strong>${e(l.label)}:</strong> ${e(l.value)}</div>`).join('');
 
     return `
       <html>
@@ -7788,53 +7883,40 @@ function App() {
                elsewhere in this app - the margin here IS the page's
                whitespace, so body needs none of its own. Overflow onto
                page 2+ is handled entirely by the browser/print engine's
-               native pagination against this @page rule - no manual
-               height math needed, and it's the same mechanism whether
-               this renders via window.print() on web or expo-print's
-               native renderer, since both are WebView-based and respect
-               standard CSS paged-media rules. */
+               native pagination against this @page rule. */
             @page { size: letter; margin: 0.75in; }
             body { margin: 0; }
           </style>
         </head>
         <body style="font-family: Helvetica, Arial, sans-serif; color: #111;">
-          <div style="display: flex; align-items: center; gap: 18px; margin-bottom: 20px;">
-            ${data.photoUri ? `<img src="${data.photoUri}" style="width: 72px; height: 72px; border-radius: 36px; object-fit: cover;" />` : ''}
-            <div>
-              <div style="font-size: 22px; font-weight: 700;">${e(data.name) || 'Your Name'}</div>
-              ${data.title ? `<div style="font-size: 13.5px; color: #6D28D9; font-weight: 600; margin-top: 2px;">${e(data.title)}</div>` : ''}
-              ${contactLine ? `<div style="font-size: 11px; color: #666; margin-top: 4px;">${contactLine}</div>` : ''}
+          <div style="display: flex; align-items: flex-start; gap: 16px;">
+            ${data.photoUri ? `<img src="${data.photoUri}" style="width: 90px; height: 90px; object-fit: cover; border: 1.5px solid #000;" />` : ''}
+            <div style="flex: 1;">
+              <div style="background: #000; padding: 16px 20px;">
+                <div style="color: #fff; font-size: 26px; font-weight: 800; letter-spacing: 0.5px;">${(e(data.name) || 'YOUR NAME').toUpperCase()}</div>
+              </div>
+              ${data.title ? `<div style="font-size: 13px; font-weight: 700; text-transform: uppercase; margin-top: 10px;">${e(data.title)}</div>` : ''}
+              ${contactLine ? `<div style="font-size: 11px; color: #555; margin-top: 4px;">${contactLine}</div>` : ''}
             </div>
+            ${data.qrImageUri ? `<img src="${data.qrImageUri}" style="width: 76px; height: 76px;" />` : ''}
           </div>
 
-          ${data.experience.length > 0 ? `
-            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6D28D9; border-bottom: 1.5px solid #E5E0FF; padding-bottom: 4px; margin-bottom: 10px; margin-top: 22px;">Experience</div>
-            ${experienceHtml}
-          ` : ''}
+          ${data.summary ? `${sectionHeader('Summary')}<div style="font-size: 12px; color: #222; line-height: 1.6;">${e(data.summary)}</div>` : ''}
 
-          ${data.education.length > 0 ? `
-            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6D28D9; border-bottom: 1.5px solid #E5E0FF; padding-bottom: 4px; margin-bottom: 10px; margin-top: 22px;">Education</div>
-            ${educationHtml}
-          ` : ''}
+          ${data.education.length > 0 ? `${sectionHeader('Education')}${twoColSection(featuredEdu ? renderFeaturedEdu(featuredEdu) : '', restEdu.map(renderCompactEdu))}` : ''}
 
-          ${data.skills.length > 0 ? `
-            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6D28D9; border-bottom: 1.5px solid #E5E0FF; padding-bottom: 4px; margin-bottom: 10px; margin-top: 22px;">Skills</div>
-            <div>${skillsHtml}</div>
-          ` : ''}
+          ${data.experience.length > 0 ? `${sectionHeader('Professional Experience')}${twoColSection(featuredExp ? renderFeaturedExp(featuredExp) : '', restExp.map(renderCompactExp))}` : ''}
 
-          ${links.length > 0 || data.qrImageUri ? `
-            <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6D28D9; border-bottom: 1.5px solid #E5E0FF; padding-bottom: 4px; margin-bottom: 10px; margin-top: 22px;">Links</div>
-            <div style="display: flex; justify-content: space-between; align-items: flex-end;">
-              <div>${linksHtml}</div>
-              ${data.qrImageUri ? `<img src="${data.qrImageUri}" style="width: 64px; height: 64px;" />` : ''}
-            </div>
-          ` : ''}
+          ${data.skills.length > 0 ? `${sectionHeader('Skills')}${skillsHtml}` : ''}
+
+          ${links.length > 0 ? `${sectionHeader('Links')}${linksHtml}` : ''}
         </body>
       </html>
     `;
   };
 
   const [resumeExporting, setResumeExporting] = useState(false);
+  const [resumePreviewModalVisible, setResumePreviewModalVisible] = useState(false);
   // Web and native genuinely need different implementations here, not
   // just different options to the same call. expo-print's documented
   // web behavior turned out to mean something different in practice
@@ -22300,6 +22382,26 @@ function App() {
               {/* RESUME MAKER - real wizard shell + Step 1 (Personal
                   Info). Steps 2-4 are still honest placeholders, staged
                   as separate follow-up work - see resumeWizardStep. */}
+              {/* Hidden off-screen QR, mounted only while a native
+                  capture is pending (see captureNativeQr) - real
+                  content, position: absolute off the visible area
+                  rather than opacity/size-zeroed, since the latter can
+                  prevent the native view from actually laying out and
+                  having real pixels for toDataURL to read. */}
+              {nativeQrCaptureRequest && Platform.OS !== 'web' && (
+                <View style={{ position: 'absolute', left: -9999, top: -9999 }}>
+                  <ToolsQRCode
+                    ref={nativeQrCaptureRef}
+                    value={nativeQrCaptureRequest.value}
+                    size={600}
+                    color={nativeQrCaptureRequest.color}
+                    backgroundColor={nativeQrCaptureRequest.backgroundColor}
+                    dotStyle={nativeQrCaptureRequest.dotStyle}
+                    logoUri={nativeQrCaptureRequest.logoUri}
+                  />
+                </View>
+              )}
+
               {activeTool === 'resumeMaker' && (() => {
                 const stepAndNavBlock = (
                 <>
@@ -22354,6 +22456,14 @@ function App() {
                         placeholderTextColor={toolsTheme.textSecondary}
                         value={resumeData.location}
                         onChangeText={(t) => updateResumeField('location', t)}
+                      />
+                      <FocusableTextInput
+                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15, minHeight: 80, textAlignVertical: 'top' }}
+                        placeholder="Summary - a few sentences about your background"
+                        placeholderTextColor={toolsTheme.textSecondary}
+                        multiline
+                        value={resumeData.summary}
+                        onChangeText={(t) => updateResumeField('summary', t)}
                       />
                     </View>
                   )}
@@ -22565,38 +22675,32 @@ function App() {
                               <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
                             </BouncyButton>
                             <BouncyButton
-                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: (resumeQrGenerating || Platform.OS !== 'web') ? 0.5 : 1 }}
+                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: resumeQrGenerating ? 0.5 : 1 }}
                               onPress={openQrGeneratorForResume}
-                              disabled={resumeQrGenerating || Platform.OS !== 'web'}
+                              disabled={resumeQrGenerating}
                               accessibilityRole="button"
                             >
-                              <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>
-                                Generate a new QR code{Platform.OS !== 'web' ? ' (web only, for now)' : ''}
-                              </Text>
+                              <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Generate a new QR code</Text>
                               <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
                             </BouncyButton>
                             {session && userProfile.handle && (
                               <View style={{ gap: 8 }}>
                                 <BouncyButton
-                                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: (resumeQrGenerating || Platform.OS !== 'web') ? 0.5 : 1 }}
+                                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: resumeQrGenerating ? 0.5 : 1 }}
                                   onPress={() => generateResumeDecentQr('decent')}
-                                  disabled={resumeQrGenerating || Platform.OS !== 'web'}
+                                  disabled={resumeQrGenerating}
                                   accessibilityRole="button"
                                 >
-                                  <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>
-                                    Use my DECENT portfolio QR - branded style{Platform.OS !== 'web' ? ' (web only, for now)' : ''}
-                                  </Text>
+                                  <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Use my DECENT portfolio QR - branded style</Text>
                                   <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
                                 </BouncyButton>
                                 <BouncyButton
-                                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: (resumeQrGenerating || Platform.OS !== 'web') ? 0.5 : 1 }}
+                                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: resumeQrGenerating ? 0.5 : 1 }}
                                   onPress={() => generateResumeDecentQr('plain')}
-                                  disabled={resumeQrGenerating || Platform.OS !== 'web'}
+                                  disabled={resumeQrGenerating}
                                   accessibilityRole="button"
                                 >
-                                  <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>
-                                    Use my DECENT portfolio QR - plain style{Platform.OS !== 'web' ? ' (web only, for now)' : ''}
-                                  </Text>
+                                  <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Use my DECENT portfolio QR - plain style</Text>
                                   <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
                                 </BouncyButton>
                               </View>
@@ -22686,6 +22790,16 @@ function App() {
                 // exact same buildResumeHtml() output the real export
                 // uses, not an approximation of it, so there's no risk
                 // of the preview and the actual PDF ever disagreeing.
+                //
+                // Native has no iframe and no room for a side-by-side
+                // split on a phone screen either way - the equivalent
+                // here is a manually-triggered full-screen modal
+                // instead of an always-visible pane, using
+                // NativeWebView with a local html source (not a URL -
+                // nothing leaves the device, same as every other export
+                // path). Available on every step, not just Review, so
+                // checking progress doesn't require finishing the
+                // wizard first.
                 return (
                   <View style={{ gap: 20 }}>
                     {progressIndicator}
@@ -22702,10 +22816,40 @@ function App() {
                           {stepAndNavBlock}
                         </View>
                       </View>
-                    ) : stepAndNavBlock}
+                    ) : (
+                      <>
+                        {Platform.OS !== 'web' && (
+                          <BouncyButton
+                            style={{ paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1.5, borderColor: toolsTheme.border }}
+                            onPress={() => setResumePreviewModalVisible(true)}
+                            accessibilityRole="button"
+                          >
+                            <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>Preview Resume</Text>
+                          </BouncyButton>
+                        )}
+                        {stepAndNavBlock}
+                      </>
+                    )}
                   </View>
                 );
               })()}
+
+              {resumePreviewModalVisible && (
+                <Modal animationType="slide" transparent={false} visible={true} onRequestClose={() => setResumePreviewModalVisible(false)}>
+                  <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', padding: 12 }}>
+                      <BouncyButton
+                        style={{ paddingVertical: 8, paddingHorizontal: 16, borderRadius: 10, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border }}
+                        onPress={() => setResumePreviewModalVisible(false)}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>Close</Text>
+                      </BouncyButton>
+                    </View>
+                    <NativeWebView source={{ html: buildResumeHtml(resumeData) }} style={{ flex: 1 }} />
+                  </SafeAreaView>
+                </Modal>
+              )}
 
               {activeTool === 'pdfEditor' && (
                 <View style={{ gap: 20 }}>
