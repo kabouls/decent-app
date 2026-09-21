@@ -52,7 +52,7 @@ function buildHtml({ title, description, image, url, jsonLd, bodyContent }) {
 <meta name="twitter:title" content="${escapeHtml(title)}">
 <meta name="twitter:description" content="${escapeHtml(description)}">
 <meta name="twitter:image" content="${escapeHtml(image)}">
-<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
+${(Array.isArray(jsonLd) ? jsonLd : [jsonLd]).map((block) => `<script type="application/ld+json">${JSON.stringify(block)}</script>`).join('\n')}
 </head>
 <body>${bodyContent || ''}</body>
 </html>`;
@@ -102,35 +102,79 @@ const CACHE_HEADERS = { 'Cache-Control': 'public, max-age=3600, s-maxage=3600' }
 // evaluate a page against search intent with.
 const TOOLS_META = {
   '': {
+    image: `${SITE_URL}/assets/tools-hub.png`,
     title: 'Free Tools for Designers & Job Seekers | DECENT',
     description: 'Free image compressor, QR code generator, image converter, PDF editor, and resume maker. No signup, no ads, no limits - everything runs on your device.',
     blurb: 'Five free tools that run entirely in your browser or the DECENT app: compress images to a target size, generate custom QR codes, convert between JPEG/PNG/WEBP, edit PDFs (merge, reorder, rotate, crop, compress), and build a resume as a PDF. No account, no upload to a server, no limits.',
   },
   'image-compressor': {
+    image: `${SITE_URL}/assets/tools-image-compressor.png`,
     title: 'Free Image Compressor - Shrink Photos to Any Size | DECENT Tools',
     description: 'Compress images to a target file size for free. No signup, no upload - runs entirely in your browser or the DECENT app.',
     blurb: 'Compress JPEG, PNG, or WEBP images down to a target file size in kilobytes - useful for application portals, email attachment limits, or anywhere with a strict upload cap. Processes entirely on your device; nothing is uploaded to a server.',
   },
   'qr-code-generator': {
+    image: `${SITE_URL}/assets/tools-qr-code-generator.png`,
     title: 'Free QR Code Generator - Customizable, No Signup | DECENT Tools',
     description: 'Generate QR codes for URLs, WiFi, contact cards, and more. Custom colors, logo, and export as PNG or SVG - completely free.',
     blurb: 'Generate a QR code for a URL, WiFi network, contact card (vCard), or plain text. Customize the color, dot style, and add a logo in the center, then export as PNG or SVG. Free, with no account required.',
   },
   'image-converter': {
+    image: `${SITE_URL}/assets/tools-image-converter.png`,
     title: 'Free Image Converter - JPEG, PNG, WEBP | DECENT Tools',
     description: 'Convert images between JPEG, PNG, and WEBP for free, in batches of up to 10. No signup, nothing uploaded anywhere.',
     blurb: 'Convert images between JPEG, PNG, and WEBP formats, up to 10 at a time. Runs entirely on your device - nothing is uploaded anywhere. Free, no account required.',
   },
   'pdf-editor': {
+    image: `${SITE_URL}/assets/tools-pdf-editor.png`,
     title: 'Free PDF Editor - Merge, Reorder, Rotate Pages | DECENT Tools',
     description: 'Merge PDFs and photos into one document, reorder pages, rotate, and delete - free, no signup, no software to install.',
     blurb: 'Merge multiple PDFs and photos into a single document, reorder and rotate pages, crop, delete, add page numbers, and compress the result to a target file size. Free, with no account or software install required.',
   },
   'resume-maker': {
+    image: `${SITE_URL}/assets/tools-resume-maker.png`,
     title: 'Free Resume Maker - Build & Export a Resume PDF | DECENT Tools',
     description: 'Build a resume with your experience, education, and skills, then export as a real PDF - free, no signup, no software to install.',
     blurb: 'Fill in your personal info, work experience, education, and skills, then export a clean, professional resume as a PDF. Optionally include a QR code linking to your DECENT portfolio. Free, with no account or software install required.',
   },
+};
+
+// FAQPage JSON-LD per tool - genuinely tool-specific questions, not the
+// same three answers reworded six times. Generic, near-identical FAQ
+// blocks across pages give search engines less unique signal per page
+// than the effort implies; these lean into what's actually different
+// about each tool instead.
+const TOOLS_FAQ = {
+  '': [
+    { q: 'Are these tools really free?', a: 'Yes, all five tools are completely free with no premium tier, no usage limits, and no ads.' },
+    { q: 'Do I need to create an account?', a: 'No account or signup is required for any tool.' },
+    { q: 'Is anything I upload sent to a server?', a: 'No. Every tool runs entirely on your own device - nothing you drop in is ever uploaded anywhere.' },
+  ],
+  'image-compressor': [
+    { q: 'Can I target an exact file size?', a: 'Yes - set a target size in kilobytes and the compressor works to hit it, useful for application portals or email attachment limits.' },
+    { q: 'What image formats are supported?', a: 'JPEG, PNG, and WEBP.' },
+    { q: 'Is my photo uploaded anywhere?', a: 'No - compression happens entirely on your device.' },
+  ],
+  'qr-code-generator': [
+    { q: 'What can I generate a QR code for?', a: 'URLs, WiFi networks, contact cards (vCard), and plain text.' },
+    { q: 'Can I customize how the QR code looks?', a: 'Yes - color, dot style, and an optional logo in the center.' },
+    { q: 'What formats can I export as?', a: 'PNG or SVG.' },
+  ],
+  'image-converter': [
+    { q: 'Which formats can I convert between?', a: 'JPEG, PNG, and WEBP, in any direction.' },
+    { q: 'How many images can I convert at once?', a: 'Up to 10 at a time, in a single batch.' },
+    { q: 'Are my images uploaded to a server?', a: 'No - conversion happens entirely on your device.' },
+  ],
+  'pdf-editor': [
+    { q: 'Can I combine multiple PDFs into one?', a: 'Yes - merge multiple PDFs and photos into a single document.' },
+    { q: 'Can I reorder or rotate individual pages?', a: 'Yes, along with cropping, deleting pages, and adding page numbers.' },
+    { q: 'Can I compress the final PDF?', a: 'Yes - compress the merged result down to a target file size.' },
+  ],
+  'resume-maker': [
+    { q: 'What sections can I include on my resume?', a: 'Personal info and photo, a summary, work experience, education, skills, links, and an optional QR code.' },
+    { q: 'Can I include a QR code linking to my portfolio?', a: 'Yes, if you\'re logged into DECENT - your portfolio QR code can be added directly to the resume.' },
+    { q: 'What format does it export as?', a: 'A real, downloadable PDF, sized to standard US Letter with automatic multi-page layout for longer resumes.' },
+  ],
 };
 
 async function supabaseGet(query) {
@@ -240,23 +284,42 @@ export default async function middleware(request) {
     const meta = TOOLS_META[slug];
     if (meta) {
       const pageUrl = canonicalUrl(path);
+      const faqs = TOOLS_FAQ[slug] || [];
+      // Google's FAQPage guidelines require the Q&A content to actually
+      // be visible on the page, not structured-data-only - rendering it
+      // in bodyContent here isn't just nicer for non-JS crawlers, it's
+      // what keeps the schema eligible for the rich result at all.
+      const faqHtml = faqs.length > 0
+        ? `<h2>Frequently Asked Questions</h2>${faqs.map((f) => `<h3>${escapeHtml(f.q)}</h3><p>${escapeHtml(f.a)}</p>`).join('')}`
+        : '';
       return new Response(
         buildHtml({
           title: meta.title,
           description: meta.description,
           image: meta.image || DEFAULT_META.image,
           url: pageUrl,
-          bodyContent: `<h1>${escapeHtml(meta.title.split(' | ')[0])}</h1><p>${escapeHtml(meta.blurb || meta.description)}</p>`,
-          jsonLd: {
-            '@context': 'https://schema.org',
-            '@type': 'WebApplication',
-            name: meta.title.split(' | ')[0],
-            description: meta.description,
-            url: pageUrl,
-            applicationCategory: 'UtilitiesApplication',
-            operatingSystem: 'Any', // commonly required for Google's rich-result eligibility for WebApplication/SoftwareApplication markup - correct data without this can still just never trigger the rich snippet
-            offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-          },
+          bodyContent: `<h1>${escapeHtml(meta.title.split(' | ')[0])}</h1><p>${escapeHtml(meta.blurb || meta.description)}</p>${faqHtml}`,
+          jsonLd: [
+            {
+              '@context': 'https://schema.org',
+              '@type': 'WebApplication',
+              name: meta.title.split(' | ')[0],
+              description: meta.description,
+              url: pageUrl,
+              applicationCategory: 'UtilitiesApplication',
+              operatingSystem: 'Any', // commonly required for Google's rich-result eligibility for WebApplication/SoftwareApplication markup - correct data without this can still just never trigger the rich snippet
+              offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+            },
+            ...(faqs.length > 0 ? [{
+              '@context': 'https://schema.org',
+              '@type': 'FAQPage',
+              mainEntity: faqs.map((f) => ({
+                '@type': 'Question',
+                name: f.q,
+                acceptedAnswer: { '@type': 'Answer', text: f.a },
+              })),
+            }] : []),
+          ],
         }),
         { headers: { 'content-type': 'text/html; charset=utf-8', ...CACHE_HEADERS } }
       );

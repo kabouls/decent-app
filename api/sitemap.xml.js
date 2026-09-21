@@ -28,15 +28,29 @@ export default async function handler() {
 
   // Keep this in sync with TOOLS_META's keys in middleware.js (and, one
   // level further back, TOOLS_ROUTE_SLUGS in App.js) - all three describe
-  // the same five URLs and have no shared source to stay in sync
+  // the same six URLs and have no shared source to stay in sync
   // automatically, so a new tool added to one needs adding to all three.
+  //
+  // lastmod is only set where a real change date is actually known -
+  // same principle as portfolios/profiles below (real date or omit
+  // entirely, never a fabricated one just to fill the field). Update
+  // the date here whenever a tool's actual content changes enough to
+  // matter for re-crawl priority, not on every unrelated deploy.
   const staticUrls = [
-    '', '/for-you', '/circle', '/search',
-    '/tools', '/tools/pdf-editor', '/tools/image-compressor', '/tools/image-converter', '/tools/qr-code-generator', '/tools/resume-maker'
+    { path: '' },
+    { path: '/for-you' },
+    { path: '/circle' },
+    { path: '/search' },
+    { path: '/tools', lastmod: '2026-09-21' },
+    { path: '/tools/pdf-editor', lastmod: '2026-09-21' },
+    { path: '/tools/image-compressor' },
+    { path: '/tools/image-converter' },
+    { path: '/tools/qr-code-generator', lastmod: '2026-09-21' },
+    { path: '/tools/resume-maker', lastmod: '2026-09-21' }
   ];
 
   const urls = [
-    ...staticUrls.map((p) => `  <url><loc>${SITE_URL}${p}</loc></url>`),
+    ...staticUrls.map(({ path, lastmod }) => `  <url><loc>${SITE_URL}${path}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}</url>`),
     ...portfolios.map(
       (p) => `  <url><loc>${SITE_URL}/p/${p.id}</loc>${p.created_at ? `<lastmod>${p.created_at.split('T')[0]}</lastmod>` : ''}</url>`
     ),
