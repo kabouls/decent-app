@@ -159,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 788;
+const BUILD_NUMBER = 790;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -530,6 +530,20 @@ const UI_UX_SOFTWARE_LIST = [
   { name: 'Framer', color: '#0055FF', icon: require('./assets/software-icons/framer.png'), needsLightBg: true },
   { name: 'Sketch', color: '#F7B500', icon: require('./assets/software-icons/sketch.png') },
   { name: 'InVision', color: '#FF3366', icon: require('./assets/software-icons/invision.png'), needsLightBg: true }
+];
+
+// Resume Maker's Skills step common-suggestion chips - reuses the two
+// software lists above directly (same names already established
+// elsewhere in this app for this exact audience) rather than inventing
+// a parallel list, plus a small set of design skill categories that
+// aren't software at all, since a resume's skills section usually mixes
+// both.
+const RESUME_COMMON_SKILLS = [
+  ...UI_UX_SOFTWARE_LIST.map((s) => s.name),
+  ...ILLUSTRATION_SOFTWARE_LIST.map((s) => s.name),
+  'UI Design', 'UX Design', 'Prototyping', 'Wireframing', 'User Research',
+  'Usability Testing', 'Interaction Design', 'Visual Design', 'Design Systems',
+  'Typography', 'Branding & Identity', 'Illustration', 'Motion Design'
 ];
 
 // b562: explanatory content for the "!" info button next to each UI/UX
@@ -7566,6 +7580,13 @@ function App() {
     qrImageUri: null, qrSource: null // qrSource: 'upload' | 'generated' | 'decent' - which of the 3 options produced qrImageUri, shown back to the user when they revisit this step
   });
   const updateResumeField = (key, value) => setResumeData((prev) => ({ ...prev, [key]: value }));
+  // allowsEditing/aspect (the crop step below) only works on Android/iOS
+  // - confirmed via Expo's own docs, which scope that behavior to those
+  // two platforms specifically. Silently ignored on web: the picker just
+  // returns the raw file at its original dimensions, no crop UI at all.
+  // openWebCrop (already built for this exact gap elsewhere in this
+  // file) closes it - same drag/zoom/confirm crop modal, same square
+  // aspect ratio, just invoked here instead of skipped.
   const pickResumePhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -7578,7 +7599,11 @@ function App() {
       aspect: [1, 1],
       quality: 0.8
     });
-    if (!result.canceled && result.assets && result.assets.length > 0) {
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+    if (Platform.OS === 'web') {
+      const croppedUri = await openWebCrop(result.assets[0].uri, [1, 1]);
+      if (croppedUri) updateResumeField('photoUri', croppedUri);
+    } else {
       updateResumeField('photoUri', result.assets[0].uri);
     }
   };
@@ -7798,6 +7823,17 @@ function App() {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
+  // Shared by both the page <title> (which browsers use as the
+  // suggested filename when saving as PDF on web) and the actual saved
+  // file's name on native. Strips characters that are genuinely invalid
+  // across common filesystems - not just cosmetic, an unstripped "/" or
+  // ":" would break FileSystem.copyAsync outright on native.
+  const buildResumeFilename = (data) => {
+    const namePart = (data.name || 'Resume').trim();
+    const raw = `resume (${namePart}) decent tools resume maker`;
+    return raw.replace(/[/\\:*?"<>|]/g, '');
+  };
+
   // Precise match to a reference resume PDF - black and white
   // throughout except the user's own photo (which keeps its natural
   // colors), matching the reference's black name-bar header, bold
@@ -7884,6 +7920,7 @@ function App() {
       <html>
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>${escapeResumeHtml(buildResumeFilename(data))}</title>
           <style>
             /* US Letter, matching PDF Editor's own blank-page convention
                elsewhere in this app - the margin here IS the page's
@@ -7896,13 +7933,13 @@ function App() {
         </head>
         <body style="font-family: Helvetica, Arial, sans-serif; color: #111;">
           <div style="display: flex; align-items: stretch; gap: 16px;">
-            ${data.photoUri ? `<img src="${data.photoUri}" style="width: 90px; height: 100%; object-fit: cover; border: 1.5px solid #000;" />` : ''}
+            ${data.photoUri ? `<img src="${data.photoUri}" style="width: 90px; align-self: stretch; object-fit: cover; border: 1.5px solid #000;" />` : ''}
             <div style="flex: 1;">
               <div style="font-size: 26px; font-weight: 800; letter-spacing: 0.5px; color: #000;">${(e(data.name) || 'YOUR NAME').toUpperCase()}</div>
               ${data.title ? `<div style="font-size: 13px; font-weight: 700; text-transform: uppercase; margin-top: 10px;">${e(data.title)}</div>` : ''}
               ${contactLine ? `<div style="font-size: 11px; color: #555; margin-top: 4px;">${contactLine}</div>` : ''}
             </div>
-            ${data.qrImageUri ? `<img src="${data.qrImageUri}" style="width: 76px; height: 100%; object-fit: contain;" />` : ''}
+            ${data.qrImageUri ? `<img src="${data.qrImageUri}" style="width: 76px; align-self: stretch; object-fit: contain;" />` : ''}
           </div>
 
           ${data.summary ? `${sectionHeader('Summary')}<div style="font-size: 12px; color: #222; line-height: 1.6;">${e(data.summary)}</div>` : ''}
@@ -7957,10 +7994,18 @@ function App() {
       } else {
         const PrintModule = require('expo-print');
         const { uri } = await PrintModule.printToFileAsync({ html });
+        // printToFileAsync names the file itself (a generated cache
+        // path), which is what the share sheet would otherwise suggest
+        // as the saved filename - copy it to a properly-named path
+        // first so the actual save uses the same naming convention as
+        // web's <title>-derived suggestion, not an arbitrary temp name.
+        const filename = `${buildResumeFilename(resumeData)}.pdf`;
+        const namedUri = `${FileSystem.cacheDirectory}${filename}`;
+        await FileSystem.copyAsync({ from: uri, to: namedUri });
         const Sharing = require('expo-sharing');
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
-          await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Save Resume' });
+          await Sharing.shareAsync(namedUri, { mimeType: 'application/pdf', dialogTitle: 'Save Resume' });
         } else {
           showToast('Sharing is not available on this device.');
         }
@@ -22600,26 +22645,71 @@ function App() {
                     <View style={{ gap: 24 }}>
                       <View style={{ gap: 10 }}>
                         <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>Skills</Text>
+                        {resumeData.skills.length > 0 && (
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                            {resumeData.skills.map((skill) => (
+                              <View key={skill} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 99, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}>
+                                <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '600' }}>{skill}</Text>
+                                <BouncyButton onPress={() => removeResumeSkill(skill)} accessibilityRole="button" accessibilityLabel={`Remove ${skill}`}>
+                                  <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>✕</Text>
+                                </BouncyButton>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+
+                        {/* Tap-to-add common skills - reuses the same
+                            software names already established elsewhere
+                            in this app for this exact audience
+                            (RESUME_COMMON_SKILLS), plus a small set of
+                            design skill categories. Adding one is a
+                            single tap, no typing or Enter key involved
+                            at all - the free-text field below is only
+                            for anything not already covered here. */}
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11.5, fontWeight: '600' }}>TAP TO ADD</Text>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                          {resumeData.skills.map((skill) => (
-                            <View key={skill} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 99, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border }}>
-                              <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>{skill}</Text>
-                              <BouncyButton onPress={() => removeResumeSkill(skill)} accessibilityRole="button" accessibilityLabel={`Remove ${skill}`}>
-                                <Text style={{ color: toolsTheme.textSecondary, fontSize: 13, fontWeight: '700' }}>✕</Text>
-                              </BouncyButton>
-                            </View>
+                          {RESUME_COMMON_SKILLS.filter((s) => !resumeData.skills.includes(s)).map((skill) => (
+                            <BouncyButton
+                              key={skill}
+                              style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
+                              onPress={() => addResumeSkill(skill)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Add ${skill}`}
+                            >
+                              <Text style={{ color: toolsTheme.text, fontSize: 12, fontWeight: '600' }}>+ {skill}</Text>
+                            </BouncyButton>
                           ))}
                         </View>
-                        <FocusableTextInput
-                          style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
-                          placeholder="Type a skill and press enter (e.g. Figma)"
-                          placeholderTextColor={toolsTheme.textSecondary}
-                          value={resumeSkillInput}
-                          onChangeText={setResumeSkillInput}
-                          onSubmitEditing={() => { addResumeSkill(resumeSkillInput); setResumeSkillInput(''); }}
-                          returnKeyType="done"
-                          blurOnSubmit={false}
-                        />
+
+                        {/* Custom entry - a visible Add button alongside
+                            the field, not just Enter-to-submit. Typing
+                            here with no visible confirmation of what
+                            counts as "added" is exactly what caused
+                            confusion earlier - text sitting in the
+                            input isn't a skill yet until one of these
+                            two things actually fires. */}
+                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11.5, fontWeight: '600', marginTop: 4 }}>OR ADD YOUR OWN</Text>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <FocusableTextInput
+                            style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
+                            placeholder="Custom skill"
+                            placeholderTextColor={toolsTheme.textSecondary}
+                            value={resumeSkillInput}
+                            onChangeText={setResumeSkillInput}
+                            onSubmitEditing={() => { addResumeSkill(resumeSkillInput); setResumeSkillInput(''); }}
+                            returnKeyType="done"
+                            blurOnSubmit={false}
+                          />
+                          <BouncyButton
+                            style={{ paddingHorizontal: 18, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: resumeSkillInput.trim() ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border }}
+                            onPress={() => { addResumeSkill(resumeSkillInput); setResumeSkillInput(''); }}
+                            disabled={!resumeSkillInput.trim()}
+                            accessibilityRole="button"
+                            accessibilityLabel="Add skill"
+                          >
+                            <Text style={{ color: '#FFFFFF', fontSize: 20, fontWeight: '700' }}>+</Text>
+                          </BouncyButton>
+                        </View>
                       </View>
 
                       <View style={{ gap: 10 }}>
@@ -22729,7 +22819,7 @@ function App() {
 
                       <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>
                         {Platform.OS === 'web'
-                          ? 'Exporting opens your browser\'s print dialog - choose "Save as PDF" there.'
+                          ? 'Exporting opens your browser\'s print dialog - choose "Save as PDF" there. To remove the browser\'s own header/footer (URL, date, page number), open "More settings" in that dialog and turn off "Headers and footers".'
                           : 'Exporting generates a PDF you can save or share.'}
                       </Text>
 
