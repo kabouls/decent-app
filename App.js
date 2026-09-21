@@ -159,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 787;
+const BUILD_NUMBER = 788;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -7865,7 +7865,7 @@ function App() {
     `;
 
     const skillsHtml = data.skills.length > 0
-      ? `<ul style="margin: 0; padding-left: 18px; columns: 2;">${data.skills.map((s) => `<li style="font-size: 12px; margin-bottom: 4px;">${e(s)}</li>`).join('')}</ul>`
+      ? `<ul style="margin: 0; padding-left: 18px;">${data.skills.map((s) => `<li style="font-size: 12px; margin-bottom: 4px;">${e(s)}</li>`).join('')}</ul>`
       : '';
     const links = [
       data.links.website ? { label: 'Website', value: data.links.website } : null,
@@ -7873,6 +7873,12 @@ function App() {
       data.links.github ? { label: 'GitHub', value: data.links.github } : null
     ].filter(Boolean);
     const linksHtml = links.map((l) => `<div style="font-size: 12px; margin-bottom: 4px;"><strong>${e(l.label)}:</strong> ${e(l.value)}</div>`).join('');
+    // Links and Skills share one section, side by side (Links left,
+    // Skills right) rather than each being its own full-width block -
+    // small bold mini-labels head each column since the shared section
+    // header above them just says "Links & Skills", not either one
+    // individually.
+    const miniLabel = (label) => `<div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #555; margin-bottom: 6px;">${label}</div>`;
 
     return `
       <html>
@@ -7889,16 +7895,14 @@ function App() {
           </style>
         </head>
         <body style="font-family: Helvetica, Arial, sans-serif; color: #111;">
-          <div style="display: flex; align-items: flex-start; gap: 16px;">
-            ${data.photoUri ? `<img src="${data.photoUri}" style="width: 90px; height: 90px; object-fit: cover; border: 1.5px solid #000;" />` : ''}
+          <div style="display: flex; align-items: stretch; gap: 16px;">
+            ${data.photoUri ? `<img src="${data.photoUri}" style="width: 90px; height: 100%; object-fit: cover; border: 1.5px solid #000;" />` : ''}
             <div style="flex: 1;">
-              <div style="background: #000; padding: 16px 20px;">
-                <div style="color: #fff; font-size: 26px; font-weight: 800; letter-spacing: 0.5px;">${(e(data.name) || 'YOUR NAME').toUpperCase()}</div>
-              </div>
+              <div style="font-size: 26px; font-weight: 800; letter-spacing: 0.5px; color: #000;">${(e(data.name) || 'YOUR NAME').toUpperCase()}</div>
               ${data.title ? `<div style="font-size: 13px; font-weight: 700; text-transform: uppercase; margin-top: 10px;">${e(data.title)}</div>` : ''}
               ${contactLine ? `<div style="font-size: 11px; color: #555; margin-top: 4px;">${contactLine}</div>` : ''}
             </div>
-            ${data.qrImageUri ? `<img src="${data.qrImageUri}" style="width: 76px; height: 76px;" />` : ''}
+            ${data.qrImageUri ? `<img src="${data.qrImageUri}" style="width: 76px; height: 100%; object-fit: contain;" />` : ''}
           </div>
 
           ${data.summary ? `${sectionHeader('Summary')}<div style="font-size: 12px; color: #222; line-height: 1.6;">${e(data.summary)}</div>` : ''}
@@ -7907,9 +7911,7 @@ function App() {
 
           ${data.experience.length > 0 ? `${sectionHeader('Professional Experience')}${twoColSection(featuredExp ? renderFeaturedExp(featuredExp) : '', restExp.map(renderCompactExp))}` : ''}
 
-          ${data.skills.length > 0 ? `${sectionHeader('Skills')}${skillsHtml}` : ''}
-
-          ${links.length > 0 ? `${sectionHeader('Links')}${linksHtml}` : ''}
+          ${(links.length > 0 || data.skills.length > 0) ? `${sectionHeader('Links & Skills')}${twoColSection(links.length > 0 ? miniLabel('Links') + linksHtml : '', data.skills.length > 0 ? [miniLabel('Skills') + skillsHtml] : [])}` : ''}
         </body>
       </html>
     `;
