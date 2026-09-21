@@ -159,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 790;
+const BUILD_NUMBER = 791;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -8793,6 +8793,14 @@ function App() {
     if (activeTool === 'imageCompressor') return compressorFiles.length > 0;
     if (activeTool === 'imageConverter') return converterFiles.length > 0;
     if (activeTool === 'pdfEditor') return pdfContainers.length > 0;
+    if (activeTool === 'qrGenerator') return currentQrValue().trim().length > 0;
+    if (activeTool === 'resumeMaker') return (
+      !!resumeData.name || !!resumeData.title || !!resumeData.email || !!resumeData.phone ||
+      !!resumeData.location || !!resumeData.summary || !!resumeData.photoUri ||
+      resumeData.experience.length > 0 || resumeData.education.length > 0 || resumeData.skills.length > 0 ||
+      !!resumeData.links.website || !!resumeData.links.linkedin || !!resumeData.links.github ||
+      !!resumeData.qrImageUri
+    );
     return false;
   };
 
