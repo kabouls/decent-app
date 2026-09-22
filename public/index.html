@@ -6,6 +6,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
     <title>%WEB_TITLE%</title>
 
+    <!-- Starts the DNS lookup + TLS handshake to Supabase immediately,
+         in parallel with the JS bundle downloading - rather than
+         waiting until the bundle finishes loading AND executing its
+         first request before that handshake even begins. This is pure
+         serial latency being removed (50-200ms+ depending on the
+         visitor's location), not a change to any application logic -
+         worst case if this origin is ever unused on a given page, it's
+         a no-op, not a regression. Fonts are already self-hosted
+         (bundled locally, confirmed via the actual export output - no
+         Google Fonts CDN request happens at runtime), so Supabase is
+         the one external origin actually worth this here. -->
+    <link rel="preconnect" href="https://kqjdqidwzegbtysarksa.supabase.co" />
+    <link rel="dns-prefetch" href="https://kqjdqidwzegbtysarksa.supabase.co" />
+
     <!-- Real, crawlable description - this is what search engines and
          automated reviewers (including Google's OAuth verification
          crawler) see even if they don't execute JavaScript. -->
