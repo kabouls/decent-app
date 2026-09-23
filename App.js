@@ -159,7 +159,7 @@ const DECENT_APP_DOMAIN = 'https://www.decent.ink';
 // "did the latest code actually reach this device", no functional meaning
 // beyond that, safe to increment freely on every edit.
 const APP_VERSION = '0.3.0';
-const BUILD_NUMBER = 792;
+const BUILD_NUMBER = 793;
 // Explicit column list for reading profiles - excludes push_token, which
 // anon/authenticated no longer have SELECT on at the DB level (b562:
 // column-level grant lockdown, see get_my_push_token() RPC for the one
@@ -13630,7 +13630,7 @@ function App() {
     // generateNativePdfThumbnails doesn't have a per-page callback.
     if (!isImage) {
       if (originalSize > 15 * 1024 * 1024) {
-        showToast('Large file - this may take a moment to process.');
+        showToast('Large file - keep this tab focused while it processes, or it may pause until you return to it.');
       }
       if (Platform.OS === 'web') {
         // Large documents (100+ pages) get a lower rail-thumbnail scale -
@@ -14163,6 +14163,19 @@ function App() {
     setPdfCompressProgress(null);
     pdfOperationCancelledRef.current = false;
     triggerHaptic('light');
+    // Same underlying issue as the large-file upload notice - compress
+    // rasterizes and re-encodes every page in sequence, which is
+    // subject to the exact same background-tab throttling. Page count
+    // (not file size) is the right proxy here specifically, since
+    // compress's actual cost scales with pages regardless of how large
+    // or small the original file happens to be.
+    const totalPagesBeingCompressed = targets.reduce((sum, cid) => {
+      const c = pdfContainers.find((x) => x.id === cid);
+      return sum + (c ? c.pages.length : 0);
+    }, 0);
+    if (totalPagesBeingCompressed > 20) {
+      showToast('Compressing a lot of pages - keep this tab focused, or it may pause until you return to it.');
+    }
     try {
       const updates = {};
       const noImprovementNames = [];
