@@ -110,16 +110,62 @@ const tick = () => (typeof document !== 'undefined' && document.hidden) ? Promis
 // node_modules/pdfjs-dist/build/pdf.worker.min.mjs to stay in sync -
 // mismatched versions between the library and its worker script is a
 // real, silent failure mode, not just a version-string mismatch.
-export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber = null, onPageReady = null) => {
+// workerSrc below points at a same-origin, self-hosted copy of pdfjs-
+// dist's worker script (public/pdf.worker.min.mjs), not an external CDN.
+// This was already fixed once - documented as b750, specifically to
+// remove exactly this dependency and the indefinite-hang risk that
+// comes with it - but the actual file was genuinely missing from
+// public/ (confirmed directly, not assumed), meaning every single PDF
+// load was silently fetching the worker fresh from unpkg.com on every
+// single load: a full external network round-trip (DNS + TLS +
+// download from a third party) on every upload, that a same-origin,
+// browser-cacheable local file entirely removes. This is very likely
+// the single biggest available speedup for PDF loading - not a new
+// optimization, a regression back to the exact problem already solved
+// once. If pdfjs-dist is ever upgraded, this file needs re-copying from
+// node_modules/pdfjs-dist/build/pdf.worker.min.mjs to stay in sync -
+// mismatched versions between the library and its worker script is a
+// real, silent failure mode, not just a version-string mismatch.
+//
+// documentCache/clearPdfDocumentCache below were entirely missing from
+// this file - confirmed directly against the very first upload of this
+// project this session, not something introduced tonight. App.js's own
+// code was written assuming both existed (three call sites pass a 5th
+// cacheKey argument this function never had a parameter for at all, and
+// two call sites call clearPdfDocumentCache directly), meaning: the
+// document-caching optimization this was clearly designed to provide
+// (reuse an already-parsed PDF across multiple page views instead of
+// re-fetching and re-parsing the whole file every single time) has been
+// silently doing nothing all session, AND clearPdfDocumentCache being
+// genuinely undefined crashed the live site outright the moment
+// anything actually called it (App.js's resetPdfHighResCaches, on every
+// PDF container switch). Both are real, not cosmetic - the missing
+// cache is a genuine, likely large performance gap for anyone paging
+// through a multi-page PDF's high-res preview; the missing function is
+// what was actively crashing production.
+const documentCache = {};
+
+export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber = null, onPageReady = null, cacheKey = null) => {
   let pdf = null;
+  let fromCache = false;
   try {
     const pdfjsLib = await import('pdfjs-dist');
     pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-    const isBytes = source instanceof Uint8Array || (typeof ArrayBuffer !== 'undefined' && source instanceof ArrayBuffer);
-    const loadPromise = isBytes
-      ? pdfjsLib.getDocument({ data: source }).promise
-      : pdfjsLib.getDocument({ url: source }).promise;
-    pdf = await withTimeout(loadPromise, 'PDF document load');
+
+    if (cacheKey && documentCache[cacheKey]) {
+      // Reuse the already-parsed document instead of re-fetching and
+      // re-parsing the same file from scratch - this is the entire
+      // point of cacheKey existing as a parameter at all.
+      pdf = documentCache[cacheKey];
+      fromCache = true;
+    } else {
+      const isBytes = source instanceof Uint8Array || (typeof ArrayBuffer !== 'undefined' && source instanceof ArrayBuffer);
+      const loadPromise = isBytes
+        ? pdfjsLib.getDocument({ data: source }).promise
+        : pdfjsLib.getDocument({ url: source }).promise;
+      pdf = await withTimeout(loadPromise, 'PDF document load');
+      if (cacheKey) documentCache[cacheKey] = pdf; // caller is responsible for calling clearPdfDocumentCache(cacheKey) once done with this batch - see the two real call sites in App.js
+    }
 
     const renderOnePage = async (num) => {
       const page = await withTimeout(pdf.getPage(num), `Page ${num} fetch`);
@@ -165,10 +211,35 @@ export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber =
     console.warn('Web PDF thumbnail generation failed:', e);
     return null;
   } finally {
-    if (pdf) {
+    // Never destroy a document that's either freshly cached or was
+    // reused FROM the cache - it needs to stay alive and parseable for
+    // whatever the next call with the same cacheKey does. Only
+    // destroyed when clearPdfDocumentCache actually removes it from the
+    // cache below. Uncached calls (cacheKey null/undefined) keep the
+    // original behavior exactly - destroy immediately, since nothing
+    // else will ever reuse that instance.
+    if (pdf && !cacheKey && !fromCache) {
       try { pdf.destroy(); } catch (e) { /* best-effort cleanup, nothing to do if this itself fails */ }
     }
   }
+};
+
+// cacheKey provided: clears and destroys just that one cached document
+// (used after finishing a specific batch - see App.js's
+// handleExportPdfAsImages). No cacheKey: clears every cached document
+// (used on a full container switch - see App.js's
+// resetPdfHighResCaches, which calls this unconditionally on every PDF
+// Editor container change). Both calling conventions are real, existing
+// call sites in App.js, not hypothetical.
+export const clearPdfDocumentCache = (cacheKey = null) => {
+  const keysToClear = cacheKey ? [cacheKey] : Object.keys(documentCache);
+  keysToClear.forEach((key) => {
+    const cached = documentCache[key];
+    if (cached) {
+      try { cached.destroy(); } catch (e) { /* best-effort cleanup, nothing to do if this itself fails */ }
+      delete documentCache[key];
+    }
+  });
 };
 
 export const generateNativePdfThumbnails = async () => null;
