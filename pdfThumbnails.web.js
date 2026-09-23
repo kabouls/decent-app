@@ -82,92 +82,37 @@ const withTimeout = (promise, label) => Promise.race([
   new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), PDF_RENDER_TIMEOUT_MS))
 ]);
 
-const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+// Same fix as App.js's yieldToBrowser (b767) - setTimeout gets throttled
+// to a minimum of ~1 second per call in backgrounded browser tabs, a
+// real, well-documented power-saving behavior, not a bug in this code
+// specifically. That fix only ever touched yieldToBrowser in App.js
+// though - this file has its own, separate tick() function for the
+// exact same purpose (yielding once per page during thumbnail
+// generation while a PDF loads), and never got the same fix. On a
+// large document, one ~1s stall per page compounds into exactly the
+// "barely moves when the tab isn't focused" symptom this was reported
+// as - not a new bug, the same one living in a second, un-fixed place.
+const tick = () => (typeof document !== 'undefined' && document.hidden) ? Promise.resolve() : new Promise((resolve) => setTimeout(resolve, 0));
 
-// Hard ceiling on either canvas side, in pixels. Most pages (Letter, A4,
-// etc.) never get near this and render at the exact requested scale,
-// unaffected. It only kicks in for genuinely oversized pages - the most
-// common real case being a full website screenshot saved as ONE very
-// tall PDF page - where a flat scale multiplier would otherwise produce
-// a canvas several thousand pixels tall packed with many embedded
-// images, which is real, synchronous browser work and the actual likely
-// cause of "opening a page lags the whole browser," not the scale
-// number itself on a normal page. Chosen as a generous ceiling: still
-// sharp on any realistic screen, just stops truly pathological pages
-// from ballooning unbounded.
-const MAX_RENDER_DIMENSION = 3000;
-
-// Keeps a parsed pdfjs document alive across multiple single-page renders
-// of the SAME source, keyed by a caller-supplied cacheKey. Before this,
-// the fullscreen high-res viewer called getDocument() + .destroy() on
-// every single page open - flipping from page 4 to page 5 of the same
-// PDF re-fetched the file over the network and re-parsed the entire
-// document from scratch just to render one different page out of it.
-// With a cacheKey, that fetch+parse happens once per source, and every
-// later page in that same session just calls .getPage() on the doc
-// that's already sitting in memory. Callers that pass no cacheKey (the
-// full-document rail-thumbnail loop) keep the old behavior exactly -
-// they already walk every page in one pass and destroy the doc when done.
-const pdfDocumentCache = new Map();
-
-export const clearPdfDocumentCache = (cacheKey = null) => {
-  if (cacheKey === null) {
-    for (const pdf of pdfDocumentCache.values()) {
-      try { pdf.destroy(); } catch (e) { /* best-effort cleanup */ }
-    }
-    pdfDocumentCache.clear();
-    return;
-  }
-  const pdf = pdfDocumentCache.get(cacheKey);
-  if (pdf) {
-    try { pdf.destroy(); } catch (e) { /* best-effort cleanup */ }
-    pdfDocumentCache.delete(cacheKey);
-  }
-};
-
-export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber = null, onPageReady = null, cacheKey = null) => {
-  let pdf = cacheKey ? pdfDocumentCache.get(cacheKey) : null;
+export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber = null, onPageReady = null) => {
+  let pdf = null;
   try {
     const pdfjsLib = await import('pdfjs-dist');
-    // Self-hosted, not unpkg.com. Was fetched fresh from an external CDN
-    // on every first-load - a genuine third-party dependency AND the
-    // actual root cause the 20s withTimeout above exists to guard
-    // against (an unreachable/blocked/stalled CDN request that never
-    // settles). The file at /pdf.worker.min.mjs is copied from this
-    // exact installed pdfjs-dist version - if pdfjs-dist is ever
-    // upgraded, this file must be re-copied from the new
-    // node_modules/pdfjs-dist/build/pdf.worker.min.mjs to match, or the
-    // API/worker version mismatch will break PDF rendering entirely.
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-    if (!pdf) {
-      const isBytes = source instanceof Uint8Array || (typeof ArrayBuffer !== 'undefined' && source instanceof ArrayBuffer);
-      const loadPromise = isBytes
-        ? pdfjsLib.getDocument({ data: source }).promise
-        : pdfjsLib.getDocument({ url: source }).promise;
-      pdf = await withTimeout(loadPromise, 'PDF document load');
-      if (cacheKey) pdfDocumentCache.set(cacheKey, pdf);
-    }
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+    const isBytes = source instanceof Uint8Array || (typeof ArrayBuffer !== 'undefined' && source instanceof ArrayBuffer);
+    const loadPromise = isBytes
+      ? pdfjsLib.getDocument({ data: source }).promise
+      : pdfjsLib.getDocument({ url: source }).promise;
+    pdf = await withTimeout(loadPromise, 'PDF document load');
 
     const renderOnePage = async (num) => {
       const page = await withTimeout(pdf.getPage(num), `Page ${num} fetch`);
-      const baseViewport = page.getViewport({ scale });
-      const longestSide = Math.max(baseViewport.width, baseViewport.height);
-      // Only recompute (and re-call getViewport) when actually over the
-      // cap - keeps the normal-page path exactly as cheap as before.
-      const viewport = longestSide > MAX_RENDER_DIMENSION
-        ? page.getViewport({ scale: scale * (MAX_RENDER_DIMENSION / longestSide) })
-        : baseViewport;
+      const viewport = page.getViewport({ scale });
       const canvas = document.createElement('canvas');
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       await withTimeout(page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise, `Page ${num} render`);
-      // 0.6, not the original 0.7 - shared by both the rail-thumbnail loop
-      // (scale 0.3, where this barely matters) and the high-res single-
-      // page render (scale 2.5, where a smaller/faster JPEG encode is a
-      // real, if modest, win). Difference is close to imperceptible on
-      // photo-heavy pages, more visible on dense text - worth watching
-      // for complaints specifically on text-heavy documents.
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
       page.cleanup();
       return dataUrl;
     };
@@ -202,16 +147,9 @@ export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber =
     return thumbnails;
   } catch (e) {
     console.warn('Web PDF thumbnail generation failed:', e);
-    if (cacheKey) clearPdfDocumentCache(cacheKey); // a doc that failed mid-load/render isn't safe to keep cached and reuse next time
     return null;
   } finally {
-    // A cached doc is intentionally NOT destroyed here - it's kept alive
-    // in pdfDocumentCache for the next page render with the same
-    // cacheKey, and only destroyed when the caller explicitly calls
-    // clearPdfDocumentCache (App.js does this when the active PDF
-    // container changes, same place it already resets the high-res
-    // image cache).
-    if (pdf && !cacheKey) {
+    if (pdf) {
       try { pdf.destroy(); } catch (e) { /* best-effort cleanup, nothing to do if this itself fails */ }
     }
   }
