@@ -60,18 +60,18 @@
 //    "stuck" and "loading."
 //
 // 5. A hard timeout around every await that can hang indefinitely. This
-//    is the actual fix for "stuck on Sharpening forever" - workerSrc
-//    above points at unpkg.com, an external CDN fetched fresh on every
-//    call with zero timeout of its own. If that fetch ever stalls (slow
-//    network, an ad-blocker or corporate firewall blocking unpkg, a
-//    brief offline moment), pdfjsLib.getDocument(...).promise simply
-//    never settles - not rejects, never resolves either - which means
-//    every .then() in App.js that would clear a loading spinner never
-//    fires, forever, regardless of how well-written that calling code
-//    is. No amount of try/catch on the CALLER's side can fix a promise
-//    that never settles; the guard has to live here, at the actual
-//    unbounded operation. withTimeout can't cancel the underlying
-//    fetch/worker call once started (there's no plumbed-through
+//    was originally written as the fix for "stuck on Sharpening forever"
+//    while workerSrc pointed at unpkg.com - now that the worker is
+//    self-hosted (same-origin, no external fetch at all), that specific
+//    failure mode is gone, but this guard is kept regardless as real
+//    defense-in-depth: pdfjsLib.getDocument(...).promise and page
+//    render/getPage calls can still hang for other reasons (a
+//    genuinely malformed PDF, a browser-specific pdf.js edge case), and
+//    a promise that never settles means every .then() in App.js that
+//    would clear a loading spinner never fires, forever - no amount of
+//    try/catch on the CALLER's side can fix that; the guard has to live
+//    here, at the actual unbounded operation. withTimeout can't cancel
+//    the underlying call once started (there's no plumbed-through
 //    AbortController for this), so a timeout means the abandoned
 //    operation keeps running invisibly in the background rather than
 //    truly stopping - but the caller gets an honest failure back
@@ -94,11 +94,27 @@ const withTimeout = (promise, label) => Promise.race([
 // as - not a new bug, the same one living in a second, un-fixed place.
 const tick = () => (typeof document !== 'undefined' && document.hidden) ? Promise.resolve() : new Promise((resolve) => setTimeout(resolve, 0));
 
+// workerSrc below points at a same-origin, self-hosted copy of pdfjs-
+// dist's worker script (public/pdf.worker.min.mjs), not an external CDN.
+// This was already fixed once - documented as b750, specifically to
+// remove exactly this dependency and the indefinite-hang risk that
+// comes with it - but the actual file was genuinely missing from
+// public/ (confirmed directly, not assumed), meaning every single PDF
+// load was silently fetching the worker fresh from unpkg.com on every
+// single load: a full external network round-trip (DNS + TLS +
+// download from a third party) on every upload, that a same-origin,
+// browser-cacheable local file entirely removes. This is very likely
+// the single biggest available speedup for PDF loading - not a new
+// optimization, a regression back to the exact problem already solved
+// once. If pdfjs-dist is ever upgraded, this file needs re-copying from
+// node_modules/pdfjs-dist/build/pdf.worker.min.mjs to stay in sync -
+// mismatched versions between the library and its worker script is a
+// real, silent failure mode, not just a version-string mismatch.
 export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber = null, onPageReady = null) => {
   let pdf = null;
   try {
     const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
     const isBytes = source instanceof Uint8Array || (typeof ArrayBuffer !== 'undefined' && source instanceof ArrayBuffer);
     const loadPromise = isBytes
       ? pdfjsLib.getDocument({ data: source }).promise
@@ -112,7 +128,7 @@ export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber =
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       await withTimeout(page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise, `Page ${num} render`);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
       page.cleanup();
       return dataUrl;
     };
