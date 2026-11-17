@@ -45,3 +45,5 @@ backup/
 
 # TypeScript
 *.tsbuildinfo
+.vercel
+.env*
