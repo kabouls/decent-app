@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import AboutModal from './src/screens/AboutModal.js';
 import * as Sentry from '@sentry/react-native';
 
 // Crash reporting - confirmed working on a real build. Only reports in
@@ -35,13 +36,14 @@ import {
   AppState,
   Keyboard,
   Share,
-  Appearance,
   BackHandler,
-  Easing,
-  AccessibilityInfo
+  Easing
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
-import { useFonts, Inter_300Light, Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
+import { useFonts } from '@expo-google-fonts/inter/useFonts';
+import { Inter_300Light } from '@expo-google-fonts/inter/300Light';
+import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular';
+import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
 import { WebView as NativeWebView } from 'react-native-webview';
 import { KeyboardAwareScrollView as NativeKeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import Svg, { Rect, Path, Circle, G, Defs, LinearGradient, Stop, Image as SvgImage } from 'react-native-svg';
@@ -66,6 +68,22 @@ import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
 import * as ExpoLinking from 'expo-linking';
 import * as MediaLibrary from 'expo-media-library';
+import { THEME_DARK, THEME_LIGHT, useTheme, ThemeProvider } from './src/theme.js';
+import { useReduceMotion, ReduceMotionProvider } from './src/ui/motion.js';
+import { BouncyButton, AnimatedTouchableOpacity } from './src/ui/BouncyButton.js';
+import { useHideScrollbarOnWeb, hideScrollbarRefCallback } from './src/ui/scroll.js';
+import { ChevronLeftSVG, CrossIconSVG, CheckIconSVG, LockIconSVG, DownloadIconSVG, EyeViewIconSVG, GlobeIconSVG, LocationPinSVG, WarningTriangleSVG } from './src/ui/icons.js';
+import ChangelogModal from './src/screens/ChangelogModal.js';
+import PrivacyModal from './src/screens/PrivacyModal.js';
+import TermsModal from './src/screens/TermsModal.js';
+import FeedbackModal from './src/screens/FeedbackModal.js';
+import FeedbackSuccessModal from './src/screens/FeedbackSuccessModal.js';
+import DonateModal from './src/screens/DonateModal.js';
+import DonateSuccessModal from './src/screens/DonateSuccessModal.js';
+import AccountSettingsModal from './src/screens/AccountSettingsModal.js';
+import ToolsScreen from './src/screens/ToolsScreenLoader';
+import { BLACK, BLACK_SOLID, BLUE_500, BLUE_950, LINKEDIN_BLUE, SKY_500, FIGMA_GREEN, SURFACE_BASE, TEAL_700, BLUE_900, SUCCESS, GITHUB_BLACK, FIGMA_BLUE, TWITTER_BLUE, BLUE_900_2, SKY_800, ORANGE_950, GREEN_600, TEAL_600_3, SKY_500_3, SKY_400, GOOGLE_GREEN, RED_800, SKY_400_3, GOOGLE_BLUE, GREEN_400, INDIGO_700, GREEN_500, TEXT_MUTED, BRAND_DEEP, VIOLET_600, BRAND_MID, BRAND_PRIMARY, TEXT_SECONDARY, FIGMA_PURPLE, INDIGO_300, INDIGO_400_4, BRAND_ACCENT, SKY_200, RED_500, INDIGO_200, RED_500_2, GREEN_100, BORDER_SOFT, RED_400, GOOGLE_RED, DRIBBBLE_PINK, INDIGO_100, INDIGO_100_2, DANGER, PINK_400_4, FIGMA_RED, ORANGE_500, WARNING, ORANGE_500_3, RED_300, TEXT_PRIMARY, AMBER_500, GOOGLE_YELLOW, RED_500_5, RED_400_3, RED_400_4, PURPLE_300, FIGMA_CORAL, ORANGE_500_6, GRAY_50, WHITE, RADIUS_10, RADIUS_11, RADIUS_12, RADIUS_14, RADIUS_14_4, RADIUS_15, RADIUS_16, RADIUS_16_8, RADIUS_18, RADIUS_19, RADIUS_19_2, RADIUS_2, RADIUS_20, RADIUS_21, RADIUS_22, RADIUS_24, RADIUS_28, RADIUS_28_8, RADIUS_29, RADIUS_3, RADIUS_31_2, RADIUS_32, RADIUS_36, RADIUS_4, RADIUS_40, RADIUS_4_5, RADIUS_5, RADIUS_6, RADIUS_7, RADIUS_7_2, RADIUS_8, RADIUS_9, RADIUS_99, RADIUS_999, RADIUS_9_6 } from './src/theme/tokens.js';
+import ChangePasswordModal from './src/screens/ChangePasswordModal.js';
 
 // b592 HOTFIX: the b589 Text.render/TextInput.render patch below caused a
 // live production crash the moment the notification bell's animated
@@ -108,7 +126,7 @@ const AppWebView = Platform.OS === 'web'
           src={source && source.uri}
           onLoad={onLoadEnd}
           title="Prototype preview"
-          style={{ width: '100%', height: '100%', border: 'none', backgroundColor: '#000' }}
+          style={{ width: '100%', height: '100%', border: 'none', backgroundColor: BLACK }}
         />
       </View>
     )
@@ -201,7 +219,7 @@ const getContactAction = (contact) => {
   return { kind: 'copy', text: value };
 };
 
-const ContactCardIconSVG = React.memo(({ size = 20, color = '#FFFFFF' }) => (
+const ContactCardIconSVG = React.memo(({ size = 20, color = WHITE }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="2" y="4" width="20" height="16" rx="3" stroke={color} strokeWidth="2" fill="none" />
     <Path d="M3 6l9 6 9-6" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
@@ -494,18 +512,18 @@ const ALL_ILLUSTRATION_CATEGORIES_MASTER = [
 // for anything not in this list, since custom user-typed software names
 // obviously have no matching logo asset.
 const ILLUSTRATION_SOFTWARE_LIST = [
-  { name: 'Procreate', color: '#0A84FF', icon: require('./assets/software-icons/procreate.png') },
-  { name: 'Adobe Photoshop', color: '#31A8FF', icon: require('./assets/software-icons/adobe-photoshop.png') },
-  { name: 'Adobe Illustrator', color: '#FF9A00', icon: require('./assets/software-icons/adobe-illustrator.png') },
-  { name: 'Adobe Fresco', color: '#FF4B77', icon: require('./assets/software-icons/adobe-fresco.png') },
-  { name: 'Clip Studio Paint', color: '#F5762E', icon: require('./assets/software-icons/clip-studio-paint.png') },
-  { name: 'Krita', color: '#3BABFF', icon: require('./assets/software-icons/krita.png') },
-  { name: 'Corel Painter', color: '#7A1FA2', icon: require('./assets/software-icons/corel-painter.png') },
-  { name: 'Affinity Designer', color: '#2C82E0', icon: require('./assets/software-icons/affinity-designer.png') },
-  { name: 'Autodesk SketchBook', color: '#2AB673', icon: require('./assets/software-icons/autodesk-sketchbook.png') },
-  { name: 'Paint Tool SAI', color: '#E85D75', icon: require('./assets/software-icons/paint-tool-sai.png') },
-  { name: 'MediBang Paint', color: '#4CAF50', icon: require('./assets/software-icons/medibang-paint.png') },
-  { name: 'ibisPaint', color: '#F06292', icon: require('./assets/software-icons/ibispaint.png') }
+  { name: 'Procreate', color: SKY_500, icon: require('./assets/software-icons/procreate.png') },
+  { name: 'Adobe Photoshop', color: SKY_400, icon: require('./assets/software-icons/adobe-photoshop.png') },
+  { name: 'Adobe Illustrator', color: ORANGE_500_6, icon: require('./assets/software-icons/adobe-illustrator.png') },
+  { name: 'Adobe Fresco', color: RED_400_4, icon: require('./assets/software-icons/adobe-fresco.png') },
+  { name: 'Clip Studio Paint', color: ORANGE_500, icon: require('./assets/software-icons/clip-studio-paint.png') },
+  { name: 'Krita', color: SKY_400_3, icon: require('./assets/software-icons/krita.png') },
+  { name: 'Corel Painter', color: VIOLET_600, icon: require('./assets/software-icons/corel-painter.png') },
+  { name: 'Affinity Designer', color: SKY_500_3, icon: require('./assets/software-icons/affinity-designer.png') },
+  { name: 'Autodesk SketchBook', color: TEAL_600_3, icon: require('./assets/software-icons/autodesk-sketchbook.png') },
+  { name: 'Paint Tool SAI', color: RED_400, icon: require('./assets/software-icons/paint-tool-sai.png') },
+  { name: 'MediBang Paint', color: GREEN_500, icon: require('./assets/software-icons/medibang-paint.png') },
+  { name: 'ibisPaint', color: PINK_400_4, icon: require('./assets/software-icons/ibispaint.png') }
 ];
 
 // b559: UI/UX software list, same shape as ILLUSTRATION_SOFTWARE_LIST
@@ -520,16 +538,16 @@ const ILLUSTRATION_SOFTWARE_LIST = [
 // a real TDZ crash on load, not just a lint nag. SoftwareIconSVG below
 // special-cases this flag instead.
 const UI_UX_SOFTWARE_LIST = [
-  { name: 'Figma', color: '#F24E1E', usesFigmaLogo: true },
-  { name: 'Adobe XD', color: '#FF61F6', icon: require('./assets/software-icons/adobe-xd.png') },
+  { name: 'Figma', color: FIGMA_RED, usesFigmaLogo: true },
+  { name: 'Adobe XD', color: PURPLE_300, icon: require('./assets/software-icons/adobe-xd.png') },
   // b562: needsLightBg - Framer's logo asset is a black glyph on a
   // transparent background, so it disappears entirely against the dark
   // theme's near-black surfaces. SoftwareIconSVG below wraps anything with
   // this flag in a small white backdrop chip so it stays visible in both
   // themes, without changing how every other (already-visible) icon renders.
-  { name: 'Framer', color: '#0055FF', icon: require('./assets/software-icons/framer.png'), needsLightBg: true },
-  { name: 'Sketch', color: '#F7B500', icon: require('./assets/software-icons/sketch.png') },
-  { name: 'InVision', color: '#FF3366', icon: require('./assets/software-icons/invision.png'), needsLightBg: true }
+  { name: 'Framer', color: BLUE_500, icon: require('./assets/software-icons/framer.png'), needsLightBg: true },
+  { name: 'Sketch', color: ORANGE_500_3, icon: require('./assets/software-icons/sketch.png') },
+  { name: 'InVision', color: RED_400_3, icon: require('./assets/software-icons/invision.png'), needsLightBg: true }
 ];
 
 // Resume Maker's Skills step common-suggestion chips - reuses the two
@@ -597,7 +615,7 @@ const SoftwareIconSVG = React.memo(({ name, size = 18 }) => {
     return (
       <View style={{
         width: size, height: size, borderRadius: size * 0.22,
-        backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center'
+        backgroundColor: WHITE, alignItems: 'center', justifyContent: 'center'
       }}>
         <Image
           source={preset.icon}
@@ -618,10 +636,10 @@ const SoftwareIconSVG = React.memo(({ name, size = 18 }) => {
   }
   return (
     <View style={{
-      width: size, height: size, borderRadius: size / 2, backgroundColor: '#7D52DD',
+      width: size, height: size, borderRadius: size / 2, backgroundColor: BRAND_MID,
       alignItems: 'center', justifyContent: 'center'
     }}>
-      <Text style={{ color: '#FFFFFF', fontSize: size * 0.55, fontWeight: '800' }}>
+      <Text style={{ color: WHITE, fontSize: size * 0.55, fontWeight: '800' }}>
         {(name || '?').trim().charAt(0).toUpperCase()}
       </Text>
     </View>
@@ -629,29 +647,29 @@ const SoftwareIconSVG = React.memo(({ name, size = 18 }) => {
 });
 
 // SVG Icons
-const MobileFilledIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
+const MobileFilledIconSVG = React.memo(({ color = BRAND_ACCENT, size = 14 }) => (
   <Svg width={size} height={size * 1.4} viewBox="0 0 18 26" fill="none">
     <Rect x="1" y="1" width="16" height="24" rx="3" fill={color} />
-    <Circle cx="9" cy="21.5" r="1.1" fill="#0B0F17" />
+    <Circle cx="9" cy="21.5" r="1.1" fill={SURFACE_BASE} />
   </Svg>
 ));
 
-const DesktopFilledIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
+const DesktopFilledIconSVG = React.memo(({ color = BRAND_ACCENT, size = 14 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="2" y="3" width="20" height="13" rx="2" fill={color} />
     <Rect x="9" y="18" width="6" height="3" rx="1" fill={color} />
   </Svg>
 ));
 
-const ImageFilledIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
+const ImageFilledIconSVG = React.memo(({ color = BRAND_ACCENT, size = 14 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="2" y="3" width="20" height="18" rx="3" fill={color} />
-    <Circle cx="8" cy="9" r="2" fill="#0B0F17" />
-    <Path d="M4 18l6-6 4 4 6-7v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" fill="#0B0F17" />
+    <Circle cx="8" cy="9" r="2" fill={SURFACE_BASE} />
+    <Path d="M4 18l6-6 4 4 6-7v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" fill={SURFACE_BASE} />
   </Svg>
 ));
 
-const ResumeIconSVG = React.memo(({ size = 18, color = '#FFFFFF' }) => (
+const ResumeIconSVG = React.memo(({ size = 18, color = WHITE }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="4" y="2" width="16" height="20" rx="2" stroke={color} strokeWidth="2" />
     <Circle cx="9" cy="8" r="2" stroke={color} strokeWidth="1.6" />
@@ -661,7 +679,7 @@ const ResumeIconSVG = React.memo(({ size = 18, color = '#FFFFFF' }) => (
   </Svg>
 ));
 
-const VideoFilledIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
+const VideoFilledIconSVG = React.memo(({ color = BRAND_ACCENT, size = 14 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="2" y="5" width="15" height="14" rx="2" fill={color} />
     <Path d="M17 10L22 7V17L17 14Z" fill={color} />
@@ -670,36 +688,36 @@ const VideoFilledIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
 
 const MobileIconSVG = React.memo(({ size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Rect x="6" y="2" width="12" height="20" rx="2.5" stroke="#FFFFFF" strokeWidth="2" />
-    <Path d="M12 18h.01" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" />
+    <Rect x="6" y="2" width="12" height="20" rx="2.5" stroke={WHITE} strokeWidth="2" />
+    <Path d="M12 18h.01" stroke={WHITE} strokeWidth="2.5" strokeLinecap="round" />
   </Svg>
 ));
 
 const DesktopIconSVG = React.memo(({ size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Rect x="2" y="3" width="20" height="13" rx="2" stroke="#FFFFFF" strokeWidth="2" />
-    <Path d="M8 21h8M12 16v5" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
+    <Rect x="2" y="3" width="20" height="13" rx="2" stroke={WHITE} strokeWidth="2" />
+    <Path d="M8 21h8M12 16v5" stroke={WHITE} strokeWidth="2" strokeLinecap="round" />
   </Svg>
 ));
 
-const HeartIconSVG = React.memo(({ liked, color = '#94A3B8', monochrome = false, size = 22 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill={liked && !monochrome ? '#EF4444' : 'none'}>
+const HeartIconSVG = React.memo(({ liked, color = TEXT_SECONDARY, monochrome = false, size = 22 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill={liked && !monochrome ? DANGER : 'none'}>
     <Path
       d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-      stroke={liked && !monochrome ? '#EF4444' : color}
+      stroke={liked && !monochrome ? DANGER : color}
       strokeWidth="2"
       strokeLinejoin="round"
     />
   </Svg>
 ));
 
-const GitHubIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
+const GitHubIconSVG = React.memo(({ color = TEXT_SECONDARY, size = 22 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
     <Path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.36-3.37-1.36-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.05 1.53 1.05.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.95.68 1.92 0 1.39-.01 2.51-.01 2.85 0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z" />
   </Svg>
 ));
 
-const WrenchIconSVG = React.memo(({ color = '#94A3B8', size = 18 }) => (
+const WrenchIconSVG = React.memo(({ color = TEXT_SECONDARY, size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
       d="M14.7 6.3a4 4 0 0 0-5.4 4.9L3 17.5 6.5 21l6.3-6.3a4 4 0 0 0 4.9-5.4l-2.6 2.6-2.8-.8-.8-2.8 2.6-2.6z"
@@ -714,7 +732,7 @@ const WrenchIconSVG = React.memo(({ color = '#94A3B8', size = 18 }) => (
 // Simplified 3-corner-square + center-dots glyph, standing in for a real
 // QR code visually rather than literally encoding anything - used only
 // as a hub-card icon.
-const QrIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
+const QrIconSVG = React.memo(({ color = TEXT_SECONDARY, size = 22 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="3" y="3" width="7" height="7" rx="1.5" stroke={color} strokeWidth="2" />
     <Rect x="14" y="3" width="7" height="7" rx="1.5" stroke={color} strokeWidth="2" />
@@ -728,7 +746,7 @@ const QrIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
 
 // Two arrows forming a cycle - represents format conversion, distinct
 // from the wrench (Tools generally) and the compression-target icon.
-const SwapIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
+const SwapIconSVG = React.memo(({ color = TEXT_SECONDARY, size = 22 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M4 7h13l-3-3M20 17H7l3 3" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
@@ -736,7 +754,7 @@ const SwapIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
 
 // A document outline with a folded corner, plus a small "PDF" mark -
 // used only as the PDF Editor's hub-card icon.
-const PdfIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
+const PdfIconSVG = React.memo(({ color = TEXT_SECONDARY, size = 22 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" stroke={color} strokeWidth="2" strokeLinejoin="round" />
     <Path d="M15 2v5h5" stroke={color} strokeWidth="2" strokeLinejoin="round" />
@@ -744,7 +762,7 @@ const PdfIconSVG = React.memo(({ color = '#94A3B8', size = 22 }) => (
   </Svg>
 ));
 
-const RotateIconSVG = React.memo(({ color = '#94A3B8', size = 15 }) => (
+const RotateIconSVG = React.memo(({ color = TEXT_SECONDARY, size = 15 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M4 12a8 8 0 1 1 2.5 5.8" stroke={color} strokeWidth="2" strokeLinecap="round" />
     <Path d="M4 17v-5h5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -754,20 +772,20 @@ const RotateIconSVG = React.memo(({ color = '#94A3B8', size = 15 }) => (
 // Standard "rotate clockwise/counter-clockwise" glyphs (the same shape
 // used across most editing software - a circular arrow with a small
 // arrowhead), as distinct pairs rather than one icon reused both ways.
-const RotateCWIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
+const RotateCWIconSVG = React.memo(({ color = TEXT_SECONDARY, size = 16 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M21 12a9 9 0 1 1-2.64-6.36L21 8" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     <Path d="M21 3v5h-5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
-const RotateCCWIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
+const RotateCCWIconSVG = React.memo(({ color = TEXT_SECONDARY, size = 16 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M3 12a9 9 0 1 0 2.64-6.36L3 8" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     <Path d="M3 3v5h5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 // Plain right-pointing chevron - used next to every export/download CTA.
-const ArrowRightIconSVG = React.memo(({ color = '#FFFFFF', size = 14 }) => (
+const ArrowRightIconSVG = React.memo(({ color = WHITE, size = 14 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M5 12h14M13 6l6 6-6 6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
@@ -776,7 +794,7 @@ const ArrowRightIconSVG = React.memo(({ color = '#FFFFFF', size = 14 }) => (
 // Four arrows pointing inward toward the center - a compress/shrink
 // action, distinct from SwapIconSVG (which is specifically the Image
 // Converter's icon elsewhere in Tools).
-const CompressIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
+const CompressIconSVG = React.memo(({ color = TEXT_SECONDARY, size = 16 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
@@ -786,7 +804,7 @@ const CompressIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
 // on mobile web (where the header is too narrow for inline Donate/
 // language/theme controls) and on native (which has no inline controls
 // at all, just Donate/Feedback tucked away here instead).
-const MoreIconSVG = React.memo(({ color = '#94A3B8', size = 18 }) => (
+const MoreIconSVG = React.memo(({ color = TEXT_SECONDARY, size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Circle cx="12" cy="5" r="1.8" fill={color} />
     <Circle cx="12" cy="12" r="1.8" fill={color} />
@@ -794,7 +812,7 @@ const MoreIconSVG = React.memo(({ color = '#94A3B8', size = 18 }) => (
   </Svg>
 ));
 
-const ExternalLinkIconSVG = React.memo(({ color = '#94A3B8', size = 12 }) => (
+const ExternalLinkIconSVG = React.memo(({ color = TEXT_SECONDARY, size = 12 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M7 17L17 7M17 7H9M17 7V15" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
@@ -805,10 +823,10 @@ const ExternalLinkIconSVG = React.memo(({ color = '#94A3B8', size = 12 }) => (
 // at all 3 nav entry points.
 const BetaTag = React.memo(({ themeMode }) => (
   <View style={{
-    backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
-    borderRadius: 99, paddingHorizontal: 6, paddingVertical: 1.5
+    backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID,
+    borderRadius: RADIUS_99, paddingHorizontal: 6, paddingVertical: 1.5
   }}>
-    <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '800', letterSpacing: 0.3 }}>BETA</Text>
+    <Text style={{ color: WHITE, fontSize: 9, fontWeight: '800', letterSpacing: 0.3 }}>BETA</Text>
   </View>
 ));
 
@@ -816,7 +834,7 @@ const BetaTag = React.memo(({ themeMode }) => (
 // moment when a like lands the count exactly on one of these numbers.
 const getLikeMilestoneEgg = (newCount) => {
   if (newCount === 67) return { emoji: '🤚6️⃣7️⃣', fontSize: 14 };
-  if (newCount === 69) return { text: 'nice', color: '#8B5CF6' };
+  if (newCount === 69) return { text: 'nice', color: BRAND_PRIMARY };
   if (newCount === 420) return { emoji: '🌿', fontSize: 20 };
   return null;
 };
@@ -835,7 +853,7 @@ const CategoryChipBg = React.memo(({ active }) => {
     return (
       <View style={{
         position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-        backgroundColor: active ? '#7D52DD' : (themeMode === 'light' ? '#FFFFFF' : '#1E2330')
+        backgroundColor: active ? BRAND_MID : (themeMode === 'light' ? WHITE : BLUE_900_2)
       }} />
     );
   }
@@ -853,7 +871,7 @@ const CategoryChipBg = React.memo(({ active }) => {
   );
 });
 
-const LikeButton = React.memo(({ liked, likesCount, onPress, showCount = false, countStyle, color = '#94A3B8', style, translucentBg = false, monochrome = false, size = 22 }) => {
+const LikeButton = React.memo(({ liked, likesCount, onPress, showCount = false, countStyle, color = TEXT_SECONDARY, style, translucentBg = false, monochrome = false, size = 22 }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const [egg, setEgg] = useState(null);
   const eggTimeoutRef = useRef(null);
@@ -921,30 +939,25 @@ const LikeButton = React.memo(({ liked, likesCount, onPress, showCount = false, 
   );
 });
 
-const EyeOpenSVG = React.memo(({ color = '#FFFFFF', size = 14 }) => (
+const EyeOpenSVG = React.memo(({ color = WHITE, size = 14 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth="2"/>
   </Svg>
 ));
 
-const EyeClosedSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
+const EyeClosedSVG = React.memo(({ color = BRAND_ACCENT, size = 14 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M3 3l18 18" stroke={color} strokeWidth="2" strokeLinecap="round"/>
     <Path d="M10.6 5.2A11 11 0 0 1 12 5c7 0 11 7 11 7a17.7 17.7 0 0 1-3.4 4.3M6.6 6.6C3.9 8.3 2 11 2 11s4 7 10 7a9.8 9.8 0 0 0 4.4-1M9.5 9.5a3 3 0 0 0 4.2 4.2" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
   </Svg>
 ));
 
-const EyeViewIconSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth="2"/>
-  </Svg>
-));
 
-const BellSVG = React.memo(({ active = false, inactiveColor = '#D8B4FE' }) => (
+
+const BellSVG = React.memo(({ active = false, inactiveColor = INDIGO_200 }) => (
   <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke={active ? '#FFFFFF' : inactiveColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke={active ? WHITE : inactiveColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
@@ -954,19 +967,19 @@ const BellSVG = React.memo(({ active = false, inactiveColor = '#D8B4FE' }) => (
 // active/inactiveColor scheme - kept separate rather than changing
 // BellSVG's props, since that one's already relied on exactly as-is by the
 // notification icon.
-const BellOutlineSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
+const BellOutlineSVG = React.memo(({ size = 18, color = TEXT_SECONDARY }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
-const CodeBracketsSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
+const CodeBracketsSVG = React.memo(({ size = 18, color = TEXT_SECONDARY }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M8 4L2 12l6 8M16 4l6 8-6 8" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
-const PaintBrushSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
+const PaintBrushSVG = React.memo(({ size = 18, color = TEXT_SECONDARY }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
       d="M7 17c-1.1 0-2 .9-2 2s-1 3-3 3c2.5 0 5-1 5-4 0-.55.45-1 1-1s1 .45 1 1c0 2 1.5 3 3 3 2 0 3-1.5 3-3.5 0-.83-.34-1.58-.88-2.12L9.6 10.9"
@@ -989,7 +1002,7 @@ const PaintBrushSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
 // as visually distinct from Illustration's brush icon, and deliberately
 // not Figma (that logo's now exclusively tied to UI/UX to avoid the two
 // design-adjacent types looking interchangeable).
-const PaletteSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
+const PaletteSVG = React.memo(({ size = 18, color = TEXT_SECONDARY }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
       d="M12 3C7.03 3 3 6.58 3 11c0 2.76 2.24 5 5 5h1a2 2 0 0 1 2 2v.5a1.5 1.5 0 0 0 1.5 1.5c4.42 0 8-3.58 8-8 0-5-4.03-9-9-9z"
@@ -1003,28 +1016,28 @@ const PaletteSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
   </Svg>
 ));
 
-const CursorArrowSVG = React.memo(({ size = 18, color = '#94A3B8' }) => (
+const CursorArrowSVG = React.memo(({ size = 18, color = TEXT_SECONDARY }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M4 3l16 6-6.5 2.5L11 18 4 3z" stroke={color} strokeWidth="2" strokeLinejoin="round" fill={color === 'none' ? 'none' : color} fillOpacity="0.15" />
   </Svg>
 ));
 
-const HamburgerSVG = React.memo(({ active = false, inactiveColor = '#D8B4FE', size = 18 }) => (
+const HamburgerSVG = React.memo(({ active = false, inactiveColor = INDIGO_200, size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M3 6h18M3 12h18M3 18h18" stroke={active ? '#FFFFFF' : inactiveColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M3 6h18M3 12h18M3 18h18" stroke={active ? WHITE : inactiveColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
-const CogWheelSVG = React.memo(({ active = false, inactiveColor = '#D8B4FE' }) => (
+const CogWheelSVG = React.memo(({ active = false, inactiveColor = INDIGO_200 }) => (
   <Svg width="19" height="19" viewBox="0 0 24 24" fill="none">
     <Path
       d="M19.14 12.94C19.18 12.63 19.2 12.32 19.2 12C19.2 11.68 19.18 11.37 19.14 11.06L21.16 9.48C21.34 9.34 21.39 9.09 21.28 8.89L19.36 5.56C19.25 5.36 19 5.28 18.79 5.36L16.41 6.22C15.92 5.84 15.39 5.53 14.81 5.29L14.45 2.76C14.41 2.54 14.22 2.38 14 2.38H10C9.78 2.38 9.59 2.54 9.55 2.76L9.19 5.29C8.61 5.53 8.08 5.85 7.59 6.22L5.21 5.36C5 5.28 4.75 5.36 4.64 5.56L2.72 8.89C2.61 9.09 2.66 9.34 2.84 9.48L4.86 11.06C4.82 11.37 4.8 11.69 4.8 12C4.8 12.31 4.82 12.63 4.86 12.94L2.84 14.52C2.66 14.66 2.61 14.91 2.72 15.11L4.64 18.44C4.75 18.64 5 18.72 5.21 18.64L7.59 17.78C8.08 18.16 8.61 18.47 9.19 18.71L9.55 21.24C9.59 21.46 9.78 21.62 10 21.62H14C14.22 21.62 14.41 21.46 14.45 21.24L14.81 18.71C15.39 18.47 15.92 18.16 16.41 17.78L18.79 18.64C19 18.72 19.25 18.64 19.36 18.44L21.28 15.11C21.39 14.91 21.34 14.66 21.16 14.52L19.14 12.94ZM12 15.5C10.34 15.5 9 14.16 9 12.5C9 10.84 10.34 9.5 12 9.5C13.66 9.5 15 10.84 15 12.5C15 14.16 13.66 15.5 12 15.5Z"
-      fill={active ? '#FFFFFF' : inactiveColor}
+      fill={active ? WHITE : inactiveColor}
     />
   </Svg>
 ));
 
-const ChevronRightSVG = React.memo(({ color = "#8B5CF6", size = 18 }) => (
+const ChevronRightSVG = React.memo(({ color = BRAND_PRIMARY, size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M9 18l6-6-6-6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
@@ -1035,19 +1048,19 @@ const ChevronRightSVG = React.memo(({ color = "#8B5CF6", size = 18 }) => (
 // video in a tappable area would swallow clicks meant for its own native
 // play/pause/scrub controls. A dedicated small button in the corner opens
 // the fullscreen swipeable viewer without touching inline playback at all.
-const ExpandIconSVG = React.memo(({ color = "#FFFFFF", size = 16 }) => (
+const ExpandIconSVG = React.memo(({ color = WHITE, size = 16 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
-const ChevronDownSVG = React.memo(({ color = "#8B5CF6", size = 18 }) => (
+const ChevronDownSVG = React.memo(({ color = BRAND_PRIMARY, size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M6 9l6 6 6-6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
-const InfoCircleSVG = React.memo(({ color = "#94A3B8", size = 16 }) => (
+const InfoCircleSVG = React.memo(({ color = TEXT_SECONDARY, size = 16 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.8" />
     <Path d="M12 11v5.5" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
@@ -1061,17 +1074,17 @@ const InfoCircleSVG = React.memo(({ color = "#94A3B8", size = 16 }) => (
 // for a tutorial's larger, more prominent display context. accentColor lets
 // each call site theme the badge to match its own step (kept as a prop
 // rather than hardcoding one color, since callers may want variety).
-const TutorialDetailsIllustration = React.memo(({ size = 120, accentColor = '#8B5CF6' }) => (
+const TutorialDetailsIllustration = React.memo(({ size = 120, accentColor = BRAND_PRIMARY }) => (
   <Svg width={size} height={size} viewBox="0 0 120 120" fill="none">
     <Circle cx="60" cy="60" r="56" fill={accentColor} fillOpacity="0.12" />
     <Rect x="34" y="28" width="52" height="64" rx="6" fill={accentColor} fillOpacity="0.18" stroke={accentColor} strokeWidth="2.5" />
     <Path d="M44 46h32M44 58h32M44 70h20" stroke={accentColor} strokeWidth="3" strokeLinecap="round" />
     <Circle cx="80" cy="80" r="12" fill={accentColor} />
-    <Path d="M75 80l3.5 3.5L86 76" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M75 80l3.5 3.5L86 76" stroke={WHITE} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
-const TutorialLinksIllustration = React.memo(({ size = 120, accentColor = '#8B5CF6' }) => (
+const TutorialLinksIllustration = React.memo(({ size = 120, accentColor = BRAND_PRIMARY }) => (
   <Svg width={size} height={size} viewBox="0 0 120 120" fill="none">
     <Circle cx="60" cy="60" r="56" fill={accentColor} fillOpacity="0.12" />
     <Rect x="26" y="44" width="34" height="34" rx="10" fill="none" stroke={accentColor} strokeWidth="3" transform="rotate(-18 43 61)" />
@@ -1080,7 +1093,7 @@ const TutorialLinksIllustration = React.memo(({ size = 120, accentColor = '#8B5C
   </Svg>
 ));
 
-const TutorialMediaIllustration = React.memo(({ size = 120, accentColor = '#8B5CF6' }) => (
+const TutorialMediaIllustration = React.memo(({ size = 120, accentColor = BRAND_PRIMARY }) => (
   <Svg width={size} height={size} viewBox="0 0 120 120" fill="none">
     <Circle cx="60" cy="60" r="56" fill={accentColor} fillOpacity="0.12" />
     <Rect x="30" y="38" width="50" height="38" rx="6" fill={accentColor} fillOpacity="0.15" stroke={accentColor} strokeWidth="2.5" transform="rotate(-6 55 57)" />
@@ -1090,14 +1103,14 @@ const TutorialMediaIllustration = React.memo(({ size = 120, accentColor = '#8B5C
   </Svg>
 ));
 
-const TutorialReviewIllustration = React.memo(({ size = 120, accentColor = '#8B5CF6' }) => (
+const TutorialReviewIllustration = React.memo(({ size = 120, accentColor = BRAND_PRIMARY }) => (
   <Svg width={size} height={size} viewBox="0 0 120 120" fill="none">
     <Circle cx="60" cy="60" r="56" fill={accentColor} fillOpacity="0.12" />
     <Rect x="36" y="26" width="48" height="62" rx="6" fill={accentColor} fillOpacity="0.15" stroke={accentColor} strokeWidth="2.5" />
     <Rect x="48" y="22" width="24" height="10" rx="3" fill={accentColor} />
     <Path d="M46 52h28M46 62h28M46 72h18" stroke={accentColor} strokeWidth="3" strokeLinecap="round" />
     <Circle cx="82" cy="82" r="14" fill={accentColor} />
-    <Path d="M76 82l4 4 8-9" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M76 82l4 4 8-9" stroke={WHITE} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
@@ -1110,7 +1123,7 @@ const TutorialReviewIllustration = React.memo(({ size = 120, accentColor = '#8B5
 // the surrounding context actually uses) to read correctly in both light
 // and dark mode, not a hardcoded color guess.
 const DECENT_LOGO_PATH_D = "M48.5 0C75.2858 0 97 21.7142 97 48.5C97 75.2858 75.2858 97 48.5 97H20C8.95431 97 0 88.0457 0 77V20C6.44299e-07 8.95431 8.95431 0 20 0H48.5ZM36.7041 28.6562C33.7232 26.8301 29.9149 29.0382 30.001 32.542L30.8018 65.6719C30.9022 69.8452 36.1712 71.5734 38.7051 68.2617L46.9043 57.5459C47.2561 57.0851 47.6955 56.6985 48.1963 56.4082C48.697 56.118 49.2499 55.93 49.8232 55.8545L63.1641 54.083C67.2876 53.5382 68.4326 48.0903 64.8828 45.916L36.7041 28.6562Z";
-const DecentLogoSVG = React.memo(({ size = 32, color = '#8B5CF6' }) => (
+const DecentLogoSVG = React.memo(({ size = 32, color = BRAND_PRIMARY }) => (
   <Svg width={size} height={size} viewBox="0 0 97 97" fill="none">
     <Path
       d={DECENT_LOGO_PATH_D}
@@ -1192,7 +1205,7 @@ const QrFinderEye = ({ gridX, gridY, cellSize, color, backgroundColor, square = 
 // it. CircularQRCode is load-bearing for the existing portfolio/profile
 // share feature; keeping this fully separate means nothing here can ever
 // risk changing that component's behavior, even by accident.
-const ToolsQRCode = React.memo(React.forwardRef(({ value, size = 240, color = '#000000', backgroundColor = '#FFFFFF', dotStyle = 'round', logoUri = null }, ref) => {
+const ToolsQRCode = React.memo(React.forwardRef(({ value, size = 240, color = BLACK_SOLID, backgroundColor = WHITE, dotStyle = 'round', logoUri = null }, ref) => {
   const matrix = useMemo(() => buildQrMatrix(value), [value]);
   if (!matrix) return null;
   const { grid, count } = matrix;
@@ -1433,15 +1446,15 @@ const AnimatedPillTabs = React.memo(({ tabs, activeKey, onChange, theme, themeMo
   }
 
   return (
-    <View style={[{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: 99, padding: 4 }, containerStyle]}>
+    <View style={[{ flexDirection: 'row', backgroundColor: theme.bg, borderRadius: RADIUS_99, padding: 4 }, containerStyle]}>
       {allWidthsKnown && (
         <Animated.View
           style={{
             position: 'absolute',
             top: 4, bottom: 4,
             width: tabWidths[tabs[activeIndex].key],
-            borderRadius: 99,
-            backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
+            borderRadius: RADIUS_99,
+            backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID,
             transform: [{
               translateX: tabs.length > 1
                 ? slideAnim.interpolate({ inputRange: tabs.map((_, i) => i), outputRange: offsets })
@@ -1465,13 +1478,13 @@ const AnimatedPillTabs = React.memo(({ tabs, activeKey, onChange, theme, themeMo
         >
           {tab.icon ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
-              {tab.icon(activeKey === tab.key ? '#FFFFFF' : theme.textSecondary)}
-              <Text style={{ color: activeKey === tab.key ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12.5 }}>
+              {tab.icon(activeKey === tab.key ? WHITE : theme.textSecondary)}
+              <Text style={{ color: activeKey === tab.key ? WHITE : theme.textSecondary, fontWeight: '700', fontSize: 12.5 }}>
                 {tab.label}
               </Text>
             </View>
           ) : (
-            <Text style={{ color: activeKey === tab.key ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12.5 }}>
+            <Text style={{ color: activeKey === tab.key ? WHITE : theme.textSecondary, fontWeight: '700', fontSize: 12.5 }}>
               {tab.label}
             </Text>
           )}
@@ -1493,7 +1506,7 @@ const AnimatedPillTabs = React.memo(({ tabs, activeKey, onChange, theme, themeMo
 // timing pattern) renders as circles for the dotted look.
 // forwardRef so the download flow (native path specifically) can reach the
 // underlying <Svg> to call its own .toDataURL() export method.
-const CircularQRCode = React.memo(React.forwardRef(({ value, size = 160, color = '#8B5CF6', backgroundColor = '#FFFFFF', showLogo = false }, ref) => {
+const CircularQRCode = React.memo(React.forwardRef(({ value, size = 160, color = BRAND_PRIMARY, backgroundColor = WHITE, showLogo = false }, ref) => {
 
   const matrix = useMemo(() => buildQrMatrix(value), [value]);
 
@@ -1562,7 +1575,7 @@ const CircularQRCode = React.memo(React.forwardRef(({ value, size = 160, color =
   );
 }));
 
-const DShapeSVG = React.memo(({ size = 44, color = '#8B5CF6' }) => (
+const DShapeSVG = React.memo(({ size = 44, color = BRAND_PRIMARY }) => (
   <Svg width={size} height={size} viewBox="0 0 97 97" fill="none">
     <Path
       d="M0 20C0 8.95431 8.95431 0 20 0H48.5C75.2858 0 97 21.7142 97 48.5V48.5C97 75.2858 75.2858 97 48.5 97H20C8.95431 97 0 88.0457 0 77V20Z"
@@ -1571,35 +1584,27 @@ const DShapeSVG = React.memo(({ size = 44, color = '#8B5CF6' }) => (
   </Svg>
 ));
 
-const ChevronLeftSVG = React.memo(({ color = "#94A3B8", size = 18 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M15 18l-6-6 6-6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-  </Svg>
-));
+
 
 // Used specifically for the wide-web sidebar's collapse toggle - two
 // chevrons rather than one is the more standard "collapse this panel"
 // convention (vs. a single chevron, which reads more like "go back").
-const DoubleChevronLeftSVG = React.memo(({ color = "#94A3B8", size = 18 }) => (
+const DoubleChevronLeftSVG = React.memo(({ color = TEXT_SECONDARY, size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M18 18l-6-6 6-6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
     <Path d="M11 18l-6-6 6-6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
-const CrossIconSVG = React.memo(({ color = "#94A3B8", size = 16 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M18 6L6 18M6 6l12 12" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-  </Svg>
-));
 
-const ChevronUpSVG = React.memo(({ color = "#FFFFFF", size = 20 }) => (
+
+const ChevronUpSVG = React.memo(({ color = WHITE, size = 20 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M18 15l-6-6-6 6" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
-const ClearTextXSVG = React.memo(({ color = '#94A3B8' }) => (
+const ClearTextXSVG = React.memo(({ color = TEXT_SECONDARY }) => (
   <Svg width="14" height="14" viewBox="0 0 24 24" fill="none">
     <Path d="M18 6L6 18M6 6l12 12" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
@@ -1609,7 +1614,7 @@ const ForYouSVG = React.memo(({ active }) => (
   <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
     <Path
       d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-      stroke={active ? '#8B5CF6' : '#94A3B8'}
+      stroke={active ? BRAND_PRIMARY : TEXT_SECONDARY}
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -1631,7 +1636,7 @@ const ForYouSVG = React.memo(({ active }) => (
 // same one-shot 720deg (2x clockwise) tap-triggered spin from b588 - see
 // triggerFollowedSpin.
 const FollowedTabSVG = React.memo(({ active, spinAnim }) => {
-  const iconColor = active ? '#8B5CF6' : '#94A3B8';
+  const iconColor = active ? BRAND_PRIMARY : TEXT_SECONDARY;
   return (
     <View style={{ width: 19, height: 19, alignItems: 'center', justifyContent: 'center' }}>
       <Animated.View
@@ -1653,7 +1658,7 @@ const FollowedTabSVG = React.memo(({ active, spinAnim }) => {
 
 const PlusSVG = React.memo(({ strokeWidth = 2.5, offsetX = 0 }) => (
   <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ transform: [{ translateX: offsetX }] }}>
-    <Path d="M12 5V19M5 12H19" stroke="#FFFFFF" strokeWidth={strokeWidth} strokeLinecap="round" />
+    <Path d="M12 5V19M5 12H19" stroke={WHITE} strokeWidth={strokeWidth} strokeLinecap="round" />
   </Svg>
 ));
 
@@ -1670,12 +1675,12 @@ const SearchSVG = React.memo(({ active, eyesAnim }) => {
     : 0;
   return (
     <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <Circle cx="11" cy="11" r="7" stroke={active ? '#8B5CF6' : '#94A3B8'} strokeWidth="2" />
-      <Path d="M20 20L16 16" stroke={active ? '#8B5CF6' : '#94A3B8'} strokeWidth="2" strokeLinecap="round" />
+      <Circle cx="11" cy="11" r="7" stroke={active ? BRAND_PRIMARY : TEXT_SECONDARY} strokeWidth="2" />
+      <Path d="M20 20L16 16" stroke={active ? BRAND_PRIMARY : TEXT_SECONDARY} strokeWidth="2" strokeLinecap="round" />
       {eyesAnim && (
         <>
-          <AnimatedCircle cx="8.3" cy="11" r="1.15" fill={active ? '#8B5CF6' : '#94A3B8'} opacity={eyesOpacity} />
-          <AnimatedCircle cx="13.7" cy="11" r="1.15" fill={active ? '#8B5CF6' : '#94A3B8'} opacity={eyesOpacity} />
+          <AnimatedCircle cx="8.3" cy="11" r="1.15" fill={active ? BRAND_PRIMARY : TEXT_SECONDARY} opacity={eyesOpacity} />
+          <AnimatedCircle cx="13.7" cy="11" r="1.15" fill={active ? BRAND_PRIMARY : TEXT_SECONDARY} opacity={eyesOpacity} />
         </>
       )}
     </Svg>
@@ -1696,13 +1701,13 @@ const ProfileSVG = React.memo(({ active, drawAnim }) => {
     <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
       <AnimatedCircle
         cx="12" cy="7" r="4"
-        stroke={active ? '#8B5CF6' : '#94A3B8'} strokeWidth="2"
+        stroke={active ? BRAND_PRIMARY : TEXT_SECONDARY} strokeWidth="2"
         strokeDasharray={drawAnim ? `${PROFILE_HEAD_CIRCUMFERENCE}` : undefined}
         strokeDashoffset={drawAnim ? headOffset : 0}
       />
       <AnimatedPath
         d="M4 21C4 17.134 7.58172 14 12 14C16.4183 14 20 17.134 20 21"
-        stroke={active ? '#8B5CF6' : '#94A3B8'}
+        stroke={active ? BRAND_PRIMARY : TEXT_SECONDARY}
         strokeWidth="2"
         strokeLinecap="round"
         fill="none"
@@ -1725,7 +1730,7 @@ const ProfileNavIcon = React.memo(({ active, drawAnim, avatarUrl, themeMode, siz
   if (!avatarUrl) {
     return <ProfileSVG active={active} drawAnim={drawAnim} />;
   }
-  const ringColor = themeMode === 'light' ? '#6D28D9' : '#A855F7';
+  const ringColor = themeMode === 'light' ? BRAND_DEEP : INDIGO_400_4;
   const ringOffset = drawAnim
     ? drawAnim.interpolate({ inputRange: [0, 1], outputRange: [PROFILE_AVATAR_RING_CIRCUMFERENCE, 0] })
     : 0;
@@ -1763,8 +1768,8 @@ const ProfileNavIcon = React.memo(({ active, drawAnim, avatarUrl, themeMode, siz
 // touch the size-specific style definitions themselves.
 const DefaultAvatarSVG = React.memo(({ size }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Circle cx="12" cy="8" r="4" fill="#8B5CF6" />
-    <Path d="M4 20c0-4.42 3.58-8 8-8s8 3.58 8 8" fill="#8B5CF6" />
+    <Circle cx="12" cy="8" r="4" fill={BRAND_PRIMARY} />
+    <Path d="M4 20c0-4.42 3.58-8 8-8s8 3.58 8 8" fill={BRAND_PRIMARY} />
   </Svg>
 ));
 
@@ -1779,7 +1784,7 @@ const Avatar = React.memo(({ uri, style }) => {
   }
   return (
     <View style={[style, {
-      borderRadius: radius, backgroundColor: '#0B0F17',
+      borderRadius: radius, backgroundColor: SURFACE_BASE,
       alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
     }]}>
       <DefaultAvatarSVG size={Math.round(Math.min(width, height) * 0.6)} />
@@ -1810,7 +1815,7 @@ const LoadingThumbnail = React.memo(({ uri, style }) => {
         <View style={[StyleSheet.absoluteFill, {
           alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(11, 15, 23, 0.45)'
         }]}>
-          <ActivityIndicator size="small" color="#FFFFFF" />
+          <ActivityIndicator size="small" color={WHITE} />
         </View>
       )}
     </View>
@@ -1819,14 +1824,14 @@ const LoadingThumbnail = React.memo(({ uri, style }) => {
 
 const Grid2x2SVG = React.memo(() => (
   <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <Rect x="3" y="3" width="8" height="8" rx="2" fill="#FFFFFF" />
-    <Rect x="13" y="3" width="8" height="8" rx="2" fill="#FFFFFF" />
-    <Rect x="13" y="13" width="8" height="8" rx="2" fill="#FFFFFF" />
-    <Rect x="3" y="13" width="8" height="8" rx="2" fill="#FFFFFF" />
+    <Rect x="3" y="3" width="8" height="8" rx="2" fill={WHITE} />
+    <Rect x="13" y="3" width="8" height="8" rx="2" fill={WHITE} />
+    <Rect x="13" y="13" width="8" height="8" rx="2" fill={WHITE} />
+    <Rect x="3" y="13" width="8" height="8" rx="2" fill={WHITE} />
   </Svg>
 ));
 
-const ShareIconSVG = React.memo(({ color = '#D8B4FE' }) => (
+const ShareIconSVG = React.memo(({ color = INDIGO_200 }) => (
   <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
     <Circle cx="18" cy="5" r="3" stroke={color} strokeWidth="2" />
     <Circle cx="6" cy="12" r="3" stroke={color} strokeWidth="2" />
@@ -1835,14 +1840,14 @@ const ShareIconSVG = React.memo(({ color = '#D8B4FE' }) => (
   </Svg>
 ));
 
-const EditIconSVG = React.memo(({ color = '#D8B4FE' }) => (
+const EditIconSVG = React.memo(({ color = INDIGO_200 }) => (
   <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
     <Path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     <Path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
   </Svg>
 ));
 
-const DashCircleIconSVG = React.memo(({ size = 16, color = '#EF4444' }) => (
+const DashCircleIconSVG = React.memo(({ size = 16, color = DANGER }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth="2" />
     <Path d="M8 12H16" stroke={color} strokeWidth="2" strokeLinecap="round" />
@@ -1851,33 +1856,22 @@ const DashCircleIconSVG = React.memo(({ size = 16, color = '#EF4444' }) => (
 
 const TrashIconSVG = React.memo(() => (
   <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <Path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <Path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke={DANGER} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
   </Svg>
 ));
 
 const SearchChipSVG = React.memo(() => (
   <Svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-    <Circle cx="11" cy="11" r="7" stroke="#D8B4FE" strokeWidth="2" />
-    <Path d="M20 20L16 16" stroke="#D8B4FE" strokeWidth="2" strokeLinecap="round" />
+    <Circle cx="11" cy="11" r="7" stroke={INDIGO_200} strokeWidth="2" />
+    <Path d="M20 20L16 16" stroke={INDIGO_200} strokeWidth="2" strokeLinecap="round" />
   </Svg>
 ));
 
-const LocationPinSVG = React.memo(({ color = '#94A3B8' }) => (
-  <Svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-    <Path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <Circle cx="12" cy="9" r="2.5" stroke={color} strokeWidth="2"/>
-  </Svg>
-));
 
-const WarningTriangleSVG = React.memo(() => (
-  <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-    <Path d="M10.29 3.86L1.82 18C1.64537 18.3024 1.55296 18.6453 1.55199 18.9945C1.55103 19.3437 1.64154 19.6874 1.81445 19.991C1.98737 20.2946 2.23652 20.5478 2.53684 20.7252C2.83716 20.9026 3.1783 20.9981 3.52 21H20.48C20.8217 20.9981 21.1628 20.9026 21.4632 20.7252C21.7635 20.5478 22.0126 20.2946 22.1855 19.991C22.3585 19.6874 22.449 19.3437 22.448 18.9945C22.447 18.6453 22.3546 18.3024 22.18 18L13.71 3.86C13.5317 3.56613 13.2807 3.32314 12.9812 3.15448C12.6817 2.98582 12.3437 2.89746 12 2.89746C11.6563 2.89746 11.3183 2.98582 11.0188 3.15448C10.7193 3.32314 10.4683 3.56613 10.29 3.86Z" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <Path d="M12 9V13" stroke="#EF4444" strokeWidth="2" strokeLinecap="round"/>
-    <Path d="M12 17H12.01" stroke="#EF4444" strokeWidth="2" strokeLinecap="round"/>
-  </Svg>
-));
 
-const ImageIconSVG = React.memo(({ color = '#8B5CF6', size = 28 }) => (
+
+
+const ImageIconSVG = React.memo(({ color = BRAND_PRIMARY, size = 28 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="3" y="3" width="18" height="18" rx="3" stroke={color} strokeWidth="2" />
     <Circle cx="8.5" cy="8.5" r="1.5" fill={color} />
@@ -1885,13 +1879,13 @@ const ImageIconSVG = React.memo(({ color = '#8B5CF6', size = 28 }) => (
   </Svg>
 ));
 
-const TextBlockIconSVG = React.memo(({ color = '#8B5CF6', size = 28 }) => (
+const TextBlockIconSVG = React.memo(({ color = BRAND_PRIMARY, size = 28 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M4 6h16M4 12h16M4 18h10" stroke={color} strokeWidth="2" strokeLinecap="round" />
   </Svg>
 ));
 
-const GripDotsIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
+const GripDotsIconSVG = React.memo(({ color = TEXT_SECONDARY, size = 16 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Circle cx="8" cy="5" r="1.6" fill={color} />
     <Circle cx="16" cy="5" r="1.6" fill={color} />
@@ -1902,14 +1896,14 @@ const GripDotsIconSVG = React.memo(({ color = '#94A3B8', size = 16 }) => (
   </Svg>
 ));
 
-const CropIconSVG = React.memo(({ color = '#8B5CF6', size = 16 }) => (
+const CropIconSVG = React.memo(({ color = BRAND_PRIMARY, size = 16 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M6 2v14a2 2 0 0 0 2 2h14" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     <Path d="M18 22V8a2 2 0 0 0-2-2H2" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
-const AlignIconSVG = React.memo(({ align = 'left', color = '#94A3B8', size = 16 }) => {
+const AlignIconSVG = React.memo(({ align = 'left', color = TEXT_SECONDARY, size = 16 }) => {
   const lines = {
     left: ['M3 6h18', 'M3 12h12', 'M3 18h16'],
     center: ['M3 6h18', 'M6 12h12', 'M4 18h16'],
@@ -1924,14 +1918,14 @@ const AlignIconSVG = React.memo(({ align = 'left', color = '#94A3B8', size = 16 
   );
 });
 
-const RevertIconSVG = React.memo(({ color = '#8B5CF6', size = 18 }) => (
+const RevertIconSVG = React.memo(({ color = BRAND_PRIMARY, size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M9 14L4 9l5-5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     <Path d="M20 20v-7a4 4 0 0 0-4-4H4" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
-const PinIconSVG = React.memo(({ pinned = false, size = 16, color = '#8B5CF6' }) => (
+const PinIconSVG = React.memo(({ pinned = false, size = 16, color = BRAND_PRIMARY }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
       d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"
@@ -1943,7 +1937,7 @@ const PinIconSVG = React.memo(({ pinned = false, size = 16, color = '#8B5CF6' })
   </Svg>
 ));
 
-const RowBlockIconSVG = React.memo(({ color = '#8B5CF6', size = 28, filled = false }) => (
+const RowBlockIconSVG = React.memo(({ color = BRAND_PRIMARY, size = 28, filled = false }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="2" y="4" width="8" height="16" rx="2" fill={filled ? color : 'none'} stroke={color} strokeWidth="2" />
     <Rect x="14" y="4" width="8" height="16" rx="2" fill={filled ? color : 'none'} stroke={color} strokeWidth="2" />
@@ -1960,7 +1954,7 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 // activateAnim only drives the brief "growing in" animation when this icon
 // is becoming active - it's never used to animate the icon going inactive,
 // so deactivating just snaps straight to the plain resting state.
-const SunIconSVG = React.memo(({ color = '#94A3B8', filled = false, size = 16, activateAnim }) => {
+const SunIconSVG = React.memo(({ color = TEXT_SECONDARY, filled = false, size = 16, activateAnim }) => {
   const rayOpacity = filled && activateAnim ? activateAnim : 1;
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -1974,7 +1968,7 @@ const SunIconSVG = React.memo(({ color = '#94A3B8', filled = false, size = 16, a
   );
 });
 
-const MoonIconSVG = React.memo(({ color = '#94A3B8', filled = false, size = 16, cutoutColor = '#8B5CF6', activateAnim }) => {
+const MoonIconSVG = React.memo(({ color = TEXT_SECONDARY, filled = false, size = 16, cutoutColor = BRAND_PRIMARY, activateAnim }) => {
   if (!filled) {
     // Resting inactive state: plain crescent outline, no fill/cutout tricks.
     return (
@@ -1994,7 +1988,7 @@ const MoonIconSVG = React.memo(({ color = '#94A3B8', filled = false, size = 16, 
   );
 });
 
-const HelpCircleIconSVG = React.memo(({ color = '#94A3B8', size = 18 }) => (
+const HelpCircleIconSVG = React.memo(({ color = TEXT_SECONDARY, size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Circle cx="12" cy="12" r="9.5" stroke={color} strokeWidth="1.8" />
     <Path d="M9.3 9a2.7 2.7 0 1 1 3.9 2.4c-.8.4-1.2 1-1.2 1.9" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
@@ -2002,46 +1996,32 @@ const HelpCircleIconSVG = React.memo(({ color = '#94A3B8', size = 18 }) => (
   </Svg>
 ));
 
-const ExternalLinkSVG = React.memo(({ color = '#D8B4FE', size = 14 }) => (
+const ExternalLinkSVG = React.memo(({ color = INDIGO_200, size = 14 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     <Path d="M15 3h6v6M10 14L21 3" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
-const LockIconSVG = React.memo(({ color = '#334155', size = 13 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Rect x="5" y="11" width="14" height="10" rx="2" stroke={color} strokeWidth="2" />
-    <Path d="M8 11V7a4 4 0 0 1 8 0v4" stroke={color} strokeWidth="2" strokeLinecap="round" />
-  </Svg>
-));
+
 
 const CameraIconSVG = React.memo(() => (
   <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-    <Path d="M23 19C23 19.5304 22.7893 20.0391 22.4142 20.4142C22.0391 20.7893 21.5304 21 21 21H3C2.46957 21 1.96086 20.7893 1.58579 20.4142C1.21071 20.0391 1 19.5304 1 19V8C1 7.46957 1.21071 6.96086 1.58579 6.58579C1.96086 6.21071 2.46957 6 3 6H7L9 3H15L17 6H21C21.5304 6 22.0391 6.21071 22.4142 6.58579C22.7893 6.96086 23 7.46957 23 8V19Z" stroke="#8B5CF6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <Circle cx="12" cy="13" r="4" stroke="#8B5CF6" strokeWidth="2"/>
+    <Path d="M23 19C23 19.5304 22.7893 20.0391 22.4142 20.4142C22.0391 20.7893 21.5304 21 21 21H3C2.46957 21 1.96086 20.7893 1.58579 20.4142C1.21071 20.0391 1 19.5304 1 19V8C1 7.46957 1.21071 6.96086 1.58579 6.58579C1.96086 6.21071 2.46957 6 3 6H7L9 3H15L17 6H21C21.5304 6 22.0391 6.21071 22.4142 6.58579C22.7893 6.96086 23 7.46957 23 8V19Z" stroke={BRAND_PRIMARY} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <Circle cx="12" cy="13" r="4" stroke={BRAND_PRIMARY} strokeWidth="2"/>
   </Svg>
 ));
 
-const CopyIconSVG = React.memo(({ color = '#FFFFFF', size = 16 }) => (
+const CopyIconSVG = React.memo(({ color = WHITE, size = 16 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Rect x="9" y="9" width="12" height="12" rx="2" stroke={color} strokeWidth="2" />
     <Path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke={color} strokeWidth="2" />
   </Svg>
 ));
 
-const DownloadIconSVG = React.memo(({ color = '#FFFFFF', size = 16 }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M12 3v12M7 10l5 5 5-5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    <Path d="M4 19h16" stroke={color} strokeWidth="2" strokeLinecap="round" />
-  </Svg>
-));
 
-const CheckIconSVG = React.memo(({ color = '#FFFFFF' }) => (
-  <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-    <Path d="M20 6L9 17l-5-5" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-  </Svg>
-));
+
+
 
 // SOCIAL BRAND LOGO SVGS FOR AUTO DETECTED LINKS
 // Lightweight markup parser for the portfolio long description field.
@@ -2068,36 +2048,13 @@ Notifications.setNotificationHandler({
 // Brand purple and semantic colors (error/success/warning) stay mostly
 // consistent, matching how most real apps handle light/dark - only the
 // primary purple gets a deeper shade in light mode for proper contrast,
-// per explicit request.
-const THEME_DARK = {
-  mode: 'dark',
-  bg: '#0B0F17',
-  surface: '#151D2A',
-  border: '#26334D',
-  text: '#F8FAFC',
-  textSecondary: '#94A3B8',
-  textTertiary: '#7B889C',
-  primary: '#8B5CF6',
-  accent: '#C084FC',
-  accentLight: '#D8B4FE'
-};
 
-const THEME_LIGHT = {
-  mode: 'light',
-  bg: '#F4F2FA',
-  surface: '#FFFFFF',
-  border: '#E2DFF0',
-  text: '#1A1625',
-  textSecondary: '#6B6478',
-  textTertiary: '#6F6A80',
-  primary: '#7C3AED',
-  accent: '#7C3AED',
-  accentLight: '#9061F9'
-};
 
-const THEME_STORAGE_KEY = '@decent_theme_mode';
-const ThemeContext = React.createContext({ theme: THEME_DARK, themeMode: 'dark', toggleTheme: () => {} });
-const useTheme = () => React.useContext(ThemeContext);
+
+
+
+
+
 
 // TOOLS-ONLY localization. Deliberately scoped to just the Tools screens
 // (hub, Image Compressor, QR Generator) - the rest of the app (For You,
@@ -2281,40 +2238,7 @@ const TOOLS_TRANSLATIONS = {
 const TOOLS_LANGUAGE_STORAGE_KEY = '@decent_tools_language';
 const TOOLS_THEME_STORAGE_KEY = '@decent_tools_theme_mode';
 
-const ThemeProvider = ({ children }) => {
-  const [themeMode, setThemeMode] = useState('dark');
 
-  useEffect(() => {
-    AsyncStorage.getItem(THEME_STORAGE_KEY).then((saved) => {
-      if (saved === 'light' || saved === 'dark') {
-        setThemeMode(saved);
-      } else {
-        // No explicit preference saved yet (new install / fresh onboarding) -
-        // follow the device's system theme until the user picks one
-        // themselves via the toggle, at which point their choice persists
-        // and takes over from here on.
-        const systemScheme = Appearance.getColorScheme();
-        if (systemScheme === 'light' || systemScheme === 'dark') setThemeMode(systemScheme);
-      }
-    });
-  }, []);
-
-  const toggleTheme = () => {
-    setThemeMode((prev) => {
-      const next = prev === 'dark' ? 'light' : 'dark';
-      AsyncStorage.setItem(THEME_STORAGE_KEY, next).catch(() => {});
-      return next;
-    });
-  };
-
-  const theme = themeMode === 'dark' ? THEME_DARK : THEME_LIGHT;
-
-  return (
-    <ThemeContext.Provider value={{ theme, themeMode, toggleTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
-};
 
 // Admin-only "Lightweight Mode": shortens/skips animations and swaps blur
 // b621: Fancy Mode is being fully removed - the toggle to turn it off
@@ -2341,38 +2265,16 @@ const useLightweightMode = () => ({ lightweightMode: true, setLightweightMode: (
 // Starts false and flips once the initial async check resolves, rather
 // than blocking first paint on it - the very first press before that
 // resolves will still bounce, which is an acceptable tradeoff for
-// avoiding a loading gate on every app launch.
-const ReduceMotionContext = React.createContext(false);
-const useReduceMotion = () => React.useContext(ReduceMotionContext);
 
-const ReduceMotionProvider = ({ children }) => {
-  const [reduceMotion, setReduceMotion] = useState(false);
 
-  useEffect(() => {
-    if (Platform.OS === 'web') return; // AccessibilityInfo.isReduceMotionEnabled is native-only
-    let mounted = true;
-    AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
-      if (mounted) setReduceMotion(enabled);
-    });
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
 
-  return (
-    <ReduceMotionContext.Provider value={reduceMotion}>
-      {children}
-    </ReduceMotionContext.Provider>
-  );
-};
+
 
 const LightweightModeProvider = ({ children }) => children;
 
 const isValidHandleFormat = (h) => /^[A-Za-z0-9._-]{3,20}$/.test(h);
 
-const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
+
 
 // Platform-aware fullscreen overlay wrapper - used by the block editor's
 // "Detailed Description" fullscreen view. Root-caused (b517): on web it
@@ -2414,33 +2316,7 @@ const FullscreenEditorOverlay = ({ visible, onRequestClose, children }) => {
 
 // Drop-in replacement for TouchableOpacity that adds a subtle, brief
 // press-in/press-out scale bounce. Forwards every prop through so it's a
-// transparent swap wherever it's used.
-const BouncyButton = React.memo(({ style, onPressIn, onPressOut, children, ...rest }) => {
-  const bounceScale = useRef(new Animated.Value(1)).current;
-  const reduceMotion = useReduceMotion();
-  const handlePressIn = (e) => {
-    if (!reduceMotion) {
-      Animated.spring(bounceScale, { toValue: 0.94, useNativeDriver: true, speed: 50, bounciness: 6 }).start();
-    }
-    if (onPressIn) onPressIn(e);
-  };
-  const handlePressOut = (e) => {
-    if (!reduceMotion) {
-      Animated.spring(bounceScale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 8 }).start();
-    }
-    if (onPressOut) onPressOut(e);
-  };
-  return (
-    <AnimatedTouchableOpacity
-      {...rest}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      style={[style, { transform: [{ scale: bounceScale }] }]}
-    >
-      {children}
-    </AnimatedTouchableOpacity>
-  );
-});
+
 
 // b595: fully custom-drawn Switch, replacing React Native's built-in
 // <Switch> everywhere - that component renders as a native HTML checkbox
@@ -2454,7 +2330,7 @@ const BouncyButton = React.memo(({ style, onPressIn, onPressOut, children, ...re
 // platform. Same prop shape as the built-in Switch (value, onValueChange,
 // trackColor: {false, true}, thumbColor) so every existing call site
 // only needed <Switch -> <AppSwitch, nothing else.
-const AppSwitch = React.memo(({ value, onValueChange, trackColor, thumbColor = '#FFFFFF', disabled, theme, accessibilityRole, accessibilityLabel, accessibilityState }) => {
+const AppSwitch = React.memo(({ value, onValueChange, trackColor, thumbColor = WHITE, disabled, theme, accessibilityRole, accessibilityLabel, accessibilityState }) => {
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
   useEffect(() => {
     Animated.timing(anim, {
@@ -2494,13 +2370,13 @@ const AppSwitch = React.memo(({ value, onValueChange, trackColor, thumbColor = '
           could nearly disappear against other same-toned dark surfaces
           without some edge to define its shape. */}
       <Animated.View style={{
-        width: 48, height: 28, borderRadius: 14, backgroundColor: bgColor, padding: 2, justifyContent: 'center',
+        width: 48, height: 28, borderRadius: RADIUS_14, backgroundColor: bgColor, padding: 2, justifyContent: 'center',
         borderWidth: 1, borderColor: theme ? theme.border : 'rgba(255,255,255,0.15)'
       }}>
         <Animated.View style={{
-          width: 24, height: 24, borderRadius: 12, backgroundColor: thumbColor,
+          width: 24, height: 24, borderRadius: RADIUS_12, backgroundColor: thumbColor,
           transform: [{ translateX: thumbTranslateX }],
-          shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2
+          shadowColor: BLACK, shadowOpacity: 0.2, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2
         }} />
       </Animated.View>
     </TouchableOpacity>
@@ -2608,7 +2484,7 @@ const getShowcaseCaptionsFromRow = (row) => {
 // `visitsFallback` are parameterized since the 5 call sites differ only
 // in how they know whether the current viewer liked this item, and one
 // historically used a different fallback for visitsCount than the rest.
-const mapPortfolioRow = (p, { liked = false, visitsFallback = 120 } = {}) => ({
+const mapPortfolioRow = (p, { liked = false, visitsFallback = 0 } = {}) => ({
   id: p.id,
   ownerId: p.user_id || null,
   portfolioType: p.portfolio_type || 'ui_ux',
@@ -2644,7 +2520,7 @@ const mapPortfolioRow = (p, { liked = false, visitsFallback = 120 } = {}) => ({
   caseStudy: p.brief || ''
 });
 
-const renderFormattedDescription = (raw, align = 'left', textColor = '#E2E8F0') => {
+const renderFormattedDescription = (raw, align = 'left', textColor = BORDER_SOFT) => {
   if (!raw || !raw.trim()) return null;
   const lines = raw.split('\n');
   return lines.map((line, lineIdx) => {
@@ -2691,7 +2567,7 @@ const renderContentBlocks = (blocks, onImagePress, theme) => {
   return blocks.map((block) => {
     if (!block) return null;
     if (block.type === 'text') {
-      return <View key={block.id} style={{ marginBottom: 18 }}>{renderFormattedDescription(block.markdown, block.align || 'left', theme ? theme.text : '#E2E8F0')}</View>;
+      return <View key={block.id} style={{ marginBottom: 18 }}>{renderFormattedDescription(block.markdown, block.align || 'left', theme ? theme.text : BORDER_SOFT)}</View>;
     }
     if (block.type === 'image') {
       if (!block.uri) return null;
@@ -2714,7 +2590,7 @@ const renderContentBlocks = (blocks, onImagePress, theme) => {
           // function - the two block types intentionally look different
           // from each other now, not both square like the b557 pass
           // originally made them).
-          style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 12, marginBottom: 18, backgroundColor: '#1E293B' }}
+          style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: RADIUS_12, marginBottom: 18, backgroundColor: SKY_800 }}
           resizeMode="cover"
         />
       );
@@ -2732,8 +2608,8 @@ const renderContentBlocks = (blocks, onImagePress, theme) => {
           key={block.id}
           style={{
             flexDirection: 'row', gap: 10, marginBottom: 18,
-            backgroundColor: theme ? (theme.mode === 'light' ? '#EAE7F5' : theme.surface) : 'rgba(255,255,255,0.04)',
-            borderRadius: 12, padding: 10
+            backgroundColor: theme ? (theme.mode === 'light' ? INDIGO_100 : theme.surface) : 'rgba(255,255,255,0.04)',
+            borderRadius: RADIUS_12, padding: 10
           }}
         >
           {(block.columns || []).map((col, colIdx) => {
@@ -2742,13 +2618,13 @@ const renderContentBlocks = (blocks, onImagePress, theme) => {
               // comment on that image a few lines up in this function).
               <Image
                 source={{ uri: col.uri }}
-                style={{ width: '100%', aspectRatio: 1, borderRadius: 10, backgroundColor: '#1E293B' }}
+                style={{ width: '100%', aspectRatio: 1, borderRadius: RADIUS_10, backgroundColor: SKY_800 }}
                 resizeMode="cover"
               />
             ) : null;
             return (
               <View key={colIdx} style={{ flex: 1 }}>
-                {col && col.type === 'text' && renderFormattedDescription(col.markdown, col.align || 'left', theme ? theme.text : '#E2E8F0')}
+                {col && col.type === 'text' && renderFormattedDescription(col.markdown, col.align || 'left', theme ? theme.text : BORDER_SOFT)}
                 {colImg && (onImagePress ? (
                   <BouncyButton activeOpacity={0.9} onPress={() => onImagePress(col.uri)}>
                     {colImg}
@@ -2764,7 +2640,7 @@ const renderContentBlocks = (blocks, onImagePress, theme) => {
   });
 };
 
-const SparkleIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
+const SparkleIconSVG = React.memo(({ color = BRAND_ACCENT, size = 14 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
       d="M12 2l1.8 5.6L19.5 9l-5.7 1.4L12 16l-1.8-5.6L4.5 9l5.7-1.4L12 2z"
@@ -2777,14 +2653,14 @@ const SparkleIconSVG = React.memo(({ color = '#C084FC', size = 14 }) => (
   </Svg>
 ));
 
-const TrendingUpSVG = React.memo(({ color = '#C084FC', size = 13 }) => (
+const TrendingUpSVG = React.memo(({ color = BRAND_ACCENT, size = 13 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M3 17L9 11L13 15L21 7" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     <Path d="M15 7H21V13" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 ));
 
-const LayoutToggleSVG = React.memo(({ mode = 'compact', color = '#C084FC', size = 18 }) => (
+const LayoutToggleSVG = React.memo(({ mode = 'compact', color = BRAND_ACCENT, size = 18 }) => (
   // Represents the CURRENT mode (was previously showing what tapping would
   // switch TO instead, which read backwards to the user).
   mode === 'compact' ? (
@@ -2802,7 +2678,7 @@ const LayoutToggleSVG = React.memo(({ mode = 'compact', color = '#C084FC', size 
   )
 ));
 
-const ClockSVG = React.memo(({ color = '#C084FC', size = 13 }) => (
+const ClockSVG = React.memo(({ color = BRAND_ACCENT, size = 13 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth="2" />
     <Path d="M12 7V12L15.5 14.5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -2811,68 +2687,63 @@ const ClockSVG = React.memo(({ color = '#C084FC', size = 13 }) => (
 
 const FigmaLogoSVG = React.memo(() => (
   <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <Path d="M12 12a3 3 0 1 1 6 0 3 3 0 0 1-6 0z" fill="#1ABCFE" />
-    <Path d="M6 18a3 3 0 0 1 3-3h3v3a3 3 0 0 1-6 0z" fill="#0ACF83" />
-    <Path d="M6 12a3 3 0 0 1 3-3h3v6H9a3 3 0 0 1-3-3z" fill="#A259FF" />
-    <Path d="M6 6a3 3 0 0 1 3-3h3v6H9a3 3 0 0 1-3-3z" fill="#F24E1E" />
-    <Path d="M12 3h3a3 3 0 0 1 0 6h-3V3z" fill="#FF7262" />
+    <Path d="M12 12a3 3 0 1 1 6 0 3 3 0 0 1-6 0z" fill={FIGMA_BLUE} />
+    <Path d="M6 18a3 3 0 0 1 3-3h3v3a3 3 0 0 1-6 0z" fill={FIGMA_GREEN} />
+    <Path d="M6 12a3 3 0 0 1 3-3h3v6H9a3 3 0 0 1-3-3z" fill={FIGMA_PURPLE} />
+    <Path d="M6 6a3 3 0 0 1 3-3h3v6H9a3 3 0 0 1-3-3z" fill={FIGMA_RED} />
+    <Path d="M12 3h3a3 3 0 0 1 0 6h-3V3z" fill={FIGMA_CORAL} />
   </Svg>
 ));
 
 const GoogleLogoSVG = React.memo(({ size = 18 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
-    <Path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.25 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.85A10.99 10.99 0 0 0 12 23z" fill="#34A853" />
-    <Path d="M5.84 14.09A6.6 6.6 0 0 1 5.5 12c0-.73.12-1.43.34-2.09V7.06H2.18A11 11 0 0 0 1 12c0 1.77.43 3.45 1.18 4.94l3.66-2.85z" fill="#FBBC05" />
-    <Path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.85C6.71 7.31 9.14 5.38 12 5.38z" fill="#EA4335" />
+    <Path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill={GOOGLE_BLUE} />
+    <Path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.25 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.85A10.99 10.99 0 0 0 12 23z" fill={GOOGLE_GREEN} />
+    <Path d="M5.84 14.09A6.6 6.6 0 0 1 5.5 12c0-.73.12-1.43.34-2.09V7.06H2.18A11 11 0 0 0 1 12c0 1.77.43 3.45 1.18 4.94l3.66-2.85z" fill={GOOGLE_YELLOW} />
+    <Path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.85C6.71 7.31 9.14 5.38 12 5.38z" fill={GOOGLE_RED} />
   </Svg>
 ));
 
 const DribbbleLogoSVG = React.memo(() => (
   <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <Circle cx="12" cy="12" r="9" stroke="#EA4C89" strokeWidth="2" />
-    <Path d="M12 3c3 3 5 7 5 9M3.6 9c3 1 7 2 11 0M4.5 16.5c3-2 7-3 12-1" stroke="#EA4C89" strokeWidth="2" strokeLinecap="round" />
+    <Circle cx="12" cy="12" r="9" stroke={DRIBBBLE_PINK} strokeWidth="2" />
+    <Path d="M12 3c3 3 5 7 5 9M3.6 9c3 1 7 2 11 0M4.5 16.5c3-2 7-3 12-1" stroke={DRIBBBLE_PINK} strokeWidth="2" strokeLinecap="round" />
   </Svg>
 ));
 
 const LinkedInLogoSVG = React.memo(() => (
   <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <Path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6zM2 9h4v12H2z" fill="#0A66C2" />
-    <Circle cx="4" cy="4" r="2" fill="#0A66C2" />
+    <Path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6zM2 9h4v12H2z" fill={LINKEDIN_BLUE} />
+    <Circle cx="4" cy="4" r="2" fill={LINKEDIN_BLUE} />
   </Svg>
 ));
 
 const GitHubLogoSVG = React.memo(() => (
   <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <Circle cx="12" cy="12" r="12" fill="#181717" />
-    <Path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.258-1.11-1.594-1.11-1.594-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" fill="#FFFFFF" />
+    <Circle cx="12" cy="12" r="12" fill={GITHUB_BLACK} />
+    <Path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.258-1.11-1.594-1.11-1.594-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" fill={WHITE} />
   </Svg>
 ));
 
 const TwitterLogoSVG = React.memo(() => (
   <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <Path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.4 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z" fill="#1DA1F2" />
+    <Path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.4 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z" fill={TWITTER_BLUE} />
   </Svg>
 ));
 
 const YouTubeLogoSVG = React.memo(() => (
   <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <Path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-1.96C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 1.96A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-1.96 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.37z" fill="#FF0000" />
-    <Path d="M9.75 15.02l5.75-3.27-5.75-3.27v6.54z" fill="#FFFFFF" />
+    <Path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-1.96C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 1.96A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-1.96 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.37z" fill={RED_500_5} />
+    <Path d="M9.75 15.02l5.75-3.27-5.75-3.27v6.54z" fill={WHITE} />
   </Svg>
 ));
 
-const GlobeIconSVG = React.memo(({ color = '#94A3B8' }) => (
-  <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-    <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth="2" />
-    <Path d="M3.6 9h16.8M3.6 15h16.8M12 3a15.3 15.3 0 0 1 4 9 15.3 15.3 0 0 1-4 9 15.3 15.3 0 0 1-4-9 15.3 15.3 0 0 1 4-9z" stroke={color} strokeWidth="2" />
-  </Svg>
-));
+
 
 // Used on the Active Sessions screen - a phone silhouette for mobile OSes,
 // a laptop/monitor silhouette for desktop OSes, and a plain question-mark
 // circle for anything parseSessionDevice() couldn't confidently identify.
-const DeviceIconSVG = React.memo(({ kind, color = '#94A3B8', size = 18 }) => {
+const DeviceIconSVG = React.memo(({ kind, color = TEXT_SECONDARY, size = 18 }) => {
   if (kind === 'android' || kind === 'ios') {
     return (
       <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -2927,10 +2798,10 @@ const LinkFaviconIcon = React.memo(({ url, size = 18 }) => {
   // detect and invert an arbitrary fetched image's colors, so a consistent
   // light backing is the practical fix instead.
   return (
-    <View style={{ width: size, height: size, borderRadius: 4, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+    <View style={{ width: size, height: size, borderRadius: RADIUS_4, backgroundColor: WHITE, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
       <Image
         source={{ uri: `https://www.google.com/s2/favicons?domain=${domain}&sz=64` }}
-        style={{ width: size - 4, height: size - 4, borderRadius: 2 }}
+        style={{ width: size - 4, height: size - 4, borderRadius: RADIUS_2 }}
         onError={() => setFailed(true)}
       />
     </View>
@@ -3155,7 +3026,7 @@ const ExpandableBioText = ({ text, style, isWebWide, bgColor }) => {
         </Text>
         {webIsTruncated && (
           <Text
-            style={{ color: '#8B5CF6', fontSize: (style && style.fontSize) || 13, fontWeight: '700', textAlign: 'center', marginTop: 4 }}
+            style={{ color: BRAND_PRIMARY, fontSize: (style && style.fontSize) || 13, fontWeight: '700', textAlign: 'center', marginTop: 4 }}
             onPress={() => setExpanded((prev) => !prev)}
           >
             {expanded ? 'Read less' : 'Read more'}
@@ -3214,7 +3085,7 @@ const ExpandableBioText = ({ text, style, isWebWide, bgColor }) => {
       {expanded || !isTruncated ? text : `${truncatedLineText}\u2026 `}
       {isTruncated && (
         <Text
-          style={{ color: '#8B5CF6', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' }}
+          style={{ color: BRAND_PRIMARY, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' }}
           onPress={() => setExpanded((prev) => !prev)}
         >
           {expanded ? ' Read less' : 'Read more'}
@@ -3294,8 +3165,8 @@ const ProjectCard = React.memo(({
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
           alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.25)'
         }}>
-          <View style={{ backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
-            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>NSFW</Text>
+          <View style={{ backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: RADIUS_8, paddingHorizontal: 10, paddingVertical: 4 }}>
+            <Text style={{ color: WHITE, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>NSFW</Text>
           </View>
         </View>
       )}
@@ -3313,9 +3184,9 @@ const ProjectCard = React.memo(({
           <View style={[styles.protoBadgeIconOnly, { flexDirection: 'row', gap: 6 }]}>
             {((item.uploadedVideos && item.uploadedVideos.length > 0) ||
               (item.videoLinks && item.videoLinks.some((v) => v && v.trim()))) ? (
-              <VideoFilledIconSVG size={13} color="#FFFFFF" />
+              <VideoFilledIconSVG size={13} color={WHITE} />
             ) : null}
-            {(item.images && item.images.length > 1) ? <ImageFilledIconSVG size={13} color="#FFFFFF" /> : null}
+            {(item.images && item.images.length > 1) ? <ImageFilledIconSVG size={13} color={WHITE} /> : null}
           </View>
         )}
       </View>
@@ -3339,7 +3210,7 @@ const ProjectCard = React.memo(({
       {showPinControl && (item.pinned || pinnedCount < 2) ? (
         <BouncyButton
           style={{
-            position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 14,
+            position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: RADIUS_14,
             backgroundColor: 'rgba(11, 15, 23, 0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10
           }}
           onPress={() => onTogglePin && onTogglePin(item.id)}
@@ -3347,7 +3218,7 @@ const ProjectCard = React.memo(({
           accessibilityLabel={item.pinned ? 'Unpin from profile' : 'Pin to profile'}
           accessibilityState={{ selected: !!item.pinned }}
         >
-          <PinIconSVG pinned={!!item.pinned} size={15} color={item.pinned ? '#C084FC' : '#FFFFFF'} />
+          <PinIconSVG pinned={!!item.pinned} size={15} color={item.pinned ? BRAND_ACCENT : WHITE} />
         </BouncyButton>
       ) : (
         // Read-only indicator when viewing someone else's profile - viewers
@@ -3360,11 +3231,11 @@ const ProjectCard = React.memo(({
         showReadOnlyPin && item.pinned && (
           <View
             style={{
-              position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 14,
+              position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: RADIUS_14,
               backgroundColor: 'rgba(11, 15, 23, 0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10
             }}
           >
-            <PinIconSVG pinned size={15} color="#C084FC" />
+            <PinIconSVG pinned size={15} color={BRAND_ACCENT} />
           </View>
         )
       )}
@@ -3428,7 +3299,7 @@ const ProjectCard = React.memo(({
         <CardLink href={`/p/${item.id}`} activeOpacity={0.88} onPress={() => onPress(item)}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             {item.isAiGenerated === true && (
-              <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: 5, backgroundColor: '#7D52DD', alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ height: 20, minWidth: 20, paddingHorizontal: 4, borderRadius: RADIUS_5, backgroundColor: BRAND_MID, alignItems: 'center', justifyContent: 'center' }}>
                 {/* b556: was 'AI ASSISTED' for illustration specifically,
                     matching just 'AI' now for every type on the card -
                     the longer wording only reads correctly with more
@@ -3436,10 +3307,10 @@ const ProjectCard = React.memo(({
                     (activeProject.portfolioType, not item.portfolioType -
                     a separate two-instance render elsewhere in this
                     file) keeps 'AI Assisted' for illustration, untouched. */}
-                <Text style={{ color: '#E2E8F0', fontSize: 9, fontWeight: '800' }}>AI</Text>
+                <Text style={{ color: BORDER_SOFT, fontSize: 9, fontWeight: '800' }}>AI</Text>
               </View>
             )}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 20, paddingHorizontal: 6, borderRadius: 5, borderWidth: 1, borderColor: theme.border }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 20, paddingHorizontal: 6, borderRadius: RADIUS_5, borderWidth: 1, borderColor: theme.border }}>
               {item.portfolioType === 'graphic_design' ? (
                 <PaletteSVG size={12} color={theme.textSecondary} />
               ) : item.portfolioType === 'illustration' ? (
@@ -3479,7 +3350,7 @@ const ProjectCard = React.memo(({
             onPress={() => onToggleLike(item.id)}
             showCount
             style={styles.likeButtonRightAligned}
-            countStyle={{ color: '#94A3B8', fontSize: 10, fontWeight: '700', marginTop: 1 }}
+            countStyle={{ color: TEXT_SECONDARY, fontSize: 10, fontWeight: '700', marginTop: 1 }}
           />
         ) : null}
       </View>
@@ -3701,11 +3572,11 @@ const WebImageCropModal = ({ visible, imageUri, aspect, onConfirm, onCancel, the
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <View style={{ backgroundColor: theme.surface, borderRadius: 20, padding: 20, width: frameW + 40, alignItems: 'center' }}>
+        <View style={{ backgroundColor: theme.surface, borderRadius: RADIUS_20, padding: 20, width: frameW + 40, alignItems: 'center' }}>
           <Text style={{ color: theme.text, fontWeight: '800', fontSize: 15, marginBottom: 14 }}>Crop Image</Text>
 
           <View
-            style={{ width: frameW, height: frameH, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' }}
+            style={{ width: frameW, height: frameH, borderRadius: RADIUS_12, overflow: 'hidden', backgroundColor: BLACK }}
             {...panResponder.panHandlers}
             // onWheel is a plain DOM event prop, ignored harmlessly on
             // native (this whole modal only ever renders on web anyway -
@@ -3732,14 +3603,14 @@ const WebImageCropModal = ({ visible, imageUri, aspect, onConfirm, onCancel, the
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 14 }}>
             <BouncyButton
-              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}
+              style={{ width: 36, height: 36, borderRadius: RADIUS_18, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}
               onPress={() => adjustZoom(-0.2)}
             >
               <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>−</Text>
             </BouncyButton>
             <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Drag to reposition, scroll or +/- to zoom</Text>
             <BouncyButton
-              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}
+              style={{ width: 36, height: 36, borderRadius: RADIUS_18, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}
               onPress={() => adjustZoom(0.2)}
             >
               <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>+</Text>
@@ -3748,16 +3619,16 @@ const WebImageCropModal = ({ visible, imageUri, aspect, onConfirm, onCancel, the
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 20, width: '100%' }}>
             <BouncyButton
-              style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border }}
+              style={{ flex: 1, paddingVertical: 12, borderRadius: RADIUS_12, alignItems: 'center', backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border }}
               onPress={onCancel}
             >
               <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>Cancel</Text>
             </BouncyButton>
             <BouncyButton
-              style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: '#7D52DD' }}
+              style={{ flex: 1, paddingVertical: 12, borderRadius: RADIUS_12, alignItems: 'center', backgroundColor: BRAND_MID }}
               onPress={handleConfirm}
             >
-              <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 13 }}>Use Photo</Text>
+              <Text style={{ color: GRAY_50, fontWeight: '700', fontSize: 13 }}>Use Photo</Text>
             </BouncyButton>
           </View>
         </View>
@@ -3828,7 +3699,7 @@ const PdfGridCardPreview = React.memo(({ container, page }) => {
   }, [container.id, page.id, page.sourceFileIndex, page.sourcePageIndex, page.rotation]);
 
   if (failed || !uri) {
-    return <PdfIconSVG size={28} color="#94A3B8" />;
+    return <PdfIconSVG size={28} color={TEXT_SECONDARY} />;
   }
   return <PdfNativePreview uri={uri} style={{ width: '100%', height: '100%' }} onError={() => setFailed(true)} />;
 });
@@ -4007,7 +3878,7 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
   // updates it in place and the drag stays continuous.
   const renderHandleDot = (kind, style) => (
     <View key={kind} {...respondersRef.current[kind]} style={[{ position: 'absolute', width: 28, height: 28, marginLeft: -14, marginTop: -14, alignItems: 'center', justifyContent: 'center' }, style]}>
-      <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: '#7D52DD', borderWidth: 2, borderColor: '#FFFFFF' }} />
+      <View style={{ width: 14, height: 14, borderRadius: RADIUS_7, backgroundColor: BRAND_MID, borderWidth: 2, borderColor: WHITE }} />
     </View>
   );
   const renderEdgeBar = (kind, style) => (
@@ -4016,12 +3887,12 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
 
   return (
     <Modal animationType={Platform.OS === 'web' ? 'none' : 'fade'} transparent={false} visible={true} onRequestClose={onCancel}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#0B0F17', userSelect: 'none', WebkitUserSelect: 'none' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: SURFACE_BASE, userSelect: 'none', WebkitUserSelect: 'none' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }}>
           <BouncyButton style={{ padding: 6 }} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Cancel crop">
-            <Text style={{ color: '#F8FAFC', fontSize: 22 }}>✕</Text>
+            <Text style={{ color: TEXT_PRIMARY, fontSize: 22 }}>✕</Text>
           </BouncyButton>
-          <Text style={{ color: '#F8FAFC', fontSize: 14, fontWeight: '700' }}>{pageLabel}</Text>
+          <Text style={{ color: TEXT_PRIMARY, fontSize: 14, fontWeight: '700' }}>{pageLabel}</Text>
           <View style={{ width: 34 }} />
         </View>
 
@@ -4031,7 +3902,7 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
               <Image source={{ uri: imageUri }} draggable={false} style={{ width: '100%', height: '100%' }} resizeMode="stretch" />
             ) : (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <PdfIconSVG size={48} color="#64748B" />
+                <PdfIconSVG size={48} color={TEXT_MUTED} />
               </View>
             )}
             {/* Dark mask over the four excluded edges, live every drag frame */}
@@ -4048,7 +3919,7 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
               position: 'absolute',
               top: `${insets.top * 100}%`, bottom: `${insets.bottom * 100}%`,
               left: `${insets.left * 100}%`, right: `${insets.right * 100}%`,
-              borderWidth: 1.5, borderColor: '#FFFFFF'
+              borderWidth: 1.5, borderColor: WHITE
             }} />
 
             {renderEdgeBar('top', { top: `${insets.top * 100}%`, left: `${insets.left * 100}%`, right: `${insets.right * 100}%`, height: 24, marginTop: -12 })}
@@ -4068,8 +3939,8 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
             <BouncyButton
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 16,
-                borderRadius: 99, borderWidth: 1.5,
-                borderColor: aspectLocked ? '#8B5CF6' : 'rgba(255,255,255,0.25)',
+                borderRadius: RADIUS_99, borderWidth: 1.5,
+                borderColor: aspectLocked ? BRAND_PRIMARY : 'rgba(255,255,255,0.25)',
                 backgroundColor: aspectLocked ? 'rgba(139,92,246,0.18)' : 'transparent'
               }}
               onPress={toggleAspectLock}
@@ -4077,15 +3948,15 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
               accessibilityLabel="Preserve aspect ratio"
               accessibilityState={{ selected: aspectLocked }}
             >
-              <LockIconSVG color={aspectLocked ? '#8B5CF6' : '#94A3B8'} size={14} />
-              <Text style={{ color: aspectLocked ? '#8B5CF6' : '#94A3B8', fontSize: 12.5, fontWeight: '700' }}>
+              <LockIconSVG color={aspectLocked ? BRAND_PRIMARY : TEXT_SECONDARY} size={14} />
+              <Text style={{ color: aspectLocked ? BRAND_PRIMARY : TEXT_SECONDARY, fontSize: 12.5, fontWeight: '700' }}>
                 {aspectLocked ? 'Aspect Ratio Locked' : 'Preserve Aspect Ratio'}
               </Text>
             </BouncyButton>
             <BouncyButton
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 16,
-                borderRadius: 99, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)',
+                borderRadius: RADIUS_99, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)',
                 opacity: isCropAtFullPage ? 0.45 : 1
               }}
               onPress={resetCrop}
@@ -4093,10 +3964,10 @@ const PdfPageCropEditor = ({ visible, imageUri, pageLabel, isLastInQueue, onConf
               accessibilityRole="button"
               accessibilityLabel="Reset crop to full page"
             >
-              <Text style={{ color: '#94A3B8', fontSize: 12.5, fontWeight: '700' }}>Reset Crop</Text>
+              <Text style={{ color: TEXT_SECONDARY, fontSize: 12.5, fontWeight: '700' }}>Reset Crop</Text>
             </BouncyButton>
           </View>
-          <Text style={{ color: '#64748B', fontSize: 11, marginTop: 8, textAlign: 'center' }}>
+          <Text style={{ color: TEXT_MUTED, fontSize: 11, marginTop: 8, textAlign: 'center' }}>
             Drag a corner to resize both sides, an edge for just that side, or the box itself to move it.
           </Text>
         </View>
@@ -4934,7 +4805,7 @@ const FocusableTextInput = React.memo(({ style, onFocus, onBlur, ...props }) => 
       importantForAutofill="no"
       autoComplete="off"
       {...props}
-      style={[style, focused && { borderColor: '#8B5CF6', borderWidth: 1.5 }]}
+      style={[style, focused && { borderColor: BRAND_PRIMARY, borderWidth: 1.5 }]}
       onFocus={(e) => {
         setFocused(true);
         // Real keyboard-awareness for web (mobile and tablet both) - the
@@ -5315,7 +5186,7 @@ function AuthScreen({ onCancel } = {}) {
       {onCancel && (
         <BouncyButton
           style={{
-            position: 'absolute', top: 20, right: 20, width: 36, height: 36, borderRadius: 18,
+            position: 'absolute', top: 20, right: 20, width: 36, height: 36, borderRadius: RADIUS_18,
             backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
             alignItems: 'center', justifyContent: 'center', zIndex: 10
           }}
@@ -5325,7 +5196,7 @@ function AuthScreen({ onCancel } = {}) {
         </BouncyButton>
       )}
       <View style={{ alignItems: 'center', marginBottom: 20 }}>
-        <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 56, height: 56, borderRadius: RADIUS_16, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
           <DecentLogoSVG size={44} />
         </View>
       </View>
@@ -5333,9 +5204,9 @@ function AuthScreen({ onCancel } = {}) {
         {mode === 'login' ? 'Log In' : 'Sign Up'}
       </Text>
       <FocusableTextInput
-        style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, marginBottom: 12 }}
+        style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_10, padding: 12, color: theme.text, marginBottom: 12 }}
         placeholder={mode === 'login' ? 'Email or Handle' : 'Email'}
-        placeholderTextColor="#94A3B8"
+        placeholderTextColor={TEXT_SECONDARY}
         autoCapitalize="none"
         keyboardType={mode === 'login' ? 'default' : 'email-address'}
         autoComplete="email"
@@ -5347,11 +5218,11 @@ function AuthScreen({ onCancel } = {}) {
       <View style={{ position: 'relative' }}>
         <FocusableTextInput
           style={{
-            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 10,
+            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_10,
             padding: 12, paddingRight: 44, color: theme.text, marginBottom: mode === 'signup' ? 8 : 20
           }}
           placeholder="Password"
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={TEXT_SECONDARY}
           secureTextEntry={!showPassword}
           autoCapitalize="none"
           autoCorrect={false}
@@ -5375,8 +5246,8 @@ function AuthScreen({ onCancel } = {}) {
         <View style={{ marginBottom: 12 }}>
           {getPasswordRequirements(password).map((req) => (
             <View key={req.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-              {req.met ? <CheckIconSVG color="#10B981" /> : <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: theme.border }} />}
-              <Text style={{ color: req.met ? '#4ADE80' : theme.textSecondary, fontSize: 12 }}>{req.label}</Text>
+              {req.met ? <CheckIconSVG color={SUCCESS} /> : <View style={{ width: 18, height: 18, borderRadius: RADIUS_9, borderWidth: 1.5, borderColor: theme.border }} />}
+              <Text style={{ color: req.met ? GREEN_400 : theme.textSecondary, fontSize: 12 }}>{req.label}</Text>
             </View>
           ))}
         </View>
@@ -5386,11 +5257,11 @@ function AuthScreen({ onCancel } = {}) {
         <View style={{ position: 'relative' }}>
           <FocusableTextInput
             style={{
-              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 10,
+              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_10,
               padding: 12, paddingRight: 44, color: theme.text, marginBottom: 16
             }}
             placeholder="Confirm Password"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={TEXT_SECONDARY}
             secureTextEntry={!showConfirmPassword}
             autoCapitalize="none"
             autoCorrect={false}
@@ -5415,12 +5286,12 @@ function AuthScreen({ onCancel } = {}) {
           onPress={() => setTermsAgreed(!termsAgreed)}
         >
           <View style={{
-            width: 20, height: 20, borderRadius: 5, marginTop: 1,
-            borderWidth: 1.5, borderColor: termsAgreed ? '#8B5CF6' : theme.border,
-            backgroundColor: termsAgreed ? '#8B5CF6' : 'transparent',
+            width: 20, height: 20, borderRadius: RADIUS_5, marginTop: 1,
+            borderWidth: 1.5, borderColor: termsAgreed ? BRAND_PRIMARY : theme.border,
+            backgroundColor: termsAgreed ? BRAND_PRIMARY : 'transparent',
             alignItems: 'center', justifyContent: 'center'
           }}>
-            {termsAgreed && <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '900' }}>✓</Text>}
+            {termsAgreed && <Text style={{ color: WHITE, fontSize: 12, fontWeight: '900' }}>✓</Text>}
           </View>
           <Text style={{ color: theme.textSecondary, fontSize: 12, flex: 1, lineHeight: 17 }}>
             I agree to the{' '}
@@ -5431,12 +5302,12 @@ function AuthScreen({ onCancel } = {}) {
         </BouncyButton>
       )}
       <BouncyButton
-        style={{ backgroundColor: '#7D52DD', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}
+        style={{ backgroundColor: BRAND_MID, height: 44, borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}
         onPress={handleSubmit}
         disabled={loading}
       >
-        {loading ? <ActivityIndicator color="#FFF" /> : (
-          <Text style={{ color: '#FFF', fontWeight: '800' }}>{mode === 'login' ? 'Log In' : 'Sign Up'}</Text>
+        {loading ? <ActivityIndicator color={GRAY_50} /> : (
+          <Text style={{ color: GRAY_50, fontWeight: '800' }}>{mode === 'login' ? 'Log In' : 'Sign Up'}</Text>
         )}
       </BouncyButton>
 
@@ -5450,7 +5321,7 @@ function AuthScreen({ onCancel } = {}) {
         style={{
           flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
           backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
-          height: 44, borderRadius: 12, marginBottom: 16
+          height: 44, borderRadius: RADIUS_12, marginBottom: 16
         }}
         onPress={handleGoogleSignIn}
         disabled={googleLoading || loading}
@@ -5512,15 +5383,15 @@ function AuthScreen({ onCancel } = {}) {
             onResponderRelease={() => {}}
           >
             <BouncyButton
-              style={{ position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}
+              style={{ position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: RADIUS_99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}
               onPress={() => setAlertConfig(null)}
             >
-              <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>✕</Text>
+              <Text style={{ color: WHITE, fontSize: 14, fontWeight: '700' }}>✕</Text>
             </BouncyButton>
             <Text style={[styles.confirmTitle, { marginTop: 10 }]}>{alertConfig?.title}</Text>
             {alertConfig?.message ? <Text style={styles.confirmSubText}>{alertConfig.message}</Text> : null}
             <BouncyButton
-              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 8, backgroundColor: '#7D52DD' }]}
+              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 8, backgroundColor: BRAND_MID }]}
               onPress={() => setAlertConfig(null)}
               activeOpacity={0.7}
             >
@@ -5639,7 +5510,7 @@ const VideoSquareThumb = React.memo(({ uri }) => {
   const [status, setStatus] = useState('loading');
   if (Platform.OS === 'web') {
     return (
-      <View style={{ width: '100%', height: '100%', backgroundColor: '#000' }}>
+      <View style={{ width: '100%', height: '100%', backgroundColor: BLACK }}>
         {React.createElement('video', {
           src: uri,
           muted: true,
@@ -5648,20 +5519,20 @@ const VideoSquareThumb = React.memo(({ uri }) => {
           onLoadedData: () => setStatus('ready'),
           onError: () => setStatus('error'),
           style: {
-            width: '100%', height: '100%', objectFit: 'cover', backgroundColor: '#000',
+            width: '100%', height: '100%', objectFit: 'cover', backgroundColor: BLACK,
             display: status === 'ready' ? 'block' : 'none'
           }
         })}
         {status !== 'ready' && (
-          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
-            <VideoFilledIconSVG size={20} color="#64748B" />
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: BLACK }}>
+            <VideoFilledIconSVG size={20} color={TEXT_MUTED} />
           </View>
         )}
       </View>
     );
   }
   const player = useVideoPlayer(uri, (p) => { p.loop = false; p.muted = true; });
-  return <VideoView player={player} style={{ width: '100%', height: '100%', backgroundColor: '#000' }} contentFit="cover" nativeControls={false} />;
+  return <VideoView player={player} style={{ width: '100%', height: '100%', backgroundColor: BLACK }} contentFit="cover" nativeControls={false} />;
 });
 
 // Shared animated sliding-pill tab bar, generalizing the same motion/config
@@ -5693,7 +5564,7 @@ const AnimatedPillTabBar = ({ tabs, activeKey, onChange, theme, themeMode, fontS
   return (
     <View
       style={{
-        flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 99, padding: 4,
+        flexDirection: 'row', backgroundColor: theme.surface, borderRadius: RADIUS_99, padding: 4,
         borderWidth: 1, borderColor: theme.border, gap
       }}
       onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
@@ -5702,8 +5573,8 @@ const AnimatedPillTabBar = ({ tabs, activeKey, onChange, theme, themeMode, fontS
         <Animated.View
           style={{
             position: 'absolute', top: 4, bottom: 4, left: 4,
-            width: segmentWidth, borderRadius: 99,
-            backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
+            width: segmentWidth, borderRadius: RADIUS_99,
+            backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID,
             transform: [{
               translateX: slideAnim.interpolate({
                 inputRange: tabs.map((_, i) => i),
@@ -5716,13 +5587,13 @@ const AnimatedPillTabBar = ({ tabs, activeKey, onChange, theme, themeMode, fontS
       {tabs.map((tab) => (
         <BouncyButton
           key={tab.key}
-          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 99 }}
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: RADIUS_99 }}
           onPress={() => onChange(tab.key)}
           accessibilityRole="tab"
           accessibilityLabel={tab.label}
           accessibilityState={{ selected: activeKey === tab.key }}
         >
-          <Text style={{ color: activeKey === tab.key ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize }}>
+          <Text style={{ color: activeKey === tab.key ? WHITE : theme.textSecondary, fontWeight: '700', fontSize }}>
             {tab.label}
           </Text>
         </BouncyButton>
@@ -5744,7 +5615,7 @@ const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, t
       <BouncyButton
         style={{
           flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
-          paddingVertical: 5, paddingHorizontal: 10, borderRadius: 99,
+          paddingVertical: 5, paddingHorizontal: 10, borderRadius: RADIUS_99,
           borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
         }}
         onPress={() => setOpen((v) => !v)}
@@ -5773,22 +5644,22 @@ const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, t
           />
           <View style={{
             position: 'absolute', top: 34, left: 0, width: 200, height: dropdownHeight, zIndex: 100,
-            backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
-            padding: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+            backgroundColor: theme.surface, borderRadius: RADIUS_14, borderWidth: 1, borderColor: theme.border,
+            padding: 6, shadowColor: BLACK, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
           }}>
             <BouncyButton
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: RADIUS_99 }}
               onPress={() => onChange(allSelected ? new Set() : new Set(availableTypes.map((t) => t.key)))}
               accessibilityRole="checkbox"
               accessibilityLabel="All Portfolios"
               accessibilityState={{ checked: allSelected }}
             >
               <View style={{
-                width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                borderWidth: 1.5, borderColor: allSelected ? (theme.mode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                backgroundColor: allSelected ? (theme.mode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
+                width: 18, height: 18, borderRadius: RADIUS_5, alignItems: 'center', justifyContent: 'center',
+                borderWidth: 1.5, borderColor: allSelected ? (theme.mode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border,
+                backgroundColor: allSelected ? (theme.mode === 'light' ? BRAND_DEEP : BRAND_MID) : 'transparent'
               }}>
-                {allSelected && <CheckIconSVG color="#FFFFFF" />}
+                {allSelected && <CheckIconSVG color={WHITE} />}
               </View>
               <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>All Portfolios</Text>
             </BouncyButton>
@@ -5798,7 +5669,7 @@ const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, t
             {availableTypes.map((type) => (
               <BouncyButton
                 key={type.key}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: RADIUS_99 }}
                 onPress={() => {
                   const next = new Set(selected);
                   if (next.has(type.key)) next.delete(type.key); else next.add(type.key);
@@ -5809,11 +5680,11 @@ const ProfileTypeFilterBar = React.memo(({ availableTypes, selected, onChange, t
                 accessibilityState={{ checked: selected.has(type.key) }}
               >
                 <View style={{
-                  width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                  borderWidth: 1.5, borderColor: selected.has(type.key) ? (theme.mode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                  backgroundColor: selected.has(type.key) ? (theme.mode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
+                  width: 18, height: 18, borderRadius: RADIUS_5, alignItems: 'center', justifyContent: 'center',
+                  borderWidth: 1.5, borderColor: selected.has(type.key) ? (theme.mode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border,
+                  backgroundColor: selected.has(type.key) ? (theme.mode === 'light' ? BRAND_DEEP : BRAND_MID) : 'transparent'
                 }}>
-                  {selected.has(type.key) && <CheckIconSVG color="#FFFFFF" />}
+                  {selected.has(type.key) && <CheckIconSVG color={WHITE} />}
                 </View>
                 <Text style={{ color: theme.text, fontSize: 13 }}>{type.label}</Text>
               </BouncyButton>
@@ -5856,8 +5727,8 @@ const PortfolioVideoPlayer = React.memo(({ uri, width, height, fillContainer }) 
     // any single one is sized, so this isn't applied there.
     return (
       <View style={fillContainer
-        ? { flex: 1, width: '100%', borderRadius: 12, backgroundColor: '#000', overflow: 'hidden' }
-        : { width: '100%', aspectRatio, borderRadius: 12, backgroundColor: '#000', overflow: 'hidden' }
+        ? { flex: 1, width: '100%', borderRadius: RADIUS_12, backgroundColor: BLACK, overflow: 'hidden' }
+        : { width: '100%', aspectRatio, borderRadius: RADIUS_12, backgroundColor: BLACK, overflow: 'hidden' }
       }>
         {React.createElement('video', {
           src: uri,
@@ -5867,13 +5738,13 @@ const PortfolioVideoPlayer = React.memo(({ uri, width, height, fillContainer }) 
           onLoadedData: () => setStatus('ready'),
           onError: () => setStatus('error'),
           style: {
-            width: '100%', height: '100%', backgroundColor: '#000', display: status === 'ready' ? 'block' : 'none',
+            width: '100%', height: '100%', backgroundColor: BLACK, display: status === 'ready' ? 'block' : 'none',
             objectFit: fillContainer ? 'contain' : undefined
           }
         })}
         {status !== 'ready' && (
-          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
-            <VideoFilledIconSVG size={28} color="#64748B" />
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: BLACK }}>
+            <VideoFilledIconSVG size={28} color={TEXT_MUTED} />
           </View>
         )}
       </View>
@@ -5885,8 +5756,8 @@ const PortfolioVideoPlayer = React.memo(({ uri, width, height, fillContainer }) 
     <VideoView
       player={player}
       style={fillContainer
-        ? { flex: 1, width: '100%', borderRadius: 12, backgroundColor: '#000' }
-        : { width: '100%', aspectRatio, borderRadius: 12, backgroundColor: '#000' }
+        ? { flex: 1, width: '100%', borderRadius: RADIUS_12, backgroundColor: BLACK }
+        : { width: '100%', aspectRatio, borderRadius: RADIUS_12, backgroundColor: BLACK }
       }
       contentFit="contain"
       allowsFullscreen
@@ -5906,21 +5777,7 @@ const PortfolioVideoPlayer = React.memo(({ uri, width, height, fillContainer }) 
 // wrong on wide web" issue turned out to affect every detail-view
 // ScrollView independently (portfolio detail, designer profile), not just
 // the main feed - each has its own separate ScrollView instance needing
-// the same fix, not one shared element.
-const useHideScrollbarOnWeb = (ref, enabled) => {
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const node = ref.current?.getScrollableNode?.();
-    if (!node) return;
-    if (enabled) {
-      node.style.scrollbarWidth = 'none';
-      node.classList.add('decent-hide-scrollbar');
-    } else {
-      node.style.scrollbarWidth = '';
-      node.classList.remove('decent-hide-scrollbar');
-    }
-  }, [enabled, ref]);
-};
+
 
 // Ref-callback version of the same fix, for the many other ScrollViews
 // across the app that don't have (and don't otherwise need) a dedicated
@@ -5930,14 +5787,7 @@ const useHideScrollbarOnWeb = (ref, enabled) => {
 // it mounts, so this applies immediately with no separate effect needed -
 // every one of these instances lives inside a modal/panel that fully
 // unmounts and remounts on close/reopen anyway, so there's no "changed
-// after mount" case a useEffect would otherwise be needed to catch.
-const hideScrollbarRefCallback = (isWebWide) => (instance) => {
-  if (Platform.OS !== 'web' || !instance || !isWebWide) return;
-  const node = instance.getScrollableNode ? instance.getScrollableNode() : instance;
-  if (!node || !node.classList) return;
-  node.style.scrollbarWidth = 'none';
-  node.classList.add('decent-hide-scrollbar');
-};
+
 
 function App() {
   const { theme, themeMode, toggleTheme } = useTheme();
@@ -6306,27 +6156,26 @@ function App() {
   const isTrustedExternalLink = targetExternalUrl === KO_FI_URL || targetExternalUrl === GITHUB_URL;
 
   const [accountSettingsModalVisible, setAccountSettingsModalVisible] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmNewPassword, setConfirmNewPassword] = useState('');
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
   const [changePasswordPageVisible, setChangePasswordPageVisible] = useState(false);
   const [accountSettingsDiscardWarningVisible, setAccountSettingsDiscardWarningVisible] = useState(false);
   const [passwordPageDiscardWarningVisible, setPasswordPageDiscardWarningVisible] = useState(false);
   const [accountSaveSuccessModalVisible, setAccountSaveSuccessModalVisible] = useState(false);
   // Sticky Save button: always floats at the bottom while there are unsaved
   // changes (simpler and avoids the earlier scroll-direction based bug).
-  const accountSettingsStickyAnim = useRef(new Animated.Value(0)).current;
 
-  const [editName, setEditName] = useState(userProfile.name);
   const [editHandle, setEditHandle] = useState('');
+
+  // Onboarding keeps its own copy of the profile fields. Account Settings
+  // seeds edit* from the same profile, so the two forms never fight.
+  const [obName, setObName] = useState('');
+  const [obHandle, setObHandle] = useState('');
+  const [obRole, setObRole] = useState('');
+  const [obLocation, setObLocation] = useState('');
+  const [obBio, setObBio] = useState('');
+  const [obEmail, setObEmail] = useState('');
+  const onboardingSeededRef = useRef(false);
   const [handleStatus, setHandleStatus] = useState(null); // null | 'checking' | 'available' | 'taken' | 'invalid'
   const [handleChangedAt, setHandleChangedAt] = useState(null);
-  const [editRole, setEditRole] = useState(userProfile.role);
-  const [editLocation, setEditLocation] = useState(userProfile.location);
-  const [editBio, setEditBio] = useState(userProfile.bio);
-  const [editEmail, setEditEmail] = useState(userProfile.email);
   const [editAvatar, setEditAvatar] = useState(userProfile.avatar);
   const [editLinks, setEditLinks] = useState(userProfile.links);
   const [editContacts, setEditContacts] = useState([]);
@@ -6453,47 +6302,14 @@ function App() {
     }).start();
   }, [hamburgerMenuVisible]);
   const [feedbackEmail, setFeedbackEmail] = useState(userProfile.email);
-  const [feedbackMessage, setFeedbackMessage] = useState('');
-  const [feedbackNotifyEmail, setFeedbackNotifyEmail] = useState(true);
   // Request a Feature section (Feedback & Support)
-  const [featureRequestTitle, setFeatureRequestTitle] = useState('');
-  const [featureRequestDescription, setFeatureRequestDescription] = useState('');
-  const [featureRequestHasLink, setFeatureRequestHasLink] = useState(false);
-  const [featureRequestLink, setFeatureRequestLink] = useState('');
-  const [feedbackSupportTab, setFeedbackSupportTab] = useState('feedback');
   const [feedbackSuccessModalVisible, setFeedbackSuccessModalVisible] = useState(false);
 
   // Donate Modal
   const [donateModalVisible, setDonateModalVisible] = useState(false);
   const [donateSuccessModalVisible, setDonateSuccessModalVisible] = useState(false);
-  const [donateRegion, setDonateRegion] = useState('id');
-  const [donateTermsAgreed, setDonateTermsAgreed] = useState(false);
-  const donateRegionUserChangedRef = useRef(false);
 
-  // Defaults the Indonesia/International tab based on a best-effort,
-  // IP-based country lookup - not GPS (no permission prompt needed, and
-  // this is only ever a starting-point default, never enforced). Runs
-  // once per app session. Guarded by the ref above so it can never
-  // clobber a selection the person actually made themselves, even if
-  // detection happens to resolve after they've already switched tabs.
-  useEffect(() => {
-    let cancelled = false;
-    fetch('https://ipapi.co/json/')
-      .then((res) => res.json())
-      .then((data) => {
-        if (cancelled || donateRegionUserChangedRef.current) return;
-        if (data && data.country_code && data.country_code !== 'ID') {
-          setDonateRegion('intl');
-        }
-      })
-      .catch(() => {}); // silent - 'id' (the existing hardcoded default) stands if this fails
-    return () => { cancelled = true; };
-  }, []);
 
-  const handleDonateRegionChange = (key) => {
-    donateRegionUserChangedRef.current = true;
-    setDonateRegion(key);
-  };
 
   // TOOLS DOWNLOAD INTERSTITIAL - shown after a Tools download completes,
   // reusing the same Donate modal UI (region tabs, QRIS/Ko-fi/GitHub
@@ -6541,7 +6357,7 @@ function App() {
     setPdfPendingExport(pendingFiles); // null for non-PDF callers (Compressor/Converter/QR) - they keep their own immediate download buttons, unaffected by this
     setDonateModalContext('tools');
     setToolsInterstitialOfferCompress(offerCompress);
-    setDonateTermsAgreed(false);
+    
     setDonateModalVisible(true);
   };
 
@@ -7797,8 +7613,8 @@ function App() {
     try {
       const url = `${DECENT_APP_DOMAIN}/@${userProfile.handle}`;
       const options = {
-        color: style === 'decent' ? '#8B5CF6' : '#000000',
-        backgroundColor: '#FFFFFF',
+        color: style === 'decent' ? BRAND_PRIMARY : BLACK_SOLID,
+        backgroundColor: WHITE,
         dotStyle: style === 'decent' ? 'round' : 'square',
         logoUri: null
       };
@@ -8246,8 +8062,8 @@ function App() {
   const [qrContentType, setQrContentType] = useState('url'); // 'url' | 'text' | 'wifi' | 'vcard' | 'email' | 'sms'
   const [qrFields, setQrFields] = useState({});
   const [qrAdvancedOpen, setQrAdvancedOpen] = useState(false);
-  const [qrColor, setQrColor] = useState('#000000');
-  const [qrBackgroundColor, setQrBackgroundColor] = useState('#FFFFFF');
+  const [qrColor, setQrColor] = useState(BLACK_SOLID);
+  const [qrBackgroundColor, setQrBackgroundColor] = useState(WHITE);
   const [qrDotStyle, setQrDotStyle] = useState('round'); // 'round' | 'square'
   const [qrLogoUri, setQrLogoUri] = useState(null);
   const [qrExporting, setQrExporting] = useState(false);
@@ -9181,7 +8997,7 @@ function App() {
           name: 'DECENT notifications',
           importance: Notifications.AndroidImportance.HIGH,
           vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#8B5CF6'
+          lightColor: BRAND_PRIMARY
         });
       }
 
@@ -9528,7 +9344,9 @@ function App() {
         setPortfolioReportSelectedReason(null);
         setPortfolioReportOtherText('');
         setDisableSafeSearchModalVisible(false);
-        setAdminPasswordModalVisible(false);
+        // Removed 4 calls here (setAdminPasswordModalVisible, setAdminUnlocked,
+        // setVersionTapCount, setFeedbackMessagesList) - none of those setters was
+        // ever declared, so each threw ReferenceError and cut this reset block short.
         setFeedbackModalVisible(false);
         setFeedbackSuccessModalVisible(false);
         setDonateModalVisible(false);
@@ -9548,19 +9366,15 @@ function App() {
         // this closes the race-condition window where a brand new account
         // could briefly show the previous account's stale handle/name.
         setEditHandle('');
-        setEditName('');
         setHandleStatus(null);
 
         // Admin unlock and other session-only UI state must NOT carry over
         // between accounts - previously, unlocking admin on one account kept
         // it unlocked even after switching to a non-admin account.
-        setAdminUnlocked(false);
-        setVersionTapCount(0);
         setOptionsView('root');
         setActiveProject(null);
         setSelectedDesigner(null);
         setNotificationsList([]);
-        setFeedbackMessagesList([]);
         setPortfolioLayoutMode('full');
       }
     });
@@ -9974,31 +9788,6 @@ function App() {
     })();
   }, [projects.length]);
 
-  useEffect(() => {
-    const h = editHandle.trim();
-    if (!h) {
-      setHandleStatus(null);
-      return;
-    }
-    if (!isValidHandleFormat(h)) {
-      setHandleStatus('invalid');
-      return;
-    }
-    setHandleStatus('checking');
-    const timeout = setTimeout(async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id')
-        .ilike('handle', h)
-        .maybeSingle();
-      if (data && (!session || data.id !== session.user.id)) {
-        setHandleStatus('taken');
-      } else {
-        setHandleStatus('available');
-      }
-    }, 400);
-    return () => clearTimeout(timeout);
-  }, [editHandle, session]);
 
   const [notificationsJustCleared, setNotificationsJustCleared] = useState(false);
   const clearBtnAnim = useRef(new Animated.Value(1)).current;
@@ -10231,6 +10020,48 @@ function App() {
 
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
+  // One-shot hydration of the onboarding fields. Seeded from the loaded
+  // profile so Google-provided names still prefill, but never re-applied while
+  // the person is typing.
+  useEffect(() => {
+    if (!needsOnboarding) { onboardingSeededRef.current = false; return; }
+    if (onboardingSeededRef.current) return;
+    setObName(userProfile.name || '');
+    setObHandle(userProfile.handle || '');
+    setObRole(userProfile.role || '');
+    setObLocation(userProfile.location || 'South Jakarta, Jakarta, Indonesia');
+    setObBio(userProfile.bio || '');
+    setObEmail(userProfile.email || '');
+    onboardingSeededRef.current = true;
+  }, [needsOnboarding, userProfile]);
+
+  useEffect(() => {
+    const h = (needsOnboarding ? obHandle : editHandle).trim();
+    if (!h) {
+      setHandleStatus(null);
+      return;
+    }
+    if (!isValidHandleFormat(h)) {
+      setHandleStatus('invalid');
+      return;
+    }
+    setHandleStatus('checking');
+    const timeout = setTimeout(async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id')
+        .ilike('handle', h)
+        .maybeSingle();
+      if (data && (!session || data.id !== session.user.id)) {
+        setHandleStatus('taken');
+      } else {
+        setHandleStatus('available');
+      }
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [needsOnboarding, obHandle, editHandle, session]);
+
+
   useEffect(() => {
     (async () => {
       setUserDataLoaded(false);
@@ -10250,11 +10081,6 @@ function App() {
           avatar: 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
           links: []
         });
-        setEditName('');
-        setEditRole('');
-        setEditLocation('');
-        setEditBio('');
-        setEditEmail('');
         setEditAvatar('');
         setEditLinks([]);
         setUserDataLoaded(true);
@@ -10310,11 +10136,6 @@ function App() {
             lastPasswordReminderSentAt: cloudProfile.last_password_reminder_sent_at || null
           };
           setUserProfile(parsed);
-          setEditName(parsed.name);
-          setEditRole(parsed.role);
-          setEditLocation(parsed.location);
-          setEditBio(parsed.bio);
-          setEditEmail(parsed.email);
           setEditAvatar(parsed.avatar);
           setEditHandle(parsed.handle);
           setHandleChangedAt(cloudProfile.handle_changed_at || null);
@@ -10334,11 +10155,6 @@ function App() {
           if (savedProfile) {
             const parsed = JSON.parse(savedProfile);
             setUserProfile(parsed);
-            setEditName(parsed.name || '');
-            setEditRole(parsed.role || '');
-            setEditLocation(parsed.location || '');
-            setEditBio(parsed.bio || '');
-            setEditEmail(parsed.email || userEmail);
             setEditAvatar(parsed.avatar || '');
             setEditLinks(parsed.links || []);
             setEditContacts(parsed.contacts || []);
@@ -10368,11 +10184,6 @@ function App() {
               links: []
             };
             setUserProfile(blankProfile);
-            setEditName(googleName);
-            setEditRole('');
-            setEditLocation('');
-            setEditBio('');
-            setEditEmail(userEmail);
             setEditAvatar(blankProfile.avatar);
             setEditLinks([]);
             setFeedbackEmail(userEmail);
@@ -10988,10 +10799,10 @@ function App() {
       ctx.fill();
     };
 
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = WHITE;
     ctx.fillRect(0, 0, size, size);
 
-    ctx.fillStyle = '#8B5CF6';
+    ctx.fillStyle = BRAND_PRIMARY;
     for (let row = 0; row < count; row++) {
       for (let col = 0; col < count; col++) {
         if (!grid[row][col]) continue;
@@ -11012,13 +10823,13 @@ function App() {
       const x0 = gridX * cellSize;
       const y0 = gridY * cellSize;
       const outerSize = cellSize * 7;
-      fillRoundedRect(x0, y0, outerSize, outerSize, outerSize * 0.22, '#8B5CF6');
+      fillRoundedRect(x0, y0, outerSize, outerSize, outerSize * 0.22, BRAND_PRIMARY);
       const gapInset = cellSize;
       const gapSize = outerSize - gapInset * 2;
-      fillRoundedRect(x0 + gapInset, y0 + gapInset, gapSize, gapSize, gapSize * 0.22, '#FFFFFF');
+      fillRoundedRect(x0 + gapInset, y0 + gapInset, gapSize, gapSize, gapSize * 0.22, WHITE);
       const centerInset = cellSize * 2;
       const centerSize = outerSize - centerInset * 2;
-      fillRoundedRect(x0 + centerInset, y0 + centerInset, centerSize, centerSize, centerSize * 0.28, '#8B5CF6');
+      fillRoundedRect(x0 + centerInset, y0 + centerInset, centerSize, centerSize, centerSize * 0.28, BRAND_PRIMARY);
     });
 
     // Logo badge - same proportions (0.21 badge, 0.64 icon-within-badge,
@@ -11032,7 +10843,7 @@ function App() {
     const bx = center - logoBadgeSize / 2;
     const by = center - logoBadgeSize / 2;
 
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = WHITE;
     ctx.beginPath();
     ctx.moveTo(bx + badgeRadius, by);
     ctx.arcTo(bx + logoBadgeSize, by, bx + logoBadgeSize, by + logoBadgeSize, badgeRadius);
@@ -11047,7 +10858,7 @@ function App() {
     ctx.save();
     ctx.translate(center - logoIconSize / 2, center - logoIconSize / 2);
     ctx.scale(logoIconSize / 97, logoIconSize / 97);
-    ctx.fillStyle = '#8B5CF6';
+    ctx.fillStyle = BRAND_PRIMARY;
     ctx.fill(new Path2D(DECENT_LOGO_PATH_D));
     ctx.restore();
 
@@ -11155,13 +10966,8 @@ function App() {
   };
 
   const handleOpenAccountSettingsModal = () => {
-    setEditName(userProfile.name);
     setEditHandle(userProfile.handle || '');
     setHandleStatus(null);
-    setEditRole(userProfile.role);
-    setEditLocation(userProfile.location || 'South Jakarta, Jakarta, Indonesia');
-    setEditBio(userProfile.bio);
-    setEditEmail(userProfile.email);
     setEditAvatar(userProfile.avatar);
     setEditLinks(userProfile.links || []);
     setEditContacts(userProfile.contacts || []);
@@ -11172,36 +10978,6 @@ function App() {
     setSettingsModalVisible(false);
     setOptionsView('root');
     if (Platform.OS !== 'web') setReturnToOptionsOnClose(true);
-  };
-
-  const handleRevertAccountChanges = () => {
-    setEditName(userProfile.name);
-    setEditHandle(userProfile.handle || '');
-    setHandleStatus(null);
-    setEditRole(userProfile.role);
-    setEditLocation(userProfile.location || 'South Jakarta, Jakarta, Indonesia');
-    setEditBio(userProfile.bio);
-    setEditEmail(userProfile.email);
-    setEditAvatar(userProfile.avatar);
-    setEditLinks(userProfile.links || []);
-    setEditContacts(userProfile.contacts || []);
-    setEditContactConsent(!!userProfile.contactConsent);
-    showToast('Changes reverted');
-  };
-
-  const hasUnsavedAccountChanges = () => {
-    return (
-      editName !== userProfile.name ||
-      editHandle !== (userProfile.handle || '') ||
-      editRole !== userProfile.role ||
-      editLocation !== userProfile.location ||
-      editBio !== userProfile.bio ||
-      editEmail !== userProfile.email ||
-      editAvatar !== userProfile.avatar ||
-      JSON.stringify(editLinks) !== JSON.stringify(userProfile.links || []) ||
-      editContactConsent !== !!userProfile.contactConsent ||
-      JSON.stringify(editContacts) !== JSON.stringify(userProfile.contacts || [])
-    );
   };
 
   // True if this account has an email/password identity linked - false for
@@ -11294,41 +11070,6 @@ function App() {
       }
     })();
   }, [session?.user?.id, userDataLoaded]);
-
-  const showStickySaveButton = accountSettingsModalVisible && hasUnsavedAccountChanges();
-  const [stickySaveRendered, setStickySaveRendered] = useState(false);
-
-  useEffect(() => {
-    if (showStickySaveButton) {
-      setStickySaveRendered(true);
-      Animated.timing(accountSettingsStickyAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-    } else if (stickySaveRendered) {
-      Animated.timing(accountSettingsStickyAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
-        setStickySaveRendered(false);
-      });
-    }
-  }, [showStickySaveButton]);
-
-  const handleCloseAccountSettings = () => {
-    if (hasUnsavedAccountChanges()) {
-      setAccountSettingsDiscardWarningVisible(true);
-    } else {
-      setAccountSettingsModalVisible(false);
-      if (Platform.OS !== 'web' && returnToOptionsOnClose) {
-        setSettingsModalVisible(true);
-        setReturnToOptionsOnClose(false);
-      }
-    }
-  };
-
-  const handleCloseChangePasswordPage = () => {
-    if (newPassword.trim() !== '' || confirmNewPassword.trim() !== '') {
-      setPasswordPageDiscardWarningVisible(true);
-    } else {
-      setChangePasswordPageVisible(false);
-      if (Platform.OS !== 'web') setAccountSettingsModalVisible(true);
-    }
-  };
 
   const handleCloseDonateModal = () => {
     setDonateModalVisible(false);
@@ -11670,50 +11411,6 @@ function App() {
     }
   };
 
-  const handleChangePassword = async () => {
-    if (!isPasswordStrong(newPassword)) {
-      showAppAlert('Password Too Weak', 'Your new password needs to meet all the requirements shown below the field.');
-      return false;
-    }
-    if (newPassword !== confirmNewPassword) {
-      showAppAlert("Passwords Don't Match", 'Please re-type the same password in both fields.');
-      return false;
-    }
-    setChangingPassword(true);
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setChangingPassword(false);
-    if (error) {
-      showAppAlert('Error', error.message);
-      return false;
-    } else {
-      setNewPassword('');
-      setConfirmNewPassword('');
-      // updateUser genuinely does set the password server-side (confirmed
-      // by many reports of successfully logging in with it afterward), but
-      // whether it actually links the 'email' identity is a real, longstanding
-      // Supabase Auth bug - not reliable enough to depend on. Tracking this
-      // ourselves instead: a flag directly on the profile row, which we
-      // fully control and which reflects an update that genuinely
-      // succeeded (this code only runs when the error check above passed).
-      const wasAlreadySet = hasPasswordAuth;
-      if (session && session.user) {
-        const { error: flagError } = await supabase
-          .from('profiles')
-          .update({ has_password_auth: true })
-          .eq('id', session.user.id);
-        if (!flagError) setUserProfile((prev) => ({ ...prev, hasPasswordAuth: true }));
-      }
-      // Still attempt the session refresh too, in case identities linking
-      // did work correctly this time - harmless either way, and covers
-      // the direct email/password signup case, which was never affected
-      // by this bug in the first place.
-      const { data: refreshed } = await supabase.auth.getSession();
-      if (refreshed && refreshed.session) setSession(refreshed.session);
-      showToast(wasAlreadySet ? 'Password updated' : 'Password created');
-      return true;
-    }
-  };
-
   const handleBlockUser = (targetId, targetName) => {
     if (!session || !targetId) return;
     showAppAlert(
@@ -11859,75 +11556,6 @@ function App() {
     }
   };
 
-  const handleSaveAccountSettings = async () => {
-    // If avatar is a local file (freshly picked), upload it to Supabase Storage first
-    let avatarUrl = editAvatar;
-    if (avatarUrl && (avatarUrl.startsWith('file://') || avatarUrl.startsWith('content://') || avatarUrl.startsWith('blob:') || avatarUrl.startsWith('data:'))) {
-      avatarUrl = await uploadImageChecked(avatarUrl, 'avatars');
-    }
-
-    // Handle change: validate format, availability, and 7-day cooldown
-    const newHandle = editHandle.trim();
-    const handleChanged = newHandle !== (userProfile.handle || '');
-    if (handleChanged) {
-      if (!isValidHandleFormat(newHandle)) {
-        showAppAlert('Invalid Handle', 'Your handle must be 3-20 characters: letters, numbers, dots, underscores, and dashes only.');
-        return;
-      }
-      if (handleStatus === 'taken') {
-        showAppAlert('Handle Taken', 'That handle is already in use. Please choose another.');
-        return;
-      }
-      if (handleStatus === 'checking') {
-        showAppAlert('Please Wait', 'Still checking if that handle is available.');
-        return;
-      }
-      if (handleChangedAt) {
-        const daysSince = (Date.now() - new Date(handleChangedAt).getTime()) / 86400000;
-        if (daysSince < 30) {
-          const daysLeft = Math.ceil(30 - daysSince);
-          showAppAlert('Too Soon', `You can change your handle again in ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`);
-          return;
-        }
-      }
-    }
-
-    // Handle email change: this changes the LOGIN email, needs confirmation
-    const newEmail = editEmail.trim();
-    if (session && newEmail && newEmail.toLowerCase() !== (session.user.email || '').toLowerCase()) {
-      const { error: emailError } = await supabase.auth.updateUser({ email: newEmail });
-      if (emailError) {
-        showAppAlert('Email Update Failed', emailError.message);
-      } else {
-        showAppAlert(
-          'Confirm Your New Email',
-          'We sent a confirmation link to your new email address. Your login email stays the same until you confirm it there.'
-        );
-      }
-    }
-
-    const validLinks = editLinks.filter((l) => l.trim() !== '');
-    const updated = {
-      ...userProfile,
-      name: editName.trim(),
-      role: editRole.trim(),
-      location: editLocation.trim(),
-      bio: editBio.trim(),
-      email: newEmail || (session ? session.user.email : ''),
-      avatar: avatarUrl || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
-      handle: newHandle,
-      links: validLinks,
-      contacts: editContacts,
-      contactConsent: editContactConsent
-    };
-    setUserProfile(updated);
-    setEditAvatar(updated.avatar);
-    if (handleChanged) setHandleChangedAt(new Date().toISOString());
-    await pushProfileToSupabase(updated, handleChanged);
-    setAccountSettingsModalVisible(false);
-    setAccountSaveSuccessModalVisible(true);
-  };
-
   const handleCloseIntroCarousel = async () => {
     setShowIntroCarousel(false);
     if (session) {
@@ -11938,11 +11566,11 @@ function App() {
   const handleFinishOnboarding = async (skip = false) => {
     let updated = userProfile;
     if (!skip) {
-      if (!editName.trim()) {
+      if (!obName.trim()) {
         showAppAlert('Name Required', 'Please enter your name to continue.');
         return;
       }
-      const handle = editHandle.trim();
+      const handle = obHandle.trim();
       if (!isValidHandleFormat(handle)) {
         showAppAlert('Invalid Handle', 'Your handle must be 3-20 characters: letters, numbers, dots, underscores, and dashes only.');
         return;
@@ -11962,11 +11590,11 @@ function App() {
       const validLinks = editLinks.filter((l) => l.trim() !== '');
       updated = {
         ...userProfile,
-        name: editName.trim(),
-        role: editRole.trim(),
-        location: editLocation.trim(),
-        bio: editBio.trim(),
-        email: editEmail.trim() || (session ? session.user.email : ''),
+        name: obName.trim(),
+        role: obRole.trim(),
+        location: obLocation.trim(),
+        bio: obBio.trim(),
+        email: obEmail.trim() || (session ? session.user.email : ''),
         avatar: avatarUrl || 'https://ui-avatars.com/api/?name=%3F&background=8B5CF6&color=FFFFFF&size=200&bold=true&format=png',
         handle,
         links: validLinks,
@@ -11991,55 +11619,6 @@ function App() {
       }
     }
     setNeedsOnboarding(false);
-  };
-
-  const handleSubmitFeedback = async () => {
-    if (!feedbackMessage.trim()) {
-      showAppAlert('Message Required', 'Please enter your feedback message or issue description.');
-      return;
-    }
-    const { error } = await supabase.from('feedback_messages').insert({
-      user_id: session ? session.user.id : null,
-      email: feedbackEmail.trim(),
-      message: feedbackMessage.trim(),
-      notify_email: feedbackNotifyEmail
-    });
-    if (error) {
-      console.warn('Failed to save feedback:', error);
-      showAppAlert('Error', 'Something went wrong submitting your feedback. Please try again.');
-      return;
-    }
-    setFeedbackModalVisible(false);
-    setFeedbackMessage('');
-    setFeedbackSuccessModalVisible(true);
-  };
-
-  const handleSubmitFeatureRequest = async () => {
-    if (!featureRequestTitle.trim() || !featureRequestDescription.trim()) {
-      showAppAlert('Missing Info', 'Please enter both a title and description for your feature request.');
-      return;
-    }
-    if (featureRequestHasLink && !featureRequestLink.trim()) {
-      showAppAlert('Missing Link', 'You checked "reference link" but left it empty - add a link or uncheck it.');
-      return;
-    }
-    const { error } = await supabase.from('feature_requests').insert({
-      user_id: session ? session.user.id : null,
-      email: feedbackEmail.trim(),
-      title: featureRequestTitle.trim(),
-      description: featureRequestDescription.trim(),
-      reference_link: featureRequestHasLink ? featureRequestLink.trim() : null
-    });
-    if (error) {
-      console.warn('Failed to save feature request:', error);
-      showAppAlert('Error', 'Something went wrong submitting your feature request. Please try again.');
-      return;
-    }
-    setFeatureRequestTitle('');
-    setFeatureRequestDescription('');
-    setFeatureRequestHasLink(false);
-    setFeatureRequestLink('');
-    showToast('Feature request submitted - thank you!');
   };
 
   const handleCloseDonateSuccess = () => {
@@ -13871,7 +13450,7 @@ function App() {
   const renderPdfReorderPill = (page, index, small) => (
     <View style={{
       position: 'absolute', top: 6, right: 6, flexDirection: 'row', alignItems: 'center', gap: 2,
-      backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 99, paddingHorizontal: 4, paddingVertical: 2
+      backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: RADIUS_99, paddingHorizontal: 4, paddingVertical: 2
     }}>
       <BouncyButton
         onPress={() => movePdfEditorPage(page.id, -1)}
@@ -13880,10 +13459,10 @@ function App() {
         accessibilityRole="button"
         accessibilityLabel="Move page earlier"
       >
-        <ChevronUpSVG size={small ? 10 : 12} color="#FFFFFF" />
+        <ChevronUpSVG size={small ? 10 : 12} color={WHITE} />
       </BouncyButton>
       <FocusableTextInput
-        style={{ color: '#FFFFFF', fontSize: small ? 10 : 11, fontWeight: '700', textAlign: 'center', width: small ? 18 : 22, padding: 0 }}
+        style={{ color: WHITE, fontSize: small ? 10 : 11, fontWeight: '700', textAlign: 'center', width: small ? 18 : 22, padding: 0 }}
         defaultValue={String(index + 1)}
         keyboardType="number-pad"
         selectTextOnFocus
@@ -13897,7 +13476,7 @@ function App() {
         accessibilityRole="button"
         accessibilityLabel="Move page later"
       >
-        <ChevronDownSVG size={small ? 10 : 12} color="#FFFFFF" />
+        <ChevronDownSVG size={small ? 10 : 12} color={WHITE} />
       </BouncyButton>
     </View>
   );
@@ -16353,7 +15932,7 @@ function App() {
   // sites below.
   const renderLinkFieldInfoButton = (key) => (
     <BouncyButton
-      style={{ height: 13, aspectRatio: 1, borderRadius: 999, borderWidth: 1.5, borderColor: theme.textSecondary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+      style={{ height: 13, aspectRatio: 1, borderRadius: RADIUS_999, borderWidth: 1.5, borderColor: theme.textSecondary, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       onPress={() => setLinkFieldInfoKey(key)}
       accessibilityRole="button"
@@ -16382,7 +15961,7 @@ function App() {
   const renderContactInfoSection = () => (
     <View style={{ marginTop: 24 }}>
       <Text style={styles.formGroupLabel}>Contact Info (Optional)</Text>
-      <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 10, lineHeight: 16 }}>
+      <Text style={{ color: TEXT_MUTED, fontSize: 11, marginBottom: 10, lineHeight: 16 }}>
         Let other designers reach out to you directly. Completely optional - if you turn this on, anyone viewing your profile can see and use whatever contact methods you add below. Only add what you're comfortable sharing publicly, and you can remove or turn this off anytime.
       </Text>
 
@@ -16393,7 +15972,7 @@ function App() {
         <AppSwitch
           value={editContactConsent}
           onValueChange={setEditContactConsent}
-          trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
+          trackColor={{ false: theme.bg, true: themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY }}
           theme={theme}
           accessibilityRole="switch"
           accessibilityLabel="Show my contact info on my profile"
@@ -16416,23 +15995,23 @@ function App() {
           ))}
 
           {addingContactType !== null ? (
-            <View style={{ backgroundColor: theme.surface, borderRadius: 10, padding: 12, marginTop: 4 }}>
+            <View style={{ backgroundColor: theme.surface, borderRadius: RADIUS_10, padding: 12, marginTop: 4 }}>
               <Text style={{ color: theme.textSecondary, fontSize: 11, marginBottom: 8 }}>Choose a contact type:</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                 {CONTACT_TYPES.filter((t) => !editContacts.some((c) => c.type === t.key)).map((t) => (
                   <BouncyButton
                     key={t.key}
                     style={{
-                      paddingHorizontal: 12, paddingVertical: 7, borderRadius: 99,
-                      backgroundColor: addingContactType === t.key ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : theme.bg,
-                      borderWidth: 1, borderColor: addingContactType === t.key ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border
+                      paddingHorizontal: 12, paddingVertical: 7, borderRadius: RADIUS_99,
+                      backgroundColor: addingContactType === t.key ? (themeMode === 'light' ? BRAND_DEEP : BRAND_MID) : theme.bg,
+                      borderWidth: 1, borderColor: addingContactType === t.key ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border
                     }}
                     onPress={() => setAddingContactType(t.key)}
                     accessibilityRole="button"
                     accessibilityLabel={t.label}
                     accessibilityState={{ selected: addingContactType === t.key }}
                   >
-                    <Text style={{ color: addingContactType === t.key ? '#FFFFFF' : theme.text, fontSize: 12, fontWeight: '600' }}>{t.label}</Text>
+                    <Text style={{ color: addingContactType === t.key ? WHITE : theme.text, fontSize: 12, fontWeight: '600' }}>{t.label}</Text>
                   </BouncyButton>
                 ))}
               </View>
@@ -16441,7 +16020,7 @@ function App() {
                 value={newContactValue}
                 onChangeText={setNewContactValue}
                 placeholder={CONTACT_TYPES.find((t) => t.key === addingContactType)?.placeholder || 'Enter value'}
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor={TEXT_SECONDARY}
                 autoCapitalize="none"
                 keyboardType={CONTACT_TYPES.find((t) => t.key === addingContactType)?.keyboardType || 'default'}
                 accessibilityLabel={CONTACT_TYPES.find((t) => t.key === addingContactType)?.label || 'Contact value'}
@@ -16451,13 +16030,13 @@ function App() {
                   <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={{ flex: 1, backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD', borderRadius: 99, paddingVertical: 10, alignItems: 'center', opacity: newContactValue.trim() ? 1 : 0.5 }}
+                  style={{ flex: 1, backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID, borderRadius: RADIUS_99, paddingVertical: 10, alignItems: 'center', opacity: newContactValue.trim() ? 1 : 0.5 }}
                   onPress={handleAddContact}
                   disabled={!newContactValue.trim()}
                   accessibilityRole="button"
                   accessibilityState={{ disabled: !newContactValue.trim() }}
                 >
-                  <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Add</Text>
+                  <Text style={{ color: WHITE, fontSize: 13, fontWeight: '700' }}>Add</Text>
                 </BouncyButton>
               </View>
             </View>
@@ -16627,20 +16206,23 @@ function App() {
   const handleWebViewNavigation = (request) => {
     const { url } = request;
     if (!url) return true;
+    if (url === 'about:blank' || url.startsWith('blob:') || url.startsWith('data:')) return true;
 
-    const isFigmaInternal =
-      url.includes('figma.com') ||
-      url.includes('figmame.com') ||
-      url.startsWith('about:blank') ||
-      url.startsWith('blob:') ||
-      url.startsWith('data:');
-
-    if (isFigmaInternal) {
-      return true;
-    } else {
-      openExternalLinkWithWarning(url);
+    // A substring check ("does the URL contain figma.com") also matches
+    // https://evil.example/?figma.com, which then loads inside the app's
+    // WebView where there is no address bar to reveal where it came from.
+    // Compare the parsed hostname instead - exactly, or as a subdomain.
+    let hostname = '';
+    try {
+      hostname = new URL(url).hostname.toLowerCase();
+    } catch (e) {
       return false;
     }
+    const isHost = (domain) => hostname === domain || hostname.endsWith(`.${domain}`);
+    if (isHost('figma.com') || isHost('figmame.com')) return true;
+
+    openExternalLinkWithWarning(url);
+    return false;
   };
 
   // Pinned once per session instead of recomputed on every re-sort - using a
@@ -17092,7 +16674,7 @@ function App() {
   if (!authChecked) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg, justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#8B5CF6" />
+        <ActivityIndicator size="large" color={BRAND_PRIMARY} />
       </SafeAreaView>
     );
   }
@@ -17109,7 +16691,7 @@ function App() {
   if (!userDataLoaded) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg, justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#8B5CF6" />
+        <ActivityIndicator size="large" color={BRAND_PRIMARY} />
       </SafeAreaView>
     );
   }
@@ -17143,51 +16725,51 @@ function App() {
           <Text style={styles.formGroupLabel}>Full Name *</Text>
           <FocusableTextInput
             style={styles.formInput}
-            value={editName}
-            onChangeText={setEditName}
+            value={obName}
+            onChangeText={setObName}
             placeholder="Your full name"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={TEXT_SECONDARY}
             maxLength={60}
           />
 
           <Text style={styles.formGroupLabel}>Unique ID / Handle *</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 10, paddingLeft: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_10, paddingLeft: 14 }}>
             <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700' }}>@</Text>
             <FocusableTextInput
               style={[styles.formInput, { flex: 1, borderWidth: 0, backgroundColor: 'transparent' }]}
-              value={editHandle}
-              onChangeText={(t) => setEditHandle(t.replace(/[^A-Za-z0-9._-]/g, ''))}
+              value={obHandle}
+              onChangeText={(t) => setObHandle(t.replace(/[^A-Za-z0-9._-]/g, ''))}
               placeholder="Enter your username here"
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={TEXT_SECONDARY}
               autoCapitalize="none"
               maxLength={20}
             />
           </View>
-          <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 4 }}>
+          <Text style={{ color: TEXT_MUTED, fontSize: 11, marginBottom: 4 }}>
             3-20 characters. Letters, numbers, dots, underscores, and dashes only — no spaces or other symbols. This shows under your portfolios instead of your name, and can be changed once every 30 days.
           </Text>
           {handleStatus === 'checking' && <Text style={{ color: theme.textSecondary, fontSize: 12, marginBottom: 8 }}>Checking availability...</Text>}
-          {handleStatus === 'available' && <Text style={{ color: '#4ADE80', fontSize: 12, marginBottom: 8 }}>✓ Available</Text>}
-          {handleStatus === 'taken' && <Text style={{ color: '#F87171', fontSize: 12, marginBottom: 8 }}>This handle is already taken</Text>}
-          {handleStatus === 'invalid' && <Text style={{ color: '#F87171', fontSize: 12, marginBottom: 8 }}>3-20 chars: letters, numbers, . _ -</Text>}
+          {handleStatus === 'available' && <Text style={{ color: GREEN_400, fontSize: 12, marginBottom: 8 }}>✓ Available</Text>}
+          {handleStatus === 'taken' && <Text style={{ color: RED_300, fontSize: 12, marginBottom: 8 }}>This handle is already taken</Text>}
+          {handleStatus === 'invalid' && <Text style={{ color: RED_300, fontSize: 12, marginBottom: 8 }}>3-20 chars: letters, numbers, . _ -</Text>}
 
           <Text style={styles.formGroupLabel}>Specialties / Role</Text>
           <FocusableTextInput
             style={styles.formInput}
-            value={editRole}
-            onChangeText={setEditRole}
+            value={obRole}
+            onChangeText={setObRole}
             placeholder="e.g. UI/UX Designer"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={TEXT_SECONDARY}
             maxLength={60}
           />
 
           <Text style={styles.formGroupLabel}>Location / City</Text>
           <FocusableTextInput
             style={styles.formInput}
-            value={editLocation}
-            onChangeText={setEditLocation}
+            value={obLocation}
+            onChangeText={setObLocation}
             placeholder="e.g. Jakarta, Indonesia"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={TEXT_SECONDARY}
             maxLength={80}
           />
 
@@ -17195,23 +16777,23 @@ function App() {
           <FocusableTextInput
             style={[styles.formInput, { height: 74, textAlignVertical: 'top' }]}
             multiline
-            value={editBio}
-            onChangeText={setEditBio}
+            value={obBio}
+            onChangeText={setObBio}
             placeholder="A short intro about your work..."
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={TEXT_SECONDARY}
             maxLength={500}
           />
-          <Text style={{ color: '#64748B', fontSize: 11, marginTop: -4, marginBottom: 4, textAlign: 'right' }}>
-            {editBio.length}/500
+          <Text style={{ color: TEXT_MUTED, fontSize: 11, marginTop: -4, marginBottom: 4, textAlign: 'right' }}>
+            {obBio.length}/500
           </Text>
 
           <Text style={styles.formGroupLabel}>Email</Text>
           <FocusableTextInput
             style={styles.formInput}
-            value={editEmail}
-            onChangeText={setEditEmail}
+            value={obEmail}
+            onChangeText={setObEmail}
             placeholder="Email address"
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={TEXT_SECONDARY}
           />
 
           <Text style={[styles.formGroupLabel, { marginTop: 10 }]}>Profile Links (optional, max 5)</Text>
@@ -17220,8 +16802,8 @@ function App() {
               <Animated.View
                 pointerEvents="none"
                 style={{
-                  position: 'absolute', left: 0, right: 0, top: 0, height: 3, borderRadius: 2,
-                  backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                  position: 'absolute', left: 0, right: 0, top: 0, height: 3, borderRadius: RADIUS_2,
+                  backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID,
                   zIndex: 20,
                   transform: [{ translateY: linkDragY.interpolate(linkDropLineInterpRef.current) }]
                 }}
@@ -17253,7 +16835,7 @@ function App() {
                   value={lnk}
                   onChangeText={(t) => handleLinkTextChange(t, idx)}
                   placeholder={`https://www.figma.com/@username (${idx + 1})`}
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={TEXT_SECONDARY}
                   autoCapitalize="none"
                 />
                 {lnk.length > 0 && (
@@ -17323,10 +16905,10 @@ function App() {
               Open in app
             </Text>
             <BouncyButton
-              style={{ backgroundColor: '#7D52DD', borderRadius: 99, paddingVertical: 7, paddingHorizontal: 14 }}
+              style={{ backgroundColor: BRAND_MID, borderRadius: RADIUS_99, paddingVertical: 7, paddingHorizontal: 14 }}
               onPress={handleOpenInAppTap}
             >
-              <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>Open</Text>
+              <Text style={{ color: WHITE, fontSize: 12.5, fontWeight: '700' }}>Open</Text>
             </BouncyButton>
           </View>
         </View>
@@ -17363,7 +16945,7 @@ function App() {
                 </BouncyButton>
                 {!sidebarCollapsed && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
-                    <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ width: 20, height: 20, borderRadius: RADIUS_6, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
                       <DecentLogoSVG size={15} />
                     </View>
                     <Text style={styles.logoText}>ECENT</Text>
@@ -17379,13 +16961,13 @@ function App() {
                   justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
                   ...(sidebarCollapsed
                     ? {}
-                    : { borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface })
+                    : { borderRadius: RADIUS_14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface })
                 }}
                 onPress={handleOpenAddPortfolio}
               >
-                <View style={[styles.plusContainerBtn, { width: 32, height: 32, borderRadius: 10, marginHorizontal: 0, backgroundColor: 'transparent', shadowColor: 'transparent', elevation: 0 }]}>
+                <View style={[styles.plusContainerBtn, { width: 32, height: 32, borderRadius: RADIUS_10, marginHorizontal: 0, backgroundColor: 'transparent', shadowColor: 'transparent', elevation: 0 }]}>
                   <View style={{ position: 'absolute', top: 0, left: 0 }}>
-                    <DShapeSVG size={32} color="#8B5CF6" />
+                    <DShapeSVG size={32} color={BRAND_PRIMARY} />
                   </View>
                   <View style={{ transform: [{ scale: 0.7 }] }}><PlusSVG strokeWidth={5} offsetX={-1} /></View>
                 </View>
@@ -17411,7 +16993,7 @@ function App() {
                 onPress={() => handleNavChange('forYou')}
               >
                 <View style={{
-                  width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+                  width: 36, height: 36, borderRadius: RADIUS_12, alignItems: 'center', justifyContent: 'center',
                   backgroundColor: bottomNav === 'forYou' ? (theme.mode === 'light' ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.15)') : 'transparent'
                 }}>
                   <View style={{ transform: [{ scale: isWebDesktop ? 0.72 : 0.8 }] }}>
@@ -17426,7 +17008,7 @@ function App() {
                       <Animated.Text
                         key={i}
                         style={{
-                          position: 'absolute', ...pos, fontSize: 9, color: '#C084FC',
+                          position: 'absolute', ...pos, fontSize: 9, color: BRAND_ACCENT,
                           opacity: forYouSparkleAnim.interpolate({
                             inputRange: [0, 0.15 + i * 0.15, 0.5 + i * 0.15, 1],
                             outputRange: [0, 1, 1, 0]
@@ -17445,7 +17027,7 @@ function App() {
                   </View>
                 </View>
                 {!sidebarCollapsed && (
-                  <Text style={{ color: bottomNav === 'forYou' ? '#8B5CF6' : theme.text, fontSize: 12.5, fontWeight: bottomNav === 'forYou' ? '700' : '600' }}>
+                  <Text style={{ color: bottomNav === 'forYou' ? BRAND_PRIMARY : theme.text, fontSize: 12.5, fontWeight: bottomNav === 'forYou' ? '700' : '600' }}>
                     For You
                   </Text>
                 )}
@@ -17460,7 +17042,7 @@ function App() {
                 onPress={() => handleNavChange('followed')}
               >
                 <View style={{
-                  width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+                  width: 36, height: 36, borderRadius: RADIUS_12, alignItems: 'center', justifyContent: 'center',
                   backgroundColor: bottomNav === 'followed' ? (theme.mode === 'light' ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.15)') : 'transparent'
                 }}>
                   <View style={{ transform: [{ scale: isWebDesktop ? 0.72 : 0.8 }] }}>
@@ -17472,7 +17054,7 @@ function App() {
                   </View>
                 </View>
                 {!sidebarCollapsed && (
-                  <Text style={{ color: bottomNav === 'followed' ? '#8B5CF6' : theme.text, fontSize: 12.5, fontWeight: bottomNav === 'followed' ? '700' : '600' }}>
+                  <Text style={{ color: bottomNav === 'followed' ? BRAND_PRIMARY : theme.text, fontSize: 12.5, fontWeight: bottomNav === 'followed' ? '700' : '600' }}>
                     Circle
                   </Text>
                 )}
@@ -17487,7 +17069,7 @@ function App() {
                 onPress={() => handleNavChange('search')}
               >
                 <View style={{
-                  width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+                  width: 36, height: 36, borderRadius: RADIUS_12, alignItems: 'center', justifyContent: 'center',
                   backgroundColor: bottomNav === 'search' ? (theme.mode === 'light' ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.15)') : 'transparent'
                 }}>
                   <View style={{ transform: [{ scale: isWebDesktop ? 0.72 : 0.8 }] }}>
@@ -17497,7 +17079,7 @@ function App() {
                   </View>
                 </View>
                 {!sidebarCollapsed && (
-                  <Text style={{ color: bottomNav === 'search' ? '#8B5CF6' : theme.text, fontSize: 12.5, fontWeight: bottomNav === 'search' ? '700' : '600' }}>
+                  <Text style={{ color: bottomNav === 'search' ? BRAND_PRIMARY : theme.text, fontSize: 12.5, fontWeight: bottomNav === 'search' ? '700' : '600' }}>
                     Search
                   </Text>
                 )}
@@ -17512,7 +17094,7 @@ function App() {
                 onPress={() => handleNavChange('profile')}
               >
                 <View style={{
-                  width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+                  width: 36, height: 36, borderRadius: RADIUS_12, alignItems: 'center', justifyContent: 'center',
                   backgroundColor: bottomNav === 'profile' ? (theme.mode === 'light' ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.15)') : 'transparent'
                 }}>
                   <View style={{ transform: [{ scale: isWebDesktop ? 0.72 : 0.8 }] }}>
@@ -17522,7 +17104,7 @@ function App() {
                   </View>
                 </View>
                 {!sidebarCollapsed && (
-                  <Text style={{ color: bottomNav === 'profile' ? '#8B5CF6' : theme.text, fontSize: 12.5, fontWeight: bottomNav === 'profile' ? '700' : '600' }}>
+                  <Text style={{ color: bottomNav === 'profile' ? BRAND_PRIMARY : theme.text, fontSize: 12.5, fontWeight: bottomNav === 'profile' ? '700' : '600' }}>
                     Profile
                   </Text>
                 )}
@@ -17583,9 +17165,9 @@ function App() {
                     marginHorizontal: sidebarCollapsed ? 12 : 16, marginBottom: 8,
                     paddingVertical: 10, paddingHorizontal: sidebarCollapsed ? 0 : 12,
                     justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                    borderRadius: 10, backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.12)'
+                    borderRadius: RADIUS_10, backgroundColor: themeMode === 'light' ? INDIGO_100_2 : 'rgba(139,92,246,0.12)'
                   }}
-                  onPress={() => { setDonateModalContext('portfolio'); setDonateTermsAgreed(false); setDonateModalVisible(true); }}
+                  onPress={() => { setDonateModalContext('portfolio'); setDonateModalVisible(true); }}
                 >
                   <HeartIconSVG liked={true} />
                   {!sidebarCollapsed && (
@@ -17621,14 +17203,14 @@ function App() {
           zIndex: 1000,
           backgroundColor: theme.surface,
           borderWidth: 1,
-          borderColor: '#EF4444',
-          borderRadius: 12,
+          borderColor: DANGER,
+          borderRadius: RADIUS_12,
           paddingVertical: 10,
           paddingHorizontal: 14,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 10,
-          shadowColor: '#000',
+          shadowColor: BLACK,
           shadowOpacity: 0.3,
           shadowRadius: 10,
           shadowOffset: { width: 0, height: 4 },
@@ -17636,7 +17218,7 @@ function App() {
         }}>
           <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', flex: 1 }}>You're offline</Text>
           <BouncyButton
-            style={{ backgroundColor: '#CF3B3B', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 }}
+            style={{ backgroundColor: RED_500, borderRadius: RADIUS_99, paddingVertical: 6, paddingHorizontal: 12 }}
             onPress={() => {
               NetInfoCompat.fetch().then((state) => {
                 const stillOffline = state.isConnected === false || state.isInternetReachable === false;
@@ -17645,7 +17227,7 @@ function App() {
               });
             }}
           >
-            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Reload</Text>
+            <Text style={{ color: WHITE, fontSize: 12, fontWeight: '700' }}>Reload</Text>
           </BouncyButton>
         </View>
       )}
@@ -17659,14 +17241,14 @@ function App() {
           zIndex: 999,
           backgroundColor: theme.surface,
           borderWidth: 1,
-          borderColor: '#8B5CF6',
-          borderRadius: 12,
+          borderColor: BRAND_PRIMARY,
+          borderRadius: RADIUS_12,
           paddingVertical: 10,
           paddingHorizontal: 14,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 10,
-          shadowColor: '#8B5CF6',
+          shadowColor: BRAND_PRIMARY,
           shadowOpacity: 0.3,
           shadowRadius: 10,
           shadowOffset: { width: 0, height: 4 },
@@ -17674,14 +17256,14 @@ function App() {
         }}>
           <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', flex: 1 }}>A new version is available</Text>
           <BouncyButton
-            style={{ backgroundColor: '#7D52DD', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12, minWidth: 64, alignItems: 'center' }}
+            style={{ backgroundColor: BRAND_MID, borderRadius: RADIUS_99, paddingVertical: 6, paddingHorizontal: 12, minWidth: 64, alignItems: 'center' }}
             onPress={handleApplyUpdate}
             disabled={updateDownloading}
           >
             {updateDownloading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <ActivityIndicator size="small" color={WHITE} />
             ) : (
-              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Update</Text>
+              <Text style={{ color: WHITE, fontSize: 12, fontWeight: '700' }}>Update</Text>
             )}
           </BouncyButton>
         </View>
@@ -17696,14 +17278,14 @@ function App() {
           zIndex: 998,
           backgroundColor: theme.surface,
           borderWidth: 1,
-          borderColor: '#F59E0B',
-          borderRadius: 12,
+          borderColor: WARNING,
+          borderRadius: RADIUS_12,
           paddingVertical: 10,
           paddingHorizontal: 14,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 10,
-          shadowColor: '#F59E0B',
+          shadowColor: WARNING,
           shadowOpacity: 0.3,
           shadowRadius: 10,
           shadowOffset: { width: 0, height: 4 },
@@ -17711,7 +17293,7 @@ function App() {
         }}>
           <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', flex: 1 }}>{nativeUpdateInfo.message}</Text>
           <BouncyButton
-            style={{ backgroundColor: '#F59E0B', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 }}
+            style={{ backgroundColor: WARNING, borderRadius: RADIUS_99, paddingVertical: 6, paddingHorizontal: 12 }}
             onPress={() => {
               // Opens directly instead of routing through
               // openExternalLinkWithWarning - that confirmation modal
@@ -17730,7 +17312,7 @@ function App() {
               }
             }}
           >
-            <Text style={{ color: '#1F1300', fontSize: 12, fontWeight: '700' }}>Download</Text>
+            <Text style={{ color: ORANGE_950, fontSize: 12, fontWeight: '700' }}>Download</Text>
           </BouncyButton>
           <BouncyButton
             style={{ paddingVertical: 6, paddingHorizontal: 8 }}
@@ -17751,11 +17333,11 @@ function App() {
           zIndex: 999,
           backgroundColor: theme.surface,
           borderWidth: 1,
-          borderColor: '#8B5CF6',
-          borderRadius: 10,
+          borderColor: BRAND_PRIMARY,
+          borderRadius: RADIUS_10,
           paddingVertical: 8,
           paddingHorizontal: 10,
-          shadowColor: '#8B5CF6',
+          shadowColor: BRAND_PRIMARY,
           shadowOpacity: 0.3,
           shadowRadius: 10,
           shadowOffset: { width: 0, height: 4 },
@@ -17785,7 +17367,7 @@ function App() {
             <View
               style={{
                 backgroundColor: theme.surface,
-                borderRadius: 20,
+                borderRadius: RADIUS_20,
                 padding: 24,
                 width: '100%',
                 maxWidth: 340,
@@ -17794,7 +17376,7 @@ function App() {
                 borderColor: theme.border
               }}
             >
-              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(239, 68, 68, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+              <View style={{ width: 56, height: 56, borderRadius: RADIUS_28, backgroundColor: 'rgba(239, 68, 68, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
                 <WarningTriangleSVG />
               </View>
               <Text style={{ fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 8, textAlign: 'center' }}>
@@ -17806,11 +17388,11 @@ function App() {
               <TouchableOpacity
                 style={{
                   height: 48,
-                  borderRadius: 12,
+                  borderRadius: RADIUS_12,
                   alignItems: 'center',
                   justifyContent: 'center',
                   width: '100%',
-                  backgroundColor: disableSafeSearchCountdown > 0 ? theme.bg : '#CF3B3B',
+                  backgroundColor: disableSafeSearchCountdown > 0 ? theme.bg : RED_500,
                   borderWidth: disableSafeSearchCountdown > 0 ? 1.5 : 0,
                   borderColor: theme.border
                 }}
@@ -17820,7 +17402,7 @@ function App() {
                 accessibilityRole="button"
                 accessibilityState={{ disabled: disableSafeSearchCountdown > 0 }}
               >
-                <Text style={{ fontSize: 15, fontWeight: '800', color: disableSafeSearchCountdown > 0 ? theme.textSecondary : '#FFFFFF' }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: disableSafeSearchCountdown > 0 ? theme.textSecondary : WHITE }}>
                   {disableSafeSearchCountdown > 0 ? `Wait ${disableSafeSearchCountdown}s...` : 'Turn Off Safe Search'}
                 </Text>
               </TouchableOpacity>
@@ -17890,14 +17472,14 @@ function App() {
                 backgroundColor: theme.surface,
                 borderWidth: 1,
                 borderColor: theme.border,
-                borderRadius: 20,
+                borderRadius: RADIUS_20,
                 padding: 24,
                 width: '100%',
                 maxWidth: 340,
                 alignItems: 'center'
               }}
             >
-              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: theme.mode === 'light' ? '#DCFCE7' : 'rgba(74, 222, 128, 0.18)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+              <View style={{ width: 56, height: 56, borderRadius: RADIUS_28, backgroundColor: theme.mode === 'light' ? GREEN_100 : 'rgba(74, 222, 128, 0.18)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
                 <CheckIconSVG />
               </View>
               <Text style={{ fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 8, textAlign: 'center' }}>
@@ -17908,9 +17490,9 @@ function App() {
               </Text>
               <TouchableOpacity
                 style={{
-                  backgroundColor: '#7D52DD',
+                  backgroundColor: BRAND_MID,
                   height: 48,
-                  borderRadius: 12,
+                  borderRadius: RADIUS_12,
                   alignItems: 'center',
                   justifyContent: 'center',
                   width: '100%'
@@ -17923,7 +17505,7 @@ function App() {
                 }}
                 accessibilityRole="button"
               >
-                <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>
+                <Text style={{ color: WHITE, fontSize: 15, fontWeight: '800' }}>
                   Continue ({autoSuccessCountdown}s)
                 </Text>
               </TouchableOpacity>
@@ -17965,9 +17547,9 @@ function App() {
             {INTRO_CAROUSEL_PAGES.map((page, i) => (
               <View key={i} style={{ width: SCREEN_WIDTH, padding: 32, justifyContent: 'center', alignItems: 'center' }}>
                 <View style={{ marginBottom: 24 }}>
-                  {page.icon === 'sparkle' && <SparkleIconSVG color="#8B5CF6" size={56} />}
+                  {page.icon === 'sparkle' && <SparkleIconSVG color={BRAND_PRIMARY} size={56} />}
                   {page.icon === 'image' && <ImageIconSVG />}
-                  {page.icon === 'share' && <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />}
+                  {page.icon === 'share' && <ShareIconSVG color={themeMode === 'light' ? BRAND_DEEP : INDIGO_200} />}
                 </View>
                 <Text style={{ color: theme.text, fontSize: 24, fontWeight: '800', marginBottom: 16, textAlign: 'center' }}>
                   {page.title}
@@ -17986,8 +17568,8 @@ function App() {
                 style={{
                   width: introPageIndex === i ? 20 : 8,
                   height: 8,
-                  borderRadius: 4,
-                  backgroundColor: introPageIndex === i ? '#8B5CF6' : theme.border
+                  borderRadius: RADIUS_4,
+                  backgroundColor: introPageIndex === i ? BRAND_PRIMARY : theme.border
                 }}
               />
             ))}
@@ -17995,7 +17577,7 @@ function App() {
 
           <View style={{ paddingHorizontal: 24, paddingBottom: 24 }}>
             <BouncyButton
-              style={{ backgroundColor: '#7D52DD', height: 50, borderRadius: 99, alignItems: 'center', justifyContent: 'center' }}
+              style={{ backgroundColor: BRAND_MID, height: 50, borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center' }}
               onPress={() => {
                 if (introPageIndex < INTRO_CAROUSEL_PAGES.length - 1) {
                   const nextIndex = introPageIndex + 1;
@@ -18006,7 +17588,7 @@ function App() {
                 }
               }}
             >
-              <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800' }}>
+              <Text style={{ color: WHITE, fontSize: 16, fontWeight: '800' }}>
                 {introPageIndex < INTRO_CAROUSEL_PAGES.length - 1 ? 'Next' : 'Get Started'}
               </Text>
             </BouncyButton>
@@ -18091,7 +17673,7 @@ function App() {
         <View style={{ minWidth: 140, height: 36, justifyContent: 'center' }}>
           <View style={styles.logoRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
-              <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 20, height: 20, borderRadius: RADIUS_6, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
                 <DecentLogoSVG size={15} />
               </View>
               <Text style={styles.logoText}>ECENT</Text>
@@ -18112,14 +17694,14 @@ function App() {
               <View
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 8,
-                  backgroundColor: theme.surface, borderWidth: 0.75, borderColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
-                  borderRadius: 99, height: 36, minHeight: 36, maxHeight: 36, paddingVertical: 0, paddingHorizontal: 8,
+                  backgroundColor: theme.surface, borderWidth: 0.75, borderColor: themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY,
+                  borderRadius: RADIUS_99, height: 36, minHeight: 36, maxHeight: 36, paddingVertical: 0, paddingHorizontal: 8,
                   width: TOAST_PILL_WIDTH, overflow: 'hidden'
                 }}
               >
-                <Avatar uri={headerToast.avatar} style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: theme.bg }} />
+                <Avatar uri={headerToast.avatar} style={{ width: 22, height: 22, borderRadius: RADIUS_11, backgroundColor: theme.bg }} />
                 <Text style={{ color: theme.text, fontSize: 11, fontWeight: '700', flex: 1 }} numberOfLines={1}>
-                  <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '800' }}>{headerToast.name}</Text>
+                  <Text style={{ color: themeMode === 'light' ? BRAND_DEEP : BRAND_ACCENT, fontWeight: '800' }}>{headerToast.name}</Text>
                   {' '}{headerToast.action}
                 </Text>
               </View>
@@ -18167,7 +17749,7 @@ function App() {
           // still visibly outlining the pill as its own shape.
           isWebWide && {
             backgroundColor: theme.bg,
-            borderRadius: 99, paddingHorizontal: 8, paddingVertical: 6
+            borderRadius: RADIUS_99, paddingHorizontal: 8, paddingVertical: 6
           }
         ]}>
           <View style={{ width: 36, height: 36 }}>
@@ -18177,13 +17759,13 @@ function App() {
                 styles.headerIconBtnWithBadge,
                 {
                   position: 'absolute', top: 0, right: 0,
-                  width: bellPillWidthAnim, borderRadius: 18,
+                  width: bellPillWidthAnim, borderRadius: RADIUS_18,
                   flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end',
                   paddingHorizontal: 8, overflow: 'hidden'
                 },
-                notificationModalVisible && { backgroundColor: '#7D52DD', borderColor: '#8B5CF6' },
+                notificationModalVisible && { backgroundColor: BRAND_MID, borderColor: BRAND_PRIMARY },
                 bellFlash && { backgroundColor: theme.accent, borderColor: theme.accent },
-                bellIntroCount > 0 && { backgroundColor: '#7D52DD', borderColor: '#8B5CF6' }
+                bellIntroCount > 0 && { backgroundColor: BRAND_MID, borderColor: BRAND_PRIMARY }
               ]}
               onPress={() => {
                 if (notificationModalVisible) {
@@ -18207,7 +17789,7 @@ function App() {
             >
               {bellIntroCount > 0 && (
                 <Animated.Text
-                  style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800', opacity: bellPillCountOpacity, marginRight: 6 }}
+                  style={{ color: WHITE, fontSize: 11, fontWeight: '800', opacity: bellPillCountOpacity, marginRight: 6 }}
                   numberOfLines={1}
                 >
                   {bellIntroCount}
@@ -18225,7 +17807,7 @@ function App() {
           </View>
 
           <BouncyButton
-            style={[styles.headerIconBtn, settingsModalVisible && { backgroundColor: '#7D52DD', borderColor: '#8B5CF6' }]}
+            style={[styles.headerIconBtn, settingsModalVisible && { backgroundColor: BRAND_MID, borderColor: BRAND_PRIMARY }]}
             onPress={() => {
               playCogSpin();
               if (settingsModalVisible) {
@@ -18285,8 +17867,8 @@ function App() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor="#8B5CF6"
-              colors={['#8B5CF6']}
+              tintColor={BRAND_PRIMARY}
+              colors={[BRAND_PRIMARY]}
               progressViewOffset={
                 Platform.OS === 'android' && !isWebWide
                   ? headerBottomY + 10
@@ -18351,7 +17933,7 @@ function App() {
                     >
                       <CategoryChipBg active={categoryFilter === 'all'} />
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <SparkleIconSVG color={categoryFilter === 'all' ? '#FFFFFF' : theme.accent} size={13} />
+                        <SparkleIconSVG color={categoryFilter === 'all' ? WHITE : theme.accent} size={13} />
                         <Text style={[styles.topCategoryText, categoryFilter === 'all' && styles.topCategoryTextActive]}>
                           Highlighted
                         </Text>
@@ -18368,7 +17950,7 @@ function App() {
                     >
                       <CategoryChipBg active={categoryFilter === 'popularity'} />
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <TrendingUpSVG color={categoryFilter === 'popularity' ? '#FFFFFF' : theme.accent} size={13} />
+                        <TrendingUpSVG color={categoryFilter === 'popularity' ? WHITE : theme.accent} size={13} />
                         <Text style={[styles.topCategoryText, categoryFilter === 'popularity' && styles.topCategoryTextActive]}>
                           Popularity
                         </Text>
@@ -18385,7 +17967,7 @@ function App() {
                     >
                       <CategoryChipBg active={categoryFilter === 'newest'} />
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <ClockSVG color={categoryFilter === 'newest' ? '#FFFFFF' : theme.accent} size={13} />
+                        <ClockSVG color={categoryFilter === 'newest' ? WHITE : theme.accent} size={13} />
                         <Text style={[styles.topCategoryText, categoryFilter === 'newest' && styles.topCategoryTextActive]}>
                           Newest
                         </Text>
@@ -18441,7 +18023,7 @@ function App() {
                         position: 'absolute', left: 0, top: '50%', marginTop: -19, width: 38, height: 38,
                         alignItems: 'center', justifyContent: 'center',
                         backgroundColor: theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
-                        borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
+                        borderRadius: RADIUS_19, shadowColor: BLACK, shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
                       }}
                       onPress={() => {
                         const target = Math.max(0, categoryScrollXRef.current - (categoryScrollContainerWidthRef.current || 200) * 0.7);
@@ -18460,7 +18042,7 @@ function App() {
                         position: 'absolute', right: 0, top: '50%', marginTop: -19, width: 38, height: 38,
                         alignItems: 'center', justifyContent: 'center',
                         backgroundColor: theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
-                        borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
+                        borderRadius: RADIUS_19, shadowColor: BLACK, shadowOpacity: 0.2, shadowRadius: 6, elevation: 4
                       }}
                       onPress={() => {
                         const maxX = Math.max(0, categoryScrollContentWidthRef.current - categoryScrollContainerWidthRef.current);
@@ -18497,7 +18079,7 @@ function App() {
                   <BouncyButton
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
-                      paddingVertical: 5, paddingHorizontal: 10, borderRadius: 99,
+                      paddingVertical: 5, paddingHorizontal: 10, borderRadius: RADIUS_99,
                       borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
                     }}
                     onPress={() => setForYouTypeFilterOpen((v) => !v)}
@@ -18531,11 +18113,11 @@ function App() {
                     />
                     <View style={{
                       position: 'absolute', top: 34, left: 0, width: 200, height: 225, zIndex: 100,
-                      backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
-                      padding: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                      backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: RADIUS_14, borderWidth: 1, borderColor: theme.border,
+                      padding: 6, shadowColor: BLACK, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                     }}>
                       <BouncyButton
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: RADIUS_99 }}
                         onPress={() => {
                           setForYouTypeFilter((prev) =>
                             prev.size === PORTFOLIO_TYPE_OPTIONS.length
@@ -18548,11 +18130,11 @@ function App() {
                         accessibilityState={{ checked: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length }}
                       >
                         <View style={{
-                          width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                          borderWidth: 1.5, borderColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                          backgroundColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
+                          width: 18, height: 18, borderRadius: RADIUS_5, alignItems: 'center', justifyContent: 'center',
+                          borderWidth: 1.5, borderColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border,
+                          backgroundColor: forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length ? (themeMode === 'light' ? BRAND_DEEP : BRAND_MID) : 'transparent'
                         }}>
-                          {forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length && <CheckIconSVG color="#FFFFFF" />}
+                          {forYouTypeFilter.size === PORTFOLIO_TYPE_OPTIONS.length && <CheckIconSVG color={WHITE} />}
                         </View>
                         <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>All Portfolios</Text>
                       </BouncyButton>
@@ -18562,7 +18144,7 @@ function App() {
                       {PORTFOLIO_TYPE_OPTIONS.map((type) => (
                         <BouncyButton
                           key={type.key}
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: RADIUS_99 }}
                           onPress={() => {
                             setForYouTypeFilter((prev) => {
                               const next = new Set(prev);
@@ -18576,11 +18158,11 @@ function App() {
                           accessibilityState={{ checked: forYouTypeFilter.has(type.key) }}
                         >
                           <View style={{
-                            width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                            borderWidth: 1.5, borderColor: forYouTypeFilter.has(type.key) ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                            backgroundColor: forYouTypeFilter.has(type.key) ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
+                            width: 18, height: 18, borderRadius: RADIUS_5, alignItems: 'center', justifyContent: 'center',
+                            borderWidth: 1.5, borderColor: forYouTypeFilter.has(type.key) ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border,
+                            backgroundColor: forYouTypeFilter.has(type.key) ? (themeMode === 'light' ? BRAND_DEEP : BRAND_MID) : 'transparent'
                           }}>
-                            {forYouTypeFilter.has(type.key) && <CheckIconSVG color="#FFFFFF" />}
+                            {forYouTypeFilter.has(type.key) && <CheckIconSVG color={WHITE} />}
                           </View>
                           <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>{type.label}</Text>
                         </BouncyButton>
@@ -18622,7 +18204,7 @@ function App() {
 
               {loadingMore && (
                 <View style={{ marginTop: 16, marginBottom: 24, alignSelf: 'center' }}>
-                  <ActivityIndicator color="#8B5CF6" />
+                  <ActivityIndicator color={BRAND_PRIMARY} />
                 </View>
               )}
             </View>
@@ -18666,8 +18248,8 @@ function App() {
                           </View>
                           {circleHasNewPost[des.id] && (
                             <View style={{
-                              position: 'absolute', bottom: 0, right: 0, width: 14, height: 14, borderRadius: 7,
-                              backgroundColor: '#CF3B3B', borderWidth: 2, borderColor: theme.bg
+                              position: 'absolute', bottom: 0, right: 0, width: 14, height: 14, borderRadius: RADIUS_7,
+                              backgroundColor: RED_500, borderWidth: 2, borderColor: theme.bg
                             }} />
                           )}
                         </View>
@@ -18757,7 +18339,7 @@ function App() {
                       <Text style={styles.discoverBtnText}>
                         {selectedFollowedDesigner ? 'Clear Filter' : 'Discover Designers'}
                       </Text>
-                      <ChevronRightSVG color="#FFFFFF" size={16} />
+                      <ChevronRightSVG color={WHITE} size={16} />
                     </View>
                   </BouncyButton>
                 </View>
@@ -18777,7 +18359,7 @@ function App() {
                 <FocusableTextInput
                   style={[styles.searchInput, { flex: 1 }]}
                   placeholder="Search by project name, designer, or topic..."
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={TEXT_SECONDARY}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   autoFocus={true}
@@ -18795,7 +18377,7 @@ function App() {
                   {exactMatch ? (
                     exactMatch.type === 'designer' ? (
                       <BouncyButton
-                        style={[styles.designerItemCard, { borderColor: '#8B5CF6', borderWidth: 1.5 }]}
+                        style={[styles.designerItemCard, { borderColor: BRAND_PRIMARY, borderWidth: 1.5 }]}
                         onPress={() => openDesignerModal(exactMatch.item)}
                         accessibilityRole="button"
                         accessibilityLabel={`${exactMatch.item.name}, ${exactMatch.item.role}`}
@@ -18808,7 +18390,7 @@ function App() {
                           ) : null}
                           <Text style={styles.designerListRole}>{exactMatch.item.role}</Text>
                         </View>
-                        <ChevronRightSVG color="#8B5CF6" size={20} />
+                        <ChevronRightSVG color={BRAND_PRIMARY} size={20} />
                       </BouncyButton>
                     ) : (
                       <View
@@ -18889,7 +18471,7 @@ function App() {
                           <View
                             key={des.id}
                             style={[
-                              { backgroundColor: theme.surface, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border, padding: 14 },
+                              { backgroundColor: theme.surface, borderRadius: RADIUS_16_8, borderWidth: 1, borderColor: theme.border, padding: 14 },
                               isWebWide && { width: searchDesignersCardWidthPx }
                             ]}
                           >
@@ -18908,12 +18490,12 @@ function App() {
                                 </View>
 
                                 {des.matchedViaTag && (
-                                  <Text style={{ color: '#64748B', fontSize: 11, fontStyle: 'italic', marginTop: 2 }}>
+                                  <Text style={{ color: TEXT_MUTED, fontSize: 11, fontStyle: 'italic', marginTop: 2 }}>
                                     Shows up because they've published a portfolio tagged "{des.matchedViaTag}"
                                   </Text>
                                 )}
                               </View>
-                              <ChevronRightSVG color="#8B5CF6" size={20} />
+                              <ChevronRightSVG color={BRAND_PRIMARY} size={20} />
                             </CardLink>
 
                             {/* True sibling of the CardLink above, not
@@ -18942,7 +18524,7 @@ function App() {
                                 accessibilityRole="button"
                                 accessibilityLabel={`Share ${des.name}'s profile`}
                               >
-                                <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
+                                <ShareIconSVG color={themeMode === 'light' ? BRAND_DEEP : INDIGO_200} />
                               </BouncyButton>
                             </View>
                           </View>
@@ -18952,7 +18534,7 @@ function App() {
 
                     {searchFilterTab === 'all' && relatedDesigners.length > 3 && (
                       <BouncyButton
-                        style={{ alignSelf: 'flex-start', marginTop: 12, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
+                        style={{ alignSelf: 'flex-start', marginTop: 12, paddingVertical: 8, paddingHorizontal: 16, borderRadius: RADIUS_99, borderWidth: 1, borderColor: theme.border }}
                         onPress={() => setSearchFilterTab('designers')}
                         accessibilityRole="button"
                       >
@@ -19102,7 +18684,7 @@ function App() {
                       return (
                         <View
                           key={des.id}
-                          style={[{ backgroundColor: theme.surface, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border, padding: 14 }, isWebWide && { width: searchDesignersCardWidthPx }]}
+                          style={[{ backgroundColor: theme.surface, borderRadius: RADIUS_16_8, borderWidth: 1, borderColor: theme.border, padding: 14 }, isWebWide && { width: searchDesignersCardWidthPx }]}
                         >
                           <CardLink
                             href={`/@${des.handle || des.id}`}
@@ -19145,7 +18727,7 @@ function App() {
                               accessibilityRole="button"
                               accessibilityLabel={`Share ${des.name}'s profile`}
                             >
-                              <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
+                              <ShareIconSVG color={themeMode === 'light' ? BRAND_DEEP : INDIGO_200} />
                             </BouncyButton>
 
                             <View ref={(el) => { discoverDotsRefsMap[des.id] = el; }} style={{ zIndex: 100 }}>
@@ -19185,12 +18767,12 @@ function App() {
                                   />
                                   <View style={{
                                     position: 'absolute', top: discoverDotsMenuPos.top, right: discoverDotsMenuPos.right, width: 220,
-                                    backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                                    backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: RADIUS_14, borderWidth: 1, borderColor: theme.border,
                                     padding: 6,
-                                    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                                    shadowColor: BLACK, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                                   }}>
                                     <BouncyButton
-                                      style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                                      style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                                       onPress={() => {
                                         setDiscoverDotsMenuOpenId(null);
                                         handleReportContent('user', des.id, des.name);
@@ -19200,7 +18782,7 @@ function App() {
                                       <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
                                     </BouncyButton>
                                     <BouncyButton
-                                      style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                                      style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                                       onPress={() => {
                                         setDiscoverDotsMenuOpenId(null);
                                         mutedIds.has(des.id)
@@ -19214,14 +18796,14 @@ function App() {
                                       </Text>
                                     </BouncyButton>
                                     <BouncyButton
-                                      style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                                      style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                                       onPress={() => {
                                         setDiscoverDotsMenuOpenId(null);
                                         handleBlockUser(des.id, des.name);
                                       }}
                                       accessibilityRole="button"
                                     >
-                                      <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
+                                      <Text style={{ color: DANGER, fontWeight: '700', fontSize: 14 }}>Block User</Text>
                                     </BouncyButton>
                                   </View>
                                 </View>
@@ -19235,7 +18817,7 @@ function App() {
 
                   {discoverDesignersLimit < searchedDesigners.length && (
                     <BouncyButton
-                      style={{ marginTop: 14, marginBottom: 10, alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 24, backgroundColor: theme.surface, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
+                      style={{ marginTop: 14, marginBottom: 10, alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 24, backgroundColor: theme.surface, borderRadius: RADIUS_99, borderWidth: 1, borderColor: theme.border }}
                       onPress={() => setDiscoverDesignersLimit((prev) => prev + DISCOVER_PAGE_SIZE)}
                       accessibilityRole="button"
                     >
@@ -19251,7 +18833,7 @@ function App() {
           {bottomNav === 'profile' && (
             !session ? (
               <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 }}>
-                <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                <View style={{ width: 72, height: 72, borderRadius: RADIUS_36, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
                   <ProfileSVG active={false} />
                 </View>
                 <Text style={{ color: theme.text, fontSize: 17, fontWeight: '800', marginBottom: 6, textAlign: 'center' }}>
@@ -19261,11 +18843,11 @@ function App() {
                   Create an account to build your portfolio, follow designers, and track your activity.
                 </Text>
                 <BouncyButton
-                  style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD', paddingHorizontal: 28, paddingVertical: 12, borderRadius: 99 }}
+                  style={{ backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID, paddingHorizontal: 28, paddingVertical: 12, borderRadius: RADIUS_99 }}
                   onPress={() => setGuestAuthPromptVisible(true)}
                   accessibilityRole="button"
                 >
-                  <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14 }}>Sign In / Register</Text>
+                  <Text style={{ color: WHITE, fontWeight: '700', fontSize: 14 }}>Sign In / Register</Text>
                 </BouncyButton>
               </View>
             ) : (
@@ -19284,7 +18866,7 @@ function App() {
                   accessibilityRole="button"
                   accessibilityLabel="Share your profile"
                 >
-                  <ShareIconSVG color={themeMode === 'light' ? '#6D28D9' : '#D8B4FE'} />
+                  <ShareIconSVG color={themeMode === 'light' ? BRAND_DEEP : INDIGO_200} />
                 </BouncyButton>
 
                 <BouncyButton activeOpacity={0.9} onPress={() => setLightboxImageUri(userProfile.avatar)} accessibilityRole="button" accessibilityLabel="View profile photo">
@@ -19373,8 +18955,8 @@ function App() {
                       position: 'absolute',
                       top: 4, bottom: 4, left: 4,
                       width: (profileTabBarWidth - 12) / 2,
-                      borderRadius: 99,
-                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                      borderRadius: RADIUS_99,
+                      backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID,
                       transform: [{
                         translateX: profileTabSlideAnim.interpolate({
                           inputRange: [0, 1],
@@ -19511,7 +19093,7 @@ function App() {
           accessibilityRole="button"
           accessibilityLabel="Scroll to top"
         >
-          <ChevronUpSVG color="#8B5CF6" />
+          <ChevronUpSVG color={BRAND_PRIMARY} />
         </BouncyButton>
       )}
 
@@ -19545,8 +19127,8 @@ function App() {
         >
           <Defs>
             <LinearGradient id="feedBottomScrim" x1="0" y1="1" x2="0" y2="0">
-              <Stop offset="0%" stopColor={themeMode === 'light' ? '#FFFFFF' : '#000000'} stopOpacity={0.75} />
-              <Stop offset="100%" stopColor={themeMode === 'light' ? '#FFFFFF' : '#000000'} stopOpacity={0} />
+              <Stop offset="0%" stopColor={themeMode === 'light' ? WHITE : BLACK_SOLID} stopOpacity={0.75} />
+              <Stop offset="100%" stopColor={themeMode === 'light' ? WHITE : BLACK_SOLID} stopOpacity={0} />
             </LinearGradient>
           </Defs>
           <Rect x={0} y={0} width={Dimensions.get('window').width} height={BOTTOM_NAV_BAR_HEIGHT + 14} fill="url(#feedBottomScrim)" />
@@ -19608,7 +19190,7 @@ function App() {
               <Animated.Text
                 key={i}
                 style={{
-                  position: 'absolute', ...pos, fontSize: 9, color: '#C084FC',
+                  position: 'absolute', ...pos, fontSize: 9, color: BRAND_ACCENT,
                   opacity: forYouSparkleAnim.interpolate({
                     inputRange: [0, 0.15 + i * 0.15, 0.5 + i * 0.15, 1],
                     outputRange: [0, 1, 1, 0]
@@ -19650,7 +19232,7 @@ function App() {
           onPress={handleOpenAddPortfolio}
         >
           <View style={{ position: 'absolute', top: 0, left: 0 }}>
-            <DShapeSVG size={44} color="#8B5CF6" />
+            <DShapeSVG size={44} color={BRAND_PRIMARY} />
           </View>
           <Animated.View style={{ transform: [{ scale: tabScaleAnims.plus }] }}>
             <PlusSVG strokeWidth={5} offsetX={-1} />
@@ -19726,7 +19308,7 @@ function App() {
               backgroundColor: theme.bg,
               borderRightWidth: 1, borderRightColor: theme.border,
               transform: [{ translateX: hamburgerSlideAnim }],
-              shadowColor: '#000', shadowOffset: { width: 4, height: 0 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 20
+              shadowColor: BLACK, shadowOffset: { width: 4, height: 0 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 20
             }}
             onStartShouldSetResponder={() => Platform.OS === 'web'}
             onResponderRelease={() => {}}
@@ -19749,7 +19331,7 @@ function App() {
                   <ChevronLeftSVG color={theme.accentLight} size={22} />
                 </BouncyButton>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
-                  <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 20, height: 20, borderRadius: RADIUS_6, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
                     <DecentLogoSVG size={15} />
                   </View>
                   <Text style={styles.logoText}>ECENT</Text>
@@ -19761,7 +19343,7 @@ function App() {
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   marginHorizontal: 16, marginBottom: 16, paddingVertical: 10, paddingHorizontal: 12,
-                  borderRadius: 14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
+                  borderRadius: RADIUS_14, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface
                 }}
                 onPress={() => {
                   setHamburgerMenuVisible(false);
@@ -19769,9 +19351,9 @@ function App() {
                 }}
                 accessibilityRole="button"
               >
-                <View style={[styles.plusContainerBtn, { width: 38, height: 38, borderRadius: 12, marginHorizontal: 0, backgroundColor: 'transparent', shadowColor: 'transparent', elevation: 0 }]}>
+                <View style={[styles.plusContainerBtn, { width: 38, height: 38, borderRadius: RADIUS_12, marginHorizontal: 0, backgroundColor: 'transparent', shadowColor: 'transparent', elevation: 0 }]}>
                   <View style={{ position: 'absolute', top: 0, left: 0 }}>
-                    <DShapeSVG size={38} color="#8B5CF6" />
+                    <DShapeSVG size={38} color={BRAND_PRIMARY} />
                   </View>
                   <View style={{ transform: [{ scale: 0.82 }] }}><PlusSVG strokeWidth={5} offsetX={-1} /></View>
                 </View>
@@ -19805,7 +19387,7 @@ function App() {
                     <View style={{ transform: [{ scale: 0.85 }] }}>
                       <Icon active={active} {...extraProps} />
                     </View>
-                    <Text style={{ color: active ? '#8B5CF6' : theme.text, fontSize: 13, fontWeight: active ? '700' : '600' }}>
+                    <Text style={{ color: active ? BRAND_PRIMARY : theme.text, fontSize: 13, fontWeight: active ? '700' : '600' }}>
                       {label}
                     </Text>
                   </BouncyButton>
@@ -19906,14 +19488,14 @@ function App() {
               >
                 <View style={styles.iconTextInlineRow}>
                   <Text style={styles.confirmDeleteText}>Continue</Text>
-                  <ChevronRightSVG color="#FFFFFF" size={16} />
+                  <ChevronRightSVG color={WHITE} size={16} />
                 </View>
               </BouncyButton>
             </View>
 
             {!isTrustedExternalLink && (
               <BouncyButton style={{ marginTop: 14, alignItems: 'center' }} onPress={handleReportExternalLink} accessibilityRole="button">
-                <Text style={{ color: '#F87171', fontSize: 12, fontWeight: '700' }}>Report this link as suspicious</Text>
+                <Text style={{ color: RED_300, fontSize: 12, fontWeight: '700' }}>Report this link as suspicious</Text>
               </BouncyButton>
             )}
           </View>
@@ -19973,10 +19555,10 @@ function App() {
               // the content actually needed that much room.
               maxHeight: Dimensions.get('window').height - notifDropdownPos.top - 20,
               backgroundColor: theme.surface,
-              borderRadius: 16,
+              borderRadius: RADIUS_16,
               borderWidth: 1,
               borderColor: theme.border,
-              shadowColor: '#8B5CF6',
+              shadowColor: BRAND_PRIMARY,
               shadowOpacity: 0.25,
               shadowRadius: 16,
               shadowOffset: { width: 0, height: 8 },
@@ -19993,8 +19575,8 @@ function App() {
               <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>Notifications</Text>
               <BouncyButton
                 style={{
-                  paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
-                  borderWidth: 1, borderColor: '#8B5CF6', minWidth: 66, alignItems: 'center'
+                  paddingVertical: 6, paddingHorizontal: 14, borderRadius: RADIUS_99,
+                  borderWidth: 1, borderColor: BRAND_PRIMARY, minWidth: 66, alignItems: 'center'
                 }}
                 onPress={handleClearAllNotifications}
                 disabled={notificationsList.length === 0}
@@ -20027,8 +19609,6 @@ function App() {
                           onPress={() => {
                             setNotificationModalVisible(false);
                             if (notif.type === 'create_password') {
-                              setNewPassword('');
-                              setConfirmNewPassword('');
                               setChangePasswordPageVisible(true);
                             } else {
                               openDesignerProfileById(notif.actorId);
@@ -20054,8 +19634,6 @@ function App() {
                             } else if (notif.type === 'follow') {
                               openDesignerProfileById(notif.actorId);
                             } else if (notif.type === 'create_password') {
-                              setNewPassword('');
-                              setConfirmNewPassword('');
                               setChangePasswordPageVisible(true);
                             }
                           }}
@@ -20139,12 +19717,12 @@ function App() {
             </View>
           )}
           <BouncyButton
-            style={{ position: 'absolute', top: 50, right: 20, width: 40, height: 40, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+            style={{ position: 'absolute', top: 50, right: 20, width: 40, height: 40, borderRadius: RADIUS_99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
             onPress={() => setLightboxImageUri(null)}
             accessibilityRole="button"
             accessibilityLabel="Close"
           >
-            <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>✕</Text>
+            <Text style={{ color: WHITE, fontSize: 18, fontWeight: '700' }}>✕</Text>
           </BouncyButton>
         </View>
       </Modal>
@@ -20226,12 +19804,12 @@ function App() {
             </ScrollView>
           )}
           <BouncyButton
-            style={{ position: 'absolute', top: 50, right: 20, width: 40, height: 40, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+            style={{ position: 'absolute', top: 50, right: 20, width: 40, height: 40, borderRadius: RADIUS_99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
             onPress={() => setImageViewerState(null)}
             accessibilityRole="button"
             accessibilityLabel="Close"
           >
-            <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>✕</Text>
+            <Text style={{ color: WHITE, fontSize: 18, fontWeight: '700' }}>✕</Text>
           </BouncyButton>
           {/* Onscreen arrow buttons, web only (both narrow and wide) -
               mobile app relies on swipe alone, matching the native gesture
@@ -20242,7 +19820,7 @@ function App() {
               simply not there when there's nowhere left to go. */}
           {Platform.OS === 'web' && imageViewerState && imageViewerState.index > 0 && (
             <BouncyButton
-              style={{ position: 'absolute', left: 20, top: '50%', marginTop: -22, width: 44, height: 44, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+              style={{ position: 'absolute', left: 20, top: '50%', marginTop: -22, width: 44, height: 44, borderRadius: RADIUS_99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
               onPress={() => {
                 const nextIndex = imageViewerState.index - 1;
                 const target = nextIndex * Dimensions.get('window').width;
@@ -20254,12 +19832,12 @@ function App() {
               accessibilityRole="button"
               accessibilityLabel="Previous"
             >
-              <ChevronLeftSVG color="#FFFFFF" size={20} />
+              <ChevronLeftSVG color={WHITE} size={20} />
             </BouncyButton>
           )}
           {Platform.OS === 'web' && imageViewerState && imageViewerState.index < imageViewerState.items.length - 1 && (
             <BouncyButton
-              style={{ position: 'absolute', right: 20, top: '50%', marginTop: -22, width: 44, height: 44, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
+              style={{ position: 'absolute', right: 20, top: '50%', marginTop: -22, width: 44, height: 44, borderRadius: RADIUS_99, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}
               onPress={() => {
                 const nextIndex = imageViewerState.index + 1;
                 const target = nextIndex * Dimensions.get('window').width;
@@ -20269,19 +19847,19 @@ function App() {
               accessibilityRole="button"
               accessibilityLabel="Next"
             >
-              <ChevronRightSVG color="#FFFFFF" size={20} />
+              <ChevronRightSVG color={WHITE} size={20} />
             </BouncyButton>
           )}
           {imageViewerState && imageViewerState.items[imageViewerState.index] && imageViewerState.items[imageViewerState.index].caption && imageViewerState.items[imageViewerState.index].caption.trim() !== '' && (
             <View style={{ position: 'absolute', bottom: imageViewerState.items.length > 1 ? 80 : 40, left: 24, right: 24, alignItems: 'center' }}>
-              <Text style={{ color: '#FFFFFF', fontSize: 14, textAlign: 'center' }}>
+              <Text style={{ color: WHITE, fontSize: 14, textAlign: 'center' }}>
                 {imageViewerState.items[imageViewerState.index].caption}
               </Text>
             </View>
           )}
           {imageViewerState && imageViewerState.items.length > 1 && (
-            <View style={{ position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}>
-              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+            <View style={{ position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: RADIUS_99, paddingHorizontal: 12, paddingVertical: 6 }}>
+              <Text style={{ color: WHITE, fontSize: 12, fontWeight: '700' }}>
                 {imageViewerState.index + 1} / {imageViewerState.items.length}
               </Text>
             </View>
@@ -20304,10 +19882,10 @@ function App() {
         >
           {linkPreview && (
             <View style={{
-              backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.border,
+              backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: RADIUS_16, borderWidth: 1, borderColor: theme.border,
               padding: 20, width: '100%', maxWidth: 320, alignItems: 'center'
             }}>
-              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+              <View style={{ width: 44, height: 44, borderRadius: RADIUS_22, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
                 {getSocialLogoSVG(linkPreview.url)}
               </View>
               <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800', marginBottom: 4 }}>{linkPreview.name}</Text>
@@ -20334,7 +19912,7 @@ function App() {
                 }}
                 accessibilityRole="button"
               >
-                <Text style={{ color: '#F87171', fontSize: 13, fontWeight: '700' }}>Report Link</Text>
+                <Text style={{ color: RED_300, fontSize: 13, fontWeight: '700' }}>Report Link</Text>
               </BouncyButton>
             </View>
           )}
@@ -20398,7 +19976,7 @@ function App() {
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: RED_500 }]}
                 onPress={confirmDeletePortfolio}
                 accessibilityRole="button"
               >
@@ -20417,8 +19995,8 @@ function App() {
         onRequestClose={handleCloseAccountSaveSuccess}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(11,15,23,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 20, borderWidth: 1, borderColor: theme.border, padding: 24, width: '100%', maxWidth: 400, alignItems: 'center' }}>
-            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+          <View style={{ backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: RADIUS_20, borderWidth: 1, borderColor: theme.border, padding: 24, width: '100%', maxWidth: 400, alignItems: 'center' }}>
+            <View style={{ width: 56, height: 56, borderRadius: RADIUS_28, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
               <CheckIconSVG />
             </View>
             <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800', marginBottom: 6, textAlign: 'center' }}>Settings Saved</Text>
@@ -20426,532 +20004,105 @@ function App() {
               Your account profile, location, and preferences have been updated successfully!
             </Text>
             <BouncyButton
-              style={{ backgroundColor: '#7D52DD', borderRadius: 99, paddingVertical: 14, width: '100%', alignItems: 'center' }}
+              style={{ backgroundColor: BRAND_MID, borderRadius: RADIUS_99, paddingVertical: 14, width: '100%', alignItems: 'center' }}
               onPress={handleCloseAccountSaveSuccess}
               accessibilityRole="button"
             >
-              <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>Continue</Text>
+              <Text style={{ color: WHITE, fontSize: 14, fontWeight: '800' }}>Continue</Text>
             </BouncyButton>
           </View>
         </View>
       </Modal>
 
       {/* ACCOUNT SETTINGS EDIT MODAL WITH LOCATION FIELD */}
-      <Modal
-        animationType="none"
-        transparent={true}
-        visible={accountSettingsModalVisible}
-        onRequestClose={handleCloseAccountSettings}
-      >
-        <View
-          style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
-          {...(Platform.OS === 'web' ? {
-            onStartShouldSetResponder: () => true,
-            onResponderRelease: handleCloseAccountSettings
-          } : {})}
-        >
-            {/* Backdrop blur - safe here since every one of these is its
-                own native Modal, rendered on a separate OS-level surface
-                from the main screen (header/bottom bar/category bar), so
-                there's no GPU double-compositing with those. Falls back to
-                a flat dim in Lightweight Mode, same as everywhere else. */}
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )
-            )}
-          <Animated.View
-            style={{ flex: 1, transform: Platform.OS === 'web' ? [] : [{ translateX: subPageSlideAnim }], ...(isWebWide ? { justifyContent: 'center', alignItems: 'center' } : {}) }}
-            // Claims the touch responder so a tap that starts inside the card
-            // (e.g. focusing a text field) never bubbles up to the backdrop's
-            // dismiss handler. Needed because react-native-web's TextInput
-            // (a plain DOM <input>) doesn't itself claim the responder the way
-            // native TextInput does, so without this the touch would otherwise
-            // propagate up and close the modal. Web only - on native these
-            // props are omitted entirely rather than just returning false,
-            // to remove any doubt about how the responder system treats a
-            // present-but-declining handler versus no handler at all.
-            {...(Platform.OS === 'web' ? {
-              onStartShouldSetResponder: () => true,
-              onResponderRelease: () => {}
-            } : {})}
-          >
-          <SafeAreaView style={[styles.overlayModalContainer, { maxHeight: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}>
-            <View style={[styles.modalTopBar, { justifyContent: 'flex-start', gap: 10 }]}>
-              {!isWebWide && (
-                <BouncyButton style={{ padding: 4 }} onPress={handleCloseAccountSettings} accessibilityRole="button" accessibilityLabel="Back">
-                  <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
-                </BouncyButton>
-              )}
-              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>Account Settings</Text>
-              <BouncyButton
-                style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                onPress={() => {
-                  if (hasUnsavedAccountChanges()) {
-                    setAccountSettingsDiscardWarningVisible(true);
-                  } else {
-                    setAccountSettingsModalVisible(false);
-                    setSettingsModalVisible(false);
-                  }
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Close"
-              >
-                <Text style={styles.closeBtnText}>✕</Text>
-              </BouncyButton>
-            </View>
-
-            <AppKeyboardAwareScrollView
-              ref={hideScrollbarRefCallback(isWebWide)}
-              contentContainerStyle={styles.accountSettingsScrollContent}
-              enableOnAndroid={true}
-              extraScrollHeight={140}
-              keyboardShouldPersistTaps="handled"
-            >
-              <Text style={styles.formGroupLabel}>Profile Picture</Text>
-              <BouncyButton style={styles.avatarEditPickerBtn} activeOpacity={0.85} onPress={pickAvatarImage} accessibilityRole="button" accessibilityLabel="Change profile picture">
-                <Image source={{ uri: editAvatar }} style={styles.avatarEditPreview} />
-                <View style={styles.avatarEditOverlay}>
-                  <CameraIconSVG />
-                  <Text style={styles.avatarEditText}>Change Photo</Text>
-                </View>
-              </BouncyButton>
-
-              <Text style={styles.formGroupLabel}>Full Name</Text>
-              <View style={styles.inputWithClearRow}>
-                <FocusableTextInput
-                  style={[styles.formInput, { flex: 1 }]}
-                  value={editName}
-                  onChangeText={setEditName}
-                  placeholder="Full Name"
-                  placeholderTextColor="#94A3B8"
-                  maxLength={60}
-                  accessibilityLabel="Full Name"
-                />
-                {editName.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => setEditName('')} accessibilityRole="button" accessibilityLabel="Clear">
-                    <ClearTextXSVG />
-                  </BouncyButton>
-                )}
-              </View>
-
-              <Text style={styles.formGroupLabel}>Unique ID / Handle</Text>
-              <View style={[styles.inputWithClearRow, { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 10, paddingLeft: 14 }]}>
-                <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700' }}>@</Text>
-                <FocusableTextInput
-                  style={[styles.formInput, { flex: 1, borderWidth: 0, backgroundColor: 'transparent' }]}
-                  value={editHandle}
-                  onChangeText={(t) => setEditHandle(t.replace(/[^A-Za-z0-9._-]/g, ''))}
-                  placeholder="Enter your username here"
-                  placeholderTextColor="#94A3B8"
-                  autoCapitalize="none"
-                  maxLength={20}
-                  accessibilityLabel="Unique ID / Handle"
-                />
-                {editHandle.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => setEditHandle('')} accessibilityRole="button" accessibilityLabel="Clear">
-                    <ClearTextXSVG />
-                  </BouncyButton>
-                )}
-              </View>
-              <Text style={{ color: '#64748B', fontSize: 11, marginTop: -6, marginBottom: 4 }}>
-                3-20 characters, letters, numbers, dots, underscores, and dashes only. Can only be changed once every 30 days.
-              </Text>
-              {editHandle.trim() !== (userProfile.handle || '') && (
-                <>
-                  {handleStatus === 'checking' && <Text style={{ color: theme.textSecondary, fontSize: 12, marginBottom: 6 }}>Checking availability...</Text>}
-                  {handleStatus === 'available' && <Text style={{ color: '#4ADE80', fontSize: 12, marginBottom: 6 }}>✓ Available</Text>}
-                  {handleStatus === 'taken' && <Text style={{ color: '#F87171', fontSize: 12, marginBottom: 6 }}>This handle is already taken</Text>}
-                  {handleStatus === 'invalid' && <Text style={{ color: '#F87171', fontSize: 12, marginBottom: 6 }}>3-20 chars: letters, numbers, . _ -</Text>}
-                  {handleChangedAt && (Date.now() - new Date(handleChangedAt).getTime()) / 86400000 < 30 && (
-                    <Text style={{ color: '#FBBF24', fontSize: 12, marginBottom: 6 }}>
-                      You can change your handle again in {Math.ceil(30 - (Date.now() - new Date(handleChangedAt).getTime()) / 86400000)} day(s).
-                    </Text>
-                  )}
-                </>
-              )}
-
-              <Text style={styles.formGroupLabel}>Specialties / Position</Text>
-              <View style={styles.inputWithClearRow}>
-                <FocusableTextInput
-                  style={[styles.formInput, { flex: 1 }]}
-                  value={editRole}
-                  onChangeText={setEditRole}
-                  placeholder="Specialties / Role"
-                  placeholderTextColor="#94A3B8"
-                  maxLength={60}
-                  accessibilityLabel="Specialties / Position"
-                />
-                {editRole.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => setEditRole('')} accessibilityRole="button" accessibilityLabel="Clear">
-                    <ClearTextXSVG />
-                  </BouncyButton>
-                )}
-              </View>
-
-              {/* Added Location Field */}
-              <Text style={styles.formGroupLabel}>Location / City</Text>
-              <View style={styles.inputWithClearRow}>
-                <FocusableTextInput
-                  style={[styles.formInput, { flex: 1 }]}
-                  value={editLocation}
-                  onChangeText={setEditLocation}
-                  placeholder="South Jakarta, Jakarta, Indonesia"
-                  placeholderTextColor="#94A3B8"
-                  maxLength={80}
-                  accessibilityLabel="Location / City"
-                />
-                {editLocation.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => setEditLocation('')} accessibilityRole="button" accessibilityLabel="Clear">
-                    <ClearTextXSVG />
-                  </BouncyButton>
-                )}
-              </View>
-
-              <Text style={styles.formGroupLabel}>Short Brief / Bio</Text>
-              <FocusableTextInput
-                style={[styles.formInput, { height: 74, textAlignVertical: 'top' }]}
-                multiline
-                value={editBio}
-                onChangeText={setEditBio}
-                placeholder="Short bio..."
-                placeholderTextColor="#94A3B8"
-                maxLength={500}
-                accessibilityLabel="Short Brief / Bio"
-              />
-              <Text style={{ color: '#64748B', fontSize: 11, marginTop: -4, marginBottom: 4, textAlign: 'right' }}>
-                {editBio.length}/500
-              </Text>
-
-              <Text style={styles.formGroupLabel}>Email Address</Text>
-              <View style={styles.inputWithClearRow}>
-                <FocusableTextInput
-                  style={[styles.formInput, { flex: 1 }]}
-                  value={editEmail}
-                  onChangeText={setEditEmail}
-                  placeholder="Email Address"
-                  placeholderTextColor="#94A3B8"
-                  autoCapitalize="none"
-                  autoComplete="email"
-                  importantForAutofill="yes"
-                  textContentType="emailAddress"
-                  accessibilityLabel="Email Address"
-                />
-                {editEmail.length > 0 && (
-                  <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => setEditEmail('')} accessibilityRole="button" accessibilityLabel="Clear">
-                    <ClearTextXSVG />
-                  </BouncyButton>
-                )}
-              </View>
-              <Text style={[styles.settingItemSub, { marginTop: -6, marginBottom: 4 }]}>
-                Changing this changes your login email. You'll get a confirmation link sent to the new address.
-              </Text>
-
-              <Text style={[styles.formGroupLabel, { marginTop: 10 }]}>
-                Profile Links (Max 5)
-              </Text>
-              <View style={{ position: 'relative' }}>
-                {draggingLinkIndex !== null && linkDropLineInterpRef.current && (
-                  <Animated.View
-                    pointerEvents="none"
-                    style={{
-                      position: 'absolute', left: 0, right: 0, top: 0, height: 3, borderRadius: 2,
-                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                      zIndex: 20,
-                      transform: [{ translateY: linkDragY.interpolate(linkDropLineInterpRef.current) }]
-                    }}
-                  />
-                )}
-              {editLinks.map((lnk, idx) => {
-                const dragResponder = createLinkDragResponder(idx);
-                const isDragging = draggingLinkIndex === idx;
-                return (
-                <Animated.View
-                  key={idx}
-                  onLayout={(e) => { if (idx === 0) linkRowHeightRef.current = e.nativeEvent.layout.height + 8; }}
-                  style={[
-                    styles.videoInputRow,
-                    isDragging && { transform: [{ translateY: linkDragY }], zIndex: 10, elevation: 8, opacity: 0.96 }
-                  ]}
-                >
-                  {editLinks.length > 1 && (
-                    <View {...dragResponder.panHandlers} style={{ padding: 6 }} accessibilityRole="adjustable" accessibilityLabel={`Reorder link ${idx + 1}`}>
-                      <GripDotsIconSVG color={theme.textSecondary} />
-                    </View>
-                  )}
-                  <View style={{ flex: 1, position: 'relative' }}>
-                    <View style={{ position: 'absolute', left: 12, top: 0, bottom: 0, justifyContent: 'center', zIndex: 5 }}>
-                      {getSocialLogoSVG(lnk)}
-                    </View>
-                    <FocusableTextInput
-                      style={[styles.formInput, { paddingLeft: 40, paddingRight: lnk.length > 0 ? 40 : 14 }]}
-                      value={lnk}
-                      onChangeText={(t) => handleLinkTextChange(t, idx)}
-                      placeholder={`https://www.figma.com/@username (${idx + 1})`}
-                      placeholderTextColor="#94A3B8"
-                      autoCapitalize="none"
-                      accessibilityLabel={`Profile link ${idx + 1}`}
-                    />
-                    {lnk.length > 0 && (
-                      <BouncyButton style={styles.clearFieldBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => handleLinkTextChange('', idx)} accessibilityRole="button" accessibilityLabel="Clear">
-                        <ClearTextXSVG />
-                      </BouncyButton>
-                    )}
-                  </View>
-                  <BouncyButton
-                    style={{ padding: 8 }}
-                    onPress={() => handleRemoveAccountLink(idx)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove link ${idx + 1}`}
-                  >
-                    <TrashIconSVG />
-                  </BouncyButton>
-                </Animated.View>
-                );
-              })}
-              </View>
-
-              {editLinks.length < 5 && (
-                <BouncyButton style={styles.addMoreVideoBtn} onPress={handleAddAccountLink} accessibilityRole="button">
-                  <Text style={styles.addMoreVideoText}>+ Add Profile Link ({editLinks.length}/5)</Text>
-                </BouncyButton>
-              )}
-
-              {renderContactInfoSection()}
-
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 18, alignItems: 'center' }}>
-                <BouncyButton
-                  style={[styles.saveAccountSettingsBtn, { paddingHorizontal: 20, backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#EF4444', marginTop: 0 }]}
-                  onPress={() => setLogoutConfirmModalVisible(true)}
-                  accessibilityRole="button"
-                >
-                  <Text style={[styles.submitBtnText, { color: '#EF4444' }]}>Log Out</Text>
-                </BouncyButton>
-
-                <BouncyButton
-                  style={[styles.saveAccountSettingsBtn, { flex: 1, backgroundColor: theme.surface, borderWidth: 1, borderColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6', marginTop: 0 }]}
-                  onPress={() => {
-                    setNewPassword('');
-                    setConfirmNewPassword('');
-                    setChangePasswordPageVisible(true);
-                  }}
-                  accessibilityRole="button"
-                >
-                  <Text style={[styles.submitBtnText, { color: theme.accent }]}>{hasPasswordAuth ? 'Change Password' : 'Create Password'}</Text>
-                </BouncyButton>
-              </View>
-
-              <BouncyButton
-                style={{ marginTop: 20, alignItems: 'center' }}
-                onPress={handleDeleteAccount}
-                accessibilityRole="button"
-              >
-                <Text style={{ color: '#F87171', fontWeight: '700', fontSize: 13 }}>Delete Account</Text>
-              </BouncyButton>
-
-              {hasUnsavedAccountChanges() && <View style={{ height: 76 }} />}
-            </AppKeyboardAwareScrollView>
-
-            {stickySaveRendered && (
-              <Animated.View
-                pointerEvents={showStickySaveButton ? 'auto' : 'none'}
-                style={{
-                  position: 'absolute', left: 20, right: 20, bottom: 20,
-                  flexDirection: 'row', gap: 10, alignItems: 'center',
-                  opacity: accountSettingsStickyAnim,
-                  transform: [{
-                    translateY: accountSettingsStickyAnim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] })
-                  }]
-                }}
-              >
-                <BouncyButton
-                  style={{
-                    width: 44, height: 44, borderRadius: 99,
-                    backgroundColor: '#FFFFFF',
-                    borderWidth: 1.5, borderColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
-                    alignItems: 'center', justifyContent: 'center',
-                    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 10
-                  }}
-                  activeOpacity={0.85}
-                  onPress={handleRevertAccountChanges}
-                  accessibilityRole="button"
-                  accessibilityLabel="Revert changes"
-                >
-                  <RevertIconSVG color={themeMode === 'light' ? '#6D28D9' : '#8B5CF6'} size={19} />
-                </BouncyButton>
-
-                <BouncyButton
-                  style={[
-                    styles.saveAccountSettingsBtn,
-                    { flex: 1, marginTop: 0, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 10 }
-                  ]}
-                  activeOpacity={0.85}
-                  onPress={handleSaveAccountSettings}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.submitBtnText}>Save Changes</Text>
-                </BouncyButton>
-              </Animated.View>
-            )}
-          </SafeAreaView>
-          </Animated.View>
-        </View>
-      </Modal>
+            <AccountSettingsModal
+              app={{
+                AppKeyboardAwareScrollView,
+                CameraIconSVG,
+                ClearTextXSVG,
+                FocusableTextInput,
+                GripDotsIconSVG,
+                RevertIconSVG,
+                TrashIconSVG,
+                accountSettingsModalVisible,
+                contentModalWidth,
+                createLinkDragResponder,
+                draggingLinkIndex,
+                editAvatar,
+                editContactConsent,
+                editContacts,
+                editHandle,
+                editLinks,
+                getSocialLogoSVG,
+                handleAddAccountLink,
+                handleChangedAt,
+                handleDeleteAccount,
+                handleLinkTextChange,
+                handleRemoveAccountLink,
+                handleStatus,
+                hasPasswordAuth,
+                headerBottomY,
+                isValidHandleFormat,
+                isWebWide,
+                lightweightMode,
+                linkDragY,
+                linkDropLineInterpRef,
+                linkRowHeightRef,
+                pickAvatarImage,
+                pushProfileToSupabase,
+                renderContactInfoSection,
+                returnToOptionsOnClose,
+                session,
+                setAccountSaveSuccessModalVisible,
+                setAccountSettingsDiscardWarningVisible,
+                setAccountSettingsModalVisible,
+                setChangePasswordPageVisible,
+                setEditAvatar,
+                setEditContactConsent,
+                setEditContacts,
+                setEditHandle,
+                setEditLinks,
+                setHandleChangedAt,
+                setHandleStatus,
+                setLogoutConfirmModalVisible,
+                setReturnToOptionsOnClose,
+                setSettingsModalVisible,
+                setUserProfile,
+                showAppAlert,
+                showToast,
+                styles,
+                subPageSlideAnim,
+                uploadImageChecked,
+                userProfile
+              }}
+            />
 
       {/* CHANGE PASSWORD - deeper page with back/X and unsaved-changes warning */}
-      <Modal
-        animationType={Platform.OS === 'web' ? 'none' : 'slide'}
-        transparent={true}
-        visible={changePasswordPageVisible}
-        onRequestClose={handleCloseChangePasswordPage}
-      >
-        <View style={[styles.overlayModalBg, { justifyContent: 'flex-start', paddingTop: isWebWide ? 20 : headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
-          onStartShouldSetResponder={() => Platform.OS === 'web'}
-          onResponderRelease={handleCloseChangePasswordPage}
-        >
-            {/* Backdrop blur - safe here since every one of these is its
-                own native Modal, rendered on a separate OS-level surface
-                from the main screen (header/bottom bar/category bar), so
-                there's no GPU double-compositing with those. Falls back to
-                a flat dim in Lightweight Mode, same as everywhere else. */}
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )
-            )}
-          <SafeAreaView style={[styles.overlayModalContainer, { maxHeight: isWebWide ? Dimensions.get('window').height - 60 : Dimensions.get('window').height - headerBottomY - 40 }]}
-            // Claims the touch responder so a tap that starts inside the card
-            // (e.g. focusing a text field) never bubbles up to the backdrop's
-            // dismiss handler. Needed because react-native-web's TextInput
-            // (a plain DOM <input>) doesn't itself claim the responder the way
-            // native TextInput does, so without this the touch would otherwise
-            // propagate up and close the modal.
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => {}}
-          >
-            <View style={[styles.modalTopBar, { justifyContent: 'flex-start', gap: 10 }]}>
-              <BouncyButton style={{ padding: 4 }} onPress={handleCloseChangePasswordPage} accessibilityRole="button" accessibilityLabel="Back">
-                <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
-              </BouncyButton>
-              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>{hasPasswordAuth ? 'Change Password' : 'Create Password'}</Text>
-              <BouncyButton
-                style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                onPress={() => {
-                  if (newPassword.trim() !== '' || confirmNewPassword.trim() !== '') {
-                    setPasswordPageDiscardWarningVisible(true);
-                  } else {
-                    setChangePasswordPageVisible(false);
-                    setSettingsModalVisible(false);
-                  }
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Close"
-              >
-                <Text style={styles.closeBtnText}>✕</Text>
-              </BouncyButton>
-            </View>
-
-            <AppKeyboardAwareScrollView
-              ref={hideScrollbarRefCallback(isWebWide)}
-              contentContainerStyle={{ padding: 20 }}
-              enableOnAndroid={true}
-              extraScrollHeight={140}
-              keyboardShouldPersistTaps="handled"
-            >
-                <Text style={styles.formGroupLabel}>New Password</Text>
-                <View style={{ position: 'relative' }}>
-                  <FocusableTextInput
-                    style={[styles.formInput, { marginBottom: 8, paddingRight: 44 }]}
-                    value={newPassword}
-                    onChangeText={setNewPassword}
-                    placeholder="New password"
-                    placeholderTextColor="#94A3B8"
-                    secureTextEntry={!showNewPassword}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete="new-password"
-                    importantForAutofill="yes"
-                    textContentType="newPassword"
-                    autoFocus
-                    accessibilityLabel="New Password"
-                  />
-                  <BouncyButton
-                    style={{ position: 'absolute', right: 12, top: 12 }}
-                    onPress={() => setShowNewPassword(!showNewPassword)}
-                    accessibilityRole="button"
-                    accessibilityLabel={showNewPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showNewPassword ? <EyeOpenSVG color={theme.textSecondary} size={18} /> : <EyeClosedSVG color={theme.textSecondary} size={18} />}
-                  </BouncyButton>
-                </View>
-                <View style={{ marginBottom: 12 }}>
-                  {getPasswordRequirements(newPassword).map((req) => (
-                    <View key={req.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                      {req.met ? <CheckIconSVG color="#10B981" /> : <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: theme.border }} />}
-                      <Text style={{ color: req.met ? '#4ADE80' : theme.textSecondary, fontSize: 12 }}>{req.label}</Text>
-                    </View>
-                  ))}
-                </View>
-                <Text style={styles.formGroupLabel}>Confirm New Password</Text>
-                <View style={{ position: 'relative' }}>
-                  <FocusableTextInput
-                    style={[styles.formInput, { paddingRight: 44 }]}
-                    value={confirmNewPassword}
-                    onChangeText={setConfirmNewPassword}
-                    placeholder="Confirm new password"
-                    placeholderTextColor="#94A3B8"
-                    secureTextEntry={!showConfirmNewPassword}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete="new-password"
-                    importantForAutofill="yes"
-                    textContentType="newPassword"
-                    accessibilityLabel="Confirm New Password"
-                  />
-                  <BouncyButton
-                    style={{ position: 'absolute', right: 12, top: 12 }}
-                    onPress={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
-                    accessibilityRole="button"
-                    accessibilityLabel={showConfirmNewPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showConfirmNewPassword ? <EyeOpenSVG color={theme.textSecondary} size={18} /> : <EyeClosedSVG color={theme.textSecondary} size={18} />}
-                  </BouncyButton>
-                </View>
-                <BouncyButton
-                  style={[styles.saveAccountSettingsBtn, { marginTop: 20 }]}
-                  onPress={async () => {
-                    const success = await handleChangePassword();
-                    if (success) {
-                      setChangePasswordPageVisible(false);
-                      if (Platform.OS !== 'web') setAccountSettingsModalVisible(true);
-                    }
-                  }}
-                  disabled={changingPassword || !newPassword}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: changingPassword || !newPassword, busy: changingPassword }}
-                >
-                  {changingPassword ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.submitBtnText}>{hasPasswordAuth ? 'Update Password' : 'Create Password'}</Text>
-                  )}
-                </BouncyButton>
-            </AppKeyboardAwareScrollView>
-          </SafeAreaView>
-        </View>
-      </Modal>
+            <ChangePasswordModal
+              app={{
+                AppKeyboardAwareScrollView,
+                EyeClosedSVG,
+                EyeOpenSVG,
+                FocusableTextInput,
+                changePasswordPageVisible,
+                getPasswordRequirements,
+                hasPasswordAuth,
+                headerBottomY,
+                isPasswordStrong,
+                isWebWide,
+                lightweightMode,
+                session,
+                setAccountSettingsModalVisible,
+                setChangePasswordPageVisible,
+                setPasswordPageDiscardWarningVisible,
+                setSession,
+                setSettingsModalVisible,
+                setUserProfile,
+                showAppAlert,
+                showToast,
+                styles
+              }}
+            />
 
 
       {/* LOG OUT CONFIRMATION - simple confirm, unlike delete account this is fully reversible */}
@@ -21007,7 +20158,7 @@ function App() {
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: RED_500 }]}
                 accessibilityRole="button"
                 onPress={async () => {
                   setLogoutConfirmModalVisible(false);
@@ -21103,7 +20254,7 @@ function App() {
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B', opacity: revokingSession ? 0.7 : 1 }]}
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: RED_500, opacity: revokingSession ? 0.7 : 1 }]}
                 accessibilityRole="button"
                 disabled={revokingSession}
                 accessibilityState={{ disabled: revokingSession, busy: revokingSession }}
@@ -21121,2626 +20272,195 @@ function App() {
           the same reason: guaranteed own portal/paint surface, never
           trapped inside another component's local stacking context. */}
       {toolsScreenVisible && (
-        <Modal
-          animationType={Platform.OS === 'web' ? 'none' : 'slide'}
-          transparent={false}
-          visible={true}
-          onRequestClose={() => {
-            if (cancelActivePdfEditorFlow()) return;
-            if (activeTool !== 'hub') requestSwitchTool('hub');
-            else handleLeaveTools();
+                <ToolsScreen
+          app={{
+            ALL_TOOLS_LIST,
+            AppKeyboardAwareScrollView,
+            ArrowRightIconSVG,
+            BetaTag,
+            ChevronDownSVG,
+            ChevronRightSVG,
+            ChevronUpSVG,
+            CompressIconSVG,
+            DecentLogoSVG,
+            FocusableTextInput,
+            ImageIconSVG,
+            MoreIconSVG,
+            PDF_LARGE_UPLOAD_WARN_BYTES,
+            PDF_NATIVE_GRID_PREVIEW_MAX_PAGES,
+            PdfGridCardPreview,
+            PdfIconSVG,
+            QrIconSVG,
+            RESUME_COMMON_SKILLS,
+            ResumeIconSVG,
+            RevertIconSVG,
+            RotateCCWIconSVG,
+            RotateCWIconSVG,
+            RotateIconSVG,
+            SwapIconSVG,
+            ToolsQRCode,
+            TrashIconSVG,
+            activePdfContainer,
+            activeTool,
+            addResumeEducation,
+            addResumeExperience,
+            addResumeSkill,
+            buildResumeHtml,
+            cancelActivePdfEditorFlow,
+            cancelContainerSelectFlow,
+            compressOneFile,
+            compressorAdvancedOpen,
+            compressorFiles,
+            compressorFormat,
+            compressorLockAspect,
+            compressorMaxHeight,
+            compressorMaxWidth,
+            compressorPanResponder,
+            compressorProcessing,
+            compressorReferenceKB,
+            compressorSizePercentage,
+            compressorSliderWidthRef,
+            compressorTargetKB,
+            containerPages,
+            convertOneFile,
+            converterFiles,
+            converterFormat,
+            converterProcessing,
+            currentQrValue,
+            editPdfWatermark,
+            formatBytes,
+            generateResumeDecentQr,
+            handleAddPageNumbers,
+            handleDownloadAllCompressed,
+            handleDownloadAllConverted,
+            handleDownloadQrPng,
+            handleDownloadQrSvg,
+            handleExportPdf,
+            handleExportResume,
+            handleExtractPage,
+            handleLeaveTools,
+            handleSingleCompressedDownload,
+            handleSingleConvertedDownload,
+            handleUndoPdfEdit,
+            isPdfCompressActive,
+            isPdfPageNumbersActive,
+            isPdfWatermarkActive,
+            isWebWide,
+            mergeContainers,
+            nativeQrCaptureRef,
+            nativeQrCaptureRequest,
+            openMediaViewer,
+            openQrGeneratorForResume,
+            pdfActivePageId,
+            pdfBusyLabel,
+            pdfBusyPercent,
+            pdfCompressProgress,
+            pdfCompressing,
+            pdfContainerSelectModeTool,
+            pdfContainers,
+            pdfDragIndex,
+            pdfEditorHasPendingChanges,
+            pdfEditorLoading,
+            pdfFullscreenHighResCache,
+            pdfFullscreenHighResLoading,
+            pdfMoreToolsButtonRef,
+            pdfSelectModeTool,
+            pdfSelectedContainerIds,
+            pdfSelectedPageIds,
+            pickCompressorImages,
+            pickConverterFiles,
+            pickConverterImages,
+            pickPdfEditorImages,
+            pickPdfEditorPdfs,
+            pickQrLogo,
+            pickResumePhoto,
+            pickResumeQrUpload,
+            qrAdvancedOpen,
+            qrBackgroundColor,
+            qrColor,
+            qrContentType,
+            qrDotStyle,
+            qrExporting,
+            qrFields,
+            qrGeneratorReturnToResume,
+            qrLogoUri,
+            removeCompressorFile,
+            removeConverterFile,
+            removePdfEditorPage,
+            removeResumeEducation,
+            removeResumeExperience,
+            removeResumeSkill,
+            renderPdfReorderPill,
+            reorderPdfEditorPages,
+            requestSwitchTool,
+            resumeData,
+            resumeExporting,
+            resumePreviewModalVisible,
+            resumeQrGenerating,
+            resumeSkillInput,
+            resumeWizardStep,
+            rotatePdfEditorPage,
+            runCompressorBatch,
+            runConverterBatch,
+            session,
+            setActiveTool,
+            setClearFilesConfirmTarget,
+            setCompressorAdvancedOpen,
+            setCompressorFormat,
+            setCompressorLockAspect,
+            setCompressorMaxHeight,
+            setCompressorMaxWidth,
+            setCompressorSizeFromPercentage,
+            setCompressorTargetKB,
+            setConverterFormat,
+            setPdfActiveContainerId,
+            setPdfActivePageId,
+            setPdfAddPageAfterIndex,
+            setPdfAddPageMenuVisible,
+            setPdfClearConfirmVisible,
+            setPdfCompressOptionsVisible,
+            setPdfCompressUndoConfirmVisible,
+            setPdfDragIndex,
+            setPdfFullscreenIndex,
+            setPdfMoreToolsMenuPosition,
+            setPdfMoreToolsMenuVisible,
+            setPdfPageNumbersUndoConfirmVisible,
+            setPdfSelectModeTool,
+            setPdfSelectedPageIds,
+            setPdfTabCloseConfirmId,
+            setQrAdvancedOpen,
+            setQrBackgroundColor,
+            setQrColor,
+            setQrContentType,
+            setQrDotStyle,
+            setQrFields,
+            setQrGeneratorReturnToResume,
+            setQrLogoUri,
+            setResumeData,
+            setResumePreviewModalVisible,
+            setResumeSkillInput,
+            setResumeWizardStep,
+            setToolsMenuVisible,
+            showAppAlert,
+            startContainerSelectFlow,
+            startPdfCropQueue,
+            startSinglePageCrop,
+            styles,
+            toggleContainerSelected,
+            togglePdfPageSelected,
+            toolsQrExportRef,
+            toolsTheme,
+            toolsThemeMode,
+            tt,
+            undoSpecificPdfEdit,
+            updateResumeEducation,
+            updateResumeExperience,
+            updateResumeField,
+            updateResumeLink,
+            useGeneratedQrForResume,
+            userProfile
           }}
-        >
-          <SafeAreaView style={[
-            { flex: 1, backgroundColor: toolsTheme.bg },
-            // Tools is built almost entirely with inline style={{...}}
-            // objects rather than the shared getStyles() stylesheet, so
-            // the app's normal font injection (which only reaches
-            // styles.xxx-referenced styles - see the b593 comment near
-            // getStyles) never touches it, and it was quietly rendering
-            // in the browser's default sans-serif instead of Inter. Web
-            // only: RN Text elements that don't set their own fontFamily
-            // inherit this via ordinary CSS cascade, so nothing needs
-            // touching per-component. This can't reach native (no CSS
-            // inheritance there) and won't get every weight pixel-exact
-            // on web either - bold text still renders as a synthetic
-            // bold on the regular cut rather than Inter's true
-            // semibold/bold files, since each Text's own inline
-            // fontWeight isn't being remapped to the matching named
-            // family the way getStyles does. Real fix for that is the
-            // same per-style remap getStyles already does, just applied
-            // to Tools' inline styles specifically - out of scope for a
-            // single pass given how many there are.
-            Platform.OS === 'web' && { fontFamily: 'Inter_400Regular' }
-          ]}>
-            {Platform.OS === 'web' ? (
-              <>
-                {/* WEB - genuine page-style header, not a modal chrome.
-                    "Back to DECENT" always exits Tools entirely (same
-                    action the ✕ used to do) - the hub<->tool navigation
-                    lives in its own breadcrumb row below instead, so the
-                    two navigation levels don't get conflated into one
-                    button. */}
-                <View style={[
-                  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: toolsTheme.bg },
-                  isWebWide && { paddingHorizontal: 32 }
-                ]}>
-                  <BouncyButton
-                    style={isWebWide ? {
-                      flexDirection: 'row', alignItems: 'center', gap: 8,
-                      paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12,
-                      borderWidth: 1, borderColor: toolsTheme.border, backgroundColor: 'transparent'
-                    } : { padding: 6 }}
-                    onPress={handleLeaveTools}
-                    accessibilityRole="button"
-                    accessibilityLabel="Back to DECENT"
-                  >
-                    {!isWebWide && <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />}
-                    {isWebWide && <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Back to DECENT</Text>}
-                  </BouncyButton>
-
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
-                    <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                      <DecentLogoSVG size={15} />
-                    </View>
-                    <Text style={{ color: toolsTheme.text, fontSize: isWebWide ? 18 : 15, fontWeight: '800' }}>ECENT Tools</Text>
-                    <BetaTag themeMode={toolsThemeMode} />
-                  </View>
-
-                  <BouncyButton
-                    style={{ padding: 6 }}
-                    onPress={() => setToolsMenuVisible(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel="More options"
-                  >
-                    <MoreIconSVG color={toolsTheme.textSecondary} size={18} />
-                  </BouncyButton>
-                </View>
-
-                {activeTool !== 'hub' && (
-                  <View style={[
-                    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: toolsTheme.bg },
-                    isWebWide && { maxWidth: 1400, width: '100%', alignSelf: 'center' }
-                  ]}>
-                    <BouncyButton
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                      onPress={() => requestSwitchTool('hub')}
-                      accessibilityRole="button"
-                      accessibilityLabel="Back to Tools"
-                    >
-                      <ChevronLeftSVG color={toolsTheme.textSecondary} size={14} />
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, fontWeight: '600' }}>{tt('tools')}</Text>
-                    </BouncyButton>
-                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 12 }}>/</Text>
-                    <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '800' }}>
-                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : activeTool === 'resumeMaker' ? tt('resumeMaker') : tt('pdfEditor')}
-                    </Text>
-                    {activeTool === 'pdfEditor' && pdfContainers.length > 0 && (
-                      <BouncyButton
-                        style={{
-                          marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6,
-                          paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
-                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                          opacity: pdfBusyLabel ? 0.6 : 1
-                        }}
-                        onPress={handleExportPdf}
-                        disabled={!!pdfBusyLabel}
-                        accessibilityRole="button"
-                        accessibilityLabel="Export"
-                        accessibilityState={{ disabled: !!pdfBusyLabel, busy: !!pdfBusyLabel }}
-                      >
-                        {pdfBusyLabel ? (
-                          <><ActivityIndicator color="#FFFFFF" size="small" /><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{pdfBusyLabel}{pdfBusyPercent != null ? ` ${pdfBusyPercent}%` : ''}</Text></>
-                        ) : (
-                          <><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text><ArrowRightIconSVG size={13} color="#FFFFFF" /></>
-                        )}
-                      </BouncyButton>
-                    )}
-                  </View>
-                )}
-
-              </>
-            ) : (
-              <>
-                {/* NATIVE - existing modal-style header, unchanged in
-                    structure (back-within-tools / centered tool name /
-                    close). The "fully separate page" treatment above is
-                    explicitly a web-only request. */}
-                <View style={[styles.modalTopBar, { backgroundColor: toolsTheme.surface, borderBottomColor: toolsTheme.border }]}>
-                  {activeTool !== 'hub' ? (
-                    <BouncyButton
-                      style={{ padding: 4 }}
-                      onPress={() => requestSwitchTool('hub')}
-                      accessibilityRole="button"
-                      accessibilityLabel="Back"
-                    >
-                      <ChevronLeftSVG color={toolsThemeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
-                    </BouncyButton>
-                  ) : <View style={{ width: 30 }} />}
-                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
-                    <View style={{ width: 20, height: 20, borderRadius: 6, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                      <DecentLogoSVG size={15} />
-                    </View>
-                    <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '800' }}>ECENT Tools</Text>
-                    <BetaTag themeMode={toolsThemeMode} />
-                  </View>
-                  <BouncyButton
-                    style={{ padding: 6, marginRight: 4 }}
-                    onPress={() => setToolsMenuVisible(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel="More options"
-                  >
-                    <MoreIconSVG color={toolsTheme.textSecondary} size={18} />
-                  </BouncyButton>
-                  <BouncyButton
-                    style={[styles.closeBtn, { backgroundColor: toolsTheme.bg, borderColor: toolsTheme.border }]}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                    onPress={handleLeaveTools}
-                    accessibilityRole="button"
-                    accessibilityLabel="Close"
-                  >
-                    <Text style={[styles.closeBtnText, { color: toolsTheme.text }]}>✕</Text>
-                  </BouncyButton>
-                </View>
-
-                {activeTool !== 'hub' && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: toolsTheme.bg }}>
-                    <Text style={{ color: toolsTheme.text, fontSize: 17, fontWeight: '800' }}>
-                      {activeTool === 'imageCompressor' ? tt('imageCompressor') : activeTool === 'qrGenerator' ? tt('qrGenerator') : activeTool === 'imageConverter' ? tt('imageConverter') : activeTool === 'resumeMaker' ? tt('resumeMaker') : tt('pdfEditor')}
-                    </Text>
-                    {activeTool === 'pdfEditor' && pdfContainers.length > 0 && (
-                      <BouncyButton
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 6,
-                          paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
-                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                          opacity: pdfBusyLabel ? 0.6 : 1
-                        }}
-                        onPress={handleExportPdf}
-                        disabled={!!pdfBusyLabel}
-                        accessibilityRole="button"
-                        accessibilityLabel="Export"
-                        accessibilityState={{ disabled: !!pdfBusyLabel, busy: !!pdfBusyLabel }}
-                      >
-                        {pdfBusyLabel ? (
-                          <><ActivityIndicator color="#FFFFFF" size="small" /><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{pdfBusyLabel}{pdfBusyPercent != null ? ` ${pdfBusyPercent}%` : ''}</Text></>
-                        ) : (
-                          <><Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('exportPdf')}</Text><ArrowRightIconSVG size={13} color="#FFFFFF" /></>
-                        )}
-                      </BouncyButton>
-                    )}
-                  </View>
-                )}
-              </>
-            )}
-
-            <AppKeyboardAwareScrollView
-              contentContainerStyle={[
-                { padding: 20, gap: 14 },
-                activeTool === 'imageCompressor' && compressorFiles.length > 0 && !isWebWide && { paddingBottom: 90 },
-                isWebWide && { maxWidth: 1400, width: '100%', alignSelf: 'center' }
-              ]}
-              enableOnAndroid={true}
-              extraScrollHeight={140}
-              keyboardShouldPersistTaps="handled"
-            >
-              {activeTool === 'hub' && (
-                <>
-                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: 4 }}>
-                    {tt('toolsHubIntro')}
-                  </Text>
-
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 10 }}>
-                    <BouncyButton
-                      style={[
-                        {
-                          flexDirection: 'row', alignItems: 'center', gap: 14,
-                          backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                          borderRadius: 16, padding: 16
-                        },
-                        isWebWide ? { width: '48.5%' } : { width: '100%' }
-                      ]}
-                      onPress={() => requestSwitchTool('imageCompressor')}
-                      accessibilityRole="button"
-                    >
-                      <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                        <ImageIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('imageCompressor')}</Text>
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('imageCompressorDesc')}</Text>
-                      </View>
-                      <ChevronRightSVG color={toolsTheme.accent} size={18} />
-                    </BouncyButton>
-
-                    <BouncyButton
-                      style={[
-                        {
-                          flexDirection: 'row', alignItems: 'center', gap: 14,
-                          backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                          borderRadius: 16, padding: 16
-                        },
-                        isWebWide ? { width: '48.5%' } : { width: '100%' }
-                      ]}
-                      onPress={() => requestSwitchTool('qrGenerator')}
-                      accessibilityRole="button"
-                    >
-                      <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                        <QrIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('qrGenerator')}</Text>
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('qrGeneratorDesc')}</Text>
-                      </View>
-                      <ChevronRightSVG color={toolsTheme.accent} size={18} />
-                    </BouncyButton>
-
-                    <BouncyButton
-                      style={[
-                        {
-                          flexDirection: 'row', alignItems: 'center', gap: 14,
-                          backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                          borderRadius: 16, padding: 16
-                        },
-                        isWebWide ? { width: '48.5%' } : { width: '100%' }
-                      ]}
-                      onPress={() => requestSwitchTool('imageConverter')}
-                      accessibilityRole="button"
-                    >
-                      <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                        <SwapIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('imageConverter')}</Text>
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('imageConverterDesc')}</Text>
-                      </View>
-                      <ChevronRightSVG color={toolsTheme.accent} size={18} />
-                    </BouncyButton>
-
-                    <BouncyButton
-                      style={[
-                        {
-                          flexDirection: 'row', alignItems: 'center', gap: 14,
-                          backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                          borderRadius: 16, padding: 16
-                        },
-                        isWebWide ? { width: '48.5%' } : { width: '100%' }
-                      ]}
-                      onPress={() => requestSwitchTool('pdfEditor')}
-                      accessibilityRole="button"
-                    >
-                      <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                        <PdfIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('pdfEditor')}</Text>
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('pdfEditorDesc')}</Text>
-                      </View>
-                      <ChevronRightSVG color={toolsTheme.accent} size={18} />
-                    </BouncyButton>
-
-                    <BouncyButton
-                      style={[
-                        {
-                          flexDirection: 'row', alignItems: 'center', gap: 14,
-                          backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                          borderRadius: 16, padding: 16
-                        },
-                        isWebWide ? { width: '48.5%' } : { width: '100%' }
-                      ]}
-                      onPress={() => requestSwitchTool('resumeMaker')}
-                      accessibilityRole="button"
-                    >
-                      <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                        <ResumeIconSVG size={22} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 15, fontWeight: '700' }}>{tt('resumeMaker')}</Text>
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, marginTop: 2 }}>{tt('resumeMakerDesc')}</Text>
-                      </View>
-                      <ChevronRightSVG color={toolsTheme.accent} size={18} />
-                    </BouncyButton>
-                  </View>
-                </>
-              )}
-
-              {activeTool === 'imageCompressor' && (
-                <View style={{ gap: 20 }}>
-                <View style={[{ gap: 14 }, isWebWide && { flexDirection: 'row', alignItems: 'flex-start', gap: 24 }]}>
-                  <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
-                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
-                    {tt('compressorIntro')}
-                  </Text>
-
-                  <Text style={styles.formGroupLabel}>{tt('targetFileSize')}</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
-                    {[100, 200, 500, 1024].map((kb) => (
-                      <BouncyButton
-                        key={kb}
-                        style={{
-                          paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99,
-                          backgroundColor: Number(compressorTargetKB) === kb ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : toolsTheme.surface,
-                          borderWidth: 1, borderColor: Number(compressorTargetKB) === kb ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
-                        }}
-                        onPress={() => setCompressorTargetKB(kb)}
-                        accessibilityRole="button"
-                        accessibilityLabel={kb >= 1024 ? `${kb / 1024} MB` : `${kb} KB`}
-                        accessibilityState={{ selected: Number(compressorTargetKB) === kb }}
-                      >
-                        <Text style={{ color: Number(compressorTargetKB) === kb ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>
-                          {kb >= 1024 ? `${kb / 1024} MB` : `${kb} KB`}
-                        </Text>
-                      </BouncyButton>
-                    ))}
-                  </View>
-                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>{tt('customSizeLabel')}</Text>
-                  <FocusableTextInput
-                    style={styles.formInput}
-                    placeholder={tt('customSizePlaceholder')}
-                    placeholderTextColor="#94A3B8"
-                    value={String(compressorTargetKB)}
-                    onChangeText={(t) => setCompressorTargetKB(t.replace(/[^0-9]/g, ''))}
-                    keyboardType="number-pad"
-                    accessibilityLabel="Custom target file size in KB"
-                  />
-
-                  <View style={{ marginTop: 10 }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '600' }}>
-                        {compressorSizePercentage}% {tt('ofOriginal')}
-                      </Text>
-                      {compressorReferenceKB ? (
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>
-                          ≈ {Math.round(compressorReferenceKB * (compressorSizePercentage / 100))} KB
-                        </Text>
-                      ) : (
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontStyle: 'italic' }}>{tt('addImagesForPreview')}</Text>
-                      )}
-                    </View>
-                    {Platform.OS === 'web' ? (
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={5}
-                        value={compressorSizePercentage}
-                        onChange={(e) => setCompressorSizeFromPercentage(Number(e.target.value))}
-                        style={{ width: '100%', accentColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                        aria-label="Target size percentage"
-                      />
-                    ) : (
-                      <View
-                        onLayout={(e) => { compressorSliderWidthRef.current = e.nativeEvent.layout.width; }}
-                        style={{ height: 26, justifyContent: 'center' }}
-                        accessibilityRole="adjustable"
-                        accessibilityLabel="Target size percentage"
-                        accessibilityValue={{ min: 0, max: 100, now: compressorSizePercentage }}
-                        {...compressorPanResponder.panHandlers}
-                      >
-                        <View style={{ height: 6, borderRadius: 3, backgroundColor: toolsTheme.border }} />
-                        <View style={{
-                          position: 'absolute', left: 0, height: 6, borderRadius: 3,
-                          width: `${compressorSizePercentage}%`,
-                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'
-                        }} />
-                        <View style={{
-                          position: 'absolute', left: `${compressorSizePercentage}%`, marginLeft: -10,
-                          width: 20, height: 20, borderRadius: 10,
-                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'
-                        }} />
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={{
-                    backgroundColor: toolsThemeMode === 'light' ? 'rgba(109,40,217,0.06)' : 'rgba(125,82,221,0.10)',
-                    borderRadius: 12, overflow: 'hidden', marginTop: 14
-                  }}>
-                    <BouncyButton
-                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12 }}
-                      onPress={() => setCompressorAdvancedOpen((v) => !v)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Advanced options"
-                      accessibilityState={{ expanded: compressorAdvancedOpen }}
-                    >
-                      <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>{tt('advanced')}</Text>
-                      {compressorAdvancedOpen ? <ChevronUpSVG color={toolsTheme.textSecondary} size={16} /> : <ChevronDownSVG color={toolsTheme.textSecondary} size={16} />}
-                    </BouncyButton>
-
-                    {compressorAdvancedOpen && (
-                    <View style={{ paddingHorizontal: 14, paddingBottom: 14, gap: 10 }}>
-                      <Text style={styles.formGroupLabel}>{tt('maxDimensions')}</Text>
-                      <View style={{ flexDirection: 'row', gap: 10 }}>
-                        <FocusableTextInput
-                          style={[styles.formInput, { flex: 1 }]}
-                          placeholder={tt('maxWidthPlaceholder')}
-                          placeholderTextColor="#94A3B8"
-                          value={compressorMaxWidth}
-                          onChangeText={(t) => setCompressorMaxWidth(t.replace(/[^0-9]/g, ''))}
-                          keyboardType="number-pad"
-                          accessibilityLabel="Max width in pixels"
-                        />
-                        {!compressorLockAspect && (
-                          <FocusableTextInput
-                            style={[styles.formInput, { flex: 1 }]}
-                            placeholder={tt('maxHeightPlaceholder')}
-                            placeholderTextColor="#94A3B8"
-                            value={compressorMaxHeight}
-                            onChangeText={(t) => setCompressorMaxHeight(t.replace(/[^0-9]/g, ''))}
-                            keyboardType="number-pad"
-                            accessibilityLabel="Max height in pixels"
-                          />
-                        )}
-                      </View>
-                      <BouncyButton
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-                        onPress={() => setCompressorLockAspect((v) => !v)}
-                        accessibilityRole="checkbox"
-                        accessibilityLabel="Lock aspect ratio"
-                        accessibilityState={{ checked: compressorLockAspect }}
-                      >
-                        <View style={{
-                          width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                          borderWidth: 1.5, borderColor: compressorLockAspect ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border,
-                          backgroundColor: compressorLockAspect ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
-                        }}>
-                          {compressorLockAspect && <CheckIconSVG color="#FFFFFF" />}
-                        </View>
-                        <Text style={{ color: toolsTheme.text, fontSize: 13 }}>{tt('lockAspectRatio')}</Text>
-                      </BouncyButton>
-
-                      <Text style={styles.formGroupLabel}>{tt('outputFormat')}</Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                        {[{ key: 'ORIGINAL', label: tt('keepOriginal') }, { key: 'JPEG', label: 'JPEG' }, { key: 'PNG', label: 'PNG' }, { key: 'WEBP', label: 'WEBP' }].map((fmt) => (
-                          <BouncyButton
-                            key={fmt.key}
-                            style={{
-                              paddingHorizontal: 12, paddingVertical: 8, borderRadius: 99,
-                              backgroundColor: compressorFormat === fmt.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : toolsTheme.bg,
-                              borderWidth: 1, borderColor: compressorFormat === fmt.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
-                            }}
-                            onPress={() => setCompressorFormat(fmt.key)}
-                            accessibilityRole="button"
-                            accessibilityLabel={fmt.label}
-                            accessibilityState={{ selected: compressorFormat === fmt.key }}
-                          >
-                            <Text style={{ color: compressorFormat === fmt.key ? '#FFFFFF' : toolsTheme.text, fontSize: 12, fontWeight: '700' }}>{fmt.label}</Text>
-                          </BouncyButton>
-                        ))}
-                      </View>
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, lineHeight: 15 }}>
-                        {tt('formatNote')}
-                      </Text>
-                    </View>
-                    )}
-                  </View>
-
-                  {!isWebWide && (
-                  <BouncyButton
-                    style={{
-                      marginTop: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
-                      borderRadius: 14, padding: 20, alignItems: 'center', gap: 8
-                    }}
-                    onPress={pickCompressorImages}
-                    accessibilityRole="button"
-                  >
-                    <ImageIconSVG size={26} color={toolsTheme.textSecondary} />
-                    <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
-                      {compressorFiles.length === 0 ? tt('chooseImages') : tt('addMoreImages')}
-                    </Text>
-                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>{tt('upTo10')}</Text>
-                  </BouncyButton>
-                  )}
-                  </View>
-
-                  <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
-                  {isWebWide && (
-                  <BouncyButton
-                    style={{
-                      backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                      borderRadius: 14, padding: 20, alignItems: 'center', gap: 8
-                    }}
-                    onPress={pickCompressorImages}
-                    accessibilityRole="button"
-                  >
-                    <ImageIconSVG size={26} color="#FFFFFF" />
-                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
-                      {compressorFiles.length === 0 ? tt('chooseImages') : tt('addMoreImages')}
-                    </Text>
-                    <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11 }}>{tt('upTo10')}</Text>
-                  </BouncyButton>
-                  )}
-
-                  {isWebWide && compressorFiles.length === 0 && (
-                    <View style={{
-                      flex: 1, minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 10,
-                      borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border, borderRadius: 14, padding: 40
-                    }}>
-                      <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>{tt('nothingHereYet')}</Text>
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>{tt('addFilesToStart')}</Text>
-                    </View>
-                  )}
-
-                  {compressorFiles.length > 0 && (
-                    <BouncyButton
-                      style={{ alignSelf: 'flex-start', marginTop: 4 }}
-                      onPress={() => setClearFilesConfirmTarget('compressor')}
-                      accessibilityRole="button"
-                    >
-                      <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>{tt('clearAll')}</Text>
-                    </BouncyButton>
-                  )}
-
-                  {compressorFiles.map((file, fileIndex) => (
-                    <View key={file.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 10 }}>
-                      <BouncyButton
-                        onPress={() => openMediaViewer(compressorFiles.map((f) => ({ type: 'image', uri: f.originalUri })), fileIndex)}
-                        accessibilityRole="button"
-                        accessibilityLabel="View image"
-                      >
-                        <Image source={{ uri: file.originalUri }} style={{ width: 48, height: 48, borderRadius: 8 }} />
-                      </BouncyButton>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>
-                          {tt('original')}: {(file.originalSize / 1024).toFixed(0)} KB
-                        </Text>
-                        {file.status === 'processing' && (
-                          <Text style={{ color: toolsTheme.accent, fontSize: 11, fontWeight: '600', marginTop: 2 }}>{tt('compressing')}</Text>
-                        )}
-                        {file.status === 'done' && (
-                          <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '700', marginTop: 2 }}>
-                            {(file.resultSize / 1024).toFixed(0)} KB {!file.hitTarget && `(${tt('closestPossible')})`}
-                          </Text>
-                        )}
-                        {file.status === 'error' && (
-                          <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '600', marginTop: 2 }}>{file.error}</Text>
-                        )}
-                        {file.status === 'pending' && (
-                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginTop: 2 }}>{tt('waitingToCompress')}</Text>
-                        )}
-                      </View>
-                      {file.status === 'done' ? (
-                        <BouncyButton
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                          onPress={() => handleSingleCompressedDownload(file)}
-                          accessibilityRole="button"
-                          accessibilityLabel="Download"
-                        >
-                          <Text style={{ color: toolsTheme.accent, fontSize: 11, fontWeight: '700' }}>{tt('download')}</Text>
-                          <ArrowRightIconSVG size={11} color={toolsTheme.accent} />
-                        </BouncyButton>
-                      ) : file.status === 'processing' ? (
-                        <ActivityIndicator color={toolsTheme.accent} size="small" />
-                      ) : (
-                        <>
-                          <BouncyButton
-                            style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD' }}
-                            onPress={() => compressOneFile(file)}
-                            accessibilityRole="button"
-                            accessibilityLabel="Compress this image"
-                          >
-                            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>{tt('compress')}</Text>
-                          </BouncyButton>
-                          <BouncyButton style={{ padding: 6 }} onPress={() => removeCompressorFile(file.id)} accessibilityRole="button" accessibilityLabel="Remove">
-                            <TrashIconSVG />
-                          </BouncyButton>
-                        </>
-                      )}
-                    </View>
-                  ))}
-
-                  {isWebWide && compressorFiles.length > 0 && (
-                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-                      <BouncyButton
-                        style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: compressorProcessing ? 0.6 : 1 }]}
-                        onPress={runCompressorBatch}
-                        disabled={compressorProcessing || !compressorFiles.some((f) => f.status === 'pending' || f.status === 'error')}
-                        accessibilityRole="button"
-                        accessibilityState={{ disabled: compressorProcessing, busy: compressorProcessing }}
-                      >
-                        <Text style={styles.submitBtnText}>{compressorProcessing ? tt('compressing') : tt('compressAll')}</Text>
-                      </BouncyButton>
-                      <BouncyButton
-                        style={[
-                          styles.saveAccountSettingsBtn,
-                          { flex: 1, marginTop: 0, backgroundColor: toolsTheme.bg, borderWidth: 1, borderColor: toolsTheme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-                          !compressorFiles.every((f) => f.status === 'done') && { opacity: 0.4 }
-                        ]}
-                        onPress={handleDownloadAllCompressed}
-                        disabled={!compressorFiles.every((f) => f.status === 'done')}
-                        accessibilityRole="button"
-                        accessibilityState={{ disabled: !compressorFiles.every((f) => f.status === 'done') }}
-                      >
-                        <><Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text><ArrowRightIconSVG size={13} color={toolsTheme.text} /></>
-                      </BouncyButton>
-                    </View>
-                  )}
-                  </View>
-                </View>
-
-                {isWebWide && (
-                  <View>
-                    <View style={{ height: 1, backgroundColor: toolsTheme.border, marginBottom: 20 }} />
-                    <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '800', marginBottom: 10 }}>
-                      {tt('moreTools')}
-                    </Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                      {ALL_TOOLS_LIST.filter((t) => t.key !== 'imageCompressor').map(({ key, label, Icon }) => (
-                        <BouncyButton
-                          key={key}
-                          style={{
-                            alignItems: 'center', gap: 8, width: '23%',
-                            backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                            borderRadius: 14, padding: 14
-                          }}
-                          onPress={() => requestSwitchTool(key)}
-                          accessibilityRole="button"
-                        >
-                          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                            <Icon size={18} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                          </View>
-                          <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700', textAlign: 'center' }}>{label}</Text>
-                        </BouncyButton>
-                      ))}
-                    </View>
-                  </View>
-                )}
-                </View>
-              )}
-
-              {activeTool === 'qrGenerator' && (() => {
-                const previewBlock = (
-                  <>
-                  {!!currentQrValue() ? (
-                    <View style={{ alignItems: 'center', marginVertical: 14, gap: 6 }}>
-                      <View style={{ padding: 16, backgroundColor: '#FFFFFF', borderRadius: 16 }}>
-                        <ToolsQRCode
-                          ref={toolsQrExportRef}
-                          value={currentQrValue()}
-                          size={220}
-                          color={qrColor || '#000000'}
-                          backgroundColor={qrBackgroundColor || '#FFFFFF'}
-                          dotStyle={qrDotStyle}
-                          logoUri={qrLogoUri}
-                        />
-                      </View>
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontStyle: 'italic', textAlign: 'center' }}>
-                        {tt('qrScanCaution')}
-                      </Text>
-                    </View>
-                  ) : isWebWide && (
-                    <View style={{
-                      alignItems: 'center', justifyContent: 'center', marginVertical: 14, gap: 10,
-                      minHeight: 252, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
-                      borderRadius: 16, padding: 40
-                    }}>
-                      <QrIconSVG size={36} color={toolsTheme.textSecondary} />
-                      <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700', textAlign: 'center' }}>{tt('qrWillAppearHere')}</Text>
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>{tt('fillInDetailsToStart')}</Text>
-                    </View>
-                  )}
-                  </>
-                );
-
-                const formFieldsBlock = (
-                  <>
-                  <Text style={styles.formGroupLabel}>{tt('contentType')}</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {[
-                      { key: 'url', label: 'URL' },
-                      { key: 'text', label: 'Text' },
-                      { key: 'wifi', label: 'WiFi' },
-                      { key: 'vcard', label: 'Contact Card' },
-                      { key: 'email', label: 'Email' }
-                    ].map((t) => (
-                      <BouncyButton
-                        key={t.key}
-                        style={{
-                          paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99,
-                          backgroundColor: qrContentType === t.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : toolsTheme.surface,
-                          borderWidth: 1, borderColor: qrContentType === t.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
-                        }}
-                        onPress={() => { setQrContentType(t.key); setQrFields({}); }}
-                        accessibilityRole="button"
-                        accessibilityLabel={t.label}
-                        accessibilityState={{ selected: qrContentType === t.key }}
-                      >
-                        <Text style={{ color: qrContentType === t.key ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{t.label}</Text>
-                      </BouncyButton>
-                    ))}
-                  </View>
-
-                  {qrContentType === 'url' && (
-                    <FocusableTextInput
-                      style={styles.formInput}
-                      placeholder="https://yoursite.com"
-                      placeholderTextColor="#94A3B8"
-                      autoCapitalize="none"
-                      value={qrFields.url || ''}
-                      onChangeText={(t) => setQrFields((p) => ({ ...p, url: t }))}
-                      accessibilityLabel="URL"
-                    />
-                  )}
-
-                  {qrContentType === 'text' && (
-                    <FocusableTextInput
-                      style={[styles.formInput, { height: 80, textAlignVertical: 'top' }]}
-                      multiline
-                      placeholder="Any text..."
-                      placeholderTextColor="#94A3B8"
-                      value={qrFields.text || ''}
-                      onChangeText={(t) => setQrFields((p) => ({ ...p, text: t }))}
-                      accessibilityLabel="Text"
-                    />
-                  )}
-
-                  {qrContentType === 'wifi' && (
-                    <>
-                      <FocusableTextInput
-                        style={styles.formInput}
-                        placeholder="Network name (SSID)"
-                        placeholderTextColor="#94A3B8"
-                        value={qrFields.ssid || ''}
-                        onChangeText={(t) => setQrFields((p) => ({ ...p, ssid: t }))}
-                        accessibilityLabel="WiFi network name"
-                      />
-                      <FocusableTextInput
-                        style={styles.formInput}
-                        placeholder="Password"
-                        placeholderTextColor="#94A3B8"
-                        secureTextEntry
-                        value={qrFields.password || ''}
-                        onChangeText={(t) => setQrFields((p) => ({ ...p, password: t }))}
-                        accessibilityLabel="WiFi password"
-                      />
-                    </>
-                  )}
-
-                  {qrContentType === 'vcard' && (
-                    <>
-                      <FocusableTextInput
-                        style={styles.formInput}
-                        placeholder="Full name"
-                        placeholderTextColor="#94A3B8"
-                        value={qrFields.name || ''}
-                        onChangeText={(t) => setQrFields((p) => ({ ...p, name: t }))}
-                        accessibilityLabel="Full name"
-                      />
-                      <FocusableTextInput
-                        style={styles.formInput}
-                        placeholder="Phone number"
-                        placeholderTextColor="#94A3B8"
-                        keyboardType="phone-pad"
-                        value={qrFields.phone || ''}
-                        onChangeText={(t) => setQrFields((p) => ({ ...p, phone: t }))}
-                        accessibilityLabel="Phone number"
-                      />
-                      <FocusableTextInput
-                        style={styles.formInput}
-                        placeholder="Email"
-                        placeholderTextColor="#94A3B8"
-                        autoCapitalize="none"
-                        keyboardType="email-address"
-                        value={qrFields.email || ''}
-                        onChangeText={(t) => setQrFields((p) => ({ ...p, email: t }))}
-                        accessibilityLabel="Email"
-                      />
-                      <FocusableTextInput
-                        style={styles.formInput}
-                        placeholder="Company (optional)"
-                        placeholderTextColor="#94A3B8"
-                        value={qrFields.org || ''}
-                        onChangeText={(t) => setQrFields((p) => ({ ...p, org: t }))}
-                        accessibilityLabel="Company"
-                      />
-                    </>
-                  )}
-
-                  {qrContentType === 'email' && (
-                    <>
-                      <FocusableTextInput
-                        style={styles.formInput}
-                        placeholder="Recipient email"
-                        placeholderTextColor="#94A3B8"
-                        autoCapitalize="none"
-                        keyboardType="email-address"
-                        value={qrFields.to || ''}
-                        onChangeText={(t) => setQrFields((p) => ({ ...p, to: t }))}
-                        accessibilityLabel="Recipient email"
-                      />
-                      <FocusableTextInput
-                        style={styles.formInput}
-                        placeholder="Subject (optional)"
-                        placeholderTextColor="#94A3B8"
-                        value={qrFields.subject || ''}
-                        onChangeText={(t) => setQrFields((p) => ({ ...p, subject: t }))}
-                        accessibilityLabel="Subject"
-                      />
-                      <FocusableTextInput
-                        style={[styles.formInput, { height: 70, textAlignVertical: 'top' }]}
-                        multiline
-                        placeholder="Message body (optional)"
-                        placeholderTextColor="#94A3B8"
-                        value={qrFields.body || ''}
-                        onChangeText={(t) => setQrFields((p) => ({ ...p, body: t }))}
-                        accessibilityLabel="Message body"
-                      />
-                    </>
-                  )}
-
-                  <View style={{
-                    backgroundColor: toolsThemeMode === 'light' ? 'rgba(109,40,217,0.06)' : 'rgba(125,82,221,0.10)',
-                    borderRadius: 12, overflow: 'hidden', marginTop: 14
-                  }}>
-                    <BouncyButton
-                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12 }}
-                      onPress={() => setQrAdvancedOpen((v) => !v)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Customization options"
-                      accessibilityState={{ expanded: qrAdvancedOpen }}
-                    >
-                      <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>{tt('customization')}</Text>
-                      {qrAdvancedOpen ? <ChevronUpSVG color={toolsTheme.textSecondary} size={16} /> : <ChevronDownSVG color={toolsTheme.textSecondary} size={16} />}
-                    </BouncyButton>
-
-                    {qrAdvancedOpen && (
-                    <View style={{ paddingHorizontal: 14, paddingBottom: 14, gap: 10 }}>
-                      <Text style={styles.formGroupLabel}>{tt('colors')}</Text>
-                      <View style={{ flexDirection: 'row', gap: 10 }}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginBottom: 4 }}>{tt('foreground')}</Text>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            {Platform.OS === 'web' ? (
-                              <input
-                                type="color"
-                                value={/^#[0-9A-Fa-f]{6}$/.test(qrColor) ? qrColor : '#000000'}
-                                onChange={(e) => setQrColor(e.target.value.toUpperCase())}
-                                style={{ width: 36, height: 36, border: `1px solid ${toolsTheme.border}`, borderRadius: 8, padding: 0, background: 'none', cursor: 'pointer', flexShrink: 0 }}
-                                aria-label="Foreground color picker"
-                              />
-                            ) : (
-                              <View style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: /^#[0-9A-Fa-f]{6}$/.test(qrColor) ? qrColor : '#000000', borderWidth: 1, borderColor: toolsTheme.border, flexShrink: 0 }} />
-                            )}
-                            <FocusableTextInput
-                              style={[styles.formInput, { flex: 1 }]}
-                              placeholder="#000000"
-                              placeholderTextColor="#94A3B8"
-                              autoCapitalize="characters"
-                              value={qrColor}
-                              onChangeText={setQrColor}
-                              accessibilityLabel="Foreground color"
-                            />
-                          </View>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginBottom: 4 }}>{tt('background')}</Text>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            {Platform.OS === 'web' ? (
-                              <input
-                                type="color"
-                                value={/^#[0-9A-Fa-f]{6}$/.test(qrBackgroundColor) ? qrBackgroundColor : '#FFFFFF'}
-                                onChange={(e) => setQrBackgroundColor(e.target.value.toUpperCase())}
-                                style={{ width: 36, height: 36, border: `1px solid ${toolsTheme.border}`, borderRadius: 8, padding: 0, background: 'none', cursor: 'pointer', flexShrink: 0 }}
-                                aria-label="Background color picker"
-                              />
-                            ) : (
-                              <View style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: /^#[0-9A-Fa-f]{6}$/.test(qrBackgroundColor) ? qrBackgroundColor : '#FFFFFF', borderWidth: 1, borderColor: toolsTheme.border, flexShrink: 0 }} />
-                            )}
-                            <FocusableTextInput
-                              style={[styles.formInput, { flex: 1 }]}
-                              placeholder="#FFFFFF"
-                              placeholderTextColor="#94A3B8"
-                              autoCapitalize="characters"
-                              value={qrBackgroundColor}
-                              onChangeText={setQrBackgroundColor}
-                              accessibilityLabel="Background color"
-                            />
-                          </View>
-                        </View>
-                      </View>
-
-                      {/* Native has no built-in color-picker UI equivalent
-                          to a browser's <input type="color"> - a new
-                          native dependency for this would need a real
-                          rebuild (same issue as expo-store-review), so
-                          this preset swatch row is the picker there,
-                          alongside the hex field above for precise entry. */}
-                      {Platform.OS !== 'web' && (
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                          {['#000000', '#FFFFFF', '#7D52DD', '#EF4444', '#10B981', '#3B82F6', '#F59E0B', '#EC4899'].map((swatch) => (
-                            <BouncyButton
-                              key={swatch}
-                              style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: swatch, borderWidth: 1, borderColor: toolsTheme.border }}
-                              onPress={() => {
-                                showAppAlert('Set Which Color?', '', [
-                                  { text: 'Cancel', style: 'cancel' },
-                                  { text: tt('foreground'), onPress: () => setQrColor(swatch) },
-                                  { text: tt('background'), onPress: () => setQrBackgroundColor(swatch) }
-                                ]);
-                              }}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Swatch ${swatch}`}
-                            />
-                          ))}
-                        </View>
-                      )}
-
-                      {qrColor.toUpperCase() === qrBackgroundColor.toUpperCase() && (
-                        <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '600' }}>
-                          Foreground and background are the same color - this won't scan.
-                        </Text>
-                      )}
-
-                      <Text style={styles.formGroupLabel}>{tt('dotStyle')}</Text>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        {[{ key: 'round', label: tt('round') }, { key: 'square', label: tt('square') }].map((opt) => (
-                          <BouncyButton
-                            key={opt.key}
-                            style={{
-                              flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99,
-                              backgroundColor: qrDotStyle === opt.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : toolsTheme.bg,
-                              borderWidth: 1, borderColor: qrDotStyle === opt.key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
-                            }}
-                            onPress={() => setQrDotStyle(opt.key)}
-                            accessibilityRole="button"
-                            accessibilityLabel={opt.label}
-                            accessibilityState={{ selected: qrDotStyle === opt.key }}
-                          >
-                            <Text style={{ color: qrDotStyle === opt.key ? '#FFFFFF' : toolsTheme.text, fontSize: 12, fontWeight: '700' }}>{opt.label}</Text>
-                          </BouncyButton>
-                        ))}
-                      </View>
-
-                      <Text style={styles.formGroupLabel}>{tt('logoOptional')}</Text>
-                      {qrLogoUri ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                          <Image source={{ uri: qrLogoUri }} style={{ width: 40, height: 40, borderRadius: 8 }} />
-                          <BouncyButton
-                            style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                            onPress={() => setQrLogoUri(null)}
-                            accessibilityRole="button"
-                          >
-                            <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '700' }}>Remove</Text>
-                          </BouncyButton>
-                        </View>
-                      ) : (
-                        <BouncyButton
-                          style={{ alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                          onPress={pickQrLogo}
-                          accessibilityRole="button"
-                        >
-                          <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '700' }}>{tt('chooseLogo')}</Text>
-                        </BouncyButton>
-                      )}
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, lineHeight: 15 }}>
-                        A small centered logo is safe to add - this QR code is generated with extra error correction specifically to allow for it.
-                      </Text>
-                    </View>
-                    )}
-                  </View>
-                  </>
-                );
-
-                const downloadButtonsBlock = (
-                  <>
-                  {(!!currentQrValue() || isWebWide) && (
-                    <View style={{ marginTop: 14, width: '100%' }}>
-                      <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
-                        <BouncyButton
-                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: (qrExporting || !currentQrValue()) ? 0.4 : 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }]}
-                          onPress={handleDownloadQrPng}
-                          disabled={qrExporting || !currentQrValue()}
-                          accessibilityRole="button"
-                          accessibilityState={{ disabled: qrExporting || !currentQrValue(), busy: qrExporting }}
-                        >
-                          <Text style={styles.submitBtnText}>{qrExporting ? tt('exporting') : tt('downloadPng')}</Text>
-                          {!qrExporting && <ArrowRightIconSVG size={13} color="#FFFFFF" />}
-                        </BouncyButton>
-                        {Platform.OS === 'web' && (
-                          <BouncyButton
-                            style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, opacity: !currentQrValue() ? 0.4 : 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }]}
-                            onPress={handleDownloadQrSvg}
-                            disabled={!currentQrValue()}
-                            accessibilityRole="button"
-                            accessibilityState={{ disabled: !currentQrValue() }}
-                          >
-                            <Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadSvg')}</Text>
-                            <ArrowRightIconSVG size={13} color={toolsTheme.text} />
-                          </BouncyButton>
-                        )}
-                      </View>
-                      {qrGeneratorReturnToResume && Platform.OS === 'web' && (
-                        <BouncyButton
-                          style={[styles.saveAccountSettingsBtn, { marginTop: 10, opacity: (resumeQrGenerating || !currentQrValue()) ? 0.4 : 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }]}
-                          onPress={useGeneratedQrForResume}
-                          disabled={resumeQrGenerating || !currentQrValue()}
-                          accessibilityRole="button"
-                          accessibilityState={{ disabled: resumeQrGenerating || !currentQrValue(), busy: resumeQrGenerating }}
-                        >
-                          <Text style={styles.submitBtnText}>{resumeQrGenerating ? 'Adding to resume...' : 'Use This QR in My Resume'}</Text>
-                        </BouncyButton>
-                      )}
-                    </View>
-                  )}
-                  </>
-                );
-
-                return (
-                  <>
-                    {qrGeneratorReturnToResume && (
-                      <View style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10,
-                        backgroundColor: toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)',
-                        borderWidth: 1, borderColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', marginBottom: 12
-                      }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 12.5, flex: 1 }}>
-                          Building a QR code for your resume - customize it below, then tap "Use This QR in My Resume". Your resume progress is saved.
-                        </Text>
-                        <BouncyButton
-                          onPress={() => { setQrGeneratorReturnToResume(false); setActiveTool('resumeMaker'); }}
-                          accessibilityRole="button"
-                          accessibilityLabel="Cancel and go back to resume"
-                        >
-                          <Text style={{ color: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', fontSize: 12.5, fontWeight: '700' }}>Cancel</Text>
-                        </BouncyButton>
-                      </View>
-                    )}
-                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
-                      {tt('qrIntro')}
-                    </Text>
-
-                    {isWebWide ? (
-                      <View style={{ flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
-                        <View style={{ flex: 1, gap: 14 }}>
-                          {formFieldsBlock}
-                        </View>
-                        <View style={{ flex: 1, gap: 14 }}>
-                          {previewBlock}
-                          {downloadButtonsBlock}
-                        </View>
-                      </View>
-                    ) : (
-                      <>
-                        {previewBlock}
-                        {formFieldsBlock}
-                        {downloadButtonsBlock}
-                      </>
-                    )}
-
-                    {isWebWide && (
-                      <View style={{ marginTop: 20 }}>
-                        <View style={{ height: 1, backgroundColor: toolsTheme.border, marginBottom: 20 }} />
-                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '800', marginBottom: 10 }}>
-                          {tt('moreTools')}
-                        </Text>
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                          {ALL_TOOLS_LIST.filter((t) => t.key !== 'qrGenerator').map(({ key, label, Icon }) => (
-                            <BouncyButton
-                              key={key}
-                              style={{
-                                alignItems: 'center', gap: 8, width: '23%',
-                                backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                                borderRadius: 14, padding: 14
-                              }}
-                              onPress={() => requestSwitchTool(key)}
-                              accessibilityRole="button"
-                            >
-                              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                                <Icon size={18} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                              </View>
-                              <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700', textAlign: 'center' }}>{label}</Text>
-                            </BouncyButton>
-                          ))}
-                        </View>
-                      </View>
-                    )}
-                  </>
-                );
-              })()}
-
-              {activeTool === 'imageConverter' && (
-                <View style={{ gap: 20 }}>
-                <View style={[{ gap: 14 }, isWebWide && { flexDirection: 'row', alignItems: 'flex-start', gap: 24 }]}>
-                  <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
-                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
-                    {tt('converterIntro')}
-                  </Text>
-
-                  <Text style={styles.formGroupLabel}>{tt('convertTo')}</Text>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {['JPEG', 'PNG', 'WEBP'].map((fmt) => (
-                      <BouncyButton
-                        key={fmt}
-                        style={{
-                          flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99,
-                          backgroundColor: converterFormat === fmt ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : toolsTheme.bg,
-                          borderWidth: 1, borderColor: converterFormat === fmt ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
-                        }}
-                        onPress={() => setConverterFormat(fmt)}
-                        accessibilityRole="button"
-                        accessibilityLabel={fmt}
-                        accessibilityState={{ selected: converterFormat === fmt }}
-                      >
-                        <Text style={{ color: converterFormat === fmt ? '#FFFFFF' : toolsTheme.text, fontSize: 12, fontWeight: '700' }}>{fmt}</Text>
-                      </BouncyButton>
-                    ))}
-                  </View>
-
-                  {!isWebWide && (
-                  <>
-                  <BouncyButton
-                    style={{
-                      marginTop: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
-                      borderRadius: 14, padding: 20, alignItems: 'center', gap: 8
-                    }}
-                    onPress={pickConverterImages}
-                    accessibilityRole="button"
-                  >
-                    <ImageIconSVG size={26} color={toolsTheme.textSecondary} />
-                    <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
-                      {converterFiles.length === 0 ? tt('chooseImages') : tt('addMoreImages')}
-                    </Text>
-                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>{tt('upTo10')}</Text>
-                  </BouncyButton>
-
-                  <BouncyButton
-                    style={{
-                      marginTop: 10, borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border,
-                      borderRadius: 14, padding: 16, alignItems: 'center', gap: 6
-                    }}
-                    onPress={pickConverterFiles}
-                    accessibilityRole="button"
-                  >
-                    <ImageIconSVG size={20} color={toolsTheme.textSecondary} />
-                    <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addFromFiles')}</Text>
-                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 10.5, textAlign: 'center' }}>{tt('addFromFilesDesc')}</Text>
-                  </BouncyButton>
-                  </>
-                  )}
-                  </View>
-
-                  <View style={{ gap: 14, flex: isWebWide ? 1 : undefined }}>
-                  {isWebWide && (
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <BouncyButton
-                      style={{
-                        flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                        borderRadius: 14, padding: 16, alignItems: 'center', gap: 6
-                      }}
-                      onPress={pickConverterImages}
-                      accessibilityRole="button"
-                    >
-                      <ImageIconSVG size={22} color="#FFFFFF" />
-                      <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>
-                        {converterFiles.length === 0 ? tt('chooseImages') : tt('addMoreImages')}
-                      </Text>
-                    </BouncyButton>
-                    <BouncyButton
-                      style={{
-                        flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                        borderRadius: 14, padding: 16, alignItems: 'center', gap: 6
-                      }}
-                      onPress={pickConverterFiles}
-                      accessibilityRole="button"
-                    >
-                      <ImageIconSVG size={22} color="#FFFFFF" />
-                      <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>{tt('addFromFiles')}</Text>
-                    </BouncyButton>
-                  </View>
-                  )}
-
-                  {isWebWide && converterFiles.length === 0 && (
-                    <View style={{
-                      flex: 1, minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 10,
-                      borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border, borderRadius: 14, padding: 40
-                    }}>
-                      <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>{tt('nothingHereYet')}</Text>
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>{tt('addFilesToStart')}</Text>
-                    </View>
-                  )}
-
-                  {converterFiles.map((file, fileIndex) => (
-                    <View key={file.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 10 }}>
-                      <BouncyButton
-                        onPress={() => openMediaViewer(converterFiles.map((f) => ({ type: 'image', uri: f.originalUri })), fileIndex)}
-                        accessibilityRole="button"
-                        accessibilityLabel="View image"
-                      >
-                        <Image source={{ uri: file.originalUri }} style={{ width: 48, height: 48, borderRadius: 8 }} />
-                      </BouncyButton>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11 }}>
-                          {file.originalFormat} · {(file.originalSize / 1024).toFixed(0)} KB
-                        </Text>
-                        {file.status === 'processing' && (
-                          <Text style={{ color: toolsTheme.accent, fontSize: 11, fontWeight: '600', marginTop: 2 }}>{tt('converting')}</Text>
-                        )}
-                        {file.status === 'done' && (
-                          <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '700', marginTop: 2 }}>
-                            {converterFormat} · {(file.resultSize / 1024).toFixed(0)} KB
-                          </Text>
-                        )}
-                        {file.status === 'error' && (
-                          <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '600', marginTop: 2 }}>{file.error}</Text>
-                        )}
-                        {file.status === 'pending' && (
-                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginTop: 2 }}>{tt('waitingToProcess')}</Text>
-                        )}
-                      </View>
-                      {file.status === 'done' ? (
-                        <BouncyButton
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                          onPress={() => handleSingleConvertedDownload(file)}
-                          accessibilityRole="button"
-                          accessibilityLabel="Download"
-                        >
-                          <Text style={{ color: toolsTheme.accent, fontSize: 11, fontWeight: '700' }}>{tt('download')}</Text>
-                          <ArrowRightIconSVG size={11} color={toolsTheme.accent} />
-                        </BouncyButton>
-                      ) : file.status === 'processing' ? (
-                        <ActivityIndicator color={toolsTheme.accent} size="small" />
-                      ) : (
-                        <>
-                          <BouncyButton
-                            style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD' }}
-                            onPress={() => convertOneFile(file)}
-                            accessibilityRole="button"
-                            accessibilityLabel="Convert this image"
-                          >
-                            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>{tt('convert')}</Text>
-                          </BouncyButton>
-                          <BouncyButton style={{ padding: 6 }} onPress={() => removeConverterFile(file.id)} accessibilityRole="button" accessibilityLabel="Remove">
-                            <TrashIconSVG />
-                          </BouncyButton>
-                        </>
-                      )}
-                    </View>
-                  ))}
-
-                  {converterFiles.length > 0 && (
-                    <View style={{ gap: 10, marginTop: 4 }}>
-                      <View style={{ flexDirection: 'row', gap: 10 }}>
-                        <BouncyButton
-                          style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: converterProcessing ? 0.6 : 1 }]}
-                          onPress={runConverterBatch}
-                          disabled={converterProcessing || !converterFiles.some((f) => f.status === 'pending' || f.status === 'error')}
-                          accessibilityRole="button"
-                          accessibilityState={{ disabled: converterProcessing, busy: converterProcessing }}
-                        >
-                          <Text style={styles.submitBtnText}>{converterProcessing ? tt('converting') : tt('convertAll')}</Text>
-                        </BouncyButton>
-                        <BouncyButton
-                          style={[
-                            styles.saveAccountSettingsBtn,
-                            { flex: 1, marginTop: 0, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-                            !converterFiles.every((f) => f.status === 'done') && { opacity: 0.4 }
-                          ]}
-                          onPress={handleDownloadAllConverted}
-                          disabled={!converterFiles.every((f) => f.status === 'done')}
-                          accessibilityRole="button"
-                          accessibilityState={{ disabled: !converterFiles.every((f) => f.status === 'done') }}
-                        >
-                          <><Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text><ArrowRightIconSVG size={13} color={toolsTheme.text} /></>
-                        </BouncyButton>
-                      </View>
-                      <BouncyButton
-                        style={{ alignSelf: 'center' }}
-                        onPress={() => setClearFilesConfirmTarget('converter')}
-                        accessibilityRole="button"
-                      >
-                        <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>{tt('clearAll')}</Text>
-                      </BouncyButton>
-                    </View>
-                  )}
-                  </View>
-                </View>
-
-                {isWebWide && (
-                  <View>
-                    <View style={{ height: 1, backgroundColor: toolsTheme.border, marginBottom: 20 }} />
-                    <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '800', marginBottom: 10 }}>
-                      {tt('moreTools')}
-                    </Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                      {ALL_TOOLS_LIST.filter((t) => t.key !== 'imageConverter').map(({ key, label, Icon }) => (
-                        <BouncyButton
-                          key={key}
-                          style={{
-                            alignItems: 'center', gap: 8, width: '23%',
-                            backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                            borderRadius: 14, padding: 14
-                          }}
-                          onPress={() => requestSwitchTool(key)}
-                          accessibilityRole="button"
-                        >
-                          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                            <Icon size={18} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                          </View>
-                          <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700', textAlign: 'center' }}>{label}</Text>
-                        </BouncyButton>
-                      ))}
-                    </View>
-                  </View>
-                )}
-                </View>
-              )}
-
-              {/* RESUME MAKER - real wizard shell + Step 1 (Personal
-                  Info). Steps 2-4 are still honest placeholders, staged
-                  as separate follow-up work - see resumeWizardStep. */}
-              {/* Hidden off-screen QR, mounted only while a native
-                  capture is pending (see captureNativeQr) - real
-                  content, position: absolute off the visible area
-                  rather than opacity/size-zeroed, since the latter can
-                  prevent the native view from actually laying out and
-                  having real pixels for toDataURL to read. */}
-              {nativeQrCaptureRequest && Platform.OS !== 'web' && (
-                <View style={{ position: 'absolute', left: -9999, top: -9999 }}>
-                  <ToolsQRCode
-                    ref={nativeQrCaptureRef}
-                    value={nativeQrCaptureRequest.value}
-                    size={600}
-                    color={nativeQrCaptureRequest.color}
-                    backgroundColor={nativeQrCaptureRequest.backgroundColor}
-                    dotStyle={nativeQrCaptureRequest.dotStyle}
-                    logoUri={nativeQrCaptureRequest.logoUri}
-                  />
-                </View>
-              )}
-
-              {activeTool === 'resumeMaker' && (() => {
-                const stepAndNavBlock = (
-                <>
-                  {resumeWizardStep === 1 && (
-                    <View style={{ gap: 14 }}>
-                      <BouncyButton
-                        style={{ alignSelf: 'center', width: 88, height: 88, borderRadius: 44, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
-                        onPress={pickResumePhoto}
-                        accessibilityRole="button"
-                        accessibilityLabel="Add photo"
-                      >
-                        {resumeData.photoUri ? (
-                          <Image source={{ uri: resumeData.photoUri }} style={{ width: 88, height: 88 }} />
-                        ) : (
-                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, fontWeight: '600', textAlign: 'center' }}>Add{'\n'}Photo</Text>
-                        )}
-                      </BouncyButton>
-                      <FocusableTextInput
-                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
-                        placeholder="Full name"
-                        placeholderTextColor={toolsTheme.textSecondary}
-                        value={resumeData.name}
-                        onChangeText={(t) => updateResumeField('name', t)}
-                      />
-                      <FocusableTextInput
-                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
-                        placeholder="Professional title (e.g. UI/UX Designer)"
-                        placeholderTextColor={toolsTheme.textSecondary}
-                        value={resumeData.title}
-                        onChangeText={(t) => updateResumeField('title', t)}
-                      />
-                      <FocusableTextInput
-                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
-                        placeholder="Email"
-                        placeholderTextColor={toolsTheme.textSecondary}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        value={resumeData.email}
-                        onChangeText={(t) => updateResumeField('email', t)}
-                      />
-                      <FocusableTextInput
-                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
-                        placeholder="Phone"
-                        placeholderTextColor={toolsTheme.textSecondary}
-                        keyboardType="phone-pad"
-                        value={resumeData.phone}
-                        onChangeText={(t) => updateResumeField('phone', t)}
-                      />
-                      <FocusableTextInput
-                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15 }}
-                        placeholder="Location (e.g. Jakarta, Indonesia)"
-                        placeholderTextColor={toolsTheme.textSecondary}
-                        value={resumeData.location}
-                        onChangeText={(t) => updateResumeField('location', t)}
-                      />
-                      <FocusableTextInput
-                        style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 15, minHeight: 80, textAlignVertical: 'top' }}
-                        placeholder="Summary - a few sentences about your background"
-                        placeholderTextColor={toolsTheme.textSecondary}
-                        multiline
-                        value={resumeData.summary}
-                        onChangeText={(t) => updateResumeField('summary', t)}
-                      />
-                    </View>
-                  )}
-
-                  {resumeWizardStep === 2 && (
-                    <View style={{ gap: 24 }}>
-                      <View style={{ gap: 12 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>Experience</Text>
-                        {resumeData.experience.map((exp) => (
-                          <View key={exp.id} style={{ gap: 8, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 12, padding: 14 }}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-                              <BouncyButton onPress={() => removeResumeExperience(exp.id)} accessibilityRole="button" accessibilityLabel="Remove this experience entry">
-                                <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '700' }}>Remove</Text>
-                              </BouncyButton>
-                            </View>
-                            <FocusableTextInput
-                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                              placeholder="Company"
-                              placeholderTextColor={toolsTheme.textSecondary}
-                              value={exp.company}
-                              onChangeText={(t) => updateResumeExperience(exp.id, 'company', t)}
-                            />
-                            <FocusableTextInput
-                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                              placeholder="Role / title"
-                              placeholderTextColor={toolsTheme.textSecondary}
-                              value={exp.role}
-                              onChangeText={(t) => updateResumeExperience(exp.id, 'role', t)}
-                            />
-                            <View style={{ flexDirection: 'row', gap: 8 }}>
-                              <FocusableTextInput
-                                style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                                placeholder="Start (e.g. Jan 2020)"
-                                placeholderTextColor={toolsTheme.textSecondary}
-                                value={exp.startDate}
-                                onChangeText={(t) => updateResumeExperience(exp.id, 'startDate', t)}
-                              />
-                              {!exp.current && (
-                                <FocusableTextInput
-                                  style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                                  placeholder="End (e.g. Mar 2022)"
-                                  placeholderTextColor={toolsTheme.textSecondary}
-                                  value={exp.endDate}
-                                  onChangeText={(t) => updateResumeExperience(exp.id, 'endDate', t)}
-                                />
-                              )}
-                            </View>
-                            <BouncyButton
-                              style={{
-                                alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99,
-                                borderWidth: 1.5, borderColor: exp.current ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border,
-                                backgroundColor: exp.current ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
-                              }}
-                              onPress={() => updateResumeExperience(exp.id, 'current', !exp.current)}
-                              accessibilityRole="button"
-                              accessibilityState={{ selected: exp.current }}
-                            >
-                              <Text style={{ fontSize: 12, fontWeight: '700', color: exp.current ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.text }}>I currently work here</Text>
-                            </BouncyButton>
-                            <FocusableTextInput
-                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14, minHeight: 70, textAlignVertical: 'top' }}
-                              placeholder="What did you do here?"
-                              placeholderTextColor={toolsTheme.textSecondary}
-                              multiline
-                              value={exp.description}
-                              onChangeText={(t) => updateResumeExperience(exp.id, 'description', t)}
-                            />
-                          </View>
-                        ))}
-                        <BouncyButton
-                          style={{ paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1.5, borderColor: toolsTheme.border, borderStyle: 'dashed' }}
-                          onPress={addResumeExperience}
-                          accessibilityRole="button"
-                        >
-                          <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>+ Add Experience</Text>
-                        </BouncyButton>
-                      </View>
-
-                      <View style={{ gap: 12 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>Education</Text>
-                        {resumeData.education.map((edu) => (
-                          <View key={edu.id} style={{ gap: 8, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 12, padding: 14 }}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-                              <BouncyButton onPress={() => removeResumeEducation(edu.id)} accessibilityRole="button" accessibilityLabel="Remove this education entry">
-                                <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '700' }}>Remove</Text>
-                              </BouncyButton>
-                            </View>
-                            <FocusableTextInput
-                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                              placeholder="School"
-                              placeholderTextColor={toolsTheme.textSecondary}
-                              value={edu.school}
-                              onChangeText={(t) => updateResumeEducation(edu.id, 'school', t)}
-                            />
-                            <FocusableTextInput
-                              style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                              placeholder="Degree"
-                              placeholderTextColor={toolsTheme.textSecondary}
-                              value={edu.degree}
-                              onChangeText={(t) => updateResumeEducation(edu.id, 'degree', t)}
-                            />
-                            <View style={{ flexDirection: 'row', gap: 8 }}>
-                              <FocusableTextInput
-                                style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                                placeholder="Start year"
-                                placeholderTextColor={toolsTheme.textSecondary}
-                                value={edu.startDate}
-                                onChangeText={(t) => updateResumeEducation(edu.id, 'startDate', t)}
-                              />
-                              <FocusableTextInput
-                                style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 10, color: toolsTheme.text, fontSize: 14 }}
-                                placeholder="End year"
-                                placeholderTextColor={toolsTheme.textSecondary}
-                                value={edu.endDate}
-                                onChangeText={(t) => updateResumeEducation(edu.id, 'endDate', t)}
-                              />
-                            </View>
-                          </View>
-                        ))}
-                        <BouncyButton
-                          style={{ paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1.5, borderColor: toolsTheme.border, borderStyle: 'dashed' }}
-                          onPress={addResumeEducation}
-                          accessibilityRole="button"
-                        >
-                          <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>+ Add Education</Text>
-                        </BouncyButton>
-                      </View>
-                    </View>
-                  )}
-
-                  {resumeWizardStep === 3 && (
-                    <View style={{ gap: 24 }}>
-                      <View style={{ gap: 10 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>Skills</Text>
-                        {resumeData.skills.length > 0 && (
-                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                            {resumeData.skills.map((skill) => (
-                              <View key={skill} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 99, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}>
-                                <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '600' }}>{skill}</Text>
-                                <BouncyButton onPress={() => removeResumeSkill(skill)} accessibilityRole="button" accessibilityLabel={`Remove ${skill}`}>
-                                  <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>✕</Text>
-                                </BouncyButton>
-                              </View>
-                            ))}
-                          </View>
-                        )}
-
-                        {/* Tap-to-add common skills - reuses the same
-                            software names already established elsewhere
-                            in this app for this exact audience
-                            (RESUME_COMMON_SKILLS), plus a small set of
-                            design skill categories. Adding one is a
-                            single tap, no typing or Enter key involved
-                            at all - the free-text field below is only
-                            for anything not already covered here. */}
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11.5, fontWeight: '600' }}>TAP TO ADD</Text>
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                          {RESUME_COMMON_SKILLS.filter((s) => !resumeData.skills.includes(s)).map((skill) => (
-                            <BouncyButton
-                              key={skill}
-                              style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                              onPress={() => addResumeSkill(skill)}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Add ${skill}`}
-                            >
-                              <Text style={{ color: toolsTheme.text, fontSize: 12, fontWeight: '600' }}>+ {skill}</Text>
-                            </BouncyButton>
-                          ))}
-                        </View>
-
-                        {/* Custom entry - a visible Add button alongside
-                            the field, not just Enter-to-submit. Typing
-                            here with no visible confirmation of what
-                            counts as "added" is exactly what caused
-                            confusion earlier - text sitting in the
-                            input isn't a skill yet until one of these
-                            two things actually fires. */}
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11.5, fontWeight: '600', marginTop: 4 }}>OR ADD YOUR OWN</Text>
-                        <View style={{ flexDirection: 'row', gap: 8 }}>
-                          <FocusableTextInput
-                            style={{ flex: 1, borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
-                            placeholder="Custom skill"
-                            placeholderTextColor={toolsTheme.textSecondary}
-                            value={resumeSkillInput}
-                            onChangeText={setResumeSkillInput}
-                            onSubmitEditing={() => { addResumeSkill(resumeSkillInput); setResumeSkillInput(''); }}
-                            returnKeyType="done"
-                            blurOnSubmit={false}
-                          />
-                          <BouncyButton
-                            style={{ paddingHorizontal: 18, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: resumeSkillInput.trim() ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border }}
-                            onPress={() => { addResumeSkill(resumeSkillInput); setResumeSkillInput(''); }}
-                            disabled={!resumeSkillInput.trim()}
-                            accessibilityRole="button"
-                            accessibilityLabel="Add skill"
-                          >
-                            <Text style={{ color: '#FFFFFF', fontSize: 20, fontWeight: '700' }}>+</Text>
-                          </BouncyButton>
-                        </View>
-                      </View>
-
-                      <View style={{ gap: 10 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>Links</Text>
-                        <FocusableTextInput
-                          style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
-                          placeholder="Website"
-                          placeholderTextColor={toolsTheme.textSecondary}
-                          autoCapitalize="none"
-                          value={resumeData.links.website}
-                          onChangeText={(t) => updateResumeLink('website', t)}
-                        />
-                        <FocusableTextInput
-                          style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
-                          placeholder="LinkedIn"
-                          placeholderTextColor={toolsTheme.textSecondary}
-                          autoCapitalize="none"
-                          value={resumeData.links.linkedin}
-                          onChangeText={(t) => updateResumeLink('linkedin', t)}
-                        />
-                        <FocusableTextInput
-                          style={{ width: '100%', borderWidth: 1.5, borderColor: toolsTheme.border, borderRadius: 10, padding: 12, color: toolsTheme.text, fontSize: 14 }}
-                          placeholder="GitHub"
-                          placeholderTextColor={toolsTheme.textSecondary}
-                          autoCapitalize="none"
-                          value={resumeData.links.github}
-                          onChangeText={(t) => updateResumeLink('github', t)}
-                        />
-                      </View>
-
-                      <View style={{ gap: 10 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>QR Code (optional)</Text>
-                        {resumeData.qrImageUri ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 12, padding: 12 }}>
-                            <Image source={{ uri: resumeData.qrImageUri }} style={{ width: 56, height: 56, borderRadius: 6 }} />
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
-                                {resumeData.qrSource === 'upload' ? 'Uploaded QR' : resumeData.qrSource === 'decent' ? 'DECENT portfolio QR' : 'Generated QR'}
-                              </Text>
-                              <Text style={{ color: toolsTheme.textSecondary, fontSize: 11.5 }}>Will be included on your resume</Text>
-                            </View>
-                            <BouncyButton onPress={() => setResumeData((prev) => ({ ...prev, qrImageUri: null, qrSource: null }))} accessibilityRole="button" accessibilityLabel="Remove QR code">
-                              <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '700' }}>Remove</Text>
-                            </BouncyButton>
-                          </View>
-                        ) : (
-                          <View style={{ gap: 10 }}>
-                            <BouncyButton
-                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: resumeQrGenerating ? 0.5 : 1 }}
-                              onPress={pickResumeQrUpload}
-                              disabled={resumeQrGenerating}
-                              accessibilityRole="button"
-                            >
-                              <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Upload a QR code I already have</Text>
-                              <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
-                            </BouncyButton>
-                            <BouncyButton
-                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: resumeQrGenerating ? 0.5 : 1 }}
-                              onPress={openQrGeneratorForResume}
-                              disabled={resumeQrGenerating}
-                              accessibilityRole="button"
-                            >
-                              <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Generate a new QR code</Text>
-                              <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
-                            </BouncyButton>
-                            {session && userProfile.handle && (
-                              <View style={{ gap: 8 }}>
-                                <BouncyButton
-                                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: resumeQrGenerating ? 0.5 : 1 }}
-                                  onPress={() => generateResumeDecentQr('decent')}
-                                  disabled={resumeQrGenerating}
-                                  accessibilityRole="button"
-                                >
-                                  <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Use my DECENT portfolio QR - branded style</Text>
-                                  <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
-                                </BouncyButton>
-                                <BouncyButton
-                                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1.5, borderColor: toolsTheme.border, opacity: resumeQrGenerating ? 0.5 : 1 }}
-                                  onPress={() => generateResumeDecentQr('plain')}
-                                  disabled={resumeQrGenerating}
-                                  accessibilityRole="button"
-                                >
-                                  <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '600' }}>Use my DECENT portfolio QR - plain style</Text>
-                                  <ChevronRightSVG color={toolsTheme.textSecondary} size={16} />
-                                </BouncyButton>
-                              </View>
-                            )}
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                  )}
-
-                  {resumeWizardStep === 4 && (
-                    <View style={{ gap: 20 }}>
-                      <View style={{ gap: 10, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border, borderRadius: 12, padding: 16 }}>
-                        <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>{resumeData.name || 'Your Name'}</Text>
-                        {!!resumeData.title && <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5 }}>{resumeData.title}</Text>}
-                        <View style={{ height: 1, backgroundColor: toolsTheme.border, marginVertical: 4 }} />
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5 }}>
-                          {resumeData.experience.length} experience {resumeData.experience.length === 1 ? 'entry' : 'entries'} &middot; {resumeData.education.length} education {resumeData.education.length === 1 ? 'entry' : 'entries'} &middot; {resumeData.skills.length} {resumeData.skills.length === 1 ? 'skill' : 'skills'}
-                        </Text>
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5 }}>
-                          {resumeData.qrImageUri ? 'QR code included' : 'No QR code'}
-                        </Text>
-                      </View>
-
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>
-                        {Platform.OS === 'web'
-                          ? 'Exporting opens your browser\'s print dialog - choose "Save as PDF" there. To remove the browser\'s own header/footer (URL, date, page number), open "More settings" in that dialog and turn off "Headers and footers".'
-                          : 'Exporting generates a PDF you can save or share.'}
-                      </Text>
-
-                      <BouncyButton
-                        style={{ paddingVertical: 14, borderRadius: 10, alignItems: 'center', backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', opacity: resumeExporting ? 0.5 : 1 }}
-                        onPress={handleExportResume}
-                        disabled={resumeExporting}
-                        accessibilityRole="button"
-                      >
-                        <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>{resumeExporting ? 'Exporting...' : 'Export as PDF'}</Text>
-                      </BouncyButton>
-                    </View>
-                  )}
-
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    {resumeWizardStep > 1 && (
-                      <BouncyButton
-                        style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
-                        onPress={() => setResumeWizardStep((s) => Math.max(1, s - 1))}
-                        accessibilityRole="button"
-                      >
-                        <Text style={{ color: toolsTheme.text, fontSize: 13.5, fontWeight: '700' }}>Back</Text>
-                      </BouncyButton>
-                    )}
-                    {resumeWizardStep < 4 && (
-                      <BouncyButton
-                        style={{ flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                        onPress={() => setResumeWizardStep((s) => Math.min(4, s + 1))}
-                        accessibilityRole="button"
-                      >
-                        <Text style={{ color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' }}>Next</Text>
-                      </BouncyButton>
-                    )}
-                  </View>
-                </>
-                );
-
-                const progressIndicator = (
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {['Personal', 'Experience', 'Skills', 'Review'].map((label, i) => (
-                      <View key={label} style={{ flex: 1, alignItems: 'center', gap: 6 }}>
-                        <View style={{
-                          width: '100%', height: 4, borderRadius: 2,
-                          backgroundColor: resumeWizardStep > i ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border
-                        }} />
-                        <Text style={{
-                          fontSize: 11, fontWeight: '600',
-                          color: resumeWizardStep === i + 1 ? toolsTheme.text : toolsTheme.textSecondary
-                        }}>{label}</Text>
-                      </View>
-                    ))}
-                  </View>
-                );
-
-                // Wide web only - a live preview of the actual PDF
-                // template, filled with whatever's been entered so far,
-                // sitting next to the form instead of only appearing at
-                // Review. srcDoc on a real iframe is the most literal,
-                // genuinely WYSIWYG way to do this - it's rendering the
-                // exact same buildResumeHtml() output the real export
-                // uses, not an approximation of it, so there's no risk
-                // of the preview and the actual PDF ever disagreeing.
-                //
-                // Native has no iframe and no room for a side-by-side
-                // split on a phone screen either way - the equivalent
-                // here is a manually-triggered full-screen modal
-                // instead of an always-visible pane, using
-                // NativeWebView with a local html source (not a URL -
-                // nothing leaves the device, same as every other export
-                // path). Available on every step, not just Review, so
-                // checking progress doesn't require finishing the
-                // wizard first.
-                return (
-                  <View style={{ gap: 20 }}>
-                    {progressIndicator}
-                    {isWebWide ? (
-                      <View style={{ flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
-                        <View style={{ flex: 1, backgroundColor: '#FFFFFF', borderRadius: 12, overflow: 'hidden', height: 720 }}>
-                          {React.createElement('iframe', {
-                            srcDoc: buildResumeHtml(resumeData),
-                            title: 'Resume preview',
-                            style: { width: '100%', height: '100%', border: 'none' }
-                          })}
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          {stepAndNavBlock}
-                        </View>
-                      </View>
-                    ) : (
-                      <>
-                        {Platform.OS !== 'web' && (
-                          <BouncyButton
-                            style={{ paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1.5, borderColor: toolsTheme.border }}
-                            onPress={() => setResumePreviewModalVisible(true)}
-                            accessibilityRole="button"
-                          >
-                            <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>Preview Resume</Text>
-                          </BouncyButton>
-                        )}
-                        {stepAndNavBlock}
-                      </>
-                    )}
-                  </View>
-                );
-              })()}
-
-              {resumePreviewModalVisible && (
-                <Modal animationType="slide" transparent={false} visible={true} onRequestClose={() => setResumePreviewModalVisible(false)}>
-                  <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', padding: 12 }}>
-                      <BouncyButton
-                        style={{ paddingVertical: 8, paddingHorizontal: 16, borderRadius: 10, backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border }}
-                        onPress={() => setResumePreviewModalVisible(false)}
-                        accessibilityRole="button"
-                      >
-                        <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>Close</Text>
-                      </BouncyButton>
-                    </View>
-                    <NativeWebView source={{ html: buildResumeHtml(resumeData) }} style={{ flex: 1 }} />
-                  </SafeAreaView>
-                </Modal>
-              )}
-
-              {activeTool === 'pdfEditor' && (
-                <View style={{ gap: 20 }}>
-                <View style={{ gap: 14 }}>
-                  {pdfContainers.length === 0 && (
-                  <View style={{ gap: 14 }}>
-                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
-                    {tt('pdfEditorIntro')}
-                  </Text>
-
-                  {isWebWide ? (
-                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 4, alignItems: 'center' }}>
-                      <BouncyButton
-                        style={{
-                          width: 96, height: 96, borderRadius: 14, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                          alignItems: 'center', justifyContent: 'center', gap: 6
-                        }}
-                        onPress={pickPdfEditorPdfs}
-                        disabled={pdfEditorLoading}
-                        accessibilityRole="button"
-                      >
-                        <PdfIconSVG size={24} color="#FFFFFF" />
-                        <Text style={{ color: '#FFFFFF', fontSize: 11.5, fontWeight: '700' }}>{tt('addPdf')}</Text>
-                      </BouncyButton>
-                      <BouncyButton
-                        style={{
-                          width: 96, height: 96, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border,
-                          alignItems: 'center', justifyContent: 'center', gap: 6
-                        }}
-                        onPress={pickPdfEditorImages}
-                        disabled={pdfEditorLoading}
-                        accessibilityRole="button"
-                      >
-                        <ImageIconSVG size={22} color={toolsTheme.textSecondary} />
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 11.5, fontWeight: '600' }}>{tt('addImages')}</Text>
-                      </BouncyButton>
-                      {pdfEditorLoading && <ActivityIndicator color={toolsTheme.accent} size="small" />}
-                    </View>
-                  ) : (
-                    <>
-                      <BouncyButton
-                        style={{
-                          marginTop: 14, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                          borderRadius: 16, padding: 28, alignItems: 'center', gap: 10
-                        }}
-                        onPress={pickPdfEditorPdfs}
-                        disabled={pdfEditorLoading}
-                        accessibilityRole="button"
-                      >
-                        <PdfIconSVG size={32} color="#FFFFFF" />
-                        <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>{tt('addPdf')}</Text>
-                      </BouncyButton>
-
-                      <BouncyButton
-                        style={{
-                          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                          marginTop: 10, borderWidth: 1, borderColor: toolsTheme.border,
-                          borderRadius: 12, paddingVertical: 10
-                        }}
-                        onPress={pickPdfEditorImages}
-                        disabled={pdfEditorLoading}
-                        accessibilityRole="button"
-                      >
-                        <ImageIconSVG size={16} color={toolsTheme.textSecondary} />
-                        <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{tt('addImages')}</Text>
-                      </BouncyButton>
-
-                      {pdfEditorLoading && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 }}>
-                          <ActivityIndicator color={toolsTheme.accent} size="small" />
-                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 12 }}>{tt('loadingPdf')}{pdfBusyPercent != null ? ` ${pdfBusyPercent}%` : ''}</Text>
-                        </View>
-                      )}
-                    </>
-                  )}
-                  </View>
-                  )}
-
-                  {pdfContainers.length > 0 && !pdfSelectModeTool && !pdfContainerSelectModeTool && (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, alignItems: 'center' }}>
-                      {isWebWide && (
-                        <>
-                          <BouncyButton
-                            style={{
-                              flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
-                              borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, opacity: pdfEditorLoading ? 0.6 : 1
-                            }}
-                            onPress={pickPdfEditorPdfs}
-                            disabled={pdfEditorLoading}
-                            accessibilityRole="button"
-                            accessibilityLabel="Add another PDF"
-                          >
-                            <PdfIconSVG color={toolsTheme.textSecondary} size={14} />
-                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addPdf')}</Text>
-                          </BouncyButton>
-                          <BouncyButton
-                            style={{
-                              flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14,
-                              borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, opacity: pdfEditorLoading ? 0.6 : 1
-                            }}
-                            onPress={pickPdfEditorImages}
-                            disabled={pdfEditorLoading}
-                            accessibilityRole="button"
-                            accessibilityLabel="Add photos as a new PDF"
-                          >
-                            <ImageIconSVG color={toolsTheme.textSecondary} size={14} />
-                            <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>{tt('addImages')}</Text>
-                          </BouncyButton>
-                          <View style={{ width: 1, height: 20, backgroundColor: toolsTheme.border, marginHorizontal: 2 }} />
-                        </>
-                      )}
-                      {/* Watermark has no toolbar button of its own (it
-                          lives in More Tools) - this is its dedicated
-                          "active" slot, positioned left of Compress since
-                          that's the one fixed anchor point every layout
-                          already has. Left side of the pill edits (reverts
-                          then reopens pre-filled), the X undoes outright. */}
-                      {isPdfWatermarkActive && (
-                        <View style={{
-                          flexDirection: 'row', alignItems: 'center', borderRadius: 99, overflow: 'hidden',
-                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD'
-                        }}>
-                          <BouncyButton
-                            style={{ paddingLeft: 12, paddingVertical: 8 }}
-                            onPress={() => undoSpecificPdfEdit('Add watermark')}
-                            accessibilityRole="button"
-                            accessibilityLabel="Remove watermark"
-                          >
-                            <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-                              <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', lineHeight: 11 }}>✕</Text>
-                            </View>
-                          </BouncyButton>
-                          <BouncyButton
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingLeft: 6, paddingRight: 14 }}
-                            onPress={editPdfWatermark}
-                            accessibilityRole="button"
-                            accessibilityLabel="Edit watermark"
-                          >
-                            <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>Watermark</Text>
-                          </BouncyButton>
-                        </View>
-                      )}
-                      <View style={{
-                        flexDirection: 'row', alignItems: 'center', borderRadius: 99, overflow: 'hidden',
-                        backgroundColor: isPdfCompressActive ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent',
-                        borderWidth: isPdfCompressActive ? 0 : 1,
-                        borderColor: toolsTheme.border
-                      }}>
-                        {isPdfCompressActive && (
-                          <BouncyButton
-                            style={{ paddingLeft: 12, paddingVertical: 8 }}
-                            onPress={() => setPdfCompressUndoConfirmVisible(true)}
-                            accessibilityRole="button"
-                            accessibilityLabel="Undo compress"
-                          >
-                            <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-                              <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', lineHeight: 11 }}>✕</Text>
-                            </View>
-                          </BouncyButton>
-                        )}
-                        <BouncyButton
-                          style={{
-                            flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8,
-                            paddingLeft: isPdfCompressActive ? 6 : 14, paddingRight: 14,
-                            opacity: pdfCompressing ? 0.6 : 1
-                          }}
-                          onPress={() => (pdfContainers.length > 1 ? startContainerSelectFlow('compress') : setPdfCompressOptionsVisible(true))}
-                          disabled={pdfCompressing}
-                          accessibilityRole="button"
-                          accessibilityLabel="Compress"
-                          accessibilityState={{ disabled: pdfCompressing, busy: pdfCompressing, selected: isPdfCompressActive }}
-                        >
-                          {pdfCompressing ? (
-                            <>
-                              <ActivityIndicator color={isPdfCompressActive ? '#FFFFFF' : toolsTheme.textSecondary} size="small" />
-                              {pdfCompressProgress && (
-                                <Text style={{ color: isPdfCompressActive ? '#FFFFFF' : toolsTheme.text, fontSize: 12, fontWeight: '600' }}>
-                                  {pdfCompressProgress.done}/{pdfCompressProgress.total} ({Math.round((pdfCompressProgress.done / pdfCompressProgress.total) * 100)}%)
-                                </Text>
-                              )}
-                            </>
-                          ) : (
-                            <>
-                              <CompressIconSVG color={isPdfCompressActive ? '#FFFFFF' : toolsTheme.textSecondary} size={14} />
-                              <Text style={{ color: isPdfCompressActive ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Compress</Text>
-                            </>
-                          )}
-                        </BouncyButton>
-                      </View>
-                      {/* No separate "Reorder" toggle - every page
-                          thumbnail (rail tile or list tile) always shows
-                          its own up/down + typeable-number pill, see
-                          renderPdfReorderPill. */}
-                      <BouncyButton
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                        onPress={() => { cancelContainerSelectFlow(); setPdfSelectedPageIds([]); setPdfSelectModeTool('crop'); }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Crop pages"
-                      >
-                        <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Crop Pages</Text>
-                      </BouncyButton>
-                      <View style={{
-                        flexDirection: 'row', alignItems: 'center', borderRadius: 99, overflow: 'hidden',
-                        backgroundColor: isPdfPageNumbersActive ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent',
-                        borderWidth: isPdfPageNumbersActive ? 0 : 1,
-                        borderColor: toolsTheme.border
-                      }}>
-                        {isPdfPageNumbersActive && (
-                          <BouncyButton
-                            style={{ paddingLeft: 12, paddingVertical: 8 }}
-                            onPress={() => setPdfPageNumbersUndoConfirmVisible(true)}
-                            accessibilityRole="button"
-                            accessibilityLabel="Undo page numbers"
-                          >
-                            <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-                              <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', lineHeight: 11 }}>✕</Text>
-                            </View>
-                          </BouncyButton>
-                        )}
-                        <BouncyButton
-                          style={{
-                            flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8,
-                            paddingLeft: isPdfPageNumbersActive ? 6 : 14, paddingRight: 14
-                          }}
-                          onPress={handleAddPageNumbers}
-                          accessibilityRole="button"
-                          accessibilityLabel="Add page numbers"
-                          accessibilityState={{ selected: isPdfPageNumbersActive }}
-                        >
-                          <Text style={{ color: isPdfPageNumbersActive ? '#FFFFFF' : toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>Page Numbers</Text>
-                        </BouncyButton>
-                      </View>
-                      <View ref={pdfMoreToolsButtonRef} collapsable={false}>
-                        <BouncyButton
-                          style={{
-                            flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 14,
-                            borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border
-                          }}
-                          onPress={() => {
-                            if (pdfMoreToolsButtonRef.current) {
-                              pdfMoreToolsButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
-                                setPdfMoreToolsMenuPosition({ top: pageY + height + 6, left: pageX });
-                                setPdfMoreToolsMenuVisible(true);
-                              });
-                            } else {
-                              setPdfMoreToolsMenuVisible(true);
-                            }
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel="More PDF tools"
-                        >
-                          <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700' }}>More Tools</Text>
-                          <ChevronDownSVG color={toolsTheme.textSecondary} size={13} />
-                        </BouncyButton>
-                      </View>
-                      {/* Global undo - pops the most recent operation
-                          regardless of which container it touched. */}
-                      {pdfEditorHasPendingChanges && (
-                        <BouncyButton
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                          onPress={handleUndoPdfEdit}
-                          accessibilityRole="button"
-                          accessibilityLabel="Undo last change"
-                        >
-                          <RevertIconSVG color={toolsTheme.accent} size={14} />
-                          <Text style={{ color: toolsTheme.accent, fontSize: 12, fontWeight: '600' }}>Undo</Text>
-                        </BouncyButton>
-                      )}
-                      {isWebWide && (
-                        <BouncyButton
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginLeft: 'auto' }}
-                          onPress={() => setPdfClearConfirmVisible(true)}
-                          accessibilityRole="button"
-                          accessibilityLabel="Clear loaded PDFs"
-                        >
-                          <TrashIconSVG />
-                          <Text style={{ color: '#EF4444', fontSize: 12.5, fontWeight: '700' }}>Clear PDF{pdfContainers.length > 1 ? 's' : ''}</Text>
-                        </BouncyButton>
-                      )}
-                    </View>
-                  )}
-
-                  {/* Ambient heads-up once cumulative loaded PDF size gets
-                      large across the session - not a blocking dialog,
-                      just a standing reminder to export/clear what's
-                      already been dealt with, since nothing here evicts
-                      memory automatically once a PDF's been loaded. */}
-                  {(() => {
-                    const totalLoadedSize = pdfContainers.reduce((sum, c) => sum + (c.originalSize || 0), 0);
-                    if (totalLoadedSize <= PDF_LARGE_UPLOAD_WARN_BYTES * 2) return null;
-                    return (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(245,158,11,0.12)', borderRadius: 10, padding: 10, marginTop: 4 }}>
-                        <Text style={{ color: '#F59E0B', fontSize: 11.5, flex: 1 }}>
-                          {formatBytes(totalLoadedSize)} loaded across {pdfContainers.length} PDF{pdfContainers.length === 1 ? '' : 's'} - export or clear ones you're done with to free up memory.
-                        </Text>
-                      </View>
-                    );
-                  })()}
-
-                  {/* CONTAINER TABS - one uploaded PDF (or photo set) per
-                      container, shown as its own tab once there's more
-                      than one - the "x" removes just that container
-                      (undo-able like everything else, no confirm dialog
-                      needed). While pdfContainerSelectModeTool is active
-                      (Compress with 2+ containers, or Merge), tapping a
-                      tab toggles its checkbox instead of switching to it. */}
-                  {pdfContainers.length > 1 && (
-                    <View style={{ marginTop: 4, gap: 10 }}>
-                      {pdfContainerSelectModeTool && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 12 }}>
-                          <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
-                            {pdfSelectedContainerIds.length} PDF{pdfSelectedContainerIds.length === 1 ? '' : 's'} selected
-                          </Text>
-                          <View style={{ flexDirection: 'row', gap: 8 }}>
-                            <BouncyButton style={{ paddingVertical: 6, paddingHorizontal: 12 }} onPress={cancelContainerSelectFlow} accessibilityRole="button">
-                              <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Cancel</Text>
-                            </BouncyButton>
-                            <BouncyButton
-                              style={{
-                                paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
-                                backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                                opacity: (pdfContainerSelectModeTool === 'merge' ? pdfSelectedContainerIds.length < 2 : pdfSelectedContainerIds.length === 0) ? 0.5 : 1
-                              }}
-                              onPress={() => {
-                                if (pdfContainerSelectModeTool === 'merge') mergeContainers(pdfSelectedContainerIds);
-                                else setPdfCompressOptionsVisible(true);
-                              }}
-                              disabled={pdfContainerSelectModeTool === 'merge' ? pdfSelectedContainerIds.length < 2 : pdfSelectedContainerIds.length === 0}
-                              accessibilityRole="button"
-                            >
-                              <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>Confirm</Text>
-                            </BouncyButton>
-                          </View>
-                        </View>
-                      )}
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                        {pdfContainers.map((c) => {
-                          const isActive = c.id === activePdfContainer?.id;
-                          const isSelected = pdfSelectedContainerIds.includes(c.id);
-                          return (
-                            <View
-                              key={c.id}
-                              style={{
-                                flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10,
-                                borderRadius: 10, borderWidth: 1.5,
-                                borderColor: (pdfContainerSelectModeTool ? isSelected : isActive) ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border,
-                                backgroundColor: (pdfContainerSelectModeTool ? isSelected : isActive) ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : toolsTheme.surface
-                              }}
-                            >
-                              <BouncyButton
-                                onPress={() => {
-                                  if (pdfContainerSelectModeTool) { toggleContainerSelected(c.id); return; }
-                                  if (pdfSelectModeTool) return; // mid crop-page-select - don't let the active container shift under it
-                                  setPdfActiveContainerId(c.id);
-                                }}
-                                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                                accessibilityRole="button"
-                                accessibilityLabel={`Switch to ${c.name}`}
-                                accessibilityState={{ selected: pdfContainerSelectModeTool ? isSelected : isActive }}
-                              >
-                                {pdfContainerSelectModeTool && (
-                                  <View style={{
-                                    width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
-                                    backgroundColor: isSelected ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
-                                    borderWidth: isSelected ? 0 : 1.5, borderColor: toolsTheme.textSecondary
-                                  }}>
-                                    {isSelected && <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>✓</Text>}
-                                  </View>
-                                )}
-                                <View>
-                                  <Text numberOfLines={1} style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700', maxWidth: 120 }}>{c.name}</Text>
-                                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 10 }}>{c.label}</Text>
-                                </View>
-                              </BouncyButton>
-                              {!pdfContainerSelectModeTool && !pdfSelectModeTool && (
-                                <BouncyButton onPress={() => setPdfTabCloseConfirmId(c.id)} style={{ padding: 2 }} accessibilityRole="button" accessibilityLabel={`Remove ${c.name}`}>
-                                  <Text style={{ color: toolsTheme.textSecondary, fontSize: 13, fontWeight: '700' }}>✕</Text>
-                                </BouncyButton>
-                              )}
-                            </View>
-                          );
-                        })}
-                      </ScrollView>
-                    </View>
-                  )}
-
-                  <View style={{ gap: 14 }}>
-                  {containerPages.length > 0 && pdfSelectModeTool && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 12 }}>
-                      <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
-                        {pdfSelectedPageIds.length} page{pdfSelectedPageIds.length === 1 ? '' : 's'} selected
-                      </Text>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <BouncyButton
-                          style={{ paddingVertical: 6, paddingHorizontal: 12 }}
-                          onPress={() => { setPdfSelectModeTool(null); setPdfSelectedPageIds([]); }}
-                          accessibilityRole="button"
-                        >
-                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Cancel</Text>
-                        </BouncyButton>
-                        <BouncyButton
-                          style={{
-                            paddingVertical: 6, paddingHorizontal: 14, borderRadius: 99,
-                            backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD',
-                            opacity: pdfSelectedPageIds.length === 0 ? 0.5 : 1
-                          }}
-                          onPress={startPdfCropQueue}
-                          disabled={pdfSelectedPageIds.length === 0}
-                          accessibilityRole="button"
-                          accessibilityState={{ disabled: pdfSelectedPageIds.length === 0 }}
-                        >
-                          <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' }}>Confirm</Text>
-                        </BouncyButton>
-                      </View>
-                    </View>
-                  )}
-                  {!isWebWide && containerPages.length > 0 && (
-                    <Text style={{ color: toolsTheme.textSecondary, fontSize: 11, marginTop: 8 }}>
-                      {containerPages.length} {tt('pageCount')}
-                    </Text>
-                  )}
-
-                  {isWebWide && containerPages.length === 0 && (
-                    <View style={{
-                      flex: 1, minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 10,
-                      borderWidth: 1.5, borderStyle: 'dashed', borderColor: toolsTheme.border, borderRadius: 14, padding: 40
-                    }}>
-                      <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '700' }}>{tt('nothingHereYet')}</Text>
-                      <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, textAlign: 'center' }}>{tt('addFilesToStart')}</Text>
-                    </View>
-                  )}
-
-                  {isWebWide ? (
-                    containerPages.length > 0 && (() => {
-                      const activePage = containerPages.find((p) => p.id === pdfActivePageId) || containerPages[0];
-                      const activeIndex = containerPages.findIndex((p) => p.id === activePage.id);
-                      const highResUri = pdfFullscreenHighResCache[`${activePage.sourceFileIndex}:${activePage.sourcePageIndex}`];
-                      const displayUri = highResUri || activePage.thumbnailUri;
-                      // Fills as much of the viewport height as this
-                      // layout reasonably can - the image itself still
-                      // uses resizeMode="contain" inside this box, so it
-                      // always keeps its own aspect ratio and just grows
-                      // to fit whichever dimension (height here, almost
-                      // always) is the tighter constraint.
-                      const pdfPreviewPaneHeight = Math.max(460, Dimensions.get('window').height - 260);
-                      return (
-                        <View style={{ flexDirection: 'row', gap: 16, marginTop: 10, height: pdfPreviewPaneHeight }}>
-                          {/* MAIN PREVIEW PANE - the big single-page view;
-                              per-page tools (rotate, extract, insert,
-                              delete, and the crop select-mode pill) all
-                              act on whichever page is showing here, within
-                              the active container only. */}
-                          <View style={{ flex: 1, backgroundColor: toolsTheme.surface, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border, padding: 16 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                              <Text style={{ color: toolsTheme.text, fontSize: 13, fontWeight: '700' }}>
-                                Page {activeIndex + 1} of {containerPages.length}
-                              </Text>
-                            </View>
-
-                            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: toolsTheme.bg, borderRadius: 10, overflow: 'hidden', position: 'relative' }}>
-                              {pdfSelectModeTool && (
-                                <BouncyButton
-                                  onPress={() => togglePdfPageSelected(activePage.id)}
-                                  style={{
-                                    position: 'absolute', top: 10, right: 10, zIndex: 2, paddingVertical: 6, paddingHorizontal: 12,
-                                    borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 5,
-                                    backgroundColor: pdfSelectedPageIds.includes(activePage.id) ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'rgba(0,0,0,0.55)',
-                                    borderWidth: pdfSelectedPageIds.includes(activePage.id) ? 0 : 1.5,
-                                    borderColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'
-                                  }}
-                                  accessibilityRole="button"
-                                  accessibilityLabel={`Select page ${activeIndex + 1}`}
-                                  accessibilityState={{ selected: pdfSelectedPageIds.includes(activePage.id) }}
-                                >
-                                  {pdfSelectedPageIds.includes(activePage.id) && <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>✓</Text>}
-                                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
-                                    {pdfSelectedPageIds.includes(activePage.id) ? `Page ${activeIndex + 1} Selected` : `Select Page ${activeIndex + 1}`}
-                                  </Text>
-                                </BouncyButton>
-                              )}
-                              {displayUri ? (
-                                <Image
-                                  source={{ uri: displayUri }}
-                                  style={{ width: '100%', height: '100%', transform: [{ rotate: `${activePage.rotation}deg` }] }}
-                                  resizeMode="contain"
-                                />
-                              ) : (
-                                <PdfIconSVG size={48} color={toolsTheme.textSecondary} />
-                              )}
-                              {pdfFullscreenHighResLoading && !highResUri && (
-                                <View style={{ position: 'absolute', bottom: 12, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 }}>
-                                  <ActivityIndicator color="#F8FAFC" size="small" />
-                                  <Text style={{ color: '#F8FAFC', fontSize: 11 }}>Sharpening...</Text>
-                                </View>
-                              )}
-                            </View>
-
-                            {!pdfSelectModeTool && (
-                              <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-                                <BouncyButton
-                                  style={{ width: 36, height: 36, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
-                                  onPress={() => rotatePdfEditorPage(activePage.id, -1)} accessibilityRole="button" accessibilityLabel="Rotate counter-clockwise"
-                                >
-                                  <RotateCCWIconSVG size={16} color={toolsTheme.textSecondary} />
-                                </BouncyButton>
-                                <BouncyButton
-                                  style={{ width: 36, height: 36, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: toolsTheme.border }}
-                                  onPress={() => rotatePdfEditorPage(activePage.id, 1)} accessibilityRole="button" accessibilityLabel="Rotate clockwise"
-                                >
-                                  <RotateCWIconSVG size={16} color={toolsTheme.textSecondary} />
-                                </BouncyButton>
-                                <BouncyButton
-                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                                  onPress={() => startSinglePageCrop(activePage.id)} accessibilityRole="button" accessibilityLabel="Crop this page"
-                                >
-                                  <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>Crop</Text>
-                                </BouncyButton>
-                                <BouncyButton
-                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                                  onPress={() => handleExtractPage(activeIndex)} accessibilityRole="button" accessibilityLabel="Save this page as its own PDF"
-                                >
-                                  <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>Extract Page</Text>
-                                </BouncyButton>
-                                <BouncyButton
-                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border }}
-                                  onPress={() => { setPdfAddPageAfterIndex(activeIndex); setPdfAddPageMenuVisible(true); }} accessibilityRole="button" accessibilityLabel="Add a page after this one"
-                                >
-                                  <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '600' }}>Add page</Text>
-                                </BouncyButton>
-                                <BouncyButton
-                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: '#EF4444' }}
-                                  onPress={() => removePdfEditorPage(activePage.id)} accessibilityRole="button" accessibilityLabel="Remove page"
-                                >
-                                  <TrashIconSVG />
-                                  <Text style={{ color: '#EF4444', fontSize: 12.5, fontWeight: '600' }}>Delete</Text>
-                                </BouncyButton>
-                              </View>
-                            )}
-                          </View>
-
-                          {/* RIGHT RAIL - thumbnail navigation within the
-                              active container. Drag to reorder, or use a
-                              tile's own reorder pill (top-right, always
-                              visible) for a precise typed position. */}
-                          <View style={{ width: 168 }}>
-                            <ScrollView style={{ height: pdfPreviewPaneHeight }} contentContainerStyle={{ gap: 10 }}>
-                              {containerPages.map((page, index) => {
-                                const isNewSourceBoundary = index > 0 && page.sourceFileIndex !== containerPages[index - 1].sourceFileIndex;
-                                const isActive = page.id === activePage.id;
-                                // Not true viewport-based virtualization
-                                // (that would need scroll-position
-                                // tracking, which risks interacting badly
-                                // with the drag-to-reorder handlers below)
-                                // - this is a simpler proxy that still
-                                // catches the real cost for a large
-                                // document: decoding and keeping resident
-                                // potentially hundreds of thumbnail images
-                                // at once. Pages far from whichever one is
-                                // currently active show a plain number
-                                // instead of decoding their image; jumping
-                                // to that area (which changes the active
-                                // page) brings the real thumbnails back.
-                                // Small/typical documents never hit this
-                                // at all - every page renders normally.
-                                const isNearActive = containerPages.length <= 60 || Math.abs(index - activeIndex) <= 40;
-                                return (
-                                  <View
-                                    key={page.id}
-                                    style={{
-                                      borderRadius: 10, padding: 6, position: 'relative',
-                                      backgroundColor: toolsTheme.surface,
-                                      borderWidth: isActive ? 2 : (isNewSourceBoundary ? 2 : 1),
-                                      borderColor: isActive
-                                        ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6')
-                                        : (isNewSourceBoundary ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border),
-                                      borderStyle: isNewSourceBoundary && !isActive ? 'dashed' : 'solid'
-                                    }}
-                                    draggable
-                                    onDragStart={() => setPdfDragIndex(index)}
-                                    onDragOver={(e) => e.preventDefault()}
-                                    onDrop={(e) => { e.preventDefault(); if (pdfDragIndex !== null) reorderPdfEditorPages(pdfDragIndex, index); setPdfDragIndex(null); }}
-                                    onDragEnd={() => setPdfDragIndex(null)}
-                                  >
-                                    {isNewSourceBoundary && (
-                                      <Text style={{ color: toolsTheme.accent, fontSize: 8, fontWeight: '700', textAlign: 'center', marginBottom: 3 }}>NEW FILE</Text>
-                                    )}
-                                    <BouncyButton
-                                      onPress={() => (pdfSelectModeTool ? togglePdfPageSelected(page.id) : setPdfActivePageId(page.id))}
-                                      accessibilityRole="button"
-                                      accessibilityLabel={pdfSelectModeTool ? `Select page ${index + 1}` : `Show page ${index + 1}`}
-                                      accessibilityState={pdfSelectModeTool ? { selected: pdfSelectedPageIds.includes(page.id) } : { selected: isActive }}
-                                    >
-                                      <View style={{ width: '100%', aspectRatio: 0.75, borderRadius: 6, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                                        {page.thumbnailLoading ? (
-                                          <ActivityIndicator color={toolsTheme.accent} size="small" />
-                                        ) : page.thumbnailUri && isNearActive ? (
-                                          <Image source={{ uri: page.thumbnailUri }} style={{ width: '100%', height: '100%', transform: [{ rotate: `${page.rotation}deg` }] }} resizeMode="contain" />
-                                        ) : page.thumbnailUri ? (
-                                          <Text style={{ color: toolsTheme.textSecondary, fontSize: 12, fontWeight: '700' }}>{index + 1}</Text>
-                                        ) : (
-                                          <PdfIconSVG size={20} color={toolsTheme.textSecondary} />
-                                        )}
-                                        {pdfSelectModeTool && pdfSelectedPageIds.includes(page.id) && (
-                                          <View style={{ position: 'absolute', top: 4, left: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
-                                            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>✓</Text>
-                                          </View>
-                                        )}
-                                        {!pdfSelectModeTool && renderPdfReorderPill(page, index, true)}
-                                      </View>
-                                    </BouncyButton>
-                                  </View>
-                                );
-                              })}
-                            </ScrollView>
-                          </View>
-                        </View>
-                      );
-                    })()
-                  ) : (
-                    <View style={{ gap: 12, marginTop: 10 }}>
-                      {containerPages.map((page, index) => {
-                        const isNewSourceBoundary = index > 0 && page.sourceFileIndex !== containerPages[index - 1].sourceFileIndex;
-                        return (
-                        <View
-                          key={page.id}
-                          style={{
-                            width: '100%', backgroundColor: toolsTheme.surface, borderRadius: 12, padding: 8, position: 'relative',
-                            borderWidth: isNewSourceBoundary ? 2 : 1,
-                            borderColor: isNewSourceBoundary ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : toolsTheme.border,
-                            borderStyle: isNewSourceBoundary ? 'dashed' : 'solid'
-                          }}
-                        >
-                          {isNewSourceBoundary && (
-                            <Text style={{ color: toolsTheme.accent, fontSize: 9, fontWeight: '700', textAlign: 'center', marginBottom: 4 }}>
-                              NEW FILE
-                            </Text>
-                          )}
-                          <BouncyButton
-                            onPress={() => (pdfSelectModeTool ? togglePdfPageSelected(page.id) : setPdfFullscreenIndex(index))}
-                            accessibilityRole="button"
-                            accessibilityLabel={pdfSelectModeTool ? `Select page ${index + 1}` : `Open page ${index + 1}`}
-                            accessibilityState={pdfSelectModeTool ? { selected: pdfSelectedPageIds.includes(page.id) } : undefined}
-                          >
-                          <View style={{
-                            width: '100%', aspectRatio: 0.75, borderRadius: 8, backgroundColor: toolsTheme.bg,
-                            alignItems: 'center', justifyContent: 'center', overflow: 'hidden'
-                          }}>
-                            {page.thumbnailLoading ? (
-                              <ActivityIndicator color={toolsTheme.accent} size="small" />
-                            ) : page.thumbnailUri ? (
-                              <Image
-                                source={{ uri: page.thumbnailUri }}
-                                style={{ width: '100%', height: '100%', transform: [{ rotate: `${page.rotation}deg` }] }}
-                                resizeMode="contain"
-                              />
-                            ) : Platform.OS !== 'web' && containerPages.length <= PDF_NATIVE_GRID_PREVIEW_MAX_PAGES ? (
-                              <PdfGridCardPreview container={activePdfContainer} page={page} />
-                            ) : (
-                              <PdfIconSVG size={28} color={toolsTheme.textSecondary} />
-                            )}
-                            {pdfSelectModeTool ? (
-                              <View style={{
-                                position: 'absolute', top: 10, right: 10, paddingVertical: 6, paddingHorizontal: 12,
-                                borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 5,
-                                backgroundColor: pdfSelectedPageIds.includes(page.id)
-                                  ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6')
-                                  : 'rgba(0,0,0,0.55)',
-                                borderWidth: pdfSelectedPageIds.includes(page.id) ? 0 : 1.5,
-                                borderColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'
-                              }}>
-                                {pdfSelectedPageIds.includes(page.id) && (
-                                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>✓</Text>
-                                )}
-                                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
-                                  {pdfSelectedPageIds.includes(page.id) ? `Page ${index + 1} Selected` : `Select Page ${index + 1}`}
-                                </Text>
-                              </View>
-                            ) : renderPdfReorderPill(page, index, false)}
-                          </View>
-                          </BouncyButton>
-                          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 4 }}>
-                            <BouncyButton onPress={() => rotatePdfEditorPage(page.id)} accessibilityRole="button" accessibilityLabel="Rotate page">
-                              <RotateIconSVG size={15} color={toolsTheme.textSecondary} />
-                            </BouncyButton>
-                            <BouncyButton onPress={() => removePdfEditorPage(page.id)} accessibilityRole="button" accessibilityLabel="Remove page">
-                              <TrashIconSVG />
-                            </BouncyButton>
-                          </View>
-                        </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                  </View>
-                </View>
-
-                {isWebWide && (
-                  <View>
-                    <View style={{ height: 1, backgroundColor: toolsTheme.border, marginBottom: 20 }} />
-                    <Text style={{ color: toolsTheme.text, fontSize: 14, fontWeight: '800', marginBottom: 10 }}>
-                      {tt('moreTools')}
-                    </Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                      {ALL_TOOLS_LIST.filter((t) => t.key !== 'pdfEditor').map(({ key, label, Icon }) => (
-                        <BouncyButton
-                          key={key}
-                          style={{
-                            alignItems: 'center', gap: 8, width: '23%',
-                            backgroundColor: toolsTheme.surface, borderWidth: 1, borderColor: toolsTheme.border,
-                            borderRadius: 14, padding: 14
-                          }}
-                          onPress={() => requestSwitchTool(key)}
-                          accessibilityRole="button"
-                        >
-                          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: toolsTheme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                            <Icon size={18} color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} />
-                          </View>
-                          <Text style={{ color: toolsTheme.text, fontSize: 12.5, fontWeight: '700', textAlign: 'center' }}>{label}</Text>
-                        </BouncyButton>
-                      ))}
-                    </View>
-                  </View>
-                )}
-                </View>
-              )}
-            </AppKeyboardAwareScrollView>
-
-            {/* Sticky footer - only the Compressor's Compress All/Download
-                All, deliberately outside the ScrollView so it stays
-                pinned to the bottom of the screen instead of scrolling
-                away with the file list. PDF Editor no longer has a
-                bottom footer - Export lives in the top header now. */}
-            {activeTool === 'imageCompressor' && compressorFiles.length > 0 && !isWebWide && (
-              <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 10, padding: 16, backgroundColor: toolsTheme.surface, borderTopWidth: 1, borderTopColor: toolsTheme.border }}>
-                <BouncyButton
-                  style={[styles.saveAccountSettingsBtn, { flex: 1, marginTop: 0, opacity: compressorProcessing ? 0.6 : 1 }]}
-                  onPress={runCompressorBatch}
-                  disabled={compressorProcessing || !compressorFiles.some((f) => f.status === 'pending' || f.status === 'error')}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: compressorProcessing, busy: compressorProcessing }}
-                >
-                  <Text style={styles.submitBtnText}>{compressorProcessing ? tt('compressing') : tt('compressAll')}</Text>
-                </BouncyButton>
-                <BouncyButton
-                  style={[
-                    styles.saveAccountSettingsBtn,
-                    { flex: 1, marginTop: 0, backgroundColor: toolsTheme.bg, borderWidth: 1, borderColor: toolsTheme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-                    !compressorFiles.every((f) => f.status === 'done') && { opacity: 0.4 }
-                  ]}
-                  onPress={handleDownloadAllCompressed}
-                  disabled={!compressorFiles.every((f) => f.status === 'done')}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: !compressorFiles.every((f) => f.status === 'done') }}
-                >
-                  <><Text style={[styles.submitBtnText, { color: toolsTheme.text }]}>{tt('downloadAll')}</Text><ArrowRightIconSVG size={13} color={toolsTheme.text} /></>
-                </BouncyButton>
-              </View>
-            )}
-          </SafeAreaView>
-        </Modal>
+        />
       )}
 
       {/* PDF FULL-SCREEN PAGE EDITOR (mobile/narrow only) - tap any page
@@ -23753,7 +20473,7 @@ function App() {
           visible={true}
           onRequestClose={() => setPdfFullscreenIndex(null)}
         >
-          <SafeAreaView style={{ flex: 1, backgroundColor: '#0B0F17' }}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: SURFACE_BASE }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }}>
               <BouncyButton
                 style={{ padding: 6 }}
@@ -23761,9 +20481,9 @@ function App() {
                 accessibilityRole="button"
                 accessibilityLabel="Close"
               >
-                <Text style={{ color: '#F8FAFC', fontSize: 22 }}>✕</Text>
+                <Text style={{ color: TEXT_PRIMARY, fontSize: 22 }}>✕</Text>
               </BouncyButton>
-              <Text style={{ color: '#F8FAFC', fontSize: 14, fontWeight: '700' }}>
+              <Text style={{ color: TEXT_PRIMARY, fontSize: 14, fontWeight: '700' }}>
                 {pdfFullscreenIndex + 1} / {containerPages.length}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -23774,7 +20494,7 @@ function App() {
                     accessibilityRole="button"
                     accessibilityLabel="Undo last change"
                   >
-                    <RevertIconSVG color="#F8FAFC" size={18} />
+                    <RevertIconSVG color={TEXT_PRIMARY} size={18} />
                   </BouncyButton>
                 )}
                 <BouncyButton
@@ -23794,12 +20514,12 @@ function App() {
 
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 12 }}>
               <BouncyButton
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: RADIUS_99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
                 onPress={() => handleExtractPage(pdfFullscreenIndex)}
                 accessibilityRole="button"
                 accessibilityLabel="Save this page as its own PDF"
               >
-                <Text style={{ color: '#F8FAFC', fontSize: 12, fontWeight: '600' }}>Extract Page</Text>
+                <Text style={{ color: TEXT_PRIMARY, fontSize: 12, fontWeight: '600' }}>Extract Page</Text>
               </BouncyButton>
             </View>
 
@@ -23815,16 +20535,16 @@ function App() {
                   if (pdfNativePreviewError) {
                     return (
                       <View style={{ alignItems: 'center', gap: 8 }}>
-                        <PdfIconSVG size={64} color="#64748B" />
-                        <Text style={{ color: '#94A3B8', fontSize: 11.5 }}>{pdfNativePreviewError}</Text>
+                        <PdfIconSVG size={64} color={TEXT_MUTED} />
+                        <Text style={{ color: TEXT_SECONDARY, fontSize: 11.5 }}>{pdfNativePreviewError}</Text>
                       </View>
                     );
                   }
                   if (!pdfNativePreviewUri) {
                     return (
                       <View style={{ alignItems: 'center', gap: 8 }}>
-                        <ActivityIndicator color="#F8FAFC" size="small" />
-                        <Text style={{ color: '#94A3B8', fontSize: 11.5 }}>Loading preview...</Text>
+                        <ActivityIndicator color={TEXT_PRIMARY} size="small" />
+                        <Text style={{ color: TEXT_SECONDARY, fontSize: 11.5 }}>Loading preview...</Text>
                       </View>
                     );
                   }
@@ -23849,14 +20569,14 @@ function App() {
                       resizeMode="contain"
                     />
                     {pdfFullscreenHighResLoading && !highResUri && (
-                      <View style={{ position: 'absolute', bottom: 12, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 }}>
-                        <ActivityIndicator color="#F8FAFC" size="small" />
-                        <Text style={{ color: '#F8FAFC', fontSize: 11 }}>Sharpening...</Text>
+                      <View style={{ position: 'absolute', bottom: 12, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: RADIUS_99, paddingVertical: 6, paddingHorizontal: 12 }}>
+                        <ActivityIndicator color={TEXT_PRIMARY} size="small" />
+                        <Text style={{ color: TEXT_PRIMARY, fontSize: 11 }}>Sharpening...</Text>
                       </View>
                     )}
                   </>
                 ) : (
-                  <PdfIconSVG size={64} color="#64748B" />
+                  <PdfIconSVG size={64} color={TEXT_MUTED} />
                 );
               })()}
             </View>
@@ -23869,34 +20589,34 @@ function App() {
                 accessibilityRole="button"
                 accessibilityLabel="Previous page"
               >
-                <ChevronLeftSVG color="#F8FAFC" size={26} />
+                <ChevronLeftSVG color={TEXT_PRIMARY} size={26} />
               </BouncyButton>
 
               <BouncyButton
-                style={{ width: 36, height: 36, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+                style={{ width: 36, height: 36, borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
                 onPress={() => rotatePdfEditorPage(containerPages[pdfFullscreenIndex].id, -1)}
                 accessibilityRole="button"
                 accessibilityLabel="Rotate counter-clockwise"
               >
-                <RotateCCWIconSVG color="#F8FAFC" size={16} />
+                <RotateCCWIconSVG color={TEXT_PRIMARY} size={16} />
               </BouncyButton>
 
               <BouncyButton
-                style={{ width: 36, height: 36, borderRadius: 99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+                style={{ width: 36, height: 36, borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
                 onPress={() => rotatePdfEditorPage(containerPages[pdfFullscreenIndex].id, 1)}
                 accessibilityRole="button"
                 accessibilityLabel="Rotate clockwise"
               >
-                <RotateCWIconSVG color="#F8FAFC" size={16} />
+                <RotateCWIconSVG color={TEXT_PRIMARY} size={16} />
               </BouncyButton>
 
               <BouncyButton
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 14, borderRadius: RADIUS_99, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
                 onPress={() => { setPdfAddPageAfterIndex(pdfFullscreenIndex); setPdfAddPageMenuVisible(true); }}
                 accessibilityRole="button"
                 accessibilityLabel="Add a page after this one"
               >
-                <Text style={{ color: '#F8FAFC', fontSize: 13, fontWeight: '600' }}>Add page</Text>
+                <Text style={{ color: TEXT_PRIMARY, fontSize: 13, fontWeight: '600' }}>Add page</Text>
               </BouncyButton>
 
               <BouncyButton
@@ -23906,7 +20626,7 @@ function App() {
                 accessibilityRole="button"
                 accessibilityLabel="Next page"
               >
-                <ChevronRightSVG color="#F8FAFC" size={26} />
+                <ChevronRightSVG color={TEXT_PRIMARY} size={26} />
               </BouncyButton>
             </View>
           </SafeAreaView>
@@ -23928,24 +20648,24 @@ function App() {
           >
             <View style={{
               position: 'absolute', top: Platform.OS === 'web' ? 56 : 90, right: 16,
-              backgroundColor: toolsTheme.surface, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border,
+              backgroundColor: toolsTheme.surface, borderRadius: RADIUS_14, borderWidth: 1, borderColor: toolsTheme.border,
               minWidth: 210, paddingVertical: 10, overflow: 'hidden'
             }}>
               {Platform.OS === 'web' && (
                 <>
                   <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
                     <Text style={{ color: toolsTheme.textSecondary, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 8, textTransform: 'uppercase' }}>Language</Text>
-                    <View style={{ flexDirection: 'row', borderRadius: 99, borderWidth: 1, borderColor: toolsTheme.border, overflow: 'hidden', alignSelf: 'flex-start' }}>
+                    <View style={{ flexDirection: 'row', borderRadius: RADIUS_99, borderWidth: 1, borderColor: toolsTheme.border, overflow: 'hidden', alignSelf: 'flex-start' }}>
                       {['en', 'id'].map((lang) => (
                         <BouncyButton
                           key={lang}
-                          style={{ paddingHorizontal: 14, paddingVertical: 6, backgroundColor: toolsLanguage === lang ? (toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent' }}
+                          style={{ paddingHorizontal: 14, paddingVertical: 6, backgroundColor: toolsLanguage === lang ? (toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_MID) : 'transparent' }}
                           onPress={() => setToolsLanguagePersisted(lang)}
                           accessibilityRole="button"
                           accessibilityLabel={lang === 'en' ? 'English' : 'Indonesian'}
                           accessibilityState={{ selected: toolsLanguage === lang }}
                         >
-                          <Text style={{ color: toolsLanguage === lang ? '#FFFFFF' : toolsTheme.textSecondary, fontSize: 11.5, fontWeight: '700' }}>{lang.toUpperCase()}</Text>
+                          <Text style={{ color: toolsLanguage === lang ? WHITE : toolsTheme.textSecondary, fontSize: 11.5, fontWeight: '700' }}>{lang.toUpperCase()}</Text>
                         </BouncyButton>
                       ))}
                     </View>
@@ -23962,11 +20682,11 @@ function App() {
                   {DONATIONS_ENABLED && (
                     <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
                       <BouncyButton
-                        style={{ backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD', borderRadius: 99, paddingVertical: 9, alignItems: 'center' }}
-                        onPress={() => { setToolsMenuVisible(false); setDonateModalContext('tools'); setToolsInterstitialOfferCompress(false); setDonateTermsAgreed(false); setDonateModalVisible(true); }}
+                        style={{ backgroundColor: toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_MID, borderRadius: RADIUS_99, paddingVertical: 9, alignItems: 'center' }}
+                        onPress={() => { setToolsMenuVisible(false); setDonateModalContext('tools'); setToolsInterstitialOfferCompress(false); setDonateModalVisible(true); }}
                         accessibilityRole="button"
                       >
-                        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Donate</Text>
+                        <Text style={{ color: WHITE, fontSize: 13, fontWeight: '700' }}>Donate</Text>
                       </BouncyButton>
                     </View>
                   )}
@@ -23976,7 +20696,7 @@ function App() {
               {Platform.OS !== 'web' && DONATIONS_ENABLED && (
                 <BouncyButton
                   style={{ paddingHorizontal: 16, paddingVertical: 12 }}
-                  onPress={() => { setToolsMenuVisible(false); setDonateModalContext('tools'); setToolsInterstitialOfferCompress(false); setDonateTermsAgreed(false); setDonateModalVisible(true); }}
+                  onPress={() => { setToolsMenuVisible(false); setDonateModalContext('tools'); setToolsInterstitialOfferCompress(false); setDonateModalVisible(true); }}
                   accessibilityRole="button"
                 >
                   <Text style={{ color: toolsTheme.accent, fontSize: 13.5, fontWeight: '700' }}>Donate</Text>
@@ -24034,7 +20754,7 @@ function App() {
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: RED_500 }]}
                 accessibilityRole="button"
                 onPress={() => {
                   if (clearFilesConfirmTarget === 'compressor') clearAllCompressorFiles();
@@ -24090,7 +20810,7 @@ function App() {
                     <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Clear This PDF</Text>
                   </BouncyButton>
                   <BouncyButton
-                    style={[styles.confirmDeleteBtn, { backgroundColor: '#CF3B3B' }]}
+                    style={[styles.confirmDeleteBtn, { backgroundColor: RED_500 }]}
                     onPress={() => { setPdfClearConfirmVisible(false); clearAllPdfContainers(); }}
                     accessibilityRole="button"
                   >
@@ -24110,7 +20830,7 @@ function App() {
                     <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
                   </BouncyButton>
                   <BouncyButton
-                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: RED_500 }]}
                     onPress={() => { setPdfClearConfirmVisible(false); clearAllPdfContainers(); }}
                     accessibilityRole="button"
                   >
@@ -24163,7 +20883,7 @@ function App() {
                     <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
                   </BouncyButton>
                   <BouncyButton
-                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: RED_500 }]}
                     onPress={() => { const id = pdfTabCloseConfirmId; setPdfTabCloseConfirmId(null); removePdfContainer(id); }}
                     accessibilityRole="button"
                   >
@@ -24216,7 +20936,7 @@ function App() {
                   <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: DANGER }]}
                   onPress={() => { setPdfCompressUndoConfirmVisible(false); undoSpecificPdfEdit('Compress PDF'); }}
                   accessibilityRole="button"
                 >
@@ -24268,7 +20988,7 @@ function App() {
                   <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#EF4444' }]}
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: DANGER }]}
                   onPress={() => { setPdfPageNumbersUndoConfirmVisible(false); undoSpecificPdfEdit('Add page numbers'); }}
                   accessibilityRole="button"
                 >
@@ -24295,15 +21015,15 @@ function App() {
         <Modal animationType="none" transparent={true} visible={true} onRequestClose={() => {}}>
           <View style={{ flex: 1, backgroundColor: 'rgba(11, 15, 23, 0.6)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
             <View style={{
-              backgroundColor: theme.surface, borderRadius: 16, borderWidth: 1, borderColor: theme.border,
+              backgroundColor: theme.surface, borderRadius: RADIUS_16, borderWidth: 1, borderColor: theme.border,
               paddingVertical: 24, paddingHorizontal: 28, alignItems: 'center', gap: 14, minWidth: 240, maxWidth: 320
             }}>
-              <ActivityIndicator color={toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6'} size="large" />
+              <ActivityIndicator color={toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY} size="large" />
               <Text style={{ color: theme.text, fontSize: 14.5, fontWeight: '700' }}>
                 {pdfBusyLabel}{pdfBusyPercent != null ? ` ${pdfBusyPercent}%` : '...'}
               </Text>
               {pdfBusyLabel === 'Loading' && pdfLoadingIsLargeFile && (
-                <Text style={{ color: toolsThemeMode === 'light' ? '#6D28D9' : '#A78BFA', fontSize: 11.5, textAlign: 'center', lineHeight: 16, fontWeight: '600' }}>
+                <Text style={{ color: toolsThemeMode === 'light' ? BRAND_DEEP : INDIGO_300, fontSize: 11.5, textAlign: 'center', lineHeight: 16, fontWeight: '600' }}>
                   This is a big file - it might take a while.
                 </Text>
               )}
@@ -24312,12 +21032,12 @@ function App() {
               </Text>
               {pdfBusyLabel !== 'Loading' && (
                 <BouncyButton
-                  style={{ marginTop: 2, paddingVertical: 9, paddingHorizontal: 24, borderRadius: 99, borderWidth: 1.5, borderColor: '#EF4444' }}
+                  style={{ marginTop: 2, paddingVertical: 9, paddingHorizontal: 24, borderRadius: RADIUS_99, borderWidth: 1.5, borderColor: DANGER }}
                   onPress={cancelPdfOperation}
                   accessibilityRole="button"
                   accessibilityLabel="Cancel"
                 >
-                  <Text style={{ color: '#EF4444', fontSize: 12.5, fontWeight: '700' }}>Cancel</Text>
+                  <Text style={{ color: DANGER, fontSize: 12.5, fontWeight: '700' }}>Cancel</Text>
                 </BouncyButton>
               )}
             </View>
@@ -24384,8 +21104,8 @@ function App() {
                         key={key}
                         style={{
                           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                          padding: 12, borderRadius: 12, borderWidth: 1.5,
-                          borderColor: pdfCompressQuality === key ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                          padding: 12, borderRadius: RADIUS_12, borderWidth: 1.5,
+                          borderColor: pdfCompressQuality === key ? (toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border,
                           backgroundColor: pdfCompressQuality === key ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
                         }}
                         onPress={() => setPdfCompressQuality(key)}
@@ -24400,15 +21120,15 @@ function App() {
                           {estimates[key] != null && (
                             <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>~{formatBytes(estimates[key])}</Text>
                           )}
-                          {pdfCompressQuality === key && <Text style={{ color: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', fontSize: 15, fontWeight: '800' }}>✓</Text>}
+                          {pdfCompressQuality === key && <Text style={{ color: toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY, fontSize: 15, fontWeight: '800' }}>✓</Text>}
                         </View>
                       </BouncyButton>
                     ))}
                 <BouncyButton
                   style={{
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                    padding: 12, borderRadius: 12, borderWidth: 1.5,
-                    borderColor: pdfCompressQuality === 'custom' ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                    padding: 12, borderRadius: RADIUS_12, borderWidth: 1.5,
+                    borderColor: pdfCompressQuality === 'custom' ? (toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border,
                     backgroundColor: pdfCompressQuality === 'custom' ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
                   }}
                   onPress={() => setPdfCompressQuality('custom')}
@@ -24419,7 +21139,7 @@ function App() {
                     <Text style={{ color: theme.text, fontSize: 13.5, fontWeight: '700' }}>Custom</Text>
                     <Text style={{ color: theme.textSecondary, fontSize: 11.5, marginTop: 2 }}>Pick your own target size</Text>
                   </View>
-                  {pdfCompressQuality === 'custom' && <Text style={{ color: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6', fontSize: 15, fontWeight: '800' }}>✓</Text>}
+                  {pdfCompressQuality === 'custom' && <Text style={{ color: toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY, fontSize: 15, fontWeight: '800' }}>✓</Text>}
                 </BouncyButton>
                 {pdfCompressQuality === 'custom' && (
                   <View style={{ paddingLeft: 4 }}>
@@ -24429,7 +21149,7 @@ function App() {
                     <FocusableTextInput
                       style={styles.formInput}
                       placeholder={tt('customSizePlaceholder')}
-                      placeholderTextColor="#94A3B8"
+                      placeholderTextColor={TEXT_SECONDARY}
                       value={pdfCompressCustomKB}
                       onChangeText={(t) => setPdfCompressCustomKB(t.replace(/[^0-9]/g, ''))}
                       keyboardType="number-pad"
@@ -24454,7 +21174,7 @@ function App() {
                 <BouncyButton
                   style={[
                     styles.confirmDeleteBtn,
-                    { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD' },
+                    { flex: 1, backgroundColor: toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_MID },
                     pdfCompressQuality === 'custom' && !pdfCompressCustomKB && { opacity: 0.5 }
                   ]}
                   onPress={() => {
@@ -24509,7 +21229,7 @@ function App() {
           >
             <View style={{
               position: 'absolute', top: pdfMoreToolsMenuPosition.top, left: pdfMoreToolsMenuPosition.left,
-              backgroundColor: toolsTheme.surface, borderRadius: 14, borderWidth: 1, borderColor: toolsTheme.border,
+              backgroundColor: toolsTheme.surface, borderRadius: RADIUS_14, borderWidth: 1, borderColor: toolsTheme.border,
               minWidth: 200, paddingVertical: 6, overflow: 'hidden'
             }}>
               {pdfContainers.length > 1 && (
@@ -24582,21 +21302,21 @@ function App() {
               <Text style={styles.confirmSubText}>Applies to the file when you export - doesn't change anything until then.</Text>
               <View style={{ width: '100%', gap: 10, marginTop: 14 }}>
                 <FocusableTextInput
-                  style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15 }}
+                  style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: RADIUS_10, padding: 12, color: theme.text, fontSize: 15 }}
                   placeholder="Title"
                   placeholderTextColor={theme.textSecondary}
                   value={pdfMetadataDraft.title}
                   onChangeText={(t) => setPdfMetadataDraft((prev) => ({ ...prev, title: t }))}
                 />
                 <FocusableTextInput
-                  style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15 }}
+                  style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: RADIUS_10, padding: 12, color: theme.text, fontSize: 15 }}
                   placeholder="Author"
                   placeholderTextColor={theme.textSecondary}
                   value={pdfMetadataDraft.author}
                   onChangeText={(t) => setPdfMetadataDraft((prev) => ({ ...prev, author: t }))}
                 />
                 <FocusableTextInput
-                  style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15 }}
+                  style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: RADIUS_10, padding: 12, color: theme.text, fontSize: 15 }}
                   placeholder="Subject"
                   placeholderTextColor={theme.textSecondary}
                   value={pdfMetadataDraft.subject}
@@ -24612,7 +21332,7 @@ function App() {
                   <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }]}
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY }]}
                   onPress={savePdfMetadata}
                   accessibilityRole="button"
                 >
@@ -24651,7 +21371,7 @@ function App() {
                 {activePdfContainer ? `Split every ${pdfSplitEveryN || '1'} page(s) into its own PDF - ${activePdfContainer.pages.length} pages total.` : 'Split into separate PDFs.'}
               </Text>
               <FocusableTextInput
-                style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15, marginTop: 14, textAlign: 'center' }}
+                style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: RADIUS_10, padding: 12, color: theme.text, fontSize: 15, marginTop: 14, textAlign: 'center' }}
                 placeholder="Pages per file"
                 placeholderTextColor={theme.textSecondary}
                 keyboardType="number-pad"
@@ -24667,7 +21387,7 @@ function App() {
                   <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6' }]}
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY }]}
                   onPress={handleSplitPdf}
                   accessibilityRole="button"
                 >
@@ -24707,7 +21427,7 @@ function App() {
               <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Add Watermark</Text>
               <Text style={styles.confirmSubText}>Applies to every page - e.g. "DRAFT" or "CONFIDENTIAL".</Text>
               <FocusableTextInput
-                style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: 10, padding: 12, color: theme.text, fontSize: 15, marginTop: 14, textAlign: 'center' }}
+                style={{ width: '100%', borderWidth: 1.5, borderColor: theme.border, borderRadius: RADIUS_10, padding: 12, color: theme.text, fontSize: 15, marginTop: 14, textAlign: 'center' }}
                 placeholder="Watermark text"
                 placeholderTextColor={theme.textSecondary}
                 value={pdfWatermarkText}
@@ -24721,16 +21441,16 @@ function App() {
                   <BouncyButton
                     key={opt.label}
                     style={{
-                      flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
+                      flex: 1, paddingVertical: 9, borderRadius: RADIUS_10, alignItems: 'center',
                       borderWidth: 1.5,
-                      borderColor: pdfWatermarkOpacity === opt.value ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                      borderColor: pdfWatermarkOpacity === opt.value ? (toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border,
                       backgroundColor: pdfWatermarkOpacity === opt.value ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
                     }}
                     onPress={() => setPdfWatermarkOpacity(opt.value)}
                     accessibilityRole="button"
                     accessibilityState={{ selected: pdfWatermarkOpacity === opt.value }}
                   >
-                    <Text style={{ color: pdfWatermarkOpacity === opt.value ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.text, fontSize: 13, fontWeight: '700' }}>{opt.label}</Text>
+                    <Text style={{ color: pdfWatermarkOpacity === opt.value ? (toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.text, fontSize: 13, fontWeight: '700' }}>{opt.label}</Text>
                   </BouncyButton>
                 ))}
               </View>
@@ -24741,16 +21461,16 @@ function App() {
                   <BouncyButton
                     key={opt.label}
                     style={{
-                      flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
+                      flex: 1, paddingVertical: 9, borderRadius: RADIUS_10, alignItems: 'center',
                       borderWidth: 1.5,
-                      borderColor: pdfWatermarkPattern === opt.value ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
+                      borderColor: pdfWatermarkPattern === opt.value ? (toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border,
                       backgroundColor: pdfWatermarkPattern === opt.value ? (toolsThemeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)') : 'transparent'
                     }}
                     onPress={() => setPdfWatermarkPattern(opt.value)}
                     accessibilityRole="button"
                     accessibilityState={{ selected: pdfWatermarkPattern === opt.value }}
                   >
-                    <Text style={{ color: pdfWatermarkPattern === opt.value ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.text, fontSize: 13, fontWeight: '700' }}>{opt.label}</Text>
+                    <Text style={{ color: pdfWatermarkPattern === opt.value ? (toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.text, fontSize: 13, fontWeight: '700' }}>{opt.label}</Text>
                   </BouncyButton>
                 ))}
               </View>
@@ -24764,7 +21484,7 @@ function App() {
                   <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: pdfWatermarkText.trim() ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border }]}
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: pdfWatermarkText.trim() ? (toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border }]}
                   onPress={applyPdfWatermark}
                   disabled={!pdfWatermarkText.trim()}
                   accessibilityRole="button"
@@ -24805,21 +21525,21 @@ function App() {
               <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Add Page</Text>
               <View style={{ width: '100%', gap: 8, marginTop: 10 }}>
                 <BouncyButton
-                  style={{ paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
+                  style={{ paddingVertical: 12, borderRadius: RADIUS_12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
                   onPress={() => { const idx = pdfAddPageAfterIndex; setPdfAddPageMenuVisible(false); handleInsertBlankPage(idx); }}
                   accessibilityRole="button"
                 >
                   <Text style={{ color: theme.text, fontSize: 13.5, fontWeight: '700' }}>Blank Page</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={{ paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
+                  style={{ paddingVertical: 12, borderRadius: RADIUS_12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
                   onPress={() => { const idx = pdfAddPageAfterIndex; setPdfAddPageMenuVisible(false); pickPdfToInsert(idx); }}
                   accessibilityRole="button"
                 >
                   <Text style={{ color: theme.text, fontSize: 13.5, fontWeight: '700' }}>From PDF</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={{ paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
+                  style={{ paddingVertical: 12, borderRadius: RADIUS_12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
                   onPress={() => { const idx = pdfAddPageAfterIndex; setPdfAddPageMenuVisible(false); pickImageToInsert(idx); }}
                   accessibilityRole="button"
                 >
@@ -24867,7 +21587,7 @@ function App() {
                 <Text style={styles.confirmSubText}>{toolsDownloadConfirmInfo.note}</Text>
               )}
               {toolsDownloadConfirmInfo.rows && toolsDownloadConfirmInfo.rows.length > 0 && (
-                <View style={{ width: '100%', backgroundColor: theme.surface, borderRadius: 10, padding: 12, marginTop: 8, marginBottom: 16, gap: 8 }}>
+                <View style={{ width: '100%', backgroundColor: theme.surface, borderRadius: RADIUS_10, padding: 12, marginTop: 8, marginBottom: 16, gap: 8 }}>
                   {toolsDownloadConfirmInfo.rows.map((row) => (
                     <View key={row.label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                       <Text style={{ color: theme.textSecondary, fontSize: 11.5, fontWeight: '600' }}>{row.label}</Text>
@@ -24885,7 +21605,7 @@ function App() {
                   <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD' }]}
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_MID }]}
                   onPress={() => { const info = toolsDownloadConfirmInfo; setToolsDownloadConfirmVisible(false); info.onConfirm(); }}
                   accessibilityRole="button"
                 >
@@ -24937,7 +21657,7 @@ function App() {
                   <View style={{ width: '100%', gap: 6, marginTop: 8, marginBottom: hasSizeInfo ? 12 : 4 }}>
                     {pdfExportSummary.editLabels.map((label) => (
                       <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: theme.accent }} />
+                        <View style={{ width: 5, height: 5, borderRadius: RADIUS_3, backgroundColor: theme.accent }} />
                         <Text style={{ color: theme.text, fontSize: 13 }}>{EDIT_LABEL_TEXT[label] || label}</Text>
                       </View>
                     ))}
@@ -24949,7 +21669,7 @@ function App() {
                   const grew = pdfExportSummary.currentSize >= pdfExportSummary.originalSize;
                   return (
                     <>
-                      <View style={{ width: '100%', backgroundColor: theme.surface, borderRadius: 10, padding: 12, marginBottom: grew ? 8 : 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ width: '100%', backgroundColor: theme.surface, borderRadius: RADIUS_10, padding: 12, marginBottom: grew ? 8 : 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                         <View>
                           <Text style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase' }}>Original</Text>
                           <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>{formatBytes(pdfExportSummary.originalSize)}</Text>
@@ -24957,7 +21677,7 @@ function App() {
                         <ArrowRightIconSVG size={14} color={theme.textSecondary} />
                         <View style={{ alignItems: 'flex-end' }}>
                           <Text style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: '700', textTransform: 'uppercase' }}>{grew ? 'Result' : 'Compressed'}</Text>
-                          <Text style={{ color: grew ? '#F59E0B' : '#22C55E', fontSize: 14, fontWeight: '700' }}>{formatBytes(pdfExportSummary.currentSize)}</Text>
+                          <Text style={{ color: grew ? WARNING : GREEN_600, fontSize: 14, fontWeight: '700' }}>{formatBytes(pdfExportSummary.currentSize)}</Text>
                         </View>
                       </View>
                       {/* Compress's own algorithm always keeps whichever
@@ -24971,7 +21691,7 @@ function App() {
                           separately been rebuilt to not do this, but
                           this stays as a backstop regardless. */}
                       {grew && (
-                        <Text style={{ color: '#F59E0B', fontSize: 11.5, marginBottom: 16 }}>
+                        <Text style={{ color: WARNING, fontSize: 11.5, marginBottom: 16 }}>
                           This came out larger than the original, not smaller - you may want to skip compressing this file, or try a smaller custom target size.
                         </Text>
                       )}
@@ -24987,7 +21707,7 @@ function App() {
                     <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
                   </BouncyButton>
                   <BouncyButton
-                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD' }]}
+                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_MID }]}
                     onPress={confirmExportAndProceed}
                     accessibilityRole="button"
                   >
@@ -25027,14 +21747,14 @@ function App() {
               <Text style={styles.confirmSubText}>Combine them into one file, or export each on its own.</Text>
               <View style={{ width: '100%', gap: 8, marginTop: 12 }}>
                 <BouncyButton
-                  style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD', alignItems: 'center' }}
+                  style={{ paddingVertical: 12, borderRadius: RADIUS_12, backgroundColor: toolsThemeMode === 'light' ? BRAND_DEEP : BRAND_MID, alignItems: 'center' }}
                   onPress={openCombineOrderScreen}
                   accessibilityRole="button"
                 >
-                  <Text style={{ color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' }}>Combine Into One File</Text>
+                  <Text style={{ color: WHITE, fontSize: 13.5, fontWeight: '700' }}>Combine Into One File</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={{ paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
+                  style={{ paddingVertical: 12, borderRadius: RADIUS_12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}
                   onPress={handleExportEachSeparately}
                   accessibilityRole="button"
                 >
@@ -25054,12 +21774,12 @@ function App() {
           file. Originals stay untouched in the workspace afterward. */}
       {pdfCombineOrderVisible && (
         <Modal animationType={Platform.OS === 'web' ? 'none' : 'fade'} transparent={false} visible={true} onRequestClose={() => setPdfCombineOrderVisible(false)}>
-          <SafeAreaView style={{ flex: 1, backgroundColor: '#0B0F17' }}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: SURFACE_BASE }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }}>
               <BouncyButton style={{ padding: 6 }} onPress={() => setPdfCombineOrderVisible(false)} accessibilityRole="button" accessibilityLabel="Cancel">
-                <Text style={{ color: '#F8FAFC', fontSize: 22 }}>✕</Text>
+                <Text style={{ color: TEXT_PRIMARY, fontSize: 22 }}>✕</Text>
               </BouncyButton>
-              <Text style={{ color: '#F8FAFC', fontSize: 14, fontWeight: '700' }}>Combine Order</Text>
+              <Text style={{ color: TEXT_PRIMARY, fontSize: 14, fontWeight: '700' }}>Combine Order</Text>
               <View style={{ width: 34 }} />
             </View>
             <ScrollView contentContainerStyle={{ padding: 20, gap: 10 }}>
@@ -25067,17 +21787,17 @@ function App() {
                 const container = pdfContainers.find((c) => c.id === id);
                 if (!container) return null;
                 return (
-                  <View key={id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12, padding: 12 }}>
-                    <Text style={{ color: '#94A3B8', fontSize: 13, fontWeight: '800', width: 20 }}>{index + 1}</Text>
+                  <View key={id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: RADIUS_12, padding: 12 }}>
+                    <Text style={{ color: TEXT_SECONDARY, fontSize: 13, fontWeight: '800', width: 20 }}>{index + 1}</Text>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#F8FAFC', fontSize: 13.5, fontWeight: '700' }} numberOfLines={1}>{container.name}</Text>
-                      <Text style={{ color: '#64748B', fontSize: 11 }}>{container.label} - {container.pages.length} pages</Text>
+                      <Text style={{ color: TEXT_PRIMARY, fontSize: 13.5, fontWeight: '700' }} numberOfLines={1}>{container.name}</Text>
+                      <Text style={{ color: TEXT_MUTED, fontSize: 11 }}>{container.label} - {container.pages.length} pages</Text>
                     </View>
                     <BouncyButton onPress={() => moveCombineOrderId(id, -1)} disabled={index === 0} style={{ opacity: index === 0 ? 0.3 : 1, padding: 6 }} accessibilityRole="button" accessibilityLabel="Move earlier">
-                      <ChevronUpSVG size={16} color="#F8FAFC" />
+                      <ChevronUpSVG size={16} color={TEXT_PRIMARY} />
                     </BouncyButton>
                     <BouncyButton onPress={() => moveCombineOrderId(id, 1)} disabled={index === pdfCombineOrderIds.length - 1} style={{ opacity: index === pdfCombineOrderIds.length - 1 ? 0.3 : 1, padding: 6 }} accessibilityRole="button" accessibilityLabel="Move later">
-                      <ChevronDownSVG size={16} color="#F8FAFC" />
+                      <ChevronDownSVG size={16} color={TEXT_PRIMARY} />
                     </BouncyButton>
                   </View>
                 );
@@ -25091,7 +21811,7 @@ function App() {
                 accessibilityRole="button"
               >
                 <Text style={styles.submitBtnText}>{pdfEditorExporting ? 'Combining...' : 'Export Combined PDF'}</Text>
-                {!pdfEditorExporting && <ArrowRightIconSVG size={13} color="#FFFFFF" />}
+                {!pdfEditorExporting && <ArrowRightIconSVG size={13} color={WHITE} />}
               </BouncyButton>
             </View>
           </SafeAreaView>
@@ -25145,7 +21865,7 @@ function App() {
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: RED_500 }]}
                 accessibilityRole="button"
                 onPress={() => {
                   setLeaveToolsConfirmVisible(false);
@@ -25207,7 +21927,7 @@ function App() {
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Cancel</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: RED_500 }]}
                 accessibilityRole="button"
                 onPress={confirmPendingToolSwitch}
               >
@@ -25264,14 +21984,14 @@ function App() {
               This permanently deletes your portfolios, profile, likes, and follows. This cannot be undone.
             </Text>
             <Text style={{ color: theme.textSecondary, fontSize: 12, marginBottom: 8, alignSelf: 'flex-start' }}>
-              Type <Text style={{ color: '#EF4444', fontWeight: '800' }}>DELETE</Text> to confirm:
+              Type <Text style={{ color: DANGER, fontWeight: '800' }}>DELETE</Text> to confirm:
             </Text>
             <FocusableTextInput
               style={[styles.formInput, { width: '100%', marginBottom: 14 }]}
               value={deleteConfirmText}
               onChangeText={setDeleteConfirmText}
               placeholder="Type DELETE"
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={TEXT_SECONDARY}
               autoCapitalize="characters"
               accessibilityLabel="Type DELETE to confirm"
             />
@@ -25286,7 +22006,7 @@ function App() {
               <BouncyButton
                 style={[
                   styles.confirmDeleteBtn,
-                  { flex: 1, backgroundColor: deleteConfirmText.trim().toUpperCase() === 'DELETE' ? '#CF3B3B' : '#3A2222' }
+                  { flex: 1, backgroundColor: deleteConfirmText.trim().toUpperCase() === 'DELETE' ? RED_500 : RED_800 }
                 ]}
                 onPress={executeAccountDeletion}
                 disabled={deleteConfirmText.trim().toUpperCase() !== 'DELETE'}
@@ -25351,7 +22071,7 @@ function App() {
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Keep Editing</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: RED_500 }]}
                 accessibilityRole="button"
                 onPress={() => {
                   setAccountSettingsDiscardWarningVisible(false);
@@ -25420,12 +22140,10 @@ function App() {
                 <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Keep Editing</Text>
               </BouncyButton>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: RED_500 }]}
                 accessibilityRole="button"
                 onPress={() => {
                   setPasswordPageDiscardWarningVisible(false);
-                  setNewPassword('');
-                  setConfirmNewPassword('');
                   setChangePasswordPageVisible(false);
                   if (Platform.OS !== 'web') setAccountSettingsModalVisible(true);
                 }}
@@ -25438,178 +22156,43 @@ function App() {
       </Modal>
 
       {/* ABOUT DECENT CUSTOM DARK OVERLAY MODAL */}
-      <Modal
-        animationType="none"
-        transparent={true}
-        visible={aboutModalVisible}
-        onRequestClose={() => setAboutModalVisible(false)}
-      >
-        <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
-          onStartShouldSetResponder={() => Platform.OS === 'web'}
-          onResponderRelease={() => setAboutModalVisible(false)}
-        >
-            {/* Backdrop blur - safe here since every one of these is its
-                own native Modal, rendered on a separate OS-level surface
-                from the main screen (header/bottom bar/category bar), so
-                there's no GPU double-compositing with those. Falls back to
-                a flat dim in Lightweight Mode, same as everywhere else. */}
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )
-            )}
-          <Animated.View
-            pointerEvents={Platform.OS !== 'web' && !subPageInteractive ? 'none' : 'auto'}
-            style={{ flex: 1, transform: Platform.OS === 'web' ? [] : [{ translateX: subPageSlideAnim }], ...(isWebWide ? { justifyContent: 'center', alignItems: 'center' } : {}) }}
-            // Claims the touch responder so a tap that starts inside the card
-            // (e.g. focusing a text field) never bubbles up to the backdrop's
-            // dismiss handler. Needed because react-native-web's TextInput
-            // (a plain DOM <input>) doesn't itself claim the responder the way
-            // native TextInput does, so without this the touch would otherwise
-            // propagate up and close the modal.
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => {}}
-          >
-          <SafeAreaView style={[styles.overlayModalContainer, { maxHeight: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}>
-            <View style={[styles.modalTopBar, { justifyContent: 'flex-start', gap: 10 }]}>
-              {!isWebWide && (
-                <BouncyButton style={{ padding: 4 }} onPress={() => setAboutModalVisible(false)} accessibilityRole="button" accessibilityLabel="Back">
-                  <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
-                </BouncyButton>
-              )}
-              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>About DECENT</Text>
-              <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Close" onPress={() => {
-                setAboutModalVisible(false);
-                if (Platform.OS !== 'web' && returnToOptionsOnClose) {
-                  setSettingsModalVisible(true);
-                  setReturnToOptionsOnClose(false);
-                } else {
-                  setSettingsModalVisible(false);
-                }
-              }}>
-                <Text style={styles.closeBtnText}>✕</Text>
-              </BouncyButton>
-            </View>
-
-            <ScrollView ref={hideScrollbarRefCallback(isWebWide)} contentContainerStyle={{ padding: 20, gap: 14 }}>
-              <Text style={{ fontSize: 18 }}>
-                <Text style={{ color: themeMode === 'light' ? '#6D28D9' : '#C084FC', fontWeight: '900' }}>DECENT</Text>
-                <Text style={{ color: theme.text, fontWeight: '800' }}> v{APP_VERSION} (b{BUILD_NUMBER})</Text>
-              </Text>
-              <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
-                DECENT is a portfolio-sharing platform built for designers - UI/UX, Graphic Design, and Illustration - to showcase real, interactive work in one place instead of a static gallery.
-              </Text>
-              <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 21 }}>
-                Embed live, fully interactive Figma prototypes for UI/UX case studies. Upload showcase images with captions and cropping, or short videos, for Graphic Design and Illustration work.
-              </Text>
-
-              <View style={{ backgroundColor: theme.surface, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: theme.border }}>
-                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Platform Highlights</Text>
-                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Live, interactive Figma prototype viewports for UI/UX</Text>
-                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Video and image showcase for Graphic Design & Illustration</Text>
-                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Real-usage-based category browsing and tagging</Text>
-                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Transparent AI disclosure on every portfolio</Text>
-                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Follows, likes, and a real notification hub</Text>
-                <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 3 }}>❖ Shareable profile & portfolio links with QR codes</Text>
-                <Text style={{ color: theme.textSecondary, fontSize: 13 }}>❖ Seamless dark mode design</Text>
-              </View>
-
-              <BouncyButton
-                style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD', borderRadius: 99, paddingVertical: 14, alignItems: 'center', marginTop: 10 }}
-                onPress={() => setAboutModalVisible(false)}
-                accessibilityRole="button"
-              >
-                <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Close</Text>
-              </BouncyButton>
-            </ScrollView>
-          </SafeAreaView>
-          </Animated.View>
-        </View>
-      </Modal>
+            <AboutModal
+        app={{
+          APP_VERSION,
+          BUILD_NUMBER,
+          aboutModalVisible,
+          contentModalWidth,
+          headerBottomY,
+          isWebWide,
+          lightweightMode,
+          returnToOptionsOnClose,
+          setAboutModalVisible,
+          setReturnToOptionsOnClose,
+          setSettingsModalVisible,
+          styles,
+          subPageInteractive,
+          subPageSlideAnim
+        }}
+      />
 
       {/* CHANGELOG / WHAT'S NEW - entries come from Supabase (changelog_entries
           table), not hardcoded, so new entries don't need an app update to
           show up - just an insert. Lazy-fetched once per session via
           changelogFetchedRef, same pattern as the followers/following and
           feature-interest lists elsewhere. */}
-      <Modal
-        animationType="none"
-        transparent={true}
-        visible={changelogModalVisible}
-        onRequestClose={() => setChangelogModalVisible(false)}
-      >
-        <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
-          onStartShouldSetResponder={() => Platform.OS === 'web'}
-          onResponderRelease={() => setChangelogModalVisible(false)}
-        >
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )
-            )}
-          <SafeAreaView style={[styles.overlayModalContainer, { height: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => {}}
-          >
-            <View style={styles.modalTopBar}>
-              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>What's New</Text>
-              <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} onPress={() => setChangelogModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
-                <Text style={styles.closeBtnText}>✕</Text>
-              </BouncyButton>
-            </View>
-
-            {changelogLoading ? (
-              <View style={{ padding: 40, alignItems: 'center' }}>
-                <ActivityIndicator color={theme.accent} />
-              </View>
-            ) : changelogEntries.length === 0 ? (
-              <View style={{ padding: 40, alignItems: 'center' }}>
-                <Text style={{ color: theme.textSecondary, fontSize: 13 }}>No updates logged yet.</Text>
-              </View>
-            ) : (
-              <ScrollView ref={hideScrollbarRefCallback(isWebWide)} contentContainerStyle={{ padding: 16, gap: 14 }}>
-                {changelogEntries.map((entry) => (
-                  <View
-                    key={entry.id}
-                    style={{ borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 14 }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      {entry.version && (
-                        <View style={{ backgroundColor: theme.bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
-                          <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>{entry.version}</Text>
-                        </View>
-                      )}
-                      <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
-                        {new Date(entry.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </Text>
-                    </View>
-                    <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14, marginBottom: entry.description ? 4 : 0 }}>
-                      {entry.title}
-                    </Text>
-                    {entry.description && (
-                      <Text style={{ color: theme.textSecondary, fontSize: 13, lineHeight: 18 }}>
-                        {entry.description}
-                      </Text>
-                    )}
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-          </SafeAreaView>
-        </View>
-      </Modal>
+            <ChangelogModal
+        app={{
+          changelogEntries,
+          changelogLoading,
+          changelogModalVisible,
+          contentModalWidth,
+          headerBottomY,
+          isWebWide,
+          lightweightMode,
+          setChangelogModalVisible,
+          styles
+        }}
+      />
 
       {/* b609: the auto-greeting version of the modal just above - same
           content (changelogEntries), different framing (a "Got it"
@@ -25651,7 +22234,7 @@ function App() {
                     <View key={entry.id} style={{ borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 14 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                         {entry.version && (
-                          <View style={{ backgroundColor: theme.bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
+                          <View style={{ backgroundColor: theme.bg, borderRadius: RADIUS_6, paddingHorizontal: 8, paddingVertical: 2 }}>
                             <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>{entry.version}</Text>
                           </View>
                         )}
@@ -25674,11 +22257,11 @@ function App() {
 
               <View style={{ padding: 16, paddingTop: 8, gap: 10 }}>
                 <BouncyButton
-                  style={{ backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD', borderRadius: 99, paddingVertical: 13, alignItems: 'center' }}
+                  style={{ backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID, borderRadius: RADIUS_99, paddingVertical: 13, alignItems: 'center' }}
                   onPress={() => setNewUpdatePopupVisible(false)}
                   accessibilityRole="button"
                 >
-                  <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Got it</Text>
+                  <Text style={{ color: WHITE, fontWeight: '700', fontSize: 15 }}>Got it</Text>
                 </BouncyButton>
                 <BouncyButton
                   onPress={() => {
@@ -25709,7 +22292,7 @@ function App() {
                 Your email has been confirmed. You're all set to start exploring DECENT.
               </Text>
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 20, backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD' }]}
+                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 20, backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID }]}
                 onPress={() => {
                   setEmailVerifiedModalVisible(false);
                   if (Platform.OS === 'web') {
@@ -25774,7 +22357,7 @@ function App() {
                       key={idx}
                       style={{
                         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                        backgroundColor: theme.surface, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: theme.border
+                        backgroundColor: theme.surface, borderRadius: RADIUS_10, padding: 14, borderWidth: 1, borderColor: theme.border
                       }}
                       onPress={() => {
                         if (action.kind === 'direct') {
@@ -25807,376 +22390,40 @@ function App() {
       )}
 
       {/* PRIVACY POLICY - WHITE THEME FOR READABILITY */}
-      <Modal
-        animationType="none"
-        transparent={true}
-        visible={privacyModalVisible}
-        onRequestClose={() => setPrivacyModalVisible(false)}
-      >
-        <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
-          onStartShouldSetResponder={() => Platform.OS === 'web'}
-          onResponderRelease={() => setPrivacyModalVisible(false)}
-        >
-            {/* Backdrop blur - safe here since every one of these is its
-                own native Modal, rendered on a separate OS-level surface
-                from the main screen (header/bottom bar/category bar), so
-                there's no GPU double-compositing with those. Falls back to
-                a flat dim in Lightweight Mode, same as everywhere else. */}
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )
-            )}
-          <Animated.View
-            pointerEvents={Platform.OS !== 'web' && !subPageInteractive ? 'none' : 'auto'}
-            style={{ flex: 1, transform: Platform.OS === 'web' ? [] : [{ translateX: subPageSlideAnim }], ...(isWebWide ? { justifyContent: 'center', alignItems: 'center' } : {}) }}
-            // Claims the touch responder so a tap that starts inside the card
-            // (e.g. focusing a text field) never bubbles up to the backdrop's
-            // dismiss handler. Needed because react-native-web's TextInput
-            // (a plain DOM <input>) doesn't itself claim the responder the way
-            // native TextInput does, so without this the touch would otherwise
-            // propagate up and close the modal.
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => {}}
-          >
-          <SafeAreaView style={[styles.overlayModalContainer, { backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', maxHeight: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}>
-            <View style={[styles.modalTopBar, { backgroundColor: '#FFFFFF', borderBottomColor: '#E2E8F0', justifyContent: 'flex-start', gap: 10 }]}>
-              {!isWebWide && (
-                <BouncyButton style={{ padding: 4 }} onPress={() => setPrivacyModalVisible(false)} accessibilityRole="button" accessibilityLabel="Back">
-                  <ChevronLeftSVG color="#6D28D9" size={22} />
-                </BouncyButton>
-              )}
-              <Text style={[styles.modalTopTitle, { color: '#0F172A', flex: 1 }, isWebWide && { fontSize: 20 }]}>Privacy Policy</Text>
-              <BouncyButton style={[styles.closeBtn, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]} accessibilityRole="button" accessibilityLabel="Close" onPress={() => {
-                setPrivacyModalVisible(false);
-                if (Platform.OS !== 'web' && returnToOptionsOnClose) {
-                  setSettingsModalVisible(true);
-                  setReturnToOptionsOnClose(false);
-                } else {
-                  setSettingsModalVisible(false);
-                }
-              }}>
-                <Text style={[styles.closeBtnText, { color: '#0F172A' }]}>✕</Text>
-              </BouncyButton>
-            </View>
-
-            <ScrollView ref={hideScrollbarRefCallback(isWebWide)} contentContainerStyle={{ padding: 20, gap: 14 }}>
-              <Text style={{ color: '#0F172A', fontSize: 20, fontWeight: '800' }}>Privacy Policy</Text>
-              <Text style={{ color: '#64748B', fontSize: 13, fontStyle: 'italic' }}>
-                Last updated: August 30, 2026.
-              </Text>
-              <Text style={{ color: '#1E293B', fontSize: 14, lineHeight: 21 }}>
-                DECENT ("we", "us", "our") is a portfolio-sharing platform for designers, operated from Indonesia by Iqbal Aprianda Putra. This policy explains what personal data we collect through the DECENT app and website, why we collect it, and the choices you have, in line with Indonesia's Personal Data Protection Law (UU No. 27 Tahun 2022).
-              </Text>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Account & Profile Data</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Email address and password when you sign up directly</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• If you sign in with Google instead, your name, email, and profile photo as shared by Google</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Your display name, handle, bio, role/title, and location, if you choose to add them</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Your profile photo</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• External links you choose to add to your profile (e.g. LinkedIn, Dribbble)</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• A push notification token for your device, only if you allow notifications</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Content You Create</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Portfolio titles, briefs, and case-study descriptions you write</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Cover images and any images or content blocks you upload</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Figma prototype links and embeds you add</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• "Live" project links and labels you add</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• Category/type tags you assign (e.g. UI/UX, Graphic Design, Illustration)</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Social & Engagement Data</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Who you follow and who follows you</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Portfolios you like</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Which portfolios you view while signed in - used only to power view counts and avoid counting the same view twice within 24 hours; never shown publicly next to your account</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Notifications you receive and whether you've read them</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• Reports you submit about other content or accounts, and reports submitted about you - used only for moderation</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Automatically Collected / Technical Data</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Device platform and app version, so we know what you're running when troubleshooting</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Last-active timestamp</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Crash and error reports (via Sentry) - technical details like stack traces, device model, and OS version, used only to find and fix bugs</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• Basic connection metadata generated automatically by our hosting providers as part of normal web/server operation</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Photo Library Access</Text>
-                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
-                  If you upload a cover image or profile photo, the app asks for permission to access your photo library so you can pick one. We only ever access the specific photo you select and upload - we don't scan or access your library beyond that.
-                </Text>
-              </View>
-
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Feature Interest ("I'm Interested" buttons)</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 6, lineHeight: 19 }}>
-                  When you tap "I'm Interested" on an upcoming feature (like Frontend Development portfolios), we record that your account expressed interest in that specific feature. This is tied to your account, not anonymous.
-                </Text>
-                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
-                  We use this to gauge real demand before building something, and may reach out to people who registered interest for a short survey about it (e.g. which tools/platforms you'd want supported) before or while we build it. You can stop this at any time by requesting account deletion via Account Settings, same as any other data we hold.
-                </Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>How We Use It</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
-                  <View style={{ marginTop: 2 }}><LockIconSVG /></View>
-                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To operate core features (profiles, portfolios, follows, likes, notifications)</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
-                  <View style={{ marginTop: 2 }}><LockIconSVG /></View>
-                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To show your public profile and work to other users, exactly as you've set them up</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
-                  <View style={{ marginTop: 2 }}><LockIconSVG /></View>
-                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To count and display deduplicated view counts on your portfolios</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
-                  <View style={{ marginTop: 2 }}><LockIconSVG /></View>
-                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To send push notifications you've opted into</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
-                  <View style={{ marginTop: 2 }}><LockIconSVG /></View>
-                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To review reports and enforce our Terms of Service (warnings, suspensions, bans)</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 3 }}>
-                  <View style={{ marginTop: 2 }}><LockIconSVG /></View>
-                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>To diagnose and fix bugs or crashes</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
-                  <View style={{ marginTop: 2 }}><LockIconSVG /></View>
-                  <Text style={{ color: '#334155', fontSize: 13, flex: 1 }}>We do not sell your data, and we do not use it for third-party advertising</Text>
-                </View>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Who We Share Data With</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 6, lineHeight: 19 }}>
-                  We use a small number of service providers to run DECENT. None of them are permitted to use your data for their own purposes:
-                </Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Supabase - hosts our database, sign-in, and file storage (portfolio images, avatars)</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Vercel - hosts the DECENT website</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Expo / EAS - builds the app and delivers push notifications and app updates</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Google - provides optional sign-in</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 6 }}>• Sentry - provides crash/error monitoring</Text>
-                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
-                  Prototype content you embed from Figma is subject to Figma's own privacy practices, not ours.
-                </Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Data Retention & Deletion</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You can edit or delete your own portfolios and profile info at any time</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Deleting your account via Account Settings permanently removes your profile, portfolios, likes, follows, and related records - this cannot be undone</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• We may retain limited records (e.g. moderation logs for reported content) as needed to enforce these policies or meet legal obligations, even after account deletion</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Your Rights</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Edit or delete your profile and portfolios anytime</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Request account deletion or a copy of your data via Account Settings or Feedback & Support</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Turn off push notifications anytime via your device settings</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• Lodge a complaint with Indonesia's data protection authority if you believe your rights have been violated</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Children's Privacy</Text>
-                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
-                  DECENT isn't directed at children under 13, and we don't knowingly collect data from them. If you believe a child has created an account, contact us via Feedback & Support so we can remove it.
-                </Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Changes to This Policy</Text>
-                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
-                  We may update this policy as DECENT evolves. Material changes will be reflected here with an updated "Last updated" date.
-                </Text>
-              </View>
-
-              <BouncyButton
-                style={{ backgroundColor: '#6D28D9', borderRadius: 99, paddingVertical: 14, alignItems: 'center', marginTop: 10 }}
-                onPress={() => setPrivacyModalVisible(false)}
-              >
-                <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Close</Text>
-              </BouncyButton>
-            </ScrollView>
-          </SafeAreaView>
-          </Animated.View>
-        </View>
-      </Modal>
+            <PrivacyModal
+        app={{
+          contentModalWidth,
+          headerBottomY,
+          isWebWide,
+          lightweightMode,
+          privacyModalVisible,
+          returnToOptionsOnClose,
+          setPrivacyModalVisible,
+          setReturnToOptionsOnClose,
+          setSettingsModalVisible,
+          styles,
+          subPageInteractive,
+          subPageSlideAnim
+        }}
+      />
 
       {/* TERMS OF SERVICE - WHITE THEME FOR READABILITY */}
       {termsModalVisible && (
-      <Modal
-        animationType="none"
-        transparent={true}
-        visible={true}
-        onRequestClose={() => setTermsModalVisible(false)}
-      >
-        <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
-          onStartShouldSetResponder={() => Platform.OS === 'web'}
-          onResponderRelease={() => setTermsModalVisible(false)}
-        >
-            {/* Backdrop blur - safe here since every one of these is its
-                own native Modal, rendered on a separate OS-level surface
-                from the main screen (header/bottom bar/category bar), so
-                there's no GPU double-compositing with those. Falls back to
-                a flat dim in Lightweight Mode, same as everywhere else. */}
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )
-            )}
-          <Animated.View
-            pointerEvents={Platform.OS !== 'web' && !subPageInteractive ? 'none' : 'auto'}
-            style={{ flex: 1, transform: Platform.OS === 'web' ? [] : [{ translateX: subPageSlideAnim }], ...(isWebWide ? { justifyContent: 'center', alignItems: 'center' } : {}) }}
-            // Claims the touch responder so a tap that starts inside the card
-            // (e.g. focusing a text field) never bubbles up to the backdrop's
-            // dismiss handler. Needed because react-native-web's TextInput
-            // (a plain DOM <input>) doesn't itself claim the responder the way
-            // native TextInput does, so without this the touch would otherwise
-            // propagate up and close the modal.
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => {}}
-          >
-          <SafeAreaView style={[styles.overlayModalContainer, { backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', maxHeight: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}>
-            <View style={[styles.modalTopBar, { backgroundColor: '#FFFFFF', borderBottomColor: '#E2E8F0', justifyContent: 'flex-start', gap: 10 }]}>
-              {!isWebWide && (
-                <BouncyButton style={{ padding: 4 }} onPress={() => setTermsModalVisible(false)} accessibilityRole="button" accessibilityLabel="Back">
-                  <ChevronLeftSVG color="#6D28D9" size={22} />
-                </BouncyButton>
-              )}
-              <Text style={[styles.modalTopTitle, { color: '#0F172A', flex: 1 }, isWebWide && { fontSize: 20 }]}>Terms of Service</Text>
-              <BouncyButton style={[styles.closeBtn, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]} accessibilityRole="button" accessibilityLabel="Close" onPress={() => {
-                setTermsModalVisible(false);
-                if (Platform.OS !== 'web' && returnToOptionsOnClose) {
-                  setSettingsModalVisible(true);
-                  setReturnToOptionsOnClose(false);
-                } else {
-                  setSettingsModalVisible(false);
-                }
-              }}>
-                <Text style={[styles.closeBtnText, { color: '#0F172A' }]}>✕</Text>
-              </BouncyButton>
-            </View>
-
-            <ScrollView ref={hideScrollbarRefCallback(isWebWide)} contentContainerStyle={{ padding: 20, gap: 14 }}>
-              <Text style={{ color: '#0F172A', fontSize: 20, fontWeight: '800' }}>Terms of Service</Text>
-              <Text style={{ color: '#64748B', fontSize: 13, fontStyle: 'italic' }}>
-                Last updated: August 30, 2026.
-              </Text>
-              <Text style={{ color: '#1E293B', fontSize: 14, lineHeight: 21 }}>
-                By creating an account or using DECENT, operated from Indonesia by Iqbal Aprianda Putra, you agree to these Terms of Service. If you don't agree, please don't use the app.
-              </Text>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Eligibility</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You must be at least 13 years old to use DECENT</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• You must provide accurate information when creating your account</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Your Account</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You're responsible for keeping your login credentials secure</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You're responsible for all activity under your account</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• Your handle can't impersonate someone else or violate these terms</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Your Content</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You retain ownership of everything you upload</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• By posting content, you grant DECENT a non-exclusive, worldwide license to display and distribute it within the app and on your public DECENT link, for as long as it stays on DECENT</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You confirm you have the right to share what you post - including client work, so make sure you have permission before uploading it</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• Content linked via Figma or "live link" fields stays governed by those external platforms' own terms</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• We may remove content that violates these terms</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>AI-Generated Content</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You must disclose whether AI was used in any portfolio you upload</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• For Illustration portfolios specifically, fully AI-generated art is not allowed - only AI-assisted work (e.g. AI-generated textures, pose references) is permitted, and you must describe how AI was used when disclosing it</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• Illustration content found to be fully AI-generated will be removed immediately if identified, and may result in account action</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Acceptable Use</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• No spam, harassment, hate speech, or impersonation</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• No uploading content you don't have rights to</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• No NSFW content outside what's explicitly flagged and permitted by our NSFW settings</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• No manipulating likes, views, or follower counts</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• No scraping, reverse-engineering, or abusing the app</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• We may suspend or ban accounts that break these rules</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Reports & Moderation</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You can report content or accounts that violate these terms</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• We review reports and may take action including content removal, warnings, temporary suspension, or permanent bans</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• Moderation decisions are made at our discretion</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Intellectual Property</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• The DECENT name, logo, and app design belong to us</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• Nothing here transfers our IP to you, or your IP to us, beyond the content license described above</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Disclaimer</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• DECENT is provided "as is" and "as available," without warranties of any kind</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• We're not liable for content posted by users, or third-party content embedded via Figma or live links</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• To the fullest extent permitted by law, we're not liable for indirect or consequential damages arising from your use of DECENT</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Termination</Text>
-                <Text style={{ color: '#334155', fontSize: 13, marginBottom: 3 }}>• You may delete your account at any time via Account Settings</Text>
-                <Text style={{ color: '#334155', fontSize: 13 }}>• We may suspend or terminate your account for violating these terms, at our discretion</Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Governing Law</Text>
-                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
-                  These terms are governed by the laws of Indonesia. Any disputes will be handled under Indonesian jurisdiction.
-                </Text>
-              </View>
-
-              <View style={{ backgroundColor: '#F1F5F9', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                <Text style={{ color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Changes to These Terms</Text>
-                <Text style={{ color: '#334155', fontSize: 13, lineHeight: 19 }}>
-                  We may update these terms as DECENT evolves. Continued use of DECENT after changes means you accept the updated terms.
-                </Text>
-              </View>
-
-              <BouncyButton
-                style={{ backgroundColor: '#6D28D9', borderRadius: 99, paddingVertical: 14, alignItems: 'center', marginTop: 10 }}
-                onPress={() => setTermsModalVisible(false)}
-              >
-                <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Close</Text>
-              </BouncyButton>
-            </ScrollView>
-          </SafeAreaView>
-          </Animated.View>
-        </View>
-      </Modal>
+            <TermsModal
+        app={{
+          contentModalWidth,
+          headerBottomY,
+          isWebWide,
+          lightweightMode,
+          returnToOptionsOnClose,
+          setReturnToOptionsOnClose,
+          setSettingsModalVisible,
+          setTermsModalVisible,
+          styles,
+          subPageInteractive,
+          subPageSlideAnim
+        }}
+      />
       )}
 
 
@@ -26187,271 +22434,44 @@ function App() {
           later (like Tools) would render on top of it regardless of
           which is actually "visible". */}
       {feedbackModalVisible && (
-      <Modal
-        animationType="none"
-        transparent={true}
-        visible={true}
-        onRequestClose={() => setFeedbackModalVisible(false)}
-      >
-        <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' }]}
-          onStartShouldSetResponder={() => Platform.OS === 'web'}
-          onResponderRelease={() => setFeedbackModalVisible(false)}
-        >
-            {/* Backdrop blur - safe here since every one of these is its
-                own native Modal, rendered on a separate OS-level surface
-                from the main screen (header/bottom bar/category bar), so
-                there's no GPU double-compositing with those. Falls back to
-                a flat dim in Lightweight Mode, same as everywhere else. */}
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )
-            )}
-          <Animated.View
-            pointerEvents={Platform.OS !== 'web' && !subPageInteractive ? 'none' : 'auto'}
-            style={{ flex: 1, transform: Platform.OS === 'web' ? [] : [{ translateX: subPageSlideAnim }], ...(isWebWide ? { justifyContent: 'center', alignItems: 'center' } : {}) }}
-            // Claims the touch responder so a tap that starts inside the card
-            // (e.g. focusing a text field) never bubbles up to the backdrop's
-            // dismiss handler. Needed because react-native-web's TextInput
-            // (a plain DOM <input>) doesn't itself claim the responder the way
-            // native TextInput does, so without this the touch would otherwise
-            // propagate up and close the modal.
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => {}}
-          >
-          <SafeAreaView style={[styles.overlayModalContainer, { maxHeight: isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40, ...(isWebWide ? { maxWidth: contentModalWidth } : {}) }]}>
-            <View style={[styles.modalTopBar, { justifyContent: 'flex-start', gap: 10 }]}>
-              {!isWebWide && (
-                <BouncyButton style={{ padding: 4 }} onPress={() => setFeedbackModalVisible(false)} accessibilityRole="button" accessibilityLabel="Back">
-                  <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
-                </BouncyButton>
-              )}
-              <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>Feedback & Support</Text>
-              <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Close" onPress={() => {
-                setFeedbackModalVisible(false);
-                if (Platform.OS !== 'web' && returnToOptionsOnClose) {
-                  setSettingsModalVisible(true);
-                  setReturnToOptionsOnClose(false);
-                } else {
-                  setSettingsModalVisible(false);
-                }
-              }}>
-                <Text style={styles.closeBtnText}>✕</Text>
-              </BouncyButton>
-            </View>
-
-            <AppKeyboardAwareScrollView
-              ref={hideScrollbarRefCallback(isWebWide)}
-              contentContainerStyle={{ padding: 20, gap: 12 }}
-              enableOnAndroid={true}
-              extraScrollHeight={140}
-              keyboardShouldPersistTaps="handled"
-            >
-              <View style={styles.knownContactBox}>
-                <Text style={styles.knownContactTitle}>Support Contact</Text>
-                <Text style={styles.knownContactEmail}>iputra07@gmail.com</Text>
-                <Text style={styles.knownContactSub}>Direct inquiries & platform feedback</Text>
-              </View>
-
-              <AnimatedPillTabs
-                theme={theme}
-                themeMode={themeMode}
-                activeKey={feedbackSupportTab}
-                onChange={setFeedbackSupportTab}
-                tabs={[
-                  { key: 'feedback', label: 'Feedback' },
-                  { key: 'featureRequest', label: 'Request Feature' }
-                ]}
-              />
-
-              {feedbackSupportTab === 'feedback' && (
-                <>
-                  <Text style={styles.formGroupLabel}>Your Email Address *</Text>
-                  <FocusableTextInput
-                    style={styles.formInput}
-                    placeholder="user@example.com"
-                    placeholderTextColor="#94A3B8"
-                    value={feedbackEmail}
-                    onChangeText={setFeedbackEmail}
-                    accessibilityLabel="Your Email Address"
-                  />
-
-                  <Text style={styles.formGroupLabel}>Feedback Message or Issue Description *</Text>
-                  <FocusableTextInput
-                    style={[styles.formInput, { height: 90, textAlignVertical: 'top' }]}
-                    multiline
-                    placeholder="Describe your suggestion or technical issue in detail..."
-                    placeholderTextColor="#94A3B8"
-                    value={feedbackMessage}
-                    onChangeText={setFeedbackMessage}
-                    maxLength={1000}
-                    accessibilityLabel="Feedback Message or Issue Description"
-                  />
-
-                  <View style={styles.feedbackNotifyToggleRow}>
-                    <View style={{ flex: 1, marginRight: 10 }}>
-                      <Text style={styles.settingItemTitle}>Send Email Notification</Text>
-                      <Text style={styles.settingItemSub}>
-                        Receive an email alert when your reported issue is confirmed and being fixed.
-                      </Text>
-                    </View>
-                    <AppSwitch
-                      value={feedbackNotifyEmail}
-                      onValueChange={setFeedbackNotifyEmail}
-                      trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                      thumbColor="#FFFFFF"
-                      theme={theme}
-                      accessibilityRole="switch"
-                      accessibilityLabel="Send Email Notification"
-                      accessibilityState={{ checked: feedbackNotifyEmail }}
-                    />
-                  </View>
-
-                  <BouncyButton
-                    style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 10 }]}
-                    onPress={handleSubmitFeedback}
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.confirmDeleteText}>Submit Feedback</Text>
-                  </BouncyButton>
-                </>
-              )}
-
-              {feedbackSupportTab === 'featureRequest' && (
-                <>
-                  <Text style={{ color: theme.textSecondary, fontSize: 12, marginBottom: 4 }}>
-                    Have an idea for something DECENT should have? Tell us about it.
-                  </Text>
-
-                  <Text style={styles.formGroupLabel}>Title *</Text>
-                  <FocusableTextInput
-                    style={styles.formInput}
-                    placeholder="e.g. Dark mode for the block editor preview"
-                    placeholderTextColor="#94A3B8"
-                    value={featureRequestTitle}
-                    onChangeText={setFeatureRequestTitle}
-                    maxLength={80}
-                    accessibilityLabel="Title"
-                  />
-
-                  <Text style={styles.formGroupLabel}>Description *</Text>
-                  <FocusableTextInput
-                    style={[styles.formInput, { height: 90, textAlignVertical: 'top' }]}
-                    multiline
-                    placeholder="Describe what you'd like to see and why it'd help..."
-                    placeholderTextColor="#94A3B8"
-                    value={featureRequestDescription}
-                    onChangeText={setFeatureRequestDescription}
-                    maxLength={1000}
-                    accessibilityLabel="Description"
-                  />
-
-                  <BouncyButton
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}
-                    onPress={() => setFeatureRequestHasLink(!featureRequestHasLink)}
-                    accessibilityRole="checkbox"
-                    accessibilityLabel="I have a reference link"
-                    accessibilityState={{ checked: featureRequestHasLink }}
-                  >
-                    <View style={{
-                      width: 20, height: 20, borderRadius: 5, borderWidth: 1.5,
-                      borderColor: featureRequestHasLink ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                      backgroundColor: featureRequestHasLink ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
-                      alignItems: 'center', justifyContent: 'center'
-                    }}>
-                      {featureRequestHasLink && <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>✓</Text>}
-                    </View>
-                    <Text style={styles.settingItemTitle}>I have a reference link</Text>
-                  </BouncyButton>
-
-                  {featureRequestHasLink && (
-                    <FocusableTextInput
-                      style={[styles.formInput, { marginTop: 4 }]}
-                      placeholder="https://..."
-                      placeholderTextColor="#94A3B8"
-                      autoCapitalize="none"
-                      value={featureRequestLink}
-                      onChangeText={setFeatureRequestLink}
-                      accessibilityLabel="Reference link"
-                    />
-                  )}
-
-                  <BouncyButton
-                    style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 10 }]}
-                    onPress={handleSubmitFeatureRequest}
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.confirmDeleteText}>Submit Feature Request</Text>
-                  </BouncyButton>
-                </>
-              )}
-            </AppKeyboardAwareScrollView>
-          </SafeAreaView>
-          </Animated.View>
-        </View>
-      </Modal>
+            <FeedbackModal
+              app={{
+                AnimatedPillTabs,
+                AppKeyboardAwareScrollView,
+                AppSwitch,
+                FocusableTextInput,
+                contentModalWidth,
+                feedbackEmail,
+                headerBottomY,
+                isWebWide,
+                lightweightMode,
+                returnToOptionsOnClose,
+                session,
+                setFeedbackEmail,
+                setFeedbackModalVisible,
+                setFeedbackSuccessModalVisible,
+                setReturnToOptionsOnClose,
+                setSettingsModalVisible,
+                showAppAlert,
+                showToast,
+                styles,
+                subPageInteractive,
+                subPageSlideAnim
+              }}
+            />
       )}
 
       {/* FEEDBACK SUCCESS POPUP MODAL */}
-      <Modal
-        animationType={Platform.OS === 'web' ? 'none' : 'fade'}
-        transparent={true}
-        visible={feedbackSuccessModalVisible}
-        onRequestClose={() => setFeedbackSuccessModalVisible(false)}
-      >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
-          onStartShouldSetResponder={() => Platform.OS === 'web'}
-          onResponderRelease={() => setFeedbackSuccessModalVisible(false)}
-        >
-            {/* Backdrop blur - safe here since every one of these is its
-                own native Modal, rendered on a separate OS-level surface
-                from the main screen (header/bottom bar/category bar), so
-                there's no GPU double-compositing with those. Falls back to
-                a flat dim in Lightweight Mode, same as everywhere else. */}
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )
-            )}
-          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
-            // Claims the touch responder so a tap that starts inside the card
-            // (e.g. focusing a text field) never bubbles up to the backdrop's
-            // dismiss handler. Needed because react-native-web's TextInput
-            // (a plain DOM <input>) doesn't itself claim the responder the way
-            // native TextInput does, so without this the touch would otherwise
-            // propagate up and close the modal.
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => {}}
-          >
-            <View style={styles.successIconCircle}>
-              <CheckIconSVG />
-            </View>
-            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Feedback Submitted</Text>
-            <Text style={styles.confirmSubText}>
-              Thank you for helping improve DECENT! Our support team (iputra07@gmail.com) has received your submission.
-            </Text>
-            <BouncyButton
-              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 8 }]}
-              onPress={() => setFeedbackSuccessModalVisible(false)}
-              accessibilityRole="button"
-            >
-              <Text style={styles.confirmDeleteText}>Continue</Text>
-            </BouncyButton>
-          </View>
-        </View>
-      </Modal>
+            <FeedbackSuccessModal
+        app={{
+          fancyConfirmCardOverlay,
+          feedbackSuccessModalVisible,
+          isWebWide,
+          lightweightMode,
+          setFeedbackSuccessModalVisible,
+          styles
+        }}
+      />
 
       {/* DONATE MODAL - single screen, no scroll, Indonesia (QRIS) / International (PayPal, Wise).
           Conditionally mounted (not toggled via visible= on an always-
@@ -26463,376 +22483,48 @@ function App() {
           the post-download interstitial appeared hidden behind the Tools
           page until Tools was closed. */}
       {donateModalVisible && DONATIONS_ENABLED && (
-      <Modal
-        animationType={Platform.OS === 'web' ? 'none' : 'slide'}
-        transparent={true}
-        visible={true}
-        onRequestClose={handleCloseDonateModal}
-      >
-        <View style={[styles.overlayModalBg, isWebWide ? { justifyContent: 'center', paddingHorizontal: 16 } : (donateModalContext === 'tools' && toolsInterstitialSlim ? { justifyContent: 'center', paddingHorizontal: 16, backgroundColor: 'transparent' } : { justifyContent: 'flex-start', paddingTop: headerBottomY + 8, paddingHorizontal: 16, backgroundColor: 'transparent' })]}
-          onStartShouldSetResponder={() => Platform.OS === 'web'}
-          onResponderRelease={handleCloseDonateModal}
-        >
-            {/* Backdrop blur - safe here since every one of these is its
-                own native Modal, rendered on a separate OS-level surface
-                from the main screen (header/bottom bar/category bar), so
-                there's no GPU double-compositing with those. Falls back to
-                a flat dim in Lightweight Mode, same as everywhere else. */}
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )
-            )}
-          <SafeAreaView style={[styles.overlayModalContainer, {
-            // Slim mode (donation ask already dismissed for today, only
-            // the one-line "thanks" + Download PDF button shows) sizes to
-            // its actual content instead of the full interstitial's tall
-            // fixed height - previously it kept the same screen-filling
-            // height regardless, which left a large empty gap below the
-            // button once there was barely any content left to fill it.
-            height: (donateModalContext === 'tools' && toolsInterstitialSlim)
-              ? undefined
-              : (isWebWide ? Math.min(640, Dimensions.get('window').height - 80) : Dimensions.get('window').height - headerBottomY - 40),
-            maxHeight: undefined,
-            ...(isWebWide ? { maxWidth: contentModalWidth } : {})
-          }]}
-            // Claims the touch responder so a tap that starts inside the card
-            // (e.g. focusing a text field) never bubbles up to the backdrop's
-            // dismiss handler. Needed because react-native-web's TextInput
-            // (a plain DOM <input>) doesn't itself claim the responder the way
-            // native TextInput does, so without this the touch would otherwise
-            // propagate up and close the modal.
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => {}}
-          >
-            <View style={styles.modalTopBar}>
-              <Text style={[styles.modalTopTitle, isWebWide && { fontSize: 20 }]}>
-                {donateModalContext === 'tools' ? 'Thanks for Using Tools' : 'Support DECENT'}
-              </Text>
-              <BouncyButton style={styles.closeBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} onPress={handleCloseDonateModal} accessibilityRole="button" accessibilityLabel="Close">
-                <Text style={styles.closeBtnText}>✕</Text>
-              </BouncyButton>
-            </View>
-
-            <View style={{ padding: 18, flex: 1 }}>
-              <View style={{ flex: 1 }}>
-                {donateModalContext === 'tools' && toolsInterstitialSlim ? (
-                  // SLIM MODE - collapses the whole donation ask down to
-                  // one line with an inline link back to the full version,
-                  // once the user's said they don't want to see it today.
-                  // Toggling this only ever changes THIS block's content -
-                  // never a second Modal stacked on top of this one, which
-                  // is exactly the kind of stacking bug the comment above
-                  // this whole Modal already warns about (the interstitial
-                  // once portalled behind Tools for the same reason).
-                  <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 18, marginBottom: 4 }}>
-                    Thanks for using this tool - you can{' '}
-                    <Text style={{ color: theme.accent, fontWeight: '700' }} onPress={() => setToolsInterstitialSlim(false)}>
-                      donate here
-                    </Text>
-                    {' '}if it saved you some time.
-                  </Text>
-                ) : (
-                <>
-                <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 18, marginBottom: 16 }}>
-                  {donateModalContext === 'tools'
-                    ? "This tool is completely free, with every feature included - no premium tier, no locked features, no account required. If it saved you some time, a donation helps keep it free for everyone."
-                    : "Hi, I'm Iqbal — a UI/UX designer focused on Figma prototyping and clean handovers for HR and dev teams. I built DECENT to give designers a simple place to showcase real, interactive portfolios instead of static screenshots. If it's been useful to you, a donation helps keep it running and improving."}
-                </Text>
-
-                <AnimatedPillTabs
-                  theme={theme}
-                  themeMode={themeMode}
-                  activeKey={donateRegion}
-                  onChange={handleDonateRegionChange}
-                  containerStyle={{ marginBottom: 16 }}
-                  tabs={[
-                    { key: 'id', label: 'Indonesia', icon: (color) => <LocationPinSVG color={color} /> },
-                    { key: 'intl', label: 'International', icon: (color) => <GlobeIconSVG color={color} /> }
-                  ]}
-                />
-
-                <BouncyButton
-                  style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 16 }}
-                  onPress={() => setDonateTermsAgreed(!donateTermsAgreed)}
-                  accessibilityRole="checkbox"
-                  accessibilityLabel="I agree to the Terms of Service, donations are voluntary and non-refundable"
-                  accessibilityState={{ checked: donateTermsAgreed }}
-                >
-                  <View style={{
-                    width: 20, height: 20, borderRadius: 5, marginTop: 1,
-                    borderWidth: 1.5, borderColor: donateTermsAgreed ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                    backgroundColor: donateTermsAgreed ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
-                    alignItems: 'center', justifyContent: 'center'
-                  }}>
-                    {donateTermsAgreed && <CheckIconSVG />}
-                  </View>
-                  <Text style={{ color: theme.textSecondary, fontSize: 12, flex: 1, lineHeight: 17 }}>
-                    I agree to the{' '}
-                    <Text style={{ color: theme.accent, fontWeight: '700' }} onPress={() => setTermsModalVisible(true)}>
-                      Terms of Service
-                    </Text>
-                    {' '}— donations are voluntary and non-refundable.
-                  </Text>
-                </BouncyButton>
-
-                {donateRegion === 'id' ? (
-                  <View style={{ alignItems: 'center' }}>
-                    <View style={{
-                      width: 240, height: 240, borderRadius: 16, borderWidth: 1, borderColor: theme.border,
-                      backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 10, overflow: 'hidden'
-                    }}>
-                      <Image
-                        source={require('./assets/qris-code.png')}
-                        style={{ width: 230, height: 230 }}
-                        resizeMode="contain"
-                      />
-                      {/* Blurred + gated behind the same Terms checkbox
-                          above, until agreed - reusing donateTermsAgreed
-                          rather than a separate flag, so there's exactly
-                          one "have they agreed" source of truth for the
-                          whole donate modal, not two that could disagree
-                          with each other. BlurView is already a proven
-                          dependency in this file (modal backdrops
-                          elsewhere), not something new being introduced. */}
-                      {!donateTermsAgreed && (
-                        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-                          <BlurView
-                            intensity={80}
-                            tint={themeMode === 'light' ? 'light' : 'dark'}
-                            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                          />
-                          <BouncyButton
-                            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 16 }}
-                            onPress={() => {
-                              showAppAlert('Agreement Required', 'Please check the box agreeing to the Terms of Service above to reveal the QR code.');
-                            }}
-                            accessibilityRole="button"
-                            accessibilityLabel="Tap to Reveal QR Code"
-                          >
-                            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(139,92,246,0.85)', alignItems: 'center', justifyContent: 'center' }}>
-                              <EyeViewIconSVG color="#FFFFFF" size={20} />
-                            </View>
-                            <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5, textAlign: 'center' }}>
-                              Tap to Reveal QR Code
-                            </Text>
-                          </BouncyButton>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={{ color: theme.textSecondary, fontSize: 12, textAlign: 'center', marginBottom: 12 }}>
-                      Scan with any e-wallet or mobile banking app that supports QRIS.
-                    </Text>
-                    <BouncyButton
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8,
-                        borderRadius: 10, borderWidth: 1, borderColor: theme.border,
-                        opacity: donateTermsAgreed ? 1 : 0.4
-                      }}
-                      disabled={!donateTermsAgreed}
-                      onPress={handleDownloadQrisCode}
-                      accessibilityRole="button"
-                      accessibilityState={{ disabled: !donateTermsAgreed }}
-                    >
-                      <DownloadIconSVG color={theme.accent} size={16} />
-                      <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 12.5 }}>Download QRIS</Text>
-                    </BouncyButton>
-                  </View>
-                ) : (
-                  <View style={{ gap: 10 }}>
-                    <BouncyButton
-                      style={styles.contrastDonateBtnFull}
-                      activeOpacity={0.88}
-                      onPress={() => {
-                        if (!donateTermsAgreed) {
-                          showAppAlert('Agreement Required', 'Please check the box agreeing to the Terms of Service before donating.');
-                          return;
-                        }
-                        openExternalLinkWithWarning(KO_FI_URL);
-                      }}
-                      accessibilityRole="button"
-                    >
-                      <Text style={styles.contrastDonateBtnText}>Donate via Ko-fi</Text>
-                    </BouncyButton>
-
-                    {/* GitHub Sponsors - was a cross-origin <iframe> embed of
-                        GitHub's own fixed-size button (114x32, no documented
-                        style/color/width customization API at all, since we
-                        only control the outer iframe box, not its internal
-                        cross-origin rendering) - replaced with a plain
-                        themed button instead, matching the Ko-fi button's
-                        exact full-width/fill treatment, just linking out to
-                        the Sponsors page directly. This also fully replaces
-                        the earlier blur-overlay workaround (needed only
-                        because a cross-origin iframe's internal clicks were
-                        otherwise impossible to gate behind Terms agreement)
-                        with the same simple disabled-button pattern Ko-fi
-                        already uses. */}
-                    <BouncyButton
-                      style={[styles.contrastDonateBtnFull, { backgroundColor: '#EA4AAA' }]}
-                      activeOpacity={0.88}
-                      onPress={() => {
-                        if (!donateTermsAgreed) {
-                          showAppAlert('Agreement Required', 'Please check the box agreeing to the Terms of Service before donating.');
-                          return;
-                        }
-                        openExternalLinkWithWarning('https://github.com/sponsors/kabouls');
-                      }}
-                      accessibilityRole="button"
-                    >
-                      <Text style={[styles.contrastDonateBtnText, { color: '#FFFFFF' }]}>Sponsor on GitHub</Text>
-                    </BouncyButton>
-                  </View>
-                )}
-                </>
-                )}
-
-                {donateModalContext === 'tools' && (
-                  <>
-                    {toolsInterstitialOfferCompress && (
-                      <BouncyButton
-                        style={{ marginTop: 16, alignItems: 'center', paddingVertical: 10, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
-                        onPress={() => {
-                          setDonateModalVisible(false);
-                          setActiveTool('imageCompressor');
-                        }}
-                        accessibilityRole="button"
-                      >
-                        <Text style={{ color: theme.accent, fontSize: 12.5, fontWeight: '700' }}>Want to compress this image too?</Text>
-                      </BouncyButton>
-                    )}
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 }}>
-                      <BouncyButton onPress={handleCloseDonateModal} accessibilityRole="button">
-                        <Text style={{ color: theme.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Dismiss</Text>
-                      </BouncyButton>
-                      {/* Only meaningful while donation content is actually
-                          showing - slim mode has already made this choice
-                          for THIS viewing, so there's nothing to toggle
-                          here in that state. Checking this doesn't change
-                          what's currently on screen - it only affects the
-                          next time this interstitial opens. */}
-                      {!toolsInterstitialSlim && (
-                        <BouncyButton
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                          onPress={() => handleToggleHideDonationToday(!toolsHideDonationChecked)}
-                          accessibilityRole="checkbox"
-                          accessibilityLabel="Don't show donation again today"
-                          accessibilityState={{ checked: toolsHideDonationChecked }}
-                        >
-                          <View style={{
-                            width: 16, height: 16, borderRadius: 4, borderWidth: 1.5,
-                            borderColor: toolsHideDonationChecked ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                            backgroundColor: toolsHideDonationChecked ? (toolsThemeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
-                            alignItems: 'center', justifyContent: 'center'
-                          }}>
-                            {toolsHideDonationChecked && <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800', lineHeight: 12 }}>✓</Text>}
-                          </View>
-                          <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600' }}>Don't show donation again today</Text>
-                        </BouncyButton>
-                      )}
-                    </View>
-                    {/* Nothing has actually downloaded/saved yet at this
-                        point - Export only ever assembles the file and
-                        gets here; "Download PDF" is what triggers the
-                        real save, and only once that's done does "Open
-                        PDF" appear as a second, separate explicit
-                        action. Dismissing without pressing either one
-                        means nothing gets saved. */}
-                    {pdfPendingExport && (
-                      <BouncyButton
-                        style={{
-                          marginTop: 'auto', width: '100%', paddingVertical: 12, borderRadius: 99, alignItems: 'center',
-                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD'
-                        }}
-                        onPress={handleDownloadPendingExport}
-                        accessibilityRole="button"
-                      >
-                        <Text style={{ color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' }}>
-                          Download PDF{pdfPendingExport.length > 1 ? 's' : ''}
-                        </Text>
-                      </BouncyButton>
-                    )}
-                    {!pdfPendingExport && lastExportedPdf && (
-                      <BouncyButton
-                        style={{
-                          marginTop: 'auto', width: '100%', paddingVertical: 12, borderRadius: 99, alignItems: 'center',
-                          backgroundColor: toolsThemeMode === 'light' ? '#6D28D9' : '#7D52DD'
-                        }}
-                        onPress={handleOpenLastExportedPdf}
-                        accessibilityRole="button"
-                      >
-                        <Text style={{ color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' }}>Open PDF</Text>
-                      </BouncyButton>
-                    )}
-                  </>
-                )}
-              </View>
-            </View>
-          </SafeAreaView>
-        </View>
-      </Modal>
+            <DonateModal
+        app={{
+          AnimatedPillTabs,
+          KO_FI_URL,
+          contentModalWidth,
+          donateModalContext,
+          handleCloseDonateModal,
+          handleDownloadPendingExport,
+          handleDownloadQrisCode,
+          handleOpenLastExportedPdf,
+          handleToggleHideDonationToday,
+          headerBottomY,
+          isWebWide,
+          lastExportedPdf,
+          lightweightMode,
+          openExternalLinkWithWarning,
+          pdfPendingExport,
+          setActiveTool,
+          setDonateModalVisible,
+          setTermsModalVisible,
+          setToolsInterstitialSlim,
+          showAppAlert,
+          styles,
+          toolsHideDonationChecked,
+          toolsInterstitialOfferCompress,
+          toolsInterstitialSlim,
+          toolsThemeMode
+        }}
+      />
       )}
 
       {/* DONATE SUCCESS POPUP MODAL */}
-      <Modal
-        animationType={Platform.OS === 'web' ? 'none' : 'fade'}
-        transparent={true}
-        visible={donateSuccessModalVisible}
-        onRequestClose={handleCloseDonateSuccess}
-      >
-        <View style={[styles.overlayModalBg, Platform.OS !== 'web' && { backgroundColor: 'rgba(11, 15, 23, 0.45)' }]}
-          onStartShouldSetResponder={() => Platform.OS === 'web'}
-          onResponderRelease={handleCloseDonateSuccess}
-        >
-            {/* Backdrop blur - safe here since every one of these is its
-                own native Modal, rendered on a separate OS-level surface
-                from the main screen (header/bottom bar/category bar), so
-                there's no GPU double-compositing with those. Falls back to
-                a flat dim in Lightweight Mode, same as everywhere else. */}
-            {Platform.OS !== 'web' && (
-              lightweightMode ? (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(11, 15, 23, 0.85)' }} />
-              ) : (
-                <BlurView
-                  intensity={55}
-                  tint={themeMode === 'light' ? 'light' : 'dark'}
-                  style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                />
-              )
-            )}
-          <View style={[styles.customConfirmCard, fancyConfirmCardOverlay]}
-            // Claims the touch responder so a tap that starts inside the card
-            // (e.g. focusing a text field) never bubbles up to the backdrop's
-            // dismiss handler. Needed because react-native-web's TextInput
-            // (a plain DOM <input>) doesn't itself claim the responder the way
-            // native TextInput does, so without this the touch would otherwise
-            // propagate up and close the modal.
-            onStartShouldSetResponder={() => Platform.OS === 'web'}
-            onResponderRelease={() => {}}
-          >
-            <View style={styles.successIconCircle}>
-              <CheckIconSVG />
-            </View>
-            <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Thank You!</Text>
-            <Text style={styles.confirmSubText}>
-              Your generosity keeps DECENT independent and growing. We greatly appreciate your support!
-            </Text>
-            <BouncyButton
-              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 8 }]}
-              onPress={handleCloseDonateSuccess}
-              accessibilityRole="button"
-            >
-              <Text style={styles.confirmDeleteText}>Continue</Text>
-            </BouncyButton>
-          </View>
-        </View>
-      </Modal>
+            <DonateSuccessModal
+        app={{
+          donateSuccessModalVisible,
+          fancyConfirmCardOverlay,
+          handleCloseDonateSuccess,
+          isWebWide,
+          lightweightMode,
+          styles
+        }}
+      />
 
       {/* APP SETTINGS - blurs content below header only, header stays visible */}
       {settingsPopupRendered && (
@@ -26868,10 +22560,10 @@ function App() {
               ...(Platform.OS === 'web' ? { right: 16, width: settingsDropdownWidth } : { left: 16, right: 16 }),
               maxHeight: Dimensions.get('window').height - (headerBottomY + 8) - 16,
               backgroundColor: theme.surface,
-              borderRadius: 16,
+              borderRadius: RADIUS_16,
               borderWidth: 1,
               borderColor: theme.border,
-              shadowColor: '#8B5CF6',
+              shadowColor: BRAND_PRIMARY,
               shadowOpacity: 0.25,
               shadowRadius: 16,
               shadowOffset: { width: 0, height: 8 },
@@ -26892,7 +22584,7 @@ function App() {
                   accessibilityRole="button"
                   accessibilityLabel="Back"
                 >
-                  <ChevronLeftSVG color={themeMode === 'light' ? '#6D28D9' : '#F8FAFC'} size={22} />
+                  <ChevronLeftSVG color={themeMode === 'light' ? BRAND_DEEP : TEXT_PRIMARY} size={22} />
                 </BouncyButton>
               )}
               <Text style={[styles.modalTopTitle, { flex: 1 }, isWebWide && { fontSize: 20 }]}>
@@ -26906,14 +22598,14 @@ function App() {
                   accessibilityLabel={themeMode === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
                   style={{
                     flexDirection: 'row', alignItems: 'center', position: 'relative',
-                    backgroundColor: theme.bg, borderRadius: 20, borderWidth: 1, borderColor: theme.border,
+                    backgroundColor: theme.bg, borderRadius: RADIUS_20, borderWidth: 1, borderColor: theme.border,
                     padding: 3, overflow: 'hidden'
                   }}
                 >
                   <Animated.View
                     style={{
-                      position: 'absolute', top: 3, left: 3, width: 30, height: 30, borderRadius: 15,
-                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                      position: 'absolute', top: 3, left: 3, width: 30, height: 30, borderRadius: RADIUS_15,
+                      backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID,
                       transform: [{
                         translateX: themeToggleAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 30] })
                       }]
@@ -26921,7 +22613,7 @@ function App() {
                   />
                   <View style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
                     <SunIconSVG
-                      color={themeMode === 'light' ? '#FFFFFF' : '#94A3B8'}
+                      color={themeMode === 'light' ? WHITE : TEXT_SECONDARY}
                       filled={themeMode === 'light'}
                       size={16}
                       activateAnim={sunActivateAnim}
@@ -26929,10 +22621,10 @@ function App() {
                   </View>
                   <View style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
                     <MoonIconSVG
-                      color={themeMode === 'dark' ? '#FFFFFF' : '#94A3B8'}
+                      color={themeMode === 'dark' ? WHITE : TEXT_SECONDARY}
                       filled={themeMode === 'dark'}
                       size={16}
-                      cutoutColor={themeMode === 'light' ? '#6D28D9' : '#8B5CF6'}
+                      cutoutColor={themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY}
                       activateAnim={moonActivateAnim}
                     />
                   </View>
@@ -27002,7 +22694,7 @@ function App() {
                       onPress={() => setLogoutConfirmModalVisible(true)}
                       accessibilityRole="button"
                     >
-                      <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Sign Out</Text>
+                      <Text style={{ color: DANGER, fontWeight: '700', fontSize: 14 }}>Sign Out</Text>
                     </BouncyButton>
                   )}
 
@@ -27031,7 +22723,7 @@ function App() {
                     <BouncyButton
                       style={[styles.donateSettingBtn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }]}
                       activeOpacity={0.88}
-                      onPress={() => { setDonateModalContext('portfolio'); setDonateTermsAgreed(false); setDonateModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
+                      onPress={() => { setDonateModalContext('portfolio'); setDonateModalVisible(true); setSettingsModalVisible(false); setOptionsView('root'); if (Platform.OS !== 'web') setReturnToOptionsOnClose(true); }}
                       accessibilityRole="button"
                     >
                       <HeartIconSVG liked={true} />
@@ -27107,7 +22799,7 @@ function App() {
                   {/* All 4 toggles grouped in one stroke-only, rounded
                       container, separate from the plain navigation rows
                       above and below it. */}
-                  <View style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 14, paddingHorizontal: 14, marginTop: 16, marginBottom: 16 }}>
+                  <View style={{ borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_14, paddingHorizontal: 14, marginTop: 16, marginBottom: 16 }}>
                     <View style={styles.settingToggleRow}>
                       <View style={{ flex: 1, marginRight: 10 }}>
                         <Text style={styles.settingItemTitle}>Hide Liked Portfolios from Public</Text>
@@ -27118,8 +22810,8 @@ function App() {
                       <AppSwitch
                         value={hideLikedPortfolios}
                         onValueChange={setHideLikedPortfolios}
-                        trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                        thumbColor="#FFFFFF"
+                        trackColor={{ false: theme.bg, true: themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY }}
+                        thumbColor={WHITE}
                         theme={theme}
                         accessibilityRole="switch"
                         accessibilityLabel="Hide Liked Portfolios from Public"
@@ -27145,8 +22837,8 @@ function App() {
                       <AppSwitch
                         value={safeSearchEnabled}
                         onValueChange={handleSafeSearchToggle}
-                        trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                        thumbColor="#FFFFFF"
+                        trackColor={{ false: theme.bg, true: themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY }}
+                        thumbColor={WHITE}
                         theme={theme}
                         accessibilityRole="switch"
                         accessibilityLabel="Safe Search"
@@ -27165,8 +22857,8 @@ function App() {
                       <AppSwitch
                         value={excludeAiGeneratedContent}
                         onValueChange={setExcludeAiGeneratedContent}
-                        trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                        thumbColor="#FFFFFF"
+                        trackColor={{ false: theme.bg, true: themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY }}
+                        thumbColor={WHITE}
                         theme={theme}
                         accessibilityRole="switch"
                         accessibilityLabel="Exclude AI-Generated Content"
@@ -27273,8 +22965,8 @@ function App() {
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                 <Text style={[styles.notifText, { flexShrink: 1 }]} numberOfLines={1}>{device.label}</Text>
                                 {s.is_current && (
-                                  <View style={{ backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#7D52DD', borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 }}>
-                                    <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700' }}>This device</Text>
+                                  <View style={{ backgroundColor: theme.mode === 'light' ? BRAND_DEEP : BRAND_MID, borderRadius: RADIUS_99, paddingHorizontal: 8, paddingVertical: 2 }}>
+                                    <Text style={{ color: WHITE, fontSize: 10, fontWeight: '700' }}>This device</Text>
                                   </View>
                                 )}
                               </View>
@@ -27317,7 +23009,7 @@ function App() {
                       }}
                       accessibilityRole="button"
                     >
-                      <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700' }}>Clear All</Text>
+                      <Text style={{ color: DANGER, fontSize: 13, fontWeight: '700' }}>Clear All</Text>
                     </BouncyButton>
                   )}
                   {notificationHistoryLoading ? (
@@ -27337,8 +23029,6 @@ function App() {
                             onPress={() => {
                               setSettingsModalVisible(false);
                               if (notif.type === 'create_password') {
-                                setNewPassword('');
-                                setConfirmNewPassword('');
                                 setChangePasswordPageVisible(true);
                               } else {
                                 openDesignerProfileById(notif.actorId);
@@ -27355,7 +23045,7 @@ function App() {
                               <Avatar uri={notif.avatar} style={styles.notifAvatar} />
                             )}
                             {!notif.read && (
-                              <View style={{ position: 'absolute', top: 0, right: 0, width: 9, height: 9, borderRadius: 4.5, backgroundColor: '#CF3B3B', borderWidth: 1.5, borderColor: theme.surface }} />
+                              <View style={{ position: 'absolute', top: 0, right: 0, width: 9, height: 9, borderRadius: RADIUS_4_5, backgroundColor: RED_500, borderWidth: 1.5, borderColor: theme.surface }} />
                             )}
                           </BouncyButton>
                           <BouncyButton
@@ -27367,8 +23057,6 @@ function App() {
                               } else if (notif.type === 'follow') {
                                 openDesignerProfileById(notif.actorId);
                               } else if (notif.type === 'create_password') {
-                                setNewPassword('');
-                                setConfirmNewPassword('');
                                 setChangePasswordPageVisible(true);
                               }
                             }}
@@ -27555,8 +23243,8 @@ function App() {
                     <AppSwitch
                       value={!tutorialsSkippedAll}
                       onValueChange={(v) => setTutorialsSkippedAll(!v)}
-                      trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                      thumbColor="#FFFFFF"
+                      trackColor={{ false: theme.bg, true: themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY }}
+                      thumbColor={WHITE}
                       theme={theme}
                       accessibilityRole="switch"
                       accessibilityLabel="Show Tutorials Automatically"
@@ -27645,7 +23333,7 @@ function App() {
               <FocusableTextInput
                 style={styles.formInput}
                 placeholder="Search categories..."
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor={TEXT_SECONDARY}
                 value={allCategoriesSearchQuery}
                 onChangeText={setAllCategoriesSearchQuery}
                 accessibilityLabel="Search categories"
@@ -27772,12 +23460,12 @@ function App() {
                       />
                       <View style={{
                         position: 'absolute', top: designerMenuPos.top, right: designerMenuPos.right, width: 220,
-                        backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                        backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: RADIUS_14, borderWidth: 1, borderColor: theme.border,
                         padding: 6,
-                        shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                        shadowColor: BLACK, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                       }}>
                         <BouncyButton
-                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                           onPress={() => {
                             setDesignerOptionsMenuVisible(false);
                             handleReportContent('user', selectedDesigner.id, selectedDesigner.name);
@@ -27787,7 +23475,7 @@ function App() {
                           <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
                         </BouncyButton>
                         <BouncyButton
-                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                           onPress={() => {
                             setDesignerOptionsMenuVisible(false);
                             mutedIds.has(selectedDesigner.id)
@@ -27801,14 +23489,14 @@ function App() {
                           </Text>
                         </BouncyButton>
                         <BouncyButton
-                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                          style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                           onPress={() => {
                             setDesignerOptionsMenuVisible(false);
                             handleBlockUser(selectedDesigner.id, selectedDesigner.name);
                           }}
                           accessibilityRole="button"
                         >
-                          <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
+                          <Text style={{ color: DANGER, fontWeight: '700', fontSize: 14 }}>Block User</Text>
                         </BouncyButton>
                       </View>
                     </View>
@@ -27899,12 +23587,12 @@ function App() {
                             />
                             <View style={{
                               position: 'absolute', top: designerMenuPos.top, right: designerMenuPos.right, width: 220,
-                              backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                              backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: RADIUS_14, borderWidth: 1, borderColor: theme.border,
                               padding: 6,
-                              shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                              shadowColor: BLACK, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                             }}>
                               <BouncyButton
-                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                                 onPress={() => {
                                   setDesignerOptionsMenuVisible(false);
                                   handleReportContent('user', selectedDesigner.id, selectedDesigner.name);
@@ -27914,7 +23602,7 @@ function App() {
                                 <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Profile</Text>
                               </BouncyButton>
                               <BouncyButton
-                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                                 onPress={() => {
                                   setDesignerOptionsMenuVisible(false);
                                   mutedIds.has(selectedDesigner.id)
@@ -27928,14 +23616,14 @@ function App() {
                                 </Text>
                               </BouncyButton>
                               <BouncyButton
-                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                                style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                                 onPress={() => {
                                   setDesignerOptionsMenuVisible(false);
                                   handleBlockUser(selectedDesigner.id, selectedDesigner.name);
                                 }}
                                 accessibilityRole="button"
                               >
-                                <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
+                                <Text style={{ color: DANGER, fontWeight: '700', fontSize: 14 }}>Block User</Text>
                               </BouncyButton>
                             </View>
                           </View>
@@ -27965,7 +23653,7 @@ function App() {
               {sharedTypeFilterBannerVisible && (
                 <View style={{
                   backgroundColor: themeMode === 'light' ? 'rgba(109,40,217,0.08)' : 'rgba(139,92,246,0.12)',
-                  borderWidth: 1, borderColor: theme.accent, borderRadius: 12,
+                  borderWidth: 1, borderColor: theme.accent, borderRadius: RADIUS_12,
                   padding: 12, marginBottom: 12
                 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -27991,7 +23679,7 @@ function App() {
                   <BouncyButton
                     style={{
                       alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 12, paddingVertical: 6,
-                      borderRadius: 99, borderWidth: 1, borderColor: theme.accent
+                      borderRadius: RADIUS_99, borderWidth: 1, borderColor: theme.accent
                     }}
                     onPress={() => {
                       setDesignerTypeFilter(new Set(selectedDesignerProjectTypes.map((t) => t.key)));
@@ -28107,7 +23795,7 @@ function App() {
                       {selectedDesigner.contactConsent && selectedDesigner.contacts && selectedDesigner.contacts.length > 0 && (
                         <BouncyButton
                           style={{
-                            width: 46, height: 46, borderRadius: 99, borderWidth: 1, borderColor: theme.border,
+                            width: 46, height: 46, borderRadius: RADIUS_99, borderWidth: 1, borderColor: theme.border,
                             backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center'
                           }}
                           onPress={() => setContactInfoModalVisible(true)}
@@ -28128,8 +23816,8 @@ function App() {
                       {followedDesigners.includes(selectedDesigner.id) && (
                         <BouncyButton
                           style={{
-                            width: 46, height: 46, borderRadius: 99, borderWidth: 1, borderColor: theme.border,
-                            backgroundColor: postNotifySubscriptions.includes(selectedDesigner.id) ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.surface,
+                            width: 46, height: 46, borderRadius: RADIUS_99, borderWidth: 1, borderColor: theme.border,
+                            backgroundColor: postNotifySubscriptions.includes(selectedDesigner.id) ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.surface,
                             alignItems: 'center', justifyContent: 'center'
                           }}
                           onPress={() => toggleNotifySubscription(selectedDesigner.id, selectedDesigner.name)}
@@ -28139,7 +23827,7 @@ function App() {
                         >
                           <BellOutlineSVG
                             size={20}
-                            color={postNotifySubscriptions.includes(selectedDesigner.id) ? '#FFFFFF' : theme.accentLight}
+                            color={postNotifySubscriptions.includes(selectedDesigner.id) ? WHITE : theme.accentLight}
                           />
                         </BouncyButton>
                       )}
@@ -28158,8 +23846,8 @@ function App() {
                       position: 'absolute',
                       top: 4, bottom: 4, left: 4,
                       width: (designerProfileTabBarWidth - 12) / 2,
-                      borderRadius: 99,
-                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                      borderRadius: RADIUS_99,
+                      backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID,
                       transform: [{
                         translateX: designerProfileTabSlideAnim.interpolate({
                           inputRange: [0, 1],
@@ -28227,7 +23915,7 @@ function App() {
 
               {designerProfileTab === 'likedWork' && loadingDesignerLikes && (
                 <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-                  <ActivityIndicator color="#8B5CF6" />
+                  <ActivityIndicator color={BRAND_PRIMARY} />
                 </View>
               )}
 
@@ -28354,7 +24042,7 @@ function App() {
         >
           <View
             style={isWebWide
-              ? { width: '100%', maxWidth: wizardModalWidth, height: Math.min(880, Dimensions.get('window').height - 48), borderRadius: 20, overflow: 'hidden', backgroundColor: theme.bg }
+              ? { width: '100%', maxWidth: wizardModalWidth, height: Math.min(880, Dimensions.get('window').height - 48), borderRadius: RADIUS_20, overflow: 'hidden', backgroundColor: theme.bg }
               : { flex: 1, width: '100%' }}
             onStartShouldSetResponder={() => Platform.OS === 'web'}
             onResponderRelease={() => {}}
@@ -28381,8 +24069,8 @@ function App() {
             <View
               style={{
                 width: isWebWide ? '48%' : '100%',
-                borderWidth: 1.5, borderColor: themeMode === 'light' ? 'rgba(109, 40, 217, 0.35)' : 'rgba(139,92,246,0.35)', borderRadius: 14, padding: 16,
-                backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)',
+                borderWidth: 1.5, borderColor: themeMode === 'light' ? 'rgba(109, 40, 217, 0.35)' : 'rgba(139,92,246,0.35)', borderRadius: RADIUS_14, padding: 16,
+                backgroundColor: themeMode === 'light' ? INDIGO_100_2 : 'rgba(139,92,246,0.1)',
                 overflow: 'hidden'
               }}
             >
@@ -28406,8 +24094,8 @@ function App() {
                   <BouncyButton
                     style={{
                       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-                      paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
-                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD'
+                      paddingVertical: 8, paddingHorizontal: 14, borderRadius: RADIUS_99, marginTop: 8,
+                      backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID
                     }}
                     onPress={() => {
                       setSelectedPortfolioType('ui_ux');
@@ -28416,8 +24104,8 @@ function App() {
                     accessibilityRole="button"
                     accessibilityLabel="Continue with UI/UX Design"
                   >
-                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
-                    <ChevronRightSVG color="#FFFFFF" size={15} />
+                    <Text style={{ color: WHITE, fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
+                    <ChevronRightSVG color={WHITE} size={15} />
                   </BouncyButton>
                 </View>
               ) : (
@@ -28426,8 +24114,8 @@ function App() {
                   <BouncyButton
                     style={{
                       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-                      paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99,
-                      backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD'
+                      paddingVertical: 8, paddingHorizontal: 14, borderRadius: RADIUS_99,
+                      backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID
                     }}
                     onPress={() => {
                       setSelectedPortfolioType('ui_ux');
@@ -28436,8 +24124,8 @@ function App() {
                     accessibilityRole="button"
                     accessibilityLabel="Continue with UI/UX Design"
                   >
-                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
-                    <ChevronRightSVG color="#FFFFFF" size={15} />
+                    <Text style={{ color: WHITE, fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
+                    <ChevronRightSVG color={WHITE} size={15} />
                   </BouncyButton>
                 </View>
               )}
@@ -28458,8 +24146,8 @@ function App() {
                   key={type.key}
                   style={{
                     width: isWebWide ? '48%' : '100%',
-                    borderWidth: 1.5, borderColor: themeMode === 'light' ? 'rgba(109, 40, 217, 0.35)' : 'rgba(139,92,246,0.35)', borderRadius: 14, padding: 16,
-                    backgroundColor: themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)',
+                    borderWidth: 1.5, borderColor: themeMode === 'light' ? 'rgba(109, 40, 217, 0.35)' : 'rgba(139,92,246,0.35)', borderRadius: RADIUS_14, padding: 16,
+                    backgroundColor: themeMode === 'light' ? INDIGO_100_2 : 'rgba(139,92,246,0.1)',
                     overflow: 'hidden'
                   }}
                 >
@@ -28485,8 +24173,8 @@ function App() {
                         {/* Remaining preset count, computed rather than
                             hardcoded so this stays correct if the list
                             above ever grows/shrinks. */}
-                        <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#7D52DD', alignItems: 'center', justifyContent: 'center' }}>
-                          <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '800' }}>
+                        <View style={{ width: 18, height: 18, borderRadius: RADIUS_9, backgroundColor: BRAND_MID, alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: WHITE, fontSize: 9, fontWeight: '800' }}>
                             +{Math.max(0, ILLUSTRATION_SOFTWARE_LIST.length - 4)}
                           </Text>
                         </View>
@@ -28494,8 +24182,8 @@ function App() {
                       <BouncyButton
                         style={{
                           flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-                          paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99,
-                          backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD'
+                          paddingVertical: 8, paddingHorizontal: 14, borderRadius: RADIUS_99,
+                          backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID
                         }}
                         onPress={() => {
                           setSelectedPortfolioType(type.key);
@@ -28504,16 +24192,16 @@ function App() {
                         accessibilityRole="button"
                         accessibilityLabel={`Continue with ${type.title}`}
                       >
-                        <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
-                        <ChevronRightSVG color="#FFFFFF" size={15} />
+                        <Text style={{ color: WHITE, fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
+                        <ChevronRightSVG color={WHITE} size={15} />
                       </BouncyButton>
                     </View>
                   ) : (
                     <BouncyButton
                       style={{
                         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, alignSelf: 'flex-end',
-                        paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
-                        backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD'
+                        paddingVertical: 8, paddingHorizontal: 14, borderRadius: RADIUS_99, marginTop: 8,
+                        backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID
                       }}
                       onPress={() => {
                         setSelectedPortfolioType(type.key);
@@ -28522,8 +24210,8 @@ function App() {
                       accessibilityRole="button"
                       accessibilityLabel={`Continue with ${type.title}`}
                     >
-                      <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
-                      <ChevronRightSVG color="#FFFFFF" size={15} />
+                      <Text style={{ color: WHITE, fontWeight: '700', fontSize: 12.5 }}>Continue</Text>
+                      <ChevronRightSVG color={WHITE} size={15} />
                     </BouncyButton>
                   )}
                 </View>
@@ -28532,7 +24220,7 @@ function App() {
                 key={type.key}
                 style={{
                   width: isWebWide ? '48%' : '100%',
-                  borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 16,
+                  borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_14, padding: 16,
                   overflow: 'hidden'
                 }}
               >
@@ -28574,8 +24262,8 @@ function App() {
                 <BouncyButton
                   style={{
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-end',
-                    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, marginTop: 8,
-                    backgroundColor: myFeatureInterests.has(type.key) ? '#0B815A' : (themeMode === 'light' ? '#6D28D9' : '#7D52DD')
+                    paddingVertical: 8, paddingHorizontal: 14, borderRadius: RADIUS_99, marginTop: 8,
+                    backgroundColor: myFeatureInterests.has(type.key) ? TEAL_700 : (themeMode === 'light' ? BRAND_DEEP : BRAND_MID)
                   }}
                   onPress={() => {
                     if (!requireAuth()) return;
@@ -28588,13 +24276,13 @@ function App() {
                 >
                   {myFeatureInterests.has(type.key) ? (
                     <>
-                      <CheckIconSVG color="#FFFFFF" />
-                      <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12 }}>Interested</Text>
+                      <CheckIconSVG color={WHITE} />
+                      <Text style={{ color: WHITE, fontWeight: '700', fontSize: 12 }}>Interested</Text>
                     </>
                   ) : (
                     <>
-                      <BellOutlineSVG size={14} color="#FFFFFF" />
-                      <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12 }}>I'm Interested</Text>
+                      <BellOutlineSVG size={14} color={WHITE} />
+                      <Text style={{ color: WHITE, fontWeight: '700', fontSize: 12 }}>I'm Interested</Text>
                     </>
                   )}
                 </BouncyButton>
@@ -28667,7 +24355,7 @@ function App() {
                 accessibilityRole="button"
               >
                 <View style={styles.iconTextInlineRow}>
-                  <CheckIconSVG color="#FFFFFF" />
+                  <CheckIconSVG color={WHITE} />
                   <Text style={styles.confirmDeleteText} numberOfLines={1}>{interestConfirmMode === 'remove' ? 'Yes, Remove Me' : "Yes, I'm Interested"}</Text>
                 </View>
               </BouncyButton>
@@ -28699,9 +24387,9 @@ function App() {
             <View style={{ width: '100%', gap: 8 }}>
               <BouncyButton
                 style={{
-                  padding: 12, borderRadius: 12, borderWidth: 1.5,
+                  padding: 12, borderRadius: RADIUS_12, borderWidth: 1.5,
                   borderColor: portfolioReportSelectedReason === 'ai_undisclosed' ? theme.accent : theme.border,
-                  backgroundColor: portfolioReportSelectedReason === 'ai_undisclosed' ? (themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)') : 'transparent'
+                  backgroundColor: portfolioReportSelectedReason === 'ai_undisclosed' ? (themeMode === 'light' ? INDIGO_100_2 : 'rgba(139,92,246,0.1)') : 'transparent'
                 }}
                 onPress={() => setPortfolioReportSelectedReason('ai_undisclosed')}
                 accessibilityRole="radio"
@@ -28716,9 +24404,9 @@ function App() {
 
               <BouncyButton
                 style={{
-                  padding: 12, borderRadius: 12, borderWidth: 1.5,
+                  padding: 12, borderRadius: RADIUS_12, borderWidth: 1.5,
                   borderColor: portfolioReportSelectedReason === 'nsfw_misuse' ? theme.accent : theme.border,
-                  backgroundColor: portfolioReportSelectedReason === 'nsfw_misuse' ? (themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)') : 'transparent'
+                  backgroundColor: portfolioReportSelectedReason === 'nsfw_misuse' ? (themeMode === 'light' ? INDIGO_100_2 : 'rgba(139,92,246,0.1)') : 'transparent'
                 }}
                 onPress={() => setPortfolioReportSelectedReason('nsfw_misuse')}
                 accessibilityRole="radio"
@@ -28733,9 +24421,9 @@ function App() {
 
               <BouncyButton
                 style={{
-                  padding: 12, borderRadius: 12, borderWidth: 1.5,
+                  padding: 12, borderRadius: RADIUS_12, borderWidth: 1.5,
                   borderColor: portfolioReportSelectedReason === 'other' ? theme.accent : theme.border,
-                  backgroundColor: portfolioReportSelectedReason === 'other' ? (themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.1)') : 'transparent'
+                  backgroundColor: portfolioReportSelectedReason === 'other' ? (themeMode === 'light' ? INDIGO_100_2 : 'rgba(139,92,246,0.1)') : 'transparent'
                 }}
                 onPress={() => setPortfolioReportSelectedReason('other')}
                 accessibilityRole="radio"
@@ -28814,7 +24502,7 @@ function App() {
             </Text>
 
             <BouncyButton
-              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', backgroundColor: '#DC2626' }]}
+              style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', backgroundColor: RED_500_2 }]}
               onPress={handleReportFullyAiGenerated}
               accessibilityRole="button"
             >
@@ -28859,7 +24547,7 @@ function App() {
               <FocusableTextInput
                 style={styles.formInput}
                 placeholder="e.g. Framer, Sketch, InVision..."
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor={TEXT_SECONDARY}
                 value={fUiUxSoftwareInterestText}
                 onChangeText={setFUiUxSoftwareInterestText}
                 maxLength={60}
@@ -28867,7 +24555,7 @@ function App() {
               />
 
               <BouncyButton
-                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 16, backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD' }]}
+                style={[styles.confirmDeleteBtn, { flex: 0, width: '100%', marginTop: 16, backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID }]}
                 onPress={async () => {
                   const ok = await handleSubmitUiUxSoftwareInterest();
                   if (ok) setUiUxSoftwareInterestModalVisible(false);
@@ -28935,7 +24623,7 @@ function App() {
                 <FocusableTextInput
                   style={styles.formInput}
                   placeholder="e.g. Animation, Motion Design, 3D Art..."
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={TEXT_SECONDARY}
                   value={newPortfolioTypeText}
                   onChangeText={setNewPortfolioTypeText}
                   maxLength={60}
@@ -28947,7 +24635,7 @@ function App() {
                   style={[styles.formInput, { height: 80, textAlignVertical: 'top' }]}
                   multiline
                   placeholder="What kind of work would you upload? Any examples or references help."
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={TEXT_SECONDARY}
                   value={newPortfolioTypeDetails}
                   onChangeText={setNewPortfolioTypeDetails}
                   maxLength={500}
@@ -28962,12 +24650,12 @@ function App() {
                   accessibilityState={{ checked: newPortfolioTypeConsent }}
                 >
                   <View style={{
-                    width: 20, height: 20, borderRadius: 5, marginTop: 1,
-                    borderWidth: 1.5, borderColor: newPortfolioTypeConsent ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                    backgroundColor: newPortfolioTypeConsent ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
+                    width: 20, height: 20, borderRadius: RADIUS_5, marginTop: 1,
+                    borderWidth: 1.5, borderColor: newPortfolioTypeConsent ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border,
+                    backgroundColor: newPortfolioTypeConsent ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : 'transparent',
                     alignItems: 'center', justifyContent: 'center'
                   }}>
-                    {newPortfolioTypeConsent && <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '900' }}>✓</Text>}
+                    {newPortfolioTypeConsent && <Text style={{ color: WHITE, fontSize: 12, fontWeight: '900' }}>✓</Text>}
                   </View>
                   <Text style={{ color: theme.textSecondary, fontSize: 12, flex: 1, lineHeight: 17 }}>
                     I'm okay being contacted at my account email if this request is considered.
@@ -29060,7 +24748,7 @@ function App() {
         >
           <View
             style={isWebWide
-              ? { width: '100%', maxWidth: wizardModalWidth, maxHeight: Math.min(880, Dimensions.get('window').height - 48), borderRadius: 20, overflow: 'hidden' }
+              ? { width: '100%', maxWidth: wizardModalWidth, maxHeight: Math.min(880, Dimensions.get('window').height - 48), borderRadius: RADIUS_20, overflow: 'hidden' }
               : { flex: 1, width: '100%' }}
             onStartShouldSetResponder={() => Platform.OS === 'web'}
             onResponderRelease={() => {}}
@@ -29134,10 +24822,10 @@ function App() {
                   {formStep === step ? (
                     <Animated.View
                       style={{
-                        width: 10, height: 10, borderRadius: 5,
+                        width: 10, height: 10, borderRadius: RADIUS_5,
                         backgroundColor: 'transparent',
                         borderWidth: 1.5, borderStyle: 'dashed',
-                        borderColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6',
+                        borderColor: themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY,
                         transform: [{
                           rotate: wizardStepSpinnerAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] })
                         }]
@@ -29146,10 +24834,10 @@ function App() {
                   ) : (
                     <View
                       style={{
-                        width: 10, height: 10, borderRadius: 5,
-                        backgroundColor: formStep > step ? '#22C55E' : 'transparent',
+                        width: 10, height: 10, borderRadius: RADIUS_5,
+                        backgroundColor: formStep > step ? GREEN_600 : 'transparent',
                         borderWidth: formStep > step ? 0 : 1.5,
-                        borderColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                        borderColor: themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY
                       }}
                     />
                   )}
@@ -29166,7 +24854,7 @@ function App() {
               <BouncyButton
                 onPress={handleCloseUploadWizard}
                 style={{
-                  width: 32, height: 32, borderRadius: 16,
+                  width: 32, height: 32, borderRadius: RADIUS_16,
                   borderWidth: 1.5, borderColor: theme.border,
                   alignItems: 'center', justifyContent: 'center'
                 }}
@@ -29196,13 +24884,13 @@ function App() {
                       selectedPortfolioType === 'illustration' ? 'e.g. Fantasy Character Series' :
                       'e.g. Smart FinTech App'
                     }
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={TEXT_SECONDARY}
                     value={fTitle}
                     onChangeText={(t) => { setFTitle(t); setErrors({ ...errors, fTitle: null }); }}
                     maxLength={100}
                     accessibilityLabel="Project Title"
                   />
-                  <Text style={{ color: '#64748B', fontSize: 11, marginTop: 4, textAlign: 'right' }}>
+                  <Text style={{ color: TEXT_MUTED, fontSize: 11, marginTop: 4, textAlign: 'right' }}>
                     {fTitle.length}/100
                   </Text>
                   {errors.fTitle ? <Text style={styles.errorText}>{errors.fTitle}</Text> : null}
@@ -29215,8 +24903,8 @@ function App() {
                     <BouncyButton
                       style={{
                         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                        backgroundColor: theme.surface, borderWidth: 1, borderColor: errors.fCategories ? '#EF4444' : theme.border,
-                        borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12
+                        backgroundColor: theme.surface, borderWidth: 1, borderColor: errors.fCategories ? DANGER : theme.border,
+                        borderRadius: RADIUS_10, paddingHorizontal: 14, paddingVertical: 12
                       }}
                       onPress={() => {
                         setCategorySearchQuery('');
@@ -29228,7 +24916,7 @@ function App() {
                       <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
                         {fCategories.length > 0 ? 'Tap to edit selection' : 'Tap to select categories & tags'}
                       </Text>
-                      <ChevronRightSVG color="#8B5CF6" size={16} />
+                      <ChevronRightSVG color={BRAND_PRIMARY} size={16} />
                     </BouncyButton>
 
                     {fCategories.length > 0 && (
@@ -29264,16 +24952,16 @@ function App() {
                       to CHANGE it from the app, not the tag itself. */}
                   {Platform.OS === 'web' && (
                   <View style={{
-                    marginTop: 12, backgroundColor: theme.surface, borderRadius: 12,
-                    borderWidth: 1, borderColor: fIsNsfw ? '#F59E0B' : theme.border, padding: 10
+                    marginTop: 12, backgroundColor: theme.surface, borderRadius: RADIUS_12,
+                    borderWidth: 1, borderColor: fIsNsfw ? WARNING : theme.border, padding: 10
                   }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <Text style={[styles.settingItemTitle, { flex: 1, fontSize: 13 }]}>Mark as NSFW</Text>
                       <AppSwitch
                         value={fIsNsfw}
                         onValueChange={setFIsNsfw}
-                        trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                        thumbColor="#FFFFFF"
+                        trackColor={{ false: theme.bg, true: themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY }}
+                        thumbColor={WHITE}
                         theme={theme}
                         accessibilityRole="switch"
                         accessibilityLabel="Mark as NSFW"
@@ -29314,8 +25002,8 @@ function App() {
                       <BouncyButton
                         style={{
                           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                          borderWidth: 1, borderColor: errors.fAiGenerated ? '#EF4444' : theme.border,
-                          borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12,
+                          borderWidth: 1, borderColor: errors.fAiGenerated ? DANGER : theme.border,
+                          borderRadius: RADIUS_10, paddingVertical: 10, paddingHorizontal: 12,
                           backgroundColor: theme.surface
                         }}
                         onPress={() => setAiDisclosureDropdownOpen((v) => !v)}
@@ -29350,8 +25038,8 @@ function App() {
                           />
                           <View style={{
                             position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 100,
-                            borderRadius: 10, borderWidth: 1, borderColor: theme.border, overflow: 'hidden',
-                            shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                            borderRadius: RADIUS_10, borderWidth: 1, borderColor: theme.border, overflow: 'hidden',
+                            shadowColor: BLACK, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                           }}>
                             {/* Real blur on native when Fancy Mode is on -
                                 BlurView doesn't render reliably on
@@ -29375,7 +25063,7 @@ function App() {
                             )}
                             <View style={{ padding: 4 }}>
                             <BouncyButton
-                              style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
+                              style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: RADIUS_8 }}
                               onPress={() => { setFIsAiGenerated(true); setAiDisclosureDropdownOpen(false); }}
                               accessibilityRole="radio"
                               accessibilityState={{ checked: fIsAiGenerated === true }}
@@ -29385,7 +25073,7 @@ function App() {
                               </Text>
                             </BouncyButton>
                             <BouncyButton
-                              style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
+                              style={{ paddingVertical: 10, paddingHorizontal: 10, borderRadius: RADIUS_8 }}
                               onPress={() => { setFIsAiGenerated(false); setAiDisclosureDropdownOpen(false); }}
                               accessibilityRole="radio"
                               accessibilityState={{ checked: fIsAiGenerated === false }}
@@ -29418,7 +25106,7 @@ function App() {
                         an option is picked, since picking one already
                         closes the dropdown too. */}
                     {selectedPortfolioType === 'illustration' && !aiDisclosureDropdownOpen && (
-                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)' }}>
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, padding: 10, borderRadius: RADIUS_10, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)' }}>
                         <WarningTriangleSVG />
                         <Text style={{ color: theme.text, fontSize: 11.5, lineHeight: 16, flex: 1 }}>
                           <Text style={{ fontWeight: '800' }}>Fully AI-generated illustration work</Text> is <Text style={{ fontWeight: '800' }}>NOT ALLOWED</Text> on DECENT and will be removed immediately if identified. AI assistance (e.g. texture generation, pose reference) is fine as long as it's disclosed properly.
@@ -29440,7 +25128,7 @@ function App() {
                           maxLength={200}
                           accessibilityLabel="How was AI used"
                         />
-                        <Text style={{ color: fAiDisclosureNote.trim().length >= 20 ? theme.textSecondary : '#EF4444', fontSize: 11, marginTop: 4 }}>
+                        <Text style={{ color: fAiDisclosureNote.trim().length >= 20 ? theme.textSecondary : DANGER, fontSize: 11, marginTop: 4 }}>
                           {fAiDisclosureNote.trim().length}/20 characters minimum
                         </Text>
                         {errors.fAiDisclosureNote ? <Text style={[styles.errorText, { marginTop: 4 }]}>{errors.fAiDisclosureNote}</Text> : null}
@@ -29461,7 +25149,7 @@ function App() {
                         style={{
                           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
                           borderWidth: 1, borderColor: theme.border,
-                          borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12,
+                          borderRadius: RADIUS_10, paddingVertical: 10, paddingHorizontal: 12,
                           backgroundColor: theme.surface, marginTop: 6
                         }}
                         onPress={() => setSoftwareDropdownOpen((v) => !v)}
@@ -29478,7 +25166,7 @@ function App() {
                       {fSoftwareUsed.length > 0 && (
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                           {fSoftwareUsed.map((sw) => (
-                              <View key={sw} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingVertical: 5, paddingHorizontal: 8 }}>
+                              <View key={sw} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_99, paddingVertical: 5, paddingHorizontal: 8 }}>
                                 <SoftwareIconSVG name={sw} size={14} />
                                 <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600' }}>{sw}</Text>
                                 <BouncyButton
@@ -29505,7 +25193,7 @@ function App() {
                           />
                           <View style={{
                             position: 'relative', marginTop: 4, zIndex: 100,
-                            borderRadius: 10, borderWidth: 1, borderColor: theme.border, overflow: 'hidden'
+                            borderRadius: RADIUS_10, borderWidth: 1, borderColor: theme.border, overflow: 'hidden'
                           }}>
                             {!lightweightMode && Platform.OS !== 'web' ? (
                               <BlurView
@@ -29526,7 +25214,7 @@ function App() {
                                   return (
                                     <BouncyButton
                                       key={sw.name}
-                                      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
+                                      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 10, borderRadius: RADIUS_8 }}
                                       onPress={() => {
                                         setFSoftwareUsed(selected ? fSoftwareUsed.filter((s) => s !== sw.name) : [...fSoftwareUsed, sw.name]);
                                       }}
@@ -29563,7 +25251,7 @@ function App() {
                                   accessibilityLabel="Add custom software"
                                 />
                                 <BouncyButton
-                                  style={{ width: 40, height: 40, borderRadius: 10, borderWidth: 1.5, borderColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
+                                  style={{ width: 40, height: 40, borderRadius: RADIUS_10, borderWidth: 1.5, borderColor: BRAND_PRIMARY, alignItems: 'center', justifyContent: 'center' }}
                                   onPress={() => {
                                     const trimmed = softwareCustomInput.trim();
                                     if (trimmed && !fSoftwareUsed.includes(trimmed)) {
@@ -29575,7 +25263,7 @@ function App() {
                                   accessibilityLabel="Add software"
                                 >
                                   <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                    <Path d="M12 5V19M5 12H19" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round" />
+                                    <Path d="M12 5V19M5 12H19" stroke={BRAND_PRIMARY} strokeWidth="2.5" strokeLinecap="round" />
                                   </Svg>
                                 </BouncyButton>
                               </View>
@@ -29707,7 +25395,7 @@ function App() {
                           <FocusableTextInput
                             style={styles.categorySearchInput}
                             placeholder="Search or add custom category/tag..."
-                            placeholderTextColor="#94A3B8"
+                            placeholderTextColor={TEXT_SECONDARY}
                             value={categorySearchQuery}
                             onChangeText={setCategorySearchQuery}
                             maxLength={40}
@@ -29752,7 +25440,7 @@ function App() {
                                       isSelected && styles.categoryVerticalItemActive,
                                       {
                                         flexDirection: 'row', alignItems: 'flex-start', gap: 10,
-                                        borderRadius: 10, paddingVertical: 14, paddingHorizontal: 14,
+                                        borderRadius: RADIUS_10, paddingVertical: 14, paddingHorizontal: 14,
                                         marginVertical: 3, borderBottomWidth: 0
                                       }
                                     ]}
@@ -29762,9 +25450,9 @@ function App() {
                                     accessibilityState={{ checked: isSelected }}
                                   >
                                     <View style={{
-                                      width: 20, height: 20, borderRadius: 5, marginTop: 2,
-                                      borderWidth: 1.5, borderColor: isSelected ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                                      backgroundColor: isSelected ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
+                                      width: 20, height: 20, borderRadius: RADIUS_5, marginTop: 2,
+                                      borderWidth: 1.5, borderColor: isSelected ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border,
+                                      backgroundColor: isSelected ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : 'transparent',
                                       alignItems: 'center', justifyContent: 'center', flexShrink: 0
                                     }}>
                                       {isSelected && <CheckIconSVG />}
@@ -29909,7 +25597,7 @@ function App() {
                     style={[styles.formInput, { height: 80 }, errors.fBrief && styles.inputErrorBorder]}
                     multiline
                     placeholder="1-2 sentences summarizing goals and outcome..."
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={TEXT_SECONDARY}
                     value={fBrief}
                     onChangeText={(t) => { setFBrief(t); setErrors({ ...errors, fBrief: null }); }}
                     maxLength={300}
@@ -29922,15 +25610,15 @@ function App() {
                     <AppSwitch
                       value={fDetailedDescriptionEnabled}
                       onValueChange={handleToggleDetailedDescription}
-                      trackColor={{ false: theme.bg, true: themeMode === 'light' ? '#6D28D9' : '#8B5CF6' }}
-                      thumbColor="#FFFFFF"
+                      trackColor={{ false: theme.bg, true: themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY }}
+                      thumbColor={WHITE}
                       theme={theme}
                       accessibilityRole="switch"
                       accessibilityLabel="Detailed Description"
                       accessibilityState={{ checked: fDetailedDescriptionEnabled }}
                     />
                   </View>
-                  <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 8, marginTop: 4 }}>
+                  <Text style={{ color: TEXT_MUTED, fontSize: 11, marginBottom: 8, marginTop: 4 }}>
                     Build your case study from text, image, and side-by-side row blocks.
                   </Text>
 
@@ -29942,29 +25630,29 @@ function App() {
                           <BouncyButton
                             style={{
                               flexDirection: 'row', alignItems: 'center', gap: 6,
-                              paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8,
-                              backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD'
+                              paddingVertical: 6, paddingHorizontal: 12, borderRadius: RADIUS_8,
+                              backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID
                             }}
                             onPress={() => setFullscreenDescEditorVisible(true)}
                             accessibilityRole="button"
                           >
-                            <EditIconSVG color="#FFFFFF" />
-                            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Edit</Text>
+                            <EditIconSVG color={WHITE} />
+                            <Text style={{ color: WHITE, fontSize: 12, fontWeight: '700' }}>Edit</Text>
                           </BouncyButton>
                         )}
                       </View>
 
-                      <View style={[styles.formInput, { minHeight: 60, height: 'auto', paddingVertical: 10, borderRadius: 12 }]}>
+                      <View style={[styles.formInput, { minHeight: 60, height: 'auto', paddingVertical: 10, borderRadius: RADIUS_12 }]}>
                         {fContentBlocks.length > 0 ? (
                           renderContentBlocks(fContentBlocks, undefined, theme)
                         ) : (
                           <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 12 }}>
                             <BouncyButton
-                              style={{ backgroundColor: '#7D52DD', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 99 }}
+                              style={{ backgroundColor: BRAND_MID, paddingVertical: 10, paddingHorizontal: 20, borderRadius: RADIUS_99 }}
                               onPress={() => setFullscreenDescEditorVisible(true)}
                               accessibilityRole="button"
                             >
-                              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Start Editing</Text>
+                              <Text style={{ color: WHITE, fontSize: 13, fontWeight: '700' }}>Start Editing</Text>
                             </BouncyButton>
                           </View>
                         )}
@@ -30001,16 +25689,16 @@ function App() {
                     <BouncyButton
                       style={{
                         alignItems: 'center', justifyContent: 'center',
-                        width: 32, height: 32, borderRadius: 8,
-                        borderWidth: 1, borderColor: '#8B5CF6',
-                        backgroundColor: descEditorMode === 'preview' ? '#8B5CF6' : 'transparent'
+                        width: 32, height: 32, borderRadius: RADIUS_8,
+                        borderWidth: 1, borderColor: BRAND_PRIMARY,
+                        backgroundColor: descEditorMode === 'preview' ? BRAND_PRIMARY : 'transparent'
                       }}
                       onPress={() => setDescEditorMode(descEditorMode === 'edit' ? 'preview' : 'edit')}
                       accessibilityRole="button"
                       accessibilityLabel={descEditorMode === 'preview' ? 'Switch to edit mode' : 'Preview'}
                       accessibilityState={{ selected: descEditorMode === 'preview' }}
                     >
-                      {descEditorMode === 'preview' ? <EyeOpenSVG color="#FFFFFF" /> : <EyeClosedSVG />}
+                      {descEditorMode === 'preview' ? <EyeOpenSVG color={WHITE} /> : <EyeClosedSVG />}
                     </BouncyButton>
                     {/* Done, moved here from the main wizard's own sticky
                         bottom bar - that bar visually sits underneath this
@@ -30027,14 +25715,14 @@ function App() {
                         below is back to a normal, small value. */}
                     <BouncyButton
                       style={{
-                        height: 32, paddingHorizontal: 14, borderRadius: 8,
-                        backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                        height: 32, paddingHorizontal: 14, borderRadius: RADIUS_8,
+                        backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID,
                         alignItems: 'center', justifyContent: 'center'
                       }}
                       onPress={() => setFullscreenDescEditorVisible(false)}
                       accessibilityRole="button"
                     >
-                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Done</Text>
+                      <Text style={{ color: WHITE, fontSize: 12, fontWeight: '700' }}>Done</Text>
                     </BouncyButton>
                   </View>
 
@@ -30043,7 +25731,7 @@ function App() {
                       {fContentBlocks.length > 0 ? (
                         renderContentBlocks(fContentBlocks, undefined, theme)
                       ) : (
-                        <Text style={{ color: '#64748B', fontSize: 13 }}>Nothing written yet - switch to Edit to start.</Text>
+                        <Text style={{ color: TEXT_MUTED, fontSize: 13 }}>Nothing written yet - switch to Edit to start.</Text>
                       )}
                     </ScrollView>
                   ) : (
@@ -30079,11 +25767,11 @@ function App() {
                         {fContentBlocks.map((block, idx) => (
                           <View
                             key={block.id}
-                            style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 12, padding: 12 }}
+                            style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_12, padding: 12 }}
                           >
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 6 }}>
                               <BouncyButton
-                                style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', opacity: idx === 0 ? 0.35 : 1 }}
+                                style={{ width: 22, height: 22, borderRadius: RADIUS_6, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', opacity: idx === 0 ? 0.35 : 1 }}
                                 disabled={idx === 0}
                                 onPress={() => moveBlockToIndex(idx, idx - 1)}
                                 accessibilityRole="button"
@@ -30095,7 +25783,7 @@ function App() {
                               <TextInput
                                 style={{
                                   width: 32, height: 24, textAlign: 'center', color: theme.text, fontSize: 12, fontWeight: '700',
-                                  backgroundColor: theme.bg, borderRadius: 6, borderWidth: 1, borderColor: theme.border, padding: 0
+                                  backgroundColor: theme.bg, borderRadius: RADIUS_6, borderWidth: 1, borderColor: theme.border, padding: 0
                                 }}
                                 keyboardType="number-pad"
                                 value={orderInputDrafts[block.id] !== undefined ? orderInputDrafts[block.id] : String(idx + 1)}
@@ -30106,7 +25794,7 @@ function App() {
                                 accessibilityLabel="Block position"
                               />
                               <BouncyButton
-                                style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', opacity: idx === fContentBlocks.length - 1 ? 0.35 : 1 }}
+                                style={{ width: 22, height: 22, borderRadius: RADIUS_6, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', opacity: idx === fContentBlocks.length - 1 ? 0.35 : 1 }}
                                 disabled={idx === fContentBlocks.length - 1}
                                 onPress={() => moveBlockToIndex(idx, idx + 1)}
                                 accessibilityRole="button"
@@ -30119,7 +25807,7 @@ function App() {
                                 {block.type === 'text' ? 'Text' : block.type === 'image' ? 'Image' : 'Row (2-up)'}
                               </Text>
                               <BouncyButton style={{ marginLeft: 'auto', padding: 4 }} onPress={() => deleteBlock(block.id)} accessibilityRole="button">
-                                <Text style={{ color: '#F87171', fontSize: 12, fontWeight: '700' }}>Remove</Text>
+                                <Text style={{ color: RED_300, fontSize: 12, fontWeight: '700' }}>Remove</Text>
                               </BouncyButton>
                             </View>
 
@@ -30129,11 +25817,11 @@ function App() {
                                   style={{
                                     minHeight: 90, color: theme.text, fontSize: 14, lineHeight: 20,
                                     padding: 10, textAlignVertical: 'top', textAlign: block.align || 'left',
-                                    backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 10
+                                    backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_10
                                   }}
                                   multiline
                                   placeholder="Write this block's text..."
-                                  placeholderTextColor="#94A3B8"
+                                  placeholderTextColor={TEXT_SECONDARY}
                                   value={block.markdown}
                                   onChangeText={(t) => updateTextBlockMarkdown(block.id, t)}
                                   maxLength={MAX_TEXT_BLOCK_CHARS}
@@ -30146,7 +25834,7 @@ function App() {
                                   accessibilityLabel="Block text"
                                 />
                                 <Text style={{
-                                  color: (block.markdown || '').length >= MAX_TEXT_BLOCK_CHARS ? '#F87171' : theme.textSecondary,
+                                  color: (block.markdown || '').length >= MAX_TEXT_BLOCK_CHARS ? RED_300 : theme.textSecondary,
                                   fontSize: 10, fontWeight: '600', textAlign: 'right', marginTop: 4
                                 }}>
                                   {(block.markdown || '').length}/{MAX_TEXT_BLOCK_CHARS}
@@ -30155,7 +25843,7 @@ function App() {
                                   {MARKDOWN_TOOLBAR_BUTTONS.map((btn) => (
                                     <BouncyButton
                                       key={btn.label}
-                                      style={{ backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingVertical: 6, paddingHorizontal: 12 }}
+                                      style={{ backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_99, paddingVertical: 6, paddingHorizontal: 12 }}
                                       onPress={() => applyMarkdownToBlock(block.id, btn)}
                                       accessibilityRole="button"
                                       accessibilityLabel={MARKDOWN_BTN_A11Y_LABELS[btn.label] || btn.label}
@@ -30174,15 +25862,15 @@ function App() {
                                     <BouncyButton
                                       key={alignOpt}
                                       style={{
-                                        backgroundColor: (block.align || 'left') === alignOpt ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.bg,
-                                        borderWidth: 1, borderColor: theme.border, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12
+                                        backgroundColor: (block.align || 'left') === alignOpt ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.bg,
+                                        borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_8, paddingVertical: 6, paddingHorizontal: 12
                                       }}
                                       onPress={() => setTextBlockAlign(block.id, alignOpt)}
                                       accessibilityRole="button"
                                       accessibilityLabel={`Align ${alignOpt}`}
                                       accessibilityState={{ selected: (block.align || 'left') === alignOpt }}
                                     >
-                                      <AlignIconSVG align={alignOpt} color={(block.align || 'left') === alignOpt ? '#FFFFFF' : theme.textSecondary} size={15} />
+                                      <AlignIconSVG align={alignOpt} color={(block.align || 'left') === alignOpt ? WHITE : theme.textSecondary} size={15} />
                                     </BouncyButton>
                                   ))}
                                 </View>
@@ -30199,13 +25887,13 @@ function App() {
                                           the actual portfolio view. */}
                                       <Image
                                         source={{ uri: block.uri }}
-                                        style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 10, backgroundColor: theme.bg }}
+                                        style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: RADIUS_10, backgroundColor: theme.bg }}
                                         resizeMode="cover"
                                       />
                                       <BouncyButton
                                         style={{
                                           position: 'absolute', bottom: 8, right: 8,
-                                          width: 32, height: 32, borderRadius: 16,
+                                          width: 32, height: 32, borderRadius: RADIUS_16,
                                           backgroundColor: 'rgba(11,15,23,0.65)',
                                           alignItems: 'center', justifyContent: 'center'
                                         }}
@@ -30213,13 +25901,13 @@ function App() {
                                         accessibilityRole="button"
                                         accessibilityLabel="Crop image"
                                       >
-                                        <CropIconSVG color="#FFFFFF" size={16} />
+                                        <CropIconSVG color={WHITE} size={16} />
                                       </BouncyButton>
                                     </View>
                                   </View>
                                 ) : (
-                                  <View style={{ width: '100%', height: 100, borderRadius: 10, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                                    <Text style={{ color: '#64748B', fontSize: 12 }}>No image selected</Text>
+                                  <View style={{ width: '100%', height: 100, borderRadius: RADIUS_10, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                                    <Text style={{ color: TEXT_MUTED, fontSize: 12 }}>No image selected</Text>
                                   </View>
                                 )}
                                 {/* b557: "Change Size" toggle removed -
@@ -30227,7 +25915,7 @@ function App() {
                                     now, see aspectRatio:1 above. */}
                                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
                                   <BouncyButton
-                                    style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1, borderColor: '#8B5CF6' }}
+                                    style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: RADIUS_99, borderWidth: 1, borderColor: BRAND_PRIMARY }}
                                     onPress={() => replaceImageBlock(block.id)}
                                     accessibilityRole="button"
                                   >
@@ -30245,14 +25933,14 @@ function App() {
                                   style={{
                                     alignSelf: 'center', marginBottom: 8,
                                     flexDirection: 'row', alignItems: 'center', gap: 6,
-                                    paddingVertical: 6, paddingHorizontal: 16, borderRadius: 8,
-                                    borderWidth: 1, borderColor: themeMode === 'light' ? '#6D28D9' : '#8B5CF6'
+                                    paddingVertical: 6, paddingHorizontal: 16, borderRadius: RADIUS_8,
+                                    borderWidth: 1, borderColor: themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY
                                   }}
                                   onPress={() => swapRowColumns(block.id)}
                                   accessibilityRole="button"
                                   accessibilityLabel="Swap columns"
                                 >
-                                  <Text style={{ color: themeMode === 'light' ? '#6D28D9' : theme.accent, fontSize: 12, fontWeight: '700' }}>⇄ Swap</Text>
+                                  <Text style={{ color: themeMode === 'light' ? BRAND_DEEP : theme.accent, fontSize: 12, fontWeight: '700' }}>⇄ Swap</Text>
                                 </BouncyButton>
                                 <View style={{ flexDirection: 'row', gap: 10 }}>
                                 {[0, 1].map((colIdx) => {
@@ -30260,9 +25948,9 @@ function App() {
                                   return (
                                     <View key={colIdx} style={{ flex: 1 }}>
                                       {!col ? (
-                                        <View style={{ flexDirection: 'row', gap: 6, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 8, backgroundColor: theme.bg }}>
+                                        <View style={{ flexDirection: 'row', gap: 6, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_10, padding: 8, backgroundColor: theme.bg }}>
                                           <BouncyButton
-                                            style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99 }}
+                                            style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: RADIUS_99 }}
                                             onPress={() => addTextToRowColumn(block.id, colIdx)}
                                             accessibilityRole="button"
                                             accessibilityLabel="Add text"
@@ -30271,7 +25959,7 @@ function App() {
                                             <Text style={{ color: theme.accent, fontSize: 10, fontWeight: '700', marginTop: 4 }}>Text</Text>
                                           </BouncyButton>
                                           <BouncyButton
-                                            style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99 }}
+                                            style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: RADIUS_99 }}
                                             onPress={() => addImageToRowColumn(block.id, colIdx)}
                                             accessibilityRole="button"
                                             accessibilityLabel="Add image"
@@ -30286,11 +25974,11 @@ function App() {
                                             style={{
                                               minHeight: ROW_BLOCK_IMAGE_HEIGHT, color: theme.text, fontSize: 13, lineHeight: 18,
                                               padding: 8, textAlignVertical: 'top', textAlign: col.align || 'left',
-                                              backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 8
+                                              backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_8
                                             }}
                                             multiline
                                             placeholder="Text..."
-                                            placeholderTextColor="#94A3B8"
+                                            placeholderTextColor={TEXT_SECONDARY}
                                             value={col.markdown}
                                             onChangeText={(t) => updateRowColumnMarkdown(block.id, colIdx, t)}
                                             maxLength={MAX_TEXT_BLOCK_CHARS}
@@ -30303,7 +25991,7 @@ function App() {
                                             accessibilityLabel="Column text"
                                           />
                                           <Text style={{
-                                            color: (col.markdown || '').length >= MAX_TEXT_BLOCK_CHARS ? '#F87171' : theme.textSecondary,
+                                            color: (col.markdown || '').length >= MAX_TEXT_BLOCK_CHARS ? RED_300 : theme.textSecondary,
                                             fontSize: 9, fontWeight: '600', textAlign: 'right', marginTop: 3
                                           }}>
                                             {(col.markdown || '').length}/{MAX_TEXT_BLOCK_CHARS}
@@ -30312,7 +26000,7 @@ function App() {
                                             {MARKDOWN_TOOLBAR_BUTTONS.map((btn) => (
                                               <BouncyButton
                                                 key={btn.label}
-                                                style={{ flex: 1, marginRight: 3, alignItems: 'center', backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingVertical: 5 }}
+                                                style={{ flex: 1, marginRight: 3, alignItems: 'center', backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_99, paddingVertical: 5 }}
                                                 onPress={() => applyMarkdownToRowColumn(block.id, colIdx, btn)}
                                                 accessibilityRole="button"
                                                 accessibilityLabel={MARKDOWN_BTN_A11Y_LABELS[btn.label] || btn.label}
@@ -30332,19 +26020,19 @@ function App() {
                                               <BouncyButton
                                                 key={alignOpt}
                                                 style={{
-                                                  backgroundColor: (col.align || 'left') === alignOpt ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.bg,
-                                                  borderWidth: 1, borderColor: theme.border, borderRadius: 6, paddingVertical: 5, paddingHorizontal: 8
+                                                  backgroundColor: (col.align || 'left') === alignOpt ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.bg,
+                                                  borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_6, paddingVertical: 5, paddingHorizontal: 8
                                                 }}
                                                 onPress={() => setRowColumnAlign(block.id, colIdx, alignOpt)}
                                                 accessibilityRole="button"
                                                 accessibilityLabel={`Align ${alignOpt}`}
                                                 accessibilityState={{ selected: (col.align || 'left') === alignOpt }}
                                               >
-                                                <AlignIconSVG align={alignOpt} color={(col.align || 'left') === alignOpt ? '#FFFFFF' : theme.textSecondary} size={13} />
+                                                <AlignIconSVG align={alignOpt} color={(col.align || 'left') === alignOpt ? WHITE : theme.textSecondary} size={13} />
                                               </BouncyButton>
                                             ))}
                                             <BouncyButton style={{ marginLeft: 'auto', padding: 2 }} onPress={() => clearRowColumn(block.id, colIdx)} accessibilityRole="button" accessibilityLabel="Clear column">
-                                              <Text style={{ color: '#F87171', fontSize: 12, fontWeight: '700' }}>✕</Text>
+                                              <Text style={{ color: RED_300, fontSize: 12, fontWeight: '700' }}>✕</Text>
                                             </BouncyButton>
                                           </View>
                                         </View>
@@ -30355,13 +26043,13 @@ function App() {
                                               <View style={{ position: 'relative' }}>
                                                 <Image
                                                   source={{ uri: col.uri }}
-                                                  style={{ width: '100%', aspectRatio: 1, borderRadius: 8, backgroundColor: theme.bg }}
+                                                  style={{ width: '100%', aspectRatio: 1, borderRadius: RADIUS_8, backgroundColor: theme.bg }}
                                                   resizeMode="cover"
                                                 />
                                                 <BouncyButton
                                                   style={{
                                                     position: 'absolute', bottom: 5, right: 5,
-                                                    width: 24, height: 24, borderRadius: 12,
+                                                    width: 24, height: 24, borderRadius: RADIUS_12,
                                                     backgroundColor: 'rgba(11,15,23,0.65)',
                                                     alignItems: 'center', justifyContent: 'center'
                                                   }}
@@ -30369,13 +26057,13 @@ function App() {
                                                   accessibilityRole="button"
                                                   accessibilityLabel="Crop image"
                                                 >
-                                                  <CropIconSVG color="#FFFFFF" size={12} />
+                                                  <CropIconSVG color={WHITE} size={12} />
                                                 </BouncyButton>
                                               </View>
                                             </View>
                                           ) : (
-                                            <View style={{ width: '100%', height: ROW_BLOCK_IMAGE_HEIGHT, borderRadius: 8, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
-                                              <Text style={{ color: '#64748B', fontSize: 11 }}>No image</Text>
+                                            <View style={{ width: '100%', height: ROW_BLOCK_IMAGE_HEIGHT, borderRadius: RADIUS_8, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+                                              <Text style={{ color: TEXT_MUTED, fontSize: 11 }}>No image</Text>
                                             </View>
                                           )}
                                           {/* b557: "Size" toggle removed -
@@ -30388,7 +26076,7 @@ function App() {
                                               </Text>
                                             </BouncyButton>
                                             <BouncyButton style={{ marginLeft: 'auto', padding: 2 }} onPress={() => clearRowColumn(block.id, colIdx)} accessibilityRole="button" accessibilityLabel="Clear column">
-                                              <Text style={{ color: '#F87171', fontSize: 12, fontWeight: '700' }}>✕</Text>
+                                              <Text style={{ color: RED_300, fontSize: 12, fontWeight: '700' }}>✕</Text>
                                             </BouncyButton>
                                           </View>
                                         </View>
@@ -30404,7 +26092,7 @@ function App() {
 
                         <View style={{
                           backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
-                          borderRadius: 12, padding: 12
+                          borderRadius: RADIUS_12, padding: 12
                         }}>
                           {fContentBlocks.length >= MAX_CONTENT_BLOCKS ? (
                             <Text style={{ color: theme.textSecondary, fontSize: 12, textAlign: 'center', paddingVertical: 8 }}>
@@ -30415,7 +26103,7 @@ function App() {
                             <BouncyButton
                               style={{
                                 flex: 1, aspectRatio: 1, maxWidth: 100,
-                                backgroundColor: theme.bg, borderRadius: 12,
+                                backgroundColor: theme.bg, borderRadius: RADIUS_12,
                                 borderWidth: 1.5, borderColor: theme.border,
                                 alignItems: 'center', justifyContent: 'center'
                               }}
@@ -30428,7 +26116,7 @@ function App() {
                             <BouncyButton
                               style={{
                                 flex: 1, aspectRatio: 1, maxWidth: 100,
-                                backgroundColor: theme.bg, borderRadius: 12,
+                                backgroundColor: theme.bg, borderRadius: RADIUS_12,
                                 borderWidth: 1.5, borderColor: theme.border,
                                 alignItems: 'center', justifyContent: 'center'
                               }}
@@ -30441,7 +26129,7 @@ function App() {
                             <BouncyButton
                               style={{
                                 flex: 1, aspectRatio: 1, maxWidth: 100,
-                                backgroundColor: theme.bg, borderRadius: 12,
+                                backgroundColor: theme.bg, borderRadius: RADIUS_12,
                                 borderWidth: 1.5, borderColor: theme.border,
                                 alignItems: 'center', justifyContent: 'center'
                               }}
@@ -30474,7 +26162,7 @@ function App() {
                     style={{
                       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
                       borderWidth: 1, borderColor: theme.border,
-                      borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12,
+                      borderRadius: RADIUS_10, paddingVertical: 10, paddingHorizontal: 12,
                       backgroundColor: theme.surface, marginTop: 6
                     }}
                     onPress={() => setSoftwareDropdownOpen((v) => !v)}
@@ -30502,7 +26190,7 @@ function App() {
                       />
                       <View style={{
                         position: 'relative', marginTop: 4, zIndex: 100,
-                        borderRadius: 10, borderWidth: 1, borderColor: theme.border, overflow: 'hidden'
+                        borderRadius: RADIUS_10, borderWidth: 1, borderColor: theme.border, overflow: 'hidden'
                       }}>
                         {!lightweightMode && Platform.OS !== 'web' ? (
                           <BlurView
@@ -30529,7 +26217,7 @@ function App() {
                               return (
                                 <BouncyButton
                                   key={sw.name}
-                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 8 }}
+                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 10, borderRadius: RADIUS_8 }}
                                   onPress={() => {
                                     setFSoftwareUsed(selected ? [] : [sw.name]);
                                     setSoftwareDropdownOpen(false);
@@ -30571,7 +26259,7 @@ function App() {
                               accessibilityLabel="Add custom software"
                             />
                             <BouncyButton
-                              style={{ width: 40, height: 40, borderRadius: 10, borderWidth: 1.5, borderColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}
+                              style={{ width: 40, height: 40, borderRadius: RADIUS_10, borderWidth: 1.5, borderColor: BRAND_PRIMARY, alignItems: 'center', justifyContent: 'center' }}
                               onPress={() => {
                                 const trimmed = softwareCustomInput.trim();
                                 if (trimmed) {
@@ -30584,7 +26272,7 @@ function App() {
                               accessibilityLabel="Add software"
                             >
                               <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                <Path d="M12 5V19M5 12H19" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round" />
+                                <Path d="M12 5V19M5 12H19" stroke={BRAND_PRIMARY} strokeWidth="2.5" strokeLinecap="round" />
                               </Svg>
                             </BouncyButton>
                           </View>
@@ -30617,7 +26305,7 @@ function App() {
                         <FocusableTextInput
                           style={styles.formInput}
                           placeholder="https://www.figma.com/proto/..."
-                          placeholderTextColor="#94A3B8"
+                          placeholderTextColor={TEXT_SECONDARY}
                           autoCapitalize="none"
                           value={fFigmaProto}
                           onChangeText={setFFigmaProto}
@@ -30631,7 +26319,7 @@ function App() {
                         <FocusableTextInput
                           style={styles.formInput}
                           placeholder="https://www.figma.com/proto/... (1440px canvas)"
-                          placeholderTextColor="#94A3B8"
+                          placeholderTextColor={TEXT_SECONDARY}
                           autoCapitalize="none"
                           value={fDesktopProto}
                           onChangeText={setFDesktopProto}
@@ -30642,13 +26330,13 @@ function App() {
                           <Text style={[styles.formGroupLabel, Platform.OS === 'android' && { includeFontPadding: false }]}>Component Showcase Prototype Link</Text>
                           {renderLinkFieldInfoButton('component')}
                         </View>
-                        <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 6, marginTop: -4 }}>
+                        <Text style={{ color: TEXT_MUTED, fontSize: 11, marginBottom: 6, marginTop: -4 }}>
                           Optional - a focused prototype demonstrating how a single component works (e.g. a dropdown, toggle, or interaction pattern), separate from the full mobile/desktop flow above.
                         </Text>
                         <FocusableTextInput
                           style={styles.formInput}
                           placeholder="https://www.figma.com/proto/..."
-                          placeholderTextColor="#94A3B8"
+                          placeholderTextColor={TEXT_SECONDARY}
                           autoCapitalize="none"
                           value={fComponentProto}
                           onChangeText={setFComponentProto}
@@ -30662,7 +26350,7 @@ function App() {
                         <FocusableTextInput
                           style={styles.formInput}
                           placeholder="https://www.figma.com/@username"
-                          placeholderTextColor="#94A3B8"
+                          placeholderTextColor={TEXT_SECONDARY}
                           autoCapitalize="none"
                           value={fFigmaProfile}
                           onChangeText={setFFigmaProfile}
@@ -30733,7 +26421,7 @@ function App() {
                   <FocusableTextInput
                     style={styles.formInput}
                     placeholder="https://... (Figma, Adobe XD, Sketch Cloud, etc.)"
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={TEXT_SECONDARY}
                     autoCapitalize="none"
                     value={fFigmaFile}
                     onChangeText={setFFigmaFile}
@@ -30748,12 +26436,12 @@ function App() {
                     accessibilityState={{ checked: fHasLiveLink }}
                   >
                     <View style={{
-                      width: 22, height: 22, borderRadius: 6, borderWidth: 2,
-                      borderColor: fHasLiveLink ? '#8B5CF6' : theme.border,
-                      backgroundColor: fHasLiveLink ? '#8B5CF6' : 'transparent',
+                      width: 22, height: 22, borderRadius: RADIUS_6, borderWidth: 2,
+                      borderColor: fHasLiveLink ? BRAND_PRIMARY : theme.border,
+                      backgroundColor: fHasLiveLink ? BRAND_PRIMARY : 'transparent',
                       alignItems: 'center', justifyContent: 'center'
                     }}>
-                      {fHasLiveLink && <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '800' }}>✓</Text>}
+                      {fHasLiveLink && <Text style={{ color: WHITE, fontSize: 13, fontWeight: '800' }}>✓</Text>}
                     </View>
                     <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', flex: 1 }}>
                       I have finished product for this portfolio
@@ -30763,7 +26451,7 @@ function App() {
                   {fHasLiveLink && (
                     <View style={{ marginTop: 10 }}>
                       {fLiveLinks.map((link, idx) => (
-                        <View key={idx} style={{ backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.border, padding: 12, marginBottom: 10 }}>
+                        <View key={idx} style={{ backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: RADIUS_12, borderWidth: 1, borderColor: theme.border, padding: 12, marginBottom: 10 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                             <Text style={[styles.formGroupLabel, { marginTop: 0 }]}>Link {idx + 1}</Text>
                             {fLiveLinks.length > 1 && (
@@ -30780,7 +26468,7 @@ function App() {
                           <FocusableTextInput
                             style={styles.formInput}
                             placeholder="e.g. Live Website, App Download Page, Try It Live"
-                            placeholderTextColor="#94A3B8"
+                            placeholderTextColor={TEXT_SECONDARY}
                             value={link.label}
                             onChangeText={(t) => {
                               const updated = [...fLiveLinks];
@@ -30798,7 +26486,7 @@ function App() {
                             <FocusableTextInput
                               style={[styles.formInput, { paddingLeft: 40 }]}
                               placeholder="https://..."
-                              placeholderTextColor="#94A3B8"
+                              placeholderTextColor={TEXT_SECONDARY}
                               autoCapitalize="none"
                               value={link.url}
                               onChangeText={(t) => {
@@ -30852,38 +26540,38 @@ function App() {
                     Showcase Images * (min 2, max 10)
                   </Text>
 
-                  <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 8 }}>
+                  <Text style={{ color: TEXT_MUTED, fontSize: 11, marginBottom: 8 }}>
                     How these display in your portfolio's gallery - applies to all images together.
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
                     <BouncyButton
                       style={{
                         flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                        paddingVertical: 10, borderRadius: 10,
+                        paddingVertical: 10, borderRadius: RADIUS_10,
                         borderWidth: 1, borderColor: fShowcaseAspectRatio === '16:9' ? theme.accent : theme.border,
-                        backgroundColor: fShowcaseAspectRatio === '16:9' ? (themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.15)') : 'transparent'
+                        backgroundColor: fShowcaseAspectRatio === '16:9' ? (themeMode === 'light' ? INDIGO_100_2 : 'rgba(139,92,246,0.15)') : 'transparent'
                       }}
                       onPress={() => setFShowcaseAspectRatio('16:9')}
                       accessibilityRole="button"
                       accessibilityLabel="Landscape"
                       accessibilityState={{ selected: fShowcaseAspectRatio === '16:9' }}
                     >
-                      <View style={{ width: 18, height: 10.1, borderRadius: 2, borderWidth: 1.5, borderColor: fShowcaseAspectRatio === '16:9' ? theme.accent : theme.textSecondary }} />
+                      <View style={{ width: 18, height: 10.1, borderRadius: RADIUS_2, borderWidth: 1.5, borderColor: fShowcaseAspectRatio === '16:9' ? theme.accent : theme.textSecondary }} />
                       <Text style={{ color: fShowcaseAspectRatio === '16:9' ? theme.accent : theme.textSecondary, fontSize: 13, fontWeight: '700' }}>Landscape</Text>
                     </BouncyButton>
                     <BouncyButton
                       style={{
                         flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                        paddingVertical: 10, borderRadius: 10,
+                        paddingVertical: 10, borderRadius: RADIUS_10,
                         borderWidth: 1, borderColor: fShowcaseAspectRatio === '9:16' ? theme.accent : theme.border,
-                        backgroundColor: fShowcaseAspectRatio === '9:16' ? (themeMode === 'light' ? '#EDE9FE' : 'rgba(139,92,246,0.15)') : 'transparent'
+                        backgroundColor: fShowcaseAspectRatio === '9:16' ? (themeMode === 'light' ? INDIGO_100_2 : 'rgba(139,92,246,0.15)') : 'transparent'
                       }}
                       onPress={() => setFShowcaseAspectRatio('9:16')}
                       accessibilityRole="button"
                       accessibilityLabel="Portrait"
                       accessibilityState={{ selected: fShowcaseAspectRatio === '9:16' }}
                     >
-                      <View style={{ width: 10.1, height: 18, borderRadius: 2, borderWidth: 1.5, borderColor: fShowcaseAspectRatio === '9:16' ? theme.accent : theme.textSecondary }} />
+                      <View style={{ width: 10.1, height: 18, borderRadius: RADIUS_2, borderWidth: 1.5, borderColor: fShowcaseAspectRatio === '9:16' ? theme.accent : theme.textSecondary }} />
                       <Text style={{ color: fShowcaseAspectRatio === '9:16' ? theme.accent : theme.textSecondary, fontSize: 13, fontWeight: '700' }}>Portrait</Text>
                     </BouncyButton>
                   </View>
@@ -30912,7 +26600,7 @@ function App() {
                         {fShowcaseImages.filter((im) => im.uri.trim() !== '').length > 2 && (
                           <BouncyButton
                             style={{
-                              position: 'absolute', top: -4, right: -4, width: 24, height: 24, borderRadius: 12,
+                              position: 'absolute', top: -4, right: -4, width: 24, height: 24, borderRadius: RADIUS_12,
                               backgroundColor: 'rgba(11, 15, 23, 0.55)',
                               alignItems: 'center', justifyContent: 'center', zIndex: 10
                             }}
@@ -30932,12 +26620,12 @@ function App() {
                         <FocusableTextInput
                           style={{
                             marginTop: 6, width: '100%', fontSize: 11, color: theme.text,
-                            borderWidth: 1, borderColor: theme.border, borderRadius: 8,
+                            borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_8,
                             paddingHorizontal: 8, paddingVertical: 6, backgroundColor: theme.surface,
                             textAlignVertical: 'top'
                           }}
                           placeholder="Caption (optional)"
-                          placeholderTextColor="#64748B"
+                          placeholderTextColor={TEXT_MUTED}
                           value={img.caption}
                           onChangeText={(t) => handleShowcaseCaptionChange(index, t)}
                           maxLength={150}
@@ -30972,7 +26660,7 @@ function App() {
                         </Text>
                         {renderLinkFieldInfoButton('videoFormat')}
                       </View>
-                      <Text style={{ color: '#64748B', fontSize: 11, marginBottom: 8 }}>
+                      <Text style={{ color: TEXT_MUTED, fontSize: 11, marginBottom: 8 }}>
                         Videos are automatically compressed to save space, which may slightly reduce quality. Plays back at the video's own aspect ratio.
                       </Text>
 
@@ -30990,7 +26678,7 @@ function App() {
                       {Platform.OS === 'web' && fUploadedVideos.some((v) => v.compressing) && (
                         <View style={{
                           flexDirection: 'row', alignItems: 'center', gap: 8,
-                          backgroundColor: 'rgba(139, 92, 246, 0.12)', borderRadius: 10,
+                          backgroundColor: 'rgba(139, 92, 246, 0.12)', borderRadius: RADIUS_10,
                           paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12
                         }}>
                           <ActivityIndicator size="small" color={theme.accent} />
@@ -31023,14 +26711,14 @@ function App() {
                                     backgroundColor: 'rgba(11, 15, 23, 0.6)',
                                     alignItems: 'center', justifyContent: 'center', gap: 6
                                   }}>
-                                    <ActivityIndicator color="#FFFFFF" size="small" />
+                                    <ActivityIndicator color={WHITE} size="small" />
                                     {/* b610: only show a number once compression has actually
                                         started reporting real progress - both platforms' progress
                                         callbacks can sit at 0 briefly during setup (loading the
                                         wasm core on web, initializing the encoder on native),
                                         and "0%" reads as stuck/broken rather than just starting. */}
                                     {vid.compressionProgress > 0 && (
-                                      <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>
+                                      <Text style={{ color: WHITE, fontSize: 11, fontWeight: '600' }}>
                                         {vid.compressionProgress}%
                                       </Text>
                                     )}
@@ -31051,15 +26739,15 @@ function App() {
                                     accessibilityRole="button"
                                     accessibilityLabel="Retry compression"
                                   >
-                                    <Text style={{ color: '#FFFFFF', fontSize: 16 }}>↻</Text>
-                                    <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '600' }}>Retry</Text>
+                                    <Text style={{ color: WHITE, fontSize: 16 }}>↻</Text>
+                                    <Text style={{ color: WHITE, fontSize: 10, fontWeight: '600' }}>Retry</Text>
                                   </BouncyButton>
                                 )}
                               </View>
 
                               <BouncyButton
                                 style={{
-                                  position: 'absolute', top: -4, right: -4, width: 24, height: 24, borderRadius: 12,
+                                  position: 'absolute', top: -4, right: -4, width: 24, height: 24, borderRadius: RADIUS_12,
                                   backgroundColor: 'rgba(11, 15, 23, 0.55)',
                                   alignItems: 'center', justifyContent: 'center', zIndex: 10
                                 }}
@@ -31074,12 +26762,12 @@ function App() {
                               <FocusableTextInput
                                 style={{
                                   marginTop: 6, width: '100%', fontSize: 11, color: theme.text,
-                                  borderWidth: 1, borderColor: theme.border, borderRadius: 8,
+                                  borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_8,
                                   paddingHorizontal: 8, paddingVertical: 6, backgroundColor: theme.surface,
                                   textAlignVertical: 'top'
                                 }}
                                 placeholder="Caption (optional)"
-                                placeholderTextColor="#64748B"
+                                placeholderTextColor={TEXT_MUTED}
                                 value={vid.caption}
                                 onChangeText={(t) => setFUploadedVideos((prev) => prev.map((v, i) => (i === slotIdx ? { ...v, caption: t } : v)))}
                                 maxLength={150}
@@ -31099,7 +26787,7 @@ function App() {
                       <FocusableTextInput
                         style={[styles.formInput, { flex: 1 }]}
                         placeholder={`https://www.youtube.com/watch?v=... (${idx + 1})`}
-                        placeholderTextColor="#94A3B8"
+                        placeholderTextColor={TEXT_SECONDARY}
                         value={vid}
                         onChangeText={(t) => handleVideoUrlChange(t, idx)}
                         accessibilityLabel={`Video Demo Link ${idx + 1}`}
@@ -31198,7 +26886,7 @@ function App() {
                   accessibilityRole="button"
                 >
                   <View style={styles.iconTextInlineRow}>
-                    <ChevronLeftSVG color="#94A3B8" size={16} />
+                    <ChevronLeftSVG color={TEXT_SECONDARY} size={16} />
                     <Text style={styles.backBtnText}>Back</Text>
                   </View>
                 </BouncyButton>
@@ -31218,7 +26906,7 @@ function App() {
               >
                 {formStep === 4 && isSubmittingPortfolio ? (
                   <View style={styles.iconTextInlineRow}>
-                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <ActivityIndicator size="small" color={WHITE} />
                     <Text style={styles.submitBtnText}>
                       {uploadProgress.total > 0
                         ? `Processing images (${uploadProgress.done}/${uploadProgress.total})...`
@@ -31233,7 +26921,7 @@ function App() {
                        formStep === 3 ? 'Review & Confirm' :
                        editingProjectId ? 'Update Portfolio Package' : 'Post Portfolio Package'}
                     </Text>
-                    <ChevronRightSVG color="#FFFFFF" size={18} />
+                    <ChevronRightSVG color={WHITE} size={18} />
                   </View>
                 )}
               </BouncyButton>
@@ -31280,7 +26968,7 @@ function App() {
                     <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Keep Editing</Text>
                   </BouncyButton>
                   <BouncyButton
-                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#CF3B3B' }]}
+                    style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: RED_500 }]}
                     accessibilityRole="button"
                     onPress={() => {
                       setDiscardConfirmModalVisible(false);
@@ -31416,9 +27104,9 @@ function App() {
               onPress={() => setProtoDataWarningDontAskAgain((prev) => !prev)}
             >
               <View style={{
-                width: 20, height: 20, borderRadius: 5,
-                borderWidth: 1.5, borderColor: protoDataWarningDontAskAgain ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                backgroundColor: protoDataWarningDontAskAgain ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : 'transparent',
+                width: 20, height: 20, borderRadius: RADIUS_5,
+                borderWidth: 1.5, borderColor: protoDataWarningDontAskAgain ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border,
+                backgroundColor: protoDataWarningDontAskAgain ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : 'transparent',
                 alignItems: 'center', justifyContent: 'center'
               }}>
                 {protoDataWarningDontAskAgain && <CheckIconSVG />}
@@ -31459,7 +27147,7 @@ function App() {
         >
           <TouchableOpacity activeOpacity={1} style={[styles.customConfirmCard, fancyConfirmCardOverlay, { position: 'relative' }]} accessible={false}>
             <BouncyButton
-              style={{ position: 'absolute', top: 12, right: 12, zIndex: 1, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 99, backgroundColor: theme.bg }}
+              style={{ position: 'absolute', top: 12, right: 12, zIndex: 1, width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: RADIUS_99, backgroundColor: theme.bg }}
               onPress={() => setFormattingGuideVisible(false)}
               accessibilityRole="button"
               accessibilityLabel="Close"
@@ -31499,7 +27187,7 @@ function App() {
                 { symbol: '__text__', desc: 'Underline' }
               ].map((item) => (
                 <View key={item.symbol} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={{ backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10, minWidth: 90, alignItems: 'center' }}>
+                  <View style={{ backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_8, paddingVertical: 6, paddingHorizontal: 10, minWidth: 90, alignItems: 'center' }}>
                     <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>{item.symbol}</Text>
                   </View>
                   <Text style={{ color: theme.textSecondary, fontSize: 13, flex: 1 }}>{item.desc}</Text>
@@ -31693,14 +27381,14 @@ function App() {
                     <View style={{
                       position: 'absolute', top: portfolioMenuPos.top, left: portfolioMenuPos.left,
                       width: 220,
-                      backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
+                      backgroundColor: !lightweightMode ? fancyConfirmCardOverlay.backgroundColor : theme.surface, borderRadius: RADIUS_14, borderWidth: 1, borderColor: theme.border,
                       padding: 6,
-                      shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                      shadowColor: BLACK, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                     }}>
                       {session && activeProject.ownerId === session.user.id ? (
                         <>
                           <BouncyButton
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, paddingHorizontal: 12, borderRadius: 99 }}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                             onPress={() => {
                               setPortfolioOptionsMenuVisible(false);
                               openEditWizard(activeProject);
@@ -31710,20 +27398,20 @@ function App() {
                             <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Edit Portfolio</Text>
                           </BouncyButton>
                           <BouncyButton
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, paddingHorizontal: 12, borderRadius: 99 }}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                             onPress={() => {
                               setPortfolioOptionsMenuVisible(false);
                               promptDeletePortfolio(activeProject);
                             }}
                           >
-                            <TrashIconSVG color="#EF4444" />
-                            <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Delete Portfolio</Text>
+                            <TrashIconSVG color={DANGER} />
+                            <Text style={{ color: DANGER, fontWeight: '700', fontSize: 14 }}>Delete Portfolio</Text>
                           </BouncyButton>
                         </>
                       ) : (
                         <>
                           <BouncyButton
-                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                             onPress={() => {
                               setPortfolioOptionsMenuVisible(false);
                               setPortfolioReportModalVisible(true);
@@ -31732,7 +27420,7 @@ function App() {
                             <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>Report Portfolio</Text>
                           </BouncyButton>
                           <BouncyButton
-                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                             onPress={() => {
                               setPortfolioOptionsMenuVisible(false);
                               mutedIds.has(activeProject.ownerId)
@@ -31745,13 +27433,13 @@ function App() {
                             </Text>
                           </BouncyButton>
                           <BouncyButton
-                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 99 }}
+                            style={{ height: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: RADIUS_99 }}
                             onPress={() => {
                               setPortfolioOptionsMenuVisible(false);
                               handleBlockUser(activeProject.ownerId, activeProject.designer);
                             }}
                           >
-                            <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 14 }}>Block User</Text>
+                            <Text style={{ color: DANGER, fontWeight: '700', fontSize: 14 }}>Block User</Text>
                           </BouncyButton>
                         </>
                       )}
@@ -31978,15 +27666,15 @@ function App() {
                                 key={idx}
                                 style={{
                                   flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                  backgroundColor: '#7D52DD', borderRadius: 99, paddingVertical: 10, paddingHorizontal: 16
+                                  backgroundColor: BRAND_MID, borderRadius: RADIUS_99, paddingVertical: 10, paddingHorizontal: 16
                                 }}
                                 onPress={() => openExternalLinkWithWarning(link.url)}
                               >
                                 {getSocialLogoSVG(link.url)}
-                                <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
+                                <Text style={{ color: WHITE, fontSize: 14, fontWeight: '700' }}>
                                   {link.label && link.label.trim() !== '' ? link.label : 'Visit Live Link'}
                                 </Text>
-                                <ExternalLinkSVG color="#FFFFFF" size={15} />
+                                <ExternalLinkSVG color={WHITE} size={15} />
                               </BouncyButton>
                             ) : null
                           ))}
@@ -32012,19 +27700,19 @@ function App() {
                               {activeProject.isAiGenerated === true && (
                                 <View style={showAiTooltip ? { position: 'relative', zIndex: 100 } : { position: 'relative' }}>
                                   <BouncyButton
-                                    style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: '#7D52DD', alignItems: 'center', justifyContent: 'center' }}
+                                    style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: RADIUS_7, backgroundColor: BRAND_MID, alignItems: 'center', justifyContent: 'center' }}
                                     onPress={handleAiIconPress}
                                   >
-                                    <Text style={{ color: '#E2E8F0', fontSize: 11, fontWeight: '800' }}>{activeProject.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
+                                    <Text style={{ color: BORDER_SOFT, fontSize: 11, fontWeight: '800' }}>{activeProject.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
                                   </BouncyButton>
                                   {showAiTooltip && (
                                     <Animated.View
                                       pointerEvents="none"
                                       style={{
                                         position: 'absolute', top: 32, left: -6, zIndex: 50,
-                                        backgroundColor: theme.mode === 'light' ? '#1E293B' : '#0F172A',
+                                        backgroundColor: theme.mode === 'light' ? SKY_800 : BLUE_900,
                                         borderWidth: 1, borderColor: theme.border,
-                                        borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+                                        borderRadius: RADIUS_10, paddingHorizontal: 12, paddingVertical: 8,
                                         width: 220,
                                         opacity: 1,
                                         transform: [{
@@ -32032,7 +27720,7 @@ function App() {
                                         }]
                                       }}
                                     >
-                                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', lineHeight: 17 }}>
+                                      <Text style={{ color: WHITE, fontSize: 12, fontWeight: '600', lineHeight: 17 }}>
                                         {activeProject.portfolioType === 'illustration' ? 'This content is AI assisted' : 'This content is AI generated/assisted'}
                                       </Text>
                                     </Animated.View>
@@ -32060,7 +27748,7 @@ function App() {
                                 {activeProject.categories.map((cat, idx) => (
                                   <BouncyButton
                                     key={idx}
-                                    style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}
+                                    style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_99, paddingHorizontal: 12, paddingVertical: 6 }}
                                     onPress={() => {
                                       setModalVisible(false);
                                       setSearchQuery(cat);
@@ -32096,7 +27784,7 @@ function App() {
                               only the container needed to match, not the
                               content styling. */}
                           {activeProject.portfolioType === 'illustration' && activeProject.aiDisclosureNote ? (
-                            <View style={{ backgroundColor: '#7D52DD', borderRadius: 14, padding: 14, marginBottom: 16 }}>
+                            <View style={{ backgroundColor: BRAND_MID, borderRadius: RADIUS_14, padding: 14, marginBottom: 16 }}>
                               {/* b558: restructured from one BouncyButton
                                   spanning the whole row into three separate
                                   pressables - the "!" info button needs its
@@ -32110,24 +27798,24 @@ function App() {
                                   what actually toggles the accordion now. */}
                               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: aiUseExpanded ? 6 : 0 }}>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>HOW I USE AI</Text>
+                                  <Text style={{ color: WHITE, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>HOW I USE AI</Text>
                                   <BouncyButton
-                                    style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}
+                                    style={{ width: 18, height: 18, borderRadius: RADIUS_9, borderWidth: 1.5, borderColor: WHITE, alignItems: 'center', justifyContent: 'center' }}
                                     onPress={() => setAiDisclosureInfoModalVisible(true)}
                                   >
-                                    <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>!</Text>
+                                    <Text style={{ color: WHITE, fontSize: 10, fontWeight: '800' }}>!</Text>
                                   </BouncyButton>
                                 </View>
                                 <BouncyButton onPress={() => setAiUseExpanded((prev) => !prev)}>
                                   {aiUseExpanded ? (
-                                    <ChevronUpSVG color="#FFFFFF" size={16} />
+                                    <ChevronUpSVG color={WHITE} size={16} />
                                   ) : (
-                                    <ChevronDownSVG color="#FFFFFF" size={16} />
+                                    <ChevronDownSVG color={WHITE} size={16} />
                                   )}
                                 </BouncyButton>
                               </View>
                               {aiUseExpanded && (
-                                <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 20 }}>{activeProject.aiDisclosureNote}</Text>
+                                <Text style={{ color: WHITE, fontSize: 14, lineHeight: 20 }}>{activeProject.aiDisclosureNote}</Text>
                               )}
                             </View>
                           ) : null}
@@ -32152,7 +27840,7 @@ function App() {
                               in the normal flow before, with no visual
                               container distinguishing it from surrounding
                               content at all. */}
-                          <View style={{ borderRadius: 14, paddingVertical: 8, paddingHorizontal: 14, marginBottom: 16, backgroundColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.06)' : 'rgba(139, 92, 246, 0.08)', borderWidth: 1, borderColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.18)' }}>
+                          <View style={{ borderRadius: RADIUS_14, paddingVertical: 8, paddingHorizontal: 14, marginBottom: 16, backgroundColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.06)' : 'rgba(139, 92, 246, 0.08)', borderWidth: 1, borderColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.18)' }}>
                           <BouncyButton
                             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: galleryExpanded ? 12 : 0 }}
                             onPress={() => setGalleryExpanded((prev) => !prev)}
@@ -32213,7 +27901,7 @@ function App() {
                                         const galleryHeight = 220;
                                         const vidAspect = vid.width && vid.height ? vid.width / vid.height : 16 / 9;
                                         return (
-                                          <View key={`vid-${index}`} style={{ position: 'relative', height: galleryHeight, width: galleryHeight * vidAspect, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' }}>
+                                          <View key={`vid-${index}`} style={{ position: 'relative', height: galleryHeight, width: galleryHeight * vidAspect, borderRadius: RADIUS_12, overflow: 'hidden', backgroundColor: BLACK }}>
                                             <PortfolioVideoPlayer uri={vid.url} width={vid.width} height={vid.height} />
                                             {/* Overlay button, not a wrap-the-
                                                 whole-video button - the video's
@@ -32221,7 +27909,7 @@ function App() {
                                                 controls need to keep working
                                                 for inline playback. */}
                                             <BouncyButton
-                                              style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                              style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: RADIUS_15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
                                               onPress={() => openMediaViewer(mediaItems, allImages.length + index)}
                                             >
                                               <ExpandIconSVG size={15} />
@@ -32264,7 +27952,7 @@ function App() {
                                       video button - the native play/pause/
                                       scrub controls need to keep working. */}
                                   <BouncyButton
-                                    style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                    style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: RADIUS_15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
                                     onPress={() => openMediaViewer(videoItems, thisUploadedIdx)}
                                   >
                                     <ExpandIconSVG size={15} />
@@ -32300,7 +27988,7 @@ function App() {
                                   style={{
                                     width: '100%',
                                     aspectRatio: activeProject.showcaseAspectRatio === '9:16' ? 9 / 16 : 16 / 9,
-                                    borderRadius: 12
+                                    borderRadius: RADIUS_12
                                   }}
                                   resizeMode="cover"
                                 />
@@ -32332,7 +28020,7 @@ function App() {
                   <View style={styles.webViewWrapper}>
                     {loadingWebView && (
                       <View style={styles.loaderOverlay}>
-                        <ActivityIndicator size="large" color="#8B5CF6" />
+                        <ActivityIndicator size="large" color={BRAND_PRIMARY} />
                         <Text style={styles.loaderText}>Loading Figma Prototype...</Text>
                       </View>
                     )}
@@ -32422,7 +28110,7 @@ function App() {
                           style={{
                             width: '100%',
                             aspectRatio: activeProject.showcaseAspectRatio === '9:16' ? 9 / 16 : 16 / 9,
-                            borderRadius: 12
+                            borderRadius: RADIUS_12
                           }}
                           resizeMode="cover"
                         />
@@ -32487,7 +28175,7 @@ function App() {
                             <View style={{ position: 'relative', flex: 1 }}>
                               <PortfolioVideoPlayer uri={v.url} width={v.width} height={v.height} fillContainer />
                               <BouncyButton
-                                style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: RADIUS_15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
                                 onPress={() => openMediaViewer(videoItems, 0)}
                               >
                                 <ExpandIconSVG size={15} />
@@ -32520,7 +28208,7 @@ function App() {
                                   <View key={idx} style={{ position: 'relative' }}>
                                     <PortfolioVideoPlayer uri={v.url} width={v.width} height={v.height} />
                                     <BouncyButton
-                                      style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                      style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: RADIUS_15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
                                       onPress={() => openMediaViewer(videoItems, thisUploadedIdx)}
                                     >
                                       <ExpandIconSVG size={15} />
@@ -32569,7 +28257,7 @@ function App() {
                                           style={{
                                             width: '100%',
                                             aspectRatio: activeProject.showcaseAspectRatio === '9:16' ? 9 / 16 : 16 / 9,
-                                            borderRadius: 12
+                                            borderRadius: RADIUS_12
                                           }}
                                           resizeMode="cover"
                                         />
@@ -32699,15 +28387,15 @@ function App() {
                             key={idx}
                             style={{
                               flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                              backgroundColor: '#7D52DD', borderRadius: 99, paddingVertical: 10, paddingHorizontal: 16
+                              backgroundColor: BRAND_MID, borderRadius: RADIUS_99, paddingVertical: 10, paddingHorizontal: 16
                             }}
                             onPress={() => openExternalLinkWithWarning(link.url)}
                           >
                             {getSocialLogoSVG(link.url)}
-                            <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
+                            <Text style={{ color: WHITE, fontSize: 14, fontWeight: '700' }}>
                               {link.label && link.label.trim() !== '' ? link.label : 'Visit Live Link'}
                             </Text>
-                            <ExternalLinkSVG color="#FFFFFF" size={15} />
+                            <ExternalLinkSVG color={WHITE} size={15} />
                           </BouncyButton>
                         ) : null
                       ))}
@@ -32730,19 +28418,19 @@ function App() {
                       {activeProject.isAiGenerated === true && (
                         <View style={showAiTooltip ? { position: 'relative', zIndex: 100 } : { position: 'relative' }}>
                           <BouncyButton
-                            style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: 7, backgroundColor: '#7D52DD', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ height: 26, minWidth: 26, paddingHorizontal: 6, borderRadius: RADIUS_7, backgroundColor: BRAND_MID, alignItems: 'center', justifyContent: 'center' }}
                             onPress={handleAiIconPress}
                           >
-                            <Text style={{ color: '#E2E8F0', fontSize: 11, fontWeight: '800' }}>{activeProject.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
+                            <Text style={{ color: BORDER_SOFT, fontSize: 11, fontWeight: '800' }}>{activeProject.portfolioType === 'illustration' ? 'AI ASSISTED' : 'AI'}</Text>
                           </BouncyButton>
                           {showAiTooltip && (
                             <Animated.View
                               pointerEvents="none"
                               style={{
                                 position: 'absolute', top: 32, left: -6, zIndex: 50,
-                                backgroundColor: theme.mode === 'light' ? '#1E293B' : '#0F172A',
+                                backgroundColor: theme.mode === 'light' ? SKY_800 : BLUE_900,
                                 borderWidth: 1, borderColor: theme.border,
-                                borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+                                borderRadius: RADIUS_10, paddingHorizontal: 12, paddingVertical: 8,
                                 width: 220,
                                 // Opacity is locked to 1, not driven by aiTooltipAnim - on
                                 // RN Web, an Animated opacity interpolate can get stuck
@@ -32758,7 +28446,7 @@ function App() {
                                 }]
                               }}
                             >
-                              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', lineHeight: 17 }}>
+                              <Text style={{ color: WHITE, fontSize: 12, fontWeight: '600', lineHeight: 17 }}>
                                 {activeProject.portfolioType === 'illustration' ? 'This content is AI assisted' : 'This content is AI generated/assisted'}
                               </Text>
                             </Animated.View>
@@ -32786,7 +28474,7 @@ function App() {
                         {activeProject.categories.map((cat, idx) => (
                           <BouncyButton
                             key={idx}
-                            style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 }}
+                            style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_99, paddingHorizontal: 12, paddingVertical: 6 }}
                             onPress={() => {
                               setModalVisible(false);
                               setSearchQuery(cat);
@@ -32849,7 +28537,7 @@ function App() {
                             version of this accordion above - wraps the
                             whole thing (header + content) whether
                             collapsed or expanded. */}
-                        <View style={{ borderRadius: 14, paddingVertical: 8, paddingHorizontal: 14, marginBottom: 16, backgroundColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.06)' : 'rgba(139, 92, 246, 0.08)', borderWidth: 1, borderColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.18)' }}>
+                        <View style={{ borderRadius: RADIUS_14, paddingVertical: 8, paddingHorizontal: 14, marginBottom: 16, backgroundColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.06)' : 'rgba(139, 92, 246, 0.08)', borderWidth: 1, borderColor: theme.mode === 'light' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(139, 92, 246, 0.18)' }}>
                         <BouncyButton
                           style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: galleryOpen ? 12 : 0 }}
                           onPress={() => setGalleryExpanded((prev) => !prev)}
@@ -32914,10 +28602,10 @@ function App() {
                               const galleryHeight = 220;
                               const vidAspect = vid.width && vid.height ? vid.width / vid.height : 16 / 9;
                               return (
-                                <View key={`vid-${index}`} style={{ position: 'relative', height: galleryHeight, width: galleryHeight * vidAspect, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' }}>
+                                <View key={`vid-${index}`} style={{ position: 'relative', height: galleryHeight, width: galleryHeight * vidAspect, borderRadius: RADIUS_12, overflow: 'hidden', backgroundColor: BLACK }}>
                                   <PortfolioVideoPlayer uri={vid.url} width={vid.width} height={vid.height} />
                                   <BouncyButton
-                                    style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                    style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: RADIUS_15, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
                                     onPress={() => openMediaViewer(mediaItems, activeProject.images.length + index)}
                                   >
                                     <ExpandIconSVG size={15} />
@@ -32936,7 +28624,7 @@ function App() {
                           position: 'absolute', left: 0, top: '50%', marginTop: -19, width: 38, height: 38,
                           alignItems: 'center', justifyContent: 'center',
                           backgroundColor: theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
-                          borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4
+                          borderRadius: RADIUS_19, shadowColor: BLACK, shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4
                         }}
                         onPress={() => {
                           const target = Math.max(0, galleryScrollXRef.current - (galleryScrollContainerWidthRef.current || 200) * 0.7);
@@ -32953,7 +28641,7 @@ function App() {
                           position: 'absolute', right: 0, top: '50%', marginTop: -19, width: 38, height: 38,
                           alignItems: 'center', justifyContent: 'center',
                           backgroundColor: theme.mode === 'light' ? 'rgba(255,255,255,0.95)' : 'rgba(20,24,34,0.95)',
-                          borderRadius: 19, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4
+                          borderRadius: RADIUS_19, shadowColor: BLACK, shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4
                         }}
                         onPress={() => {
                           const maxX = Math.max(0, galleryScrollContentWidthRef.current - galleryScrollContainerWidthRef.current);
@@ -32976,30 +28664,30 @@ function App() {
                       version above, just matching this pane's own
                       indentation level. */}
                   {activeProject.portfolioType === 'illustration' && activeProject.aiDisclosureNote ? (
-                    <View style={{ backgroundColor: '#7D52DD', borderRadius: 14, padding: 14, marginBottom: 16 }}>
+                    <View style={{ backgroundColor: BRAND_MID, borderRadius: RADIUS_14, padding: 14, marginBottom: 16 }}>
                       {/* b558: same restructuring as the narrow-web
                           version above - see that one's comment for the
                           full reasoning. */}
                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: aiUseExpanded ? 6 : 0 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>HOW I USE AI</Text>
+                          <Text style={{ color: WHITE, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>HOW I USE AI</Text>
                           <BouncyButton
-                            style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ width: 18, height: 18, borderRadius: RADIUS_9, borderWidth: 1.5, borderColor: WHITE, alignItems: 'center', justifyContent: 'center' }}
                             onPress={() => setAiDisclosureInfoModalVisible(true)}
                           >
-                            <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>!</Text>
+                            <Text style={{ color: WHITE, fontSize: 10, fontWeight: '800' }}>!</Text>
                           </BouncyButton>
                         </View>
                         <BouncyButton onPress={() => setAiUseExpanded((prev) => !prev)}>
                           {aiUseExpanded ? (
-                            <ChevronUpSVG color="#FFFFFF" size={16} />
+                            <ChevronUpSVG color={WHITE} size={16} />
                           ) : (
-                            <ChevronDownSVG color="#FFFFFF" size={16} />
+                            <ChevronDownSVG color={WHITE} size={16} />
                           )}
                         </BouncyButton>
                       </View>
                       {aiUseExpanded && (
-                        <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 20 }}>{activeProject.aiDisclosureNote}</Text>
+                        <Text style={{ color: WHITE, fontSize: 14, lineHeight: 20 }}>{activeProject.aiDisclosureNote}</Text>
                       )}
                     </View>
                   ) : null}
@@ -33046,7 +28734,7 @@ function App() {
                                 <Text style={styles.sectionHeader}>PROTOTYPE</Text>
                                 <View
                                   style={{
-                                    flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 99, padding: 4,
+                                    flexDirection: 'row', backgroundColor: theme.surface, borderRadius: RADIUS_99, padding: 4,
                                     marginBottom: 4, borderWidth: 1, borderColor: theme.border, gap: 4, position: 'relative'
                                   }}
                                   onLayout={(e) => setProtoTabBarWidth(e.nativeEvent.layout.width)}
@@ -33057,8 +28745,8 @@ function App() {
                                         position: 'absolute',
                                         top: 4, bottom: 4, left: 4,
                                         width: (protoTabBarWidth - 12) / 2,
-                                        borderRadius: 99,
-                                        backgroundColor: themeMode === 'light' ? '#6D28D9' : '#7D52DD',
+                                        borderRadius: RADIUS_99,
+                                        backgroundColor: themeMode === 'light' ? BRAND_DEEP : BRAND_MID,
                                         transform: [{
                                           translateX: protoTabSlideAnim.interpolate({
                                             inputRange: [0, 1],
@@ -33069,18 +28757,18 @@ function App() {
                                     />
                                   )}
                                   <BouncyButton
-                                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 99 }}
+                                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: RADIUS_99 }}
                                     onPress={() => switchProtoTab('mobile')}
                                   >
                                     <FigmaLogoSVG />
-                                    <Text style={{ color: activeTab === 'desktop' ? theme.textSecondary : '#FFFFFF', fontWeight: '700', fontSize: 12 }}>Mobile</Text>
+                                    <Text style={{ color: activeTab === 'desktop' ? theme.textSecondary : WHITE, fontWeight: '700', fontSize: 12 }}>Mobile</Text>
                                   </BouncyButton>
                                   <BouncyButton
-                                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 99 }}
+                                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: RADIUS_99 }}
                                     onPress={() => switchProtoTab('desktop')}
                                   >
                                     <FigmaLogoSVG />
-                                    <Text style={{ color: activeTab === 'desktop' ? '#FFFFFF' : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>Desktop</Text>
+                                    <Text style={{ color: activeTab === 'desktop' ? WHITE : theme.textSecondary, fontWeight: '700', fontSize: 12 }}>Desktop</Text>
                                   </BouncyButton>
                                 </View>
                               </View>
@@ -33124,7 +28812,7 @@ function App() {
                   activeOpacity={0.85}
                   onPress={scrollModalToTop}
                 >
-                  <ChevronUpSVG color="#8B5CF6" />
+                  <ChevronUpSVG color={BRAND_PRIMARY} />
                 </BouncyButton>
               )}
 
@@ -33206,8 +28894,8 @@ function App() {
               onStartShouldSetResponder={() => Platform.OS === 'web'}
               onResponderRelease={() => {}}
             >
-              <View style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: '#7D52DD', alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
-                <Text style={{ color: '#FFFFFF', fontSize: 26, fontWeight: '800' }}>D</Text>
+              <View style={{ width: 64, height: 64, borderRadius: RADIUS_18, backgroundColor: BRAND_MID, alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
+                <Text style={{ color: WHITE, fontSize: 26, fontWeight: '800' }}>D</Text>
               </View>
               <Text style={[styles.confirmTitle, isWebWide && { fontSize: 20 }]}>Get the DECENT App</Text>
               <Text style={styles.confirmSubText}>
@@ -33221,7 +28909,7 @@ function App() {
                   <Text style={[styles.confirmDeleteText, { color: theme.text }]}>Not Now</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#7D52DD' }]}
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: BRAND_MID }]}
                   onPress={() => {
                     handleDismissAndroidPromo();
                     openExternalLinkWithWarning(GITHUB_URL);
@@ -33254,7 +28942,7 @@ function App() {
                   <Text style={[styles.confirmDeleteText, { color: theme.text }]}>No</Text>
                 </BouncyButton>
                 <BouncyButton
-                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: '#7D52DD' }]}
+                  style={[styles.confirmDeleteBtn, { flex: 1, backgroundColor: BRAND_MID }]}
                   onPress={() => handleIosInterestResponse('yes')}
                 >
                   <Text style={styles.confirmDeleteText}>Yes</Text>
@@ -33333,8 +29021,8 @@ function App() {
                     btn.style === 'cancel'
                       ? { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }
                       : btn.style === 'destructive'
-                      ? { backgroundColor: '#CF3B3B' }
-                      : { backgroundColor: '#7D52DD' }
+                      ? { backgroundColor: RED_500 }
+                      : { backgroundColor: BRAND_MID }
                   ]}
                   onPress={() => {
                     setAppAlertConfig(null);
@@ -33457,7 +29145,7 @@ function App() {
                 <BouncyButton
                   style={{
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%',
-                    paddingVertical: 8, paddingHorizontal: 12, borderRadius: 99,
+                    paddingVertical: 8, paddingHorizontal: 12, borderRadius: RADIUS_99,
                     borderWidth: 1, borderColor: theme.border, backgroundColor: theme.bg
                   }}
                   onPress={() => setShareTypeDropdownOpen((v) => !v)}
@@ -33484,8 +29172,8 @@ function App() {
                     />
                     <View style={{
                       position: 'absolute', top: 40, left: 0, right: 0, zIndex: 100,
-                      backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border,
-                      padding: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
+                      backgroundColor: theme.surface, borderRadius: RADIUS_14, borderWidth: 1, borderColor: theme.border,
+                      padding: 6, shadowColor: BLACK, shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12
                     }}>
                       {/* Non-selectable title row - stands in for the
                           label that used to sit above the whole control. */}
@@ -33497,18 +29185,18 @@ function App() {
                       <View style={{ height: 1, backgroundColor: theme.border, marginBottom: 4 }} />
 
                       <BouncyButton
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: RADIUS_99 }}
                         onPress={() => setShareTypeFilters(new Set())}
                         accessibilityRole="checkbox"
                         accessibilityLabel="All Portfolios"
                         accessibilityState={{ checked: shareTypeFilters.size === 0 }}
                       >
                         <View style={{
-                          width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                          borderWidth: 1.5, borderColor: shareTypeFilters.size === 0 ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                          backgroundColor: shareTypeFilters.size === 0 ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
+                          width: 18, height: 18, borderRadius: RADIUS_5, alignItems: 'center', justifyContent: 'center',
+                          borderWidth: 1.5, borderColor: shareTypeFilters.size === 0 ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border,
+                          backgroundColor: shareTypeFilters.size === 0 ? (themeMode === 'light' ? BRAND_DEEP : BRAND_MID) : 'transparent'
                         }}>
-                          {shareTypeFilters.size === 0 && <CheckIconSVG color="#FFFFFF" />}
+                          {shareTypeFilters.size === 0 && <CheckIconSVG color={WHITE} />}
                         </View>
                         <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>All Portfolios</Text>
                       </BouncyButton>
@@ -33518,7 +29206,7 @@ function App() {
                         return (
                           <BouncyButton
                             key={t.key}
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: 99 }}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 10, borderRadius: RADIUS_99 }}
                             onPress={() => {
                               setShareTypeFilters((prev) => {
                                 const next = new Set(prev);
@@ -33531,11 +29219,11 @@ function App() {
                             accessibilityState={{ checked: selected }}
                           >
                             <View style={{
-                              width: 18, height: 18, borderRadius: 5, alignItems: 'center', justifyContent: 'center',
-                              borderWidth: 1.5, borderColor: selected ? (themeMode === 'light' ? '#6D28D9' : '#8B5CF6') : theme.border,
-                              backgroundColor: selected ? (themeMode === 'light' ? '#6D28D9' : '#7D52DD') : 'transparent'
+                              width: 18, height: 18, borderRadius: RADIUS_5, alignItems: 'center', justifyContent: 'center',
+                              borderWidth: 1.5, borderColor: selected ? (themeMode === 'light' ? BRAND_DEEP : BRAND_PRIMARY) : theme.border,
+                              backgroundColor: selected ? (themeMode === 'light' ? BRAND_DEEP : BRAND_MID) : 'transparent'
                             }}>
-                              {selected && <CheckIconSVG color="#FFFFFF" />}
+                              {selected && <CheckIconSVG color={WHITE} />}
                             </View>
                             <Text style={{ color: theme.text, fontSize: 13 }}>{t.label}</Text>
                           </BouncyButton>
@@ -33596,7 +29284,7 @@ function App() {
                 />
 
                 <View
-                  style={{ width: '100%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', padding: 10, backgroundColor: '#FFFFFF', borderRadius: 12 }}
+                  style={{ width: '100%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', padding: 10, backgroundColor: WHITE, borderRadius: RADIUS_12 }}
                   onLayout={(e) => setQrBoxWidth(e.nativeEvent.layout.width)}
                 >
                   {qrPreviewMode === 'decent' ? (
@@ -33604,8 +29292,8 @@ function App() {
                       ref={styledQrExportRef}
                       value={getShareModalUrlWithFilter()}
                       size={Math.max(0, qrBoxWidth - 20)}
-                      color="#8B5CF6"
-                      backgroundColor="#FFFFFF"
+                      color={BRAND_PRIMARY}
+                      backgroundColor={WHITE}
                       showLogo
                     />
                   ) : (
@@ -33617,7 +29305,7 @@ function App() {
                 </View>
 
                 <BouncyButton
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 16, marginTop: 10, borderRadius: 99, borderWidth: 1, borderColor: theme.border }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 16, marginTop: 10, borderRadius: RADIUS_99, borderWidth: 1, borderColor: theme.border }}
                   onPress={qrPreviewMode === 'decent' ? handleDownloadStyledQr : handleDownloadPlainQr}
                 >
                   <DownloadIconSVG color={theme.accent} size={15} />
@@ -33630,7 +29318,7 @@ function App() {
               style={{
                 width: '100%', flexDirection: 'row', alignItems: 'center',
                 backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border,
-                borderRadius: 10, paddingLeft: 12, marginBottom: 20, overflow: 'hidden'
+                borderRadius: RADIUS_10, paddingLeft: 12, marginBottom: 20, overflow: 'hidden'
               }}
               onPress={handleCopyShareLink}
               activeOpacity={0.7}
@@ -33640,9 +29328,9 @@ function App() {
               </Text>
               <View style={{
                 width: 44, height: 44, alignItems: 'center', justifyContent: 'center',
-                backgroundColor: shareCopied ? '#0B815A' : theme.primary, marginLeft: 8
+                backgroundColor: shareCopied ? TEAL_700 : theme.primary, marginLeft: 8
               }}>
-                {shareCopied ? <CheckIconSVG color="#FFFFFF" /> : <CopyIconSVG />}
+                {shareCopied ? <CheckIconSVG color={WHITE} /> : <CopyIconSVG />}
               </View>
             </BouncyButton>
 
@@ -33819,7 +29507,7 @@ function App() {
               top: `${scrollProgress.ratio * (1 - scrollProgress.thumbHeightRatio) * 100}%`,
               height: `${Math.max(6, scrollProgress.thumbHeightRatio * 100)}%`,
               width: 4,
-              borderRadius: 2,
+              borderRadius: RADIUS_2,
               backgroundColor: 'rgba(139, 92, 246, 0.5)'
             }}
           />
@@ -33862,8 +29550,8 @@ const getStyles = (theme, radiusScale = 1) => {
   const raw = StyleSheet.create({
   thumbnailContainerCompact: {
     height: 120,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: RADIUS_16,
+    borderTopRightRadius: RADIUS_16,
     overflow: 'hidden'
   },
   cardBodyCompact: {
@@ -33874,10 +29562,10 @@ const getStyles = (theme, radiusScale = 1) => {
     lineHeight: 17
   },
   donateSettingBtn: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: WARNING,
     height: 44,
     paddingHorizontal: 16,
-    borderRadius: 99,
+    borderRadius: RADIUS_99,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 10
@@ -33889,9 +29577,9 @@ const getStyles = (theme, radiusScale = 1) => {
   },
   contrastDonateBtnFull: {
     width: '100%',
-    backgroundColor: '#F59E0B',
+    backgroundColor: WARNING,
     height: 44,
-    borderRadius: 99,
+    borderRadius: RADIUS_99,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8
@@ -33903,8 +29591,8 @@ const getStyles = (theme, radiusScale = 1) => {
   },
   knownContactBox: {
     padding: 14,
-    backgroundColor: theme.mode === 'light' ? '#EAE7F5' : '#1E293B',
-    borderRadius: 14.4,
+    backgroundColor: theme.mode === 'light' ? INDIGO_100 : SKY_800,
+    borderRadius: RADIUS_14_4,
     borderWidth: 1,
     borderColor: theme.border,
     marginBottom: 10
@@ -33921,7 +29609,7 @@ const getStyles = (theme, radiusScale = 1) => {
     marginTop: 2
   },
   knownContactSub: {
-    color: '#64748B',
+    color: TEXT_MUTED,
     fontSize: 11,
     marginTop: 2
   },
@@ -33950,32 +29638,32 @@ const getStyles = (theme, radiusScale = 1) => {
     borderBottomColor: theme.mode === 'light' ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.08)'
   },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  logoText: { fontSize: 18, fontWeight: '800', color: '#8B5CF6' },
+  logoText: { fontSize: 18, fontWeight: '800', color: BRAND_PRIMARY },
   versionBadge: {
     backgroundColor: 'rgba(139, 92, 246, 0.2)',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 7.2,
+    borderRadius: RADIUS_7_2,
     borderWidth: 1,
     borderColor: 'rgba(139, 92, 246, 0.4)'
   },
   versionText: { color: theme.accent, fontSize: 11, fontWeight: '700' },
   headerRightActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  headerIconBtn: { width: 36, height: 36, borderRadius: 99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
-  headerIconBtnWithBadge: { width: 36, height: 36, borderRadius: 99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  unreadRedBadgeDot: { position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#CF3B3B', borderWidth: 1.5, borderColor: theme.bg },
+  headerIconBtn: { width: 36, height: 36, borderRadius: RADIUS_99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
+  headerIconBtnWithBadge: { width: 36, height: 36, borderRadius: RADIUS_99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  unreadRedBadgeDot: { position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: RADIUS_5, backgroundColor: RED_500, borderWidth: 1.5, borderColor: theme.bg },
 
-  notificationCard: { backgroundColor: theme.bg, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  notifAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: theme.border },
-  notifText: { color: theme.mode === 'light' ? '#4C1D95' : '#CBD5E1', fontSize: 13, lineHeight: 18 },
+  notificationCard: { backgroundColor: theme.bg, borderRadius: RADIUS_16_8, borderWidth: 1, borderColor: theme.border, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  notifAvatar: { width: 42, height: 42, borderRadius: RADIUS_21, backgroundColor: theme.border },
+  notifText: { color: theme.mode === 'light' ? INDIGO_700 : SKY_200, fontSize: 13, lineHeight: 18 },
   notifUserBold: { color: theme.text, fontWeight: '800' },
   notifTargetBold: { color: theme.accent, fontWeight: '700' },
   notifTimeText: { color: theme.textSecondary, fontSize: 11, marginTop: 3 },
-  notifTypeIconBox: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
+  notifTypeIconBox: { width: 32, height: 32, borderRadius: RADIUS_16, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
 
-  notifFollowBackBtn: { backgroundColor: '#7D52DD', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
-  notifFollowBackBtnActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#8B5CF6' },
-  notifFollowBackText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
+  notifFollowBackBtn: { backgroundColor: BRAND_MID, paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center' },
+  notifFollowBackBtnActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: BRAND_PRIMARY },
+  notifFollowBackText: { color: WHITE, fontSize: 11, fontWeight: '700' },
   notifFollowBackTextActive: { color: theme.accent },
 
   mainViewContainer: { flex: 1 },
@@ -33994,11 +29682,11 @@ const getStyles = (theme, radiusScale = 1) => {
   storiesBarScroll: { flexDirection: 'row', marginBottom: 20 },
   storyCircleWrapper: { alignItems: 'center', marginRight: 14, width: 62 },
   storyRing: {
-    width: 58, height: 58, borderRadius: 29, padding: 2.5,
+    width: 58, height: 58, borderRadius: RADIUS_29, padding: 2.5,
     borderWidth: 2, borderColor: theme.border, backgroundColor: theme.bg
   },
-  storyRingActive: { borderColor: '#8B5CF6' },
-  storyAvatar: { width: '100%', height: '100%', borderRadius: 31.2 },
+  storyRingActive: { borderColor: BRAND_PRIMARY },
+  storyAvatar: { width: '100%', height: '100%', borderRadius: RADIUS_31_2 },
   storyNameText: { color: theme.textSecondary, fontSize: 11, fontWeight: '600', marginTop: 4, textAlign: 'center' },
   storyNameTextActive: { color: theme.accent, fontWeight: '800' },
 
@@ -34006,31 +29694,31 @@ const getStyles = (theme, radiusScale = 1) => {
   topCategoryScrollView: { flexDirection: 'row' },
   topCategoryChip: {
     backgroundColor: Platform.OS !== 'web' ? 'transparent' : theme.surface, paddingHorizontal: 14, paddingVertical: 8,
-    borderRadius: 99, borderWidth: 1, borderColor: theme.border, marginRight: 8, overflow: 'hidden'
+    borderRadius: RADIUS_99, borderWidth: 1, borderColor: theme.border, marginRight: 8, overflow: 'hidden'
   },
-  topCategoryChipActive: { backgroundColor: Platform.OS !== 'web' ? 'transparent' : '#7D52DD', borderColor: '#8B5CF6' },
+  topCategoryChipActive: { backgroundColor: Platform.OS !== 'web' ? 'transparent' : BRAND_MID, borderColor: BRAND_PRIMARY },
   topCategoryText: { color: theme.textSecondary, fontSize: 12, fontWeight: '600' },
-  topCategoryTextActive: { color: '#FFFFFF', fontWeight: '700' },
+  topCategoryTextActive: { color: WHITE, fontWeight: '700' },
   grid2x2CategoryBtn: {
-    backgroundColor: '#7D52DD', width: 34, height: 34, borderRadius: 99,
+    backgroundColor: BRAND_MID, width: 34, height: 34, borderRadius: RADIUS_99,
     alignItems: 'center', justifyContent: 'center', marginRight: 16
   },
 
   categorySearchInput: {
-    backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 12,
+    backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_12,
     paddingHorizontal: 14, paddingVertical: 10, color: theme.text, fontSize: 13, marginBottom: 10
   },
   selectedCategoriesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
   selectedCategoryPill: {
-    backgroundColor: '#7D52DD', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99
+    backgroundColor: BRAND_MID, paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS_99
   },
-  selectedCategoryText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
+  selectedCategoryText: { color: WHITE, fontSize: 11, fontWeight: '700' },
   categoryVerticalItem: { paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: theme.border },
   categoryVerticalItemActive: { backgroundColor: 'rgba(139, 92, 246, 0.2)' },
   categoryVerticalText: { color: theme.text, fontSize: 13, fontWeight: '600' },
   categoryVerticalTextActive: { color: theme.accent, fontWeight: '800' },
-  addCustomCategoryItemBtn: { paddingVertical: 12, alignItems: 'center', backgroundColor: theme.bg, borderRadius: 99, marginTop: 4 },
-  addCustomCategoryItemText: { color: '#8B5CF6', fontSize: 12, fontWeight: '700' },
+  addCustomCategoryItemBtn: { paddingVertical: 12, alignItems: 'center', backgroundColor: theme.bg, borderRadius: RADIUS_99, marginTop: 4 },
+  addCustomCategoryItemText: { color: BRAND_PRIMARY, fontSize: 12, fontWeight: '700' },
 
 
 
@@ -34040,32 +29728,32 @@ const getStyles = (theme, radiusScale = 1) => {
   // separate style, stickyBackToTopBtn below, untouched).
   stickyModalBackToTopBtn: {
     position: 'absolute', bottom: 98, right: 20,
-    width: 44, height: 44, borderRadius: 99,
+    width: 44, height: 44, borderRadius: RADIUS_99,
     backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center',
-    elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 6, zIndex: 99
+    elevation: 10, shadowColor: BLACK, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 6, zIndex: 99
   },
 
   floatingLikeCircleBtn: {
     position: 'absolute', bottom: 28, right: 20,
-    width: 52, height: 52, borderRadius: 99,
+    width: 52, height: 52, borderRadius: RADIUS_99,
     backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-    elevation: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.45, shadowRadius: 10, zIndex: 99,
+    elevation: 12, shadowColor: BLACK, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.45, shadowRadius: 10, zIndex: 99,
     opacity: 1
   },
 
   customConfirmCard: {
-    backgroundColor: theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
+    backgroundColor: theme.surface, borderRadius: RADIUS_24, borderWidth: 1, borderColor: theme.border,
     padding: 24, width: '100%', maxWidth: 340, alignItems: 'center'
   },
-  confirmIconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(239, 68, 68, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
-  successIconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(16, 185, 129, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  confirmIconCircle: { width: 48, height: 48, borderRadius: RADIUS_24, backgroundColor: 'rgba(239, 68, 68, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  successIconCircle: { width: 48, height: 48, borderRadius: RADIUS_24, backgroundColor: 'rgba(16, 185, 129, 0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   confirmTitle: { fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 8, textAlign: 'center' },
   confirmSubText: { fontSize: 13, color: theme.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 14 },
-  linkUrlBox: { backgroundColor: theme.bg, borderRadius: 12, padding: 10, borderWidth: 1, borderColor: theme.border, width: '100%', marginBottom: 20 },
-  linkUrlText: { color: '#8B5CF6', fontSize: 12, textAlign: 'center', fontWeight: '600' },
+  linkUrlBox: { backgroundColor: theme.bg, borderRadius: RADIUS_12, padding: 10, borderWidth: 1, borderColor: theme.border, width: '100%', marginBottom: 20 },
+  linkUrlText: { color: BRAND_PRIMARY, fontSize: 12, textAlign: 'center', fontWeight: '600' },
   confirmActionsRow: { flexDirection: 'row', gap: 10, width: '100%' },
-  confirmCancelBtn: { flex: 1, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
+  confirmCancelBtn: { flex: 1, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, height: 44, borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center' },
   confirmCancelText: { color: theme.textSecondary, fontSize: 13, fontWeight: '700' },
   // b550: this flex:1 is meant for confirmActionsRow's two-button ROW
   // layout, where it splits width evenly with a sibling. Every
@@ -34076,54 +29764,54 @@ const getStyles = (theme, radiusScale = 1) => {
   // collapsing the button down to just its text's natural height with
   // no real vertical padding. Confirmed bug, not just theoretical -
   // found across 7 standalone usages in this file.
-  confirmDeleteBtn: { flex: 1, backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#7D52DD', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
-  confirmDeleteText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  confirmDeleteBtn: { flex: 1, backgroundColor: theme.mode === 'light' ? BRAND_DEEP : BRAND_MID, height: 44, borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center' },
+  confirmDeleteText: { color: WHITE, fontSize: 13, fontWeight: '800' },
 
   overlayModalBg: { flex: 1, backgroundColor: Platform.OS === 'web' ? 'rgba(0, 0, 0, 0.6)' : 'rgba(11, 15, 23, 0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   overlayModalContainer: {
-    backgroundColor: theme.surface, borderRadius: 24, borderWidth: 1, borderColor: theme.border,
+    backgroundColor: theme.surface, borderRadius: RADIUS_24, borderWidth: 1, borderColor: theme.border,
     maxHeight: '85%', width: '100%', overflow: 'hidden',
     ...(Platform.OS === 'web' ? { maxWidth: 480, alignSelf: 'center' } : {})
   },
   accountSettingsScrollContent: { padding: 20, gap: 12 },
-  saveAccountSettingsBtn: { backgroundColor: theme.mode === 'light' ? '#6D28D9' : '#7D52DD', height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
+  saveAccountSettingsBtn: { backgroundColor: theme.mode === 'light' ? BRAND_DEEP : BRAND_MID, height: 44, borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
 
   allCategoriesGrid: { padding: 20, flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between' },
-  overlayCategoryCard: { width: '48%', backgroundColor: theme.bg, paddingVertical: 14, paddingHorizontal: 10, borderRadius: 14.4, borderWidth: 1, borderColor: theme.border, alignItems: 'center' },
-  overlayCategoryCardActive: { backgroundColor: '#7D52DD', borderColor: '#8B5CF6' },
+  overlayCategoryCard: { width: '48%', backgroundColor: theme.bg, paddingVertical: 14, paddingHorizontal: 10, borderRadius: RADIUS_14_4, borderWidth: 1, borderColor: theme.border, alignItems: 'center' },
+  overlayCategoryCardActive: { backgroundColor: BRAND_MID, borderColor: BRAND_PRIMARY },
   overlayCategoryText: { color: theme.text, fontSize: 12, fontWeight: '700' },
-  overlayCategoryTextActive: { color: '#FFFFFF' },
+  overlayCategoryTextActive: { color: WHITE },
 
   stickyBackToTopBtn: {
     position: 'absolute', bottom: 88, right: 20, width: 42, height: 42,
-    borderRadius: 99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center',
-    elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 99
+    borderRadius: RADIUS_99, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center',
+    elevation: 10, shadowColor: BLACK, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 99
   },
 
-  emptyFollowedBox: { backgroundColor: theme.surface, borderRadius: 19.2, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center', marginTop: 10 },
+  emptyFollowedBox: { backgroundColor: theme.surface, borderRadius: RADIUS_19_2, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center', marginTop: 10 },
   emptyFollowedTitle: { fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 8, textAlign: 'center' },
   emptyFollowedSub: { fontSize: 13, color: theme.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
-  discoverDesignersBtn: { backgroundColor: '#7D52DD', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 99 },
-  discoverBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  discoverDesignersBtn: { backgroundColor: BRAND_MID, paddingHorizontal: 20, paddingVertical: 12, borderRadius: RADIUS_99 },
+  discoverBtnText: { color: WHITE, fontSize: 13, fontWeight: '700' },
 
   grid: Platform.OS === 'web'
     ? { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 20 }
     : { gap: 20 },
   card: {
     backgroundColor: theme.surface,
-    borderRadius: 19.2,
+    borderRadius: RADIUS_19_2,
     borderWidth: 1,
     borderColor: theme.border,
     overflow: 'hidden',
     ...(Platform.OS === 'web' ? { width: '48.5%' } : {})
   },
-  thumbnailContainer: { position: 'relative', width: '100%', aspectRatio: 16 / 9, backgroundColor: '#070A10' },
+  thumbnailContainer: { position: 'relative', width: '100%', aspectRatio: 16 / 9, backgroundColor: BLUE_950 },
   cardCover: { width: '100%', height: '100%' },
   prototypeBadgesRow: { position: 'absolute', top: 12, left: 12, flexDirection: 'row', gap: 5, zIndex: 10 },
   protoBadgeIconOnly: {
     backgroundColor: 'rgba(15, 23, 42, 0.82)',
     padding: 5,
-    borderRadius: 9,
+    borderRadius: RADIUS_9,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.25)',
     alignItems: 'center',
@@ -34141,20 +29829,20 @@ const getStyles = (theme, radiusScale = 1) => {
   designerRowLeftCol: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 },
   // b542: 20px, was 24 - matches the 20px-tall category tag on the
   // right side of the same row now (see ProjectCard's new top row).
-  designerAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: theme.border },
+  designerAvatar: { width: 20, height: 20, borderRadius: RADIUS_10, backgroundColor: theme.border },
   cardDesignerName: { color: theme.accent, fontSize: 12, fontWeight: '600', flexShrink: 1 },
-  cardFollowBtnRight: { backgroundColor: '#7D52DD', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
-  cardFollowBtnRightActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#8B5CF6' },
-  cardFollowBtnText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
+  cardFollowBtnRight: { backgroundColor: BRAND_MID, paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS_99 },
+  cardFollowBtnRightActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: BRAND_PRIMARY },
+  cardFollowBtnText: { color: WHITE, fontSize: 10, fontWeight: '700' },
   cardFollowBtnTextActive: { color: theme.accent },
 
   profileTabsBar: {
-    flexDirection: 'row', backgroundColor: theme.surface, borderRadius: 99, padding: 4,
+    flexDirection: 'row', backgroundColor: theme.surface, borderRadius: RADIUS_99, padding: 4,
     marginVertical: 20, borderWidth: 1, borderColor: theme.border, gap: 4
   },
-  profileTabBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 99 },
+  profileTabBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: RADIUS_99 },
   profileTabBtnText: { fontSize: 12, color: theme.textSecondary, fontWeight: '700' },
-  profileTabBtnTextActive: { color: '#FFFFFF' },
+  profileTabBtnTextActive: { color: WHITE },
 
   // b551: twoRowContainer/twoRowColumn removed - zero references anywhere
   // else in the file (checked). TwoRowHorizontalGrid, the only component
@@ -34164,7 +29852,7 @@ const getStyles = (theme, radiusScale = 1) => {
 
   floatingBottomBar: {
     position: 'absolute', bottom: 14, left: 20, right: 20, height: 64,
-    backgroundColor: theme.surface, borderRadius: 28.8, borderWidth: 1, borderColor: theme.border,
+    backgroundColor: theme.surface, borderRadius: RADIUS_28_8, borderWidth: 1, borderColor: theme.border,
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6,
     // iOS shadow (directional - offset pushes it down/outward, away from
     // the top edge) made stronger/longer per request. Android has no
@@ -34172,24 +29860,24 @@ const getStyles = (theme, radiusScale = 1) => {
     // there and it's inherently uniform on all sides, so "except top" isn't
     // actually achievable without a separate custom-drawn shadow view
     // behind the bar; elevation bumped up as the closest available lever.
-    shadowColor: '#000', shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.55, shadowRadius: 26, elevation: 18, zIndex: 100
+    shadowColor: BLACK, shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.55, shadowRadius: 26, elevation: 18, zIndex: 100
   },
   uniformTabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 6 },
   menuLabel: { fontSize: 10, fontWeight: '600', color: theme.textSecondary, marginTop: 2 },
-  menuLabelActive: { color: '#8B5CF6', fontWeight: '700' },
+  menuLabelActive: { color: BRAND_PRIMARY, fontWeight: '700' },
   plusContainerBtn: {
-    width: 44, height: 44, borderRadius: 99, backgroundColor: '#7D52DD',
+    width: 44, height: 44, borderRadius: RADIUS_99, backgroundColor: BRAND_MID,
     alignItems: 'center', justifyContent: 'center', marginHorizontal: 4,
-    shadowColor: '#8B5CF6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 6
+    shadowColor: BRAND_PRIMARY, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 6
   },
 
-  searchInput: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 14.4, paddingHorizontal: 16, paddingVertical: 12, color: theme.text, fontSize: 14 },
+  searchInput: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_14_4, paddingHorizontal: 16, paddingVertical: 12, color: theme.text, fontSize: 14 },
   keywordsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 10 },
-  keywordChip: { backgroundColor: theme.surface, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, borderWidth: 1, borderColor: theme.border },
+  keywordChip: { backgroundColor: theme.surface, paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS_99, borderWidth: 1, borderColor: theme.border },
   keywordText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
   designersList: { gap: 12 },
-  designerItemCard: { backgroundColor: theme.surface, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border, padding: 14, flexDirection: 'row', alignItems: 'center' },
-  designerListAvatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
+  designerItemCard: { backgroundColor: theme.surface, borderRadius: RADIUS_16_8, borderWidth: 1, borderColor: theme.border, padding: 14, flexDirection: 'row', alignItems: 'center' },
+  designerListAvatar: { width: 48, height: 48, borderRadius: RADIUS_24, marginRight: 12 },
   designerInfoCol: { flex: 1 },
   designerListName: { fontSize: 15, fontWeight: '700', color: theme.text, marginBottom: 2 },
   designerListRole: { fontSize: 12, color: theme.accent, fontWeight: '600', marginBottom: 2 },
@@ -34197,36 +29885,36 @@ const getStyles = (theme, radiusScale = 1) => {
   emptySearchText: { color: theme.textSecondary, fontSize: 13, marginTop: 20 },
 
   designerCardActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  smallFollowBtn: { flex: 1, backgroundColor: '#7D52DD', paddingVertical: 6, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
-  smallFollowBtnActive: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#8B5CF6' },
-  smallFollowText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
+  smallFollowBtn: { flex: 1, backgroundColor: BRAND_MID, paddingVertical: 6, borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center' },
+  smallFollowBtnActive: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: BRAND_PRIMARY },
+  smallFollowText: { color: WHITE, fontSize: 11, fontWeight: '700' },
   smallFollowTextActive: { color: theme.accent },
   smallShareBtnIconOnly: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
 
-  statsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 14, backgroundColor: theme.bg, borderRadius: 14.4, paddingVertical: 10, paddingHorizontal: 20, gap: 20, borderWidth: 1, borderColor: theme.border },
+  statsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 14, backgroundColor: theme.bg, borderRadius: RADIUS_14_4, paddingVertical: 10, paddingHorizontal: 20, gap: 20, borderWidth: 1, borderColor: theme.border },
   statItem: { alignItems: 'center', paddingHorizontal: 12 },
   statNum: { fontSize: 16, fontWeight: '800', color: theme.text },
   statLabel: { fontSize: 11, color: theme.textSecondary, fontWeight: '600', marginTop: 2 },
   statDivider: { width: 1, height: 24, backgroundColor: theme.border },
 
   designerProfileActionsRow: { flexDirection: 'row', gap: 10, marginTop: 12, width: '100%', alignItems: 'center' },
-  modalFollowBtn: { flex: 1, backgroundColor: '#7D52DD', paddingVertical: 12, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
-  modalFollowBtnActive: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#8B5CF6' },
-  modalFollowText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  modalFollowBtn: { flex: 1, backgroundColor: BRAND_MID, paddingVertical: 12, borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center' },
+  modalFollowBtnActive: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: BRAND_PRIMARY },
+  modalFollowText: { color: WHITE, fontSize: 13, fontWeight: '700' },
   modalFollowTextActive: { color: theme.accent },
 
 
-  profileCard: { backgroundColor: theme.surface, borderRadius: 19.2, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center', position: 'relative' },
-  profileLargeAvatar: { width: 80, height: 80, borderRadius: 40, marginBottom: 12 },
+  profileCard: { backgroundColor: theme.surface, borderRadius: RADIUS_19_2, borderWidth: 1, borderColor: theme.border, padding: 24, alignItems: 'center', position: 'relative' },
+  profileLargeAvatar: { width: 80, height: 80, borderRadius: RADIUS_40, marginBottom: 12 },
   profileName: { fontSize: 20, fontWeight: '800', color: theme.text, marginBottom: 4, textAlign: 'center' },
   profileRole: { fontSize: 13, color: theme.accent, fontWeight: '600', marginBottom: 2 },
   profileLocText: { fontSize: 12, color: theme.textSecondary },
   profileBio: { fontSize: 13, color: theme.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 8 },
 
   socialCircularLinksRow: { flexDirection: 'row', gap: 10, marginTop: 14, justifyContent: 'center' },
-  socialCircleBtn: { width: 38, height: 38, borderRadius: 99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
+  socialCircleBtn: { width: 38, height: 38, borderRadius: RADIUS_99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
 
-  avatarEditPickerBtn: { alignSelf: 'center', width: 90, height: 90, borderRadius: 99, overflow: 'hidden', position: 'relative', marginBottom: 10 },
+  avatarEditPickerBtn: { alignSelf: 'center', width: 90, height: 90, borderRadius: RADIUS_99, overflow: 'hidden', position: 'relative', marginBottom: 10 },
   avatarEditPreview: { width: '100%', height: '100%' },
   avatarEditOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(11, 15, 23, 0.75)', paddingVertical: 4, alignItems: 'center' },
   avatarEditText: { color: theme.accent, fontSize: 9, fontWeight: '700' },
@@ -34240,21 +29928,21 @@ const getStyles = (theme, radiusScale = 1) => {
   smallSquaresGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 10 },
   squarePickerWrapper: { position: 'relative' },
   videoInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  removeVideoBtn: { width: 42, height: 42, backgroundColor: theme.bg, borderWidth: 1, borderColor: '#EF4444', borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
+  removeVideoBtn: { width: 42, height: 42, backgroundColor: theme.bg, borderWidth: 1, borderColor: DANGER, borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center' },
 
 
   warningNoteBox: {
     backgroundColor: 'rgba(234, 179, 8, 0.12)', borderWidth: 1, borderColor: 'rgba(234, 179, 8, 0.3)',
-    borderRadius: 12, padding: 12, marginBottom: 16
+    borderRadius: RADIUS_12, padding: 12, marginBottom: 16
   },
-  warningTitle: { color: '#FACC15', fontSize: 13, fontWeight: '700' },
+  warningTitle: { color: AMBER_500, fontSize: 13, fontWeight: '700' },
   warningText: { color: theme.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 4 },
 
-  inputErrorBorder: { borderColor: '#EF4444' },
-  errorText: { color: '#EF4444', fontSize: 11, fontWeight: '600', marginTop: 4, marginBottom: 8 },
+  inputErrorBorder: { borderColor: DANGER },
+  errorText: { color: DANGER, fontSize: 11, fontWeight: '600', marginTop: 4, marginBottom: 8 },
 
   bigRectanglePicker: {
-    width: '100%', aspectRatio: 16 / 9, backgroundColor: theme.surface, borderRadius: 16.8,
+    width: '100%', aspectRatio: 16 / 9, backgroundColor: theme.surface, borderRadius: RADIUS_16_8,
     borderWidth: 1.5, borderColor: theme.border,
     overflow: 'hidden', alignItems: 'center', justifyContent: 'center'
   },
@@ -34265,7 +29953,7 @@ const getStyles = (theme, radiusScale = 1) => {
 
   smallSquarePicker: {
     width: (SCREEN_WIDTH - 40 - 24) / 3, height: (SCREEN_WIDTH - 40 - 24) / 3,
-    backgroundColor: theme.surface, borderRadius: 14.4,
+    backgroundColor: theme.surface, borderRadius: RADIUS_14_4,
     borderWidth: 1.5, borderColor: theme.border,
     overflow: 'hidden', alignItems: 'center', justifyContent: 'center'
   },
@@ -34274,7 +29962,7 @@ const getStyles = (theme, radiusScale = 1) => {
 
   addMoreVideoBtn: {
     backgroundColor: 'rgba(139, 92, 246, 0.15)', borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.3)',
-    paddingVertical: 10, borderRadius: 99, alignItems: 'center', justifyContent: 'center', marginTop: 4
+    paddingVertical: 10, borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center', marginTop: 4
   },
   addMoreVideoText: { color: theme.accent, fontSize: 12, fontWeight: '700' },
 
@@ -34285,21 +29973,21 @@ const getStyles = (theme, radiusScale = 1) => {
   },
   uniformWizardBtnBack: {
     height: 44, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border,
-    borderRadius: 99, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
     paddingHorizontal: 16
   },
   uniformWizardBtnPrimary: {
-    height: 44, backgroundColor: '#7D52DD', flex: 1,
-    borderRadius: 99, alignItems: 'center', justifyContent: 'center'
+    height: 44, backgroundColor: BRAND_MID, flex: 1,
+    borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center'
   },
   backBtnText: { color: theme.textSecondary, fontSize: 13, fontWeight: '700' },
-  submitBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  submitBtnText: { color: WHITE, fontSize: 14, fontWeight: '800' },
 
   confirmReviewCard: {
-    backgroundColor: theme.surface, borderRadius: 16.8, borderWidth: 1, borderColor: theme.border,
+    backgroundColor: theme.surface, borderRadius: RADIUS_16_8, borderWidth: 1, borderColor: theme.border,
     padding: 16, marginBottom: 16
   },
-  reviewCover: { width: '100%', aspectRatio: 16 / 9, borderRadius: 12, marginBottom: 12 },
+  reviewCover: { width: '100%', aspectRatio: 16 / 9, borderRadius: RADIUS_12, marginBottom: 12 },
   reviewTitle: { fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 2 },
   reviewDesigner: { fontSize: 12, color: theme.accent, fontWeight: '600', marginBottom: 8 },
   reviewCategory: { fontSize: 12, color: theme.textSecondary, marginBottom: 8 },
@@ -34313,13 +30001,13 @@ const getStyles = (theme, radiusScale = 1) => {
   },
   modalTopBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: theme.border, backgroundColor: theme.surface },
   modalTopTitle: { fontSize: 16, fontWeight: '700', color: theme.text, flex: 1 },
-  closeBtn: { width: 32, height: 32, borderRadius: 99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
-  closeBtnText: { color: theme.mode === 'light' ? '#6D28D9' : '#FFF', fontSize: 16, fontWeight: '700' },
-  tabBar: { flexDirection: 'row', backgroundColor: theme.surface, padding: 6, marginHorizontal: 16, marginVertical: 10, borderRadius: 14.4, gap: 6 },
-  tabBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 99 },
-  tabBtnActive: { backgroundColor: '#7D52DD' },
+  closeBtn: { width: 32, height: 32, borderRadius: RADIUS_99, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' },
+  closeBtnText: { color: theme.mode === 'light' ? BRAND_DEEP : GRAY_50, fontSize: 16, fontWeight: '700' },
+  tabBar: { flexDirection: 'row', backgroundColor: theme.surface, padding: 6, marginHorizontal: 16, marginVertical: 10, borderRadius: RADIUS_14_4, gap: 6 },
+  tabBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: RADIUS_99 },
+  tabBtnActive: { backgroundColor: BRAND_MID },
   tabBtnText: { color: theme.textSecondary, fontSize: 12, fontWeight: '700' },
-  tabBtnTextActive: { color: '#FFF' },
+  tabBtnTextActive: { color: GRAY_50 },
   // position:'relative' + zIndex establishes this as its own stacking
   // context. Without it, the floating like/back-to-top buttons' own
   // zIndex:99 (set on themselves) only wins within whatever local
@@ -34331,7 +30019,7 @@ const getStyles = (theme, radiusScale = 1) => {
   // bug on web.
   modalBody: { flex: 1, position: 'relative', zIndex: 1 },
   webViewWrapper: { flex: 1, position: 'relative' },
-  webView: { flex: 1, backgroundColor: '#000' },
+  webView: { flex: 1, backgroundColor: BLACK },
   loaderOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   loaderText: { color: theme.textSecondary, fontSize: 13, marginTop: 12, fontWeight: '600' },
   // width: '100%' added alongside flex:1 - RNWeb renders ScrollView as two
@@ -34350,25 +30038,25 @@ const getStyles = (theme, radiusScale = 1) => {
   caseTitle: { fontSize: 22, fontWeight: '800', color: theme.text, marginBottom: 4 },
   designerRowModal: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 14 },
   designerRowModalLeftCol: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, marginRight: 8 },
-  designerAvatarModal: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.border },
+  designerAvatarModal: { width: 36, height: 36, borderRadius: RADIUS_18, backgroundColor: theme.border },
   caseDesigner: { fontSize: 14, color: theme.accent, fontWeight: '700' },
   caseDesignerRole: { fontSize: 11, color: theme.textSecondary, fontWeight: '600' },
-  modalDesignerFollowBtnRight: { backgroundColor: '#7D52DD', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99 },
-  modalDesignerFollowBtnRightActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#8B5CF6' },
-  modalDesignerFollowTextRight: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  modalDesignerFollowBtnRight: { backgroundColor: BRAND_MID, paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS_99 },
+  modalDesignerFollowBtnRightActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: BRAND_PRIMARY },
+  modalDesignerFollowTextRight: { color: WHITE, fontSize: 12, fontWeight: '700' },
   modalDesignerFollowTextRightActive: { color: theme.accent },
 
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  linkChip: { backgroundColor: theme.surface, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9.6, borderWidth: 1, borderColor: theme.border },
+  linkChip: { backgroundColor: theme.surface, paddingHorizontal: 12, paddingVertical: 8, borderRadius: RADIUS_9_6, borderWidth: 1, borderColor: theme.border },
   linkChipText: { color: theme.accent, fontSize: 12, fontWeight: '600' },
-  briefBox: { backgroundColor: theme.mode === 'light' ? 'rgba(109, 40, 217, 0.06)' : 'rgba(30, 41, 59, 0.5)', borderLeftWidth: 4, borderLeftColor: '#8B5CF6', padding: 14, borderRadius: 9.6, marginBottom: 20 },
+  briefBox: { backgroundColor: theme.mode === 'light' ? 'rgba(109, 40, 217, 0.06)' : 'rgba(30, 41, 59, 0.5)', borderLeftWidth: 4, borderLeftColor: BRAND_PRIMARY, padding: 14, borderRadius: RADIUS_9_6, marginBottom: 20 },
   briefText: { color: theme.text, fontSize: 14, lineHeight: 20 },
   sectionHeader: { fontSize: 12, fontWeight: '800', color: theme.textSecondary, letterSpacing: 1, marginBottom: 12, marginTop: 10 },
   galleryScroll: { marginBottom: 24 },
-  galleryImage: { width: 200, height: 320, borderRadius: 14.4, marginRight: 12 },
+  galleryImage: { width: 200, height: 320, borderRadius: RADIUS_14_4, marginRight: 12 },
   caseBodyText: { color: theme.textSecondary, fontSize: 14, lineHeight: 22 },
   formGroupLabel: { fontSize: 13, fontWeight: '700', color: theme.text, marginBottom: 6, marginTop: 12 },
-  formInput: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: theme.text, fontSize: 13 }
+  formInput: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: RADIUS_12, paddingHorizontal: 14, paddingVertical: 10, color: theme.text, fontSize: 13 }
   });
 
   // b593: redo of the global font, this time safe - injects fontFamily
@@ -34473,21 +30161,21 @@ class CrashFallbackBoundary extends React.Component {
     if (this.state.hasError) {
       return (
         <SafeAreaProvider>
-          <SafeAreaView style={{ flex: 1, backgroundColor: '#0B0F17', justifyContent: 'center', alignItems: 'center', padding: 32 }}>
-            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(239,68,68,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: SURFACE_BASE, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
+            <View style={{ width: 64, height: 64, borderRadius: RADIUS_32, backgroundColor: 'rgba(239,68,68,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
               <WarningTriangleSVG />
             </View>
-            <Text style={{ color: '#F8FAFC', fontSize: 20, fontWeight: '800', marginBottom: 8, textAlign: 'center' }}>
+            <Text style={{ color: TEXT_PRIMARY, fontSize: 20, fontWeight: '800', marginBottom: 8, textAlign: 'center' }}>
               Something Went Wrong
             </Text>
-            <Text style={{ color: '#94A3B8', fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: 28 }}>
+            <Text style={{ color: TEXT_SECONDARY, fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: 28 }}>
               We've automatically been notified and are looking into it. Try restarting - your data is safe.
             </Text>
             <BouncyButton
-              style={{ backgroundColor: '#7D52DD', height: 48, paddingHorizontal: 32, borderRadius: 99, alignItems: 'center', justifyContent: 'center' }}
+              style={{ backgroundColor: BRAND_MID, height: 48, paddingHorizontal: 32, borderRadius: RADIUS_99, alignItems: 'center', justifyContent: 'center' }}
               onPress={this.handleRestart}
             >
-              <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>Restart</Text>
+              <Text style={{ color: WHITE, fontSize: 15, fontWeight: '800' }}>Restart</Text>
             </BouncyButton>
           </SafeAreaView>
         </SafeAreaProvider>

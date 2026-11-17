@@ -5,6 +5,7 @@ node_modules/
 .expo/
 dist/
 web-build/
+.build-check/
 
 # Native build artifacts
 *.jks

@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Unresolved identifiers
+        run: npm run check:unbound
+      - name: Web bundle
+        run: npx expo export -p web
+        env:
+          CI: '1'
+      - name: Smoke test
+        run: npm run smoke
+        env:
+          CI: '1'

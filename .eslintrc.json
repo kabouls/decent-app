@@ -1,0 +1,36 @@
+{
+  "parser": "@babel/eslint-parser",
+  "parserOptions": {
+    "requireConfigFile": false,
+    "babelOptions": {
+      "presets": [
+        "@babel/preset-react"
+      ]
+    },
+    "ecmaVersion": 2021,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "plugins": [
+    "react-native-a11y"
+  ],
+  "extends": [
+    "plugin:react-native-a11y/basic"
+  ],
+  "env": {
+    "es6": true,
+    "browser": true,
+    "node": true
+  },
+  "rules": {
+    "react-native-a11y/has-accessibility-hint": "off"
+  },
+  "ignorePatterns": [
+    "dist/",
+    ".expo/",
+    ".build-check/",
+    "node_modules/"
+  ]
+}
