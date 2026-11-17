@@ -1,4 +1,5 @@
 import { loadPdfLib } from './src/pdfLib';
+import { canUseImageWorker, compressImageInWorker } from './src/webImageCompress';
 import { supabase } from './supabase';
 import AboutModal from './src/screens/AboutModal.js';
 import { initTelemetry, captureException, wrapRoot } from './src/telemetry';
@@ -51,7 +52,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 
-import { generateWebPdfThumbnails, generateNativePdfThumbnails, clearPdfDocumentCache } from './pdfThumbnails';
+import { generateWebPdfThumbnails, generateNativePdfThumbnails, clearPdfDocumentCache, warmPdfEngine } from './pdfThumbnails';
 import { NativeAdCard, initAds } from './adsModule';
 import PdfNativePreview from './PdfNativePreview';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -4667,6 +4668,26 @@ const COMPRESSOR_MIN_QUALITY = 0.35;
 const COMPRESSOR_MIN_SCALE = 0.3;
 
 const compressImageToTarget = async (uri, { targetBytes, maxWidth, maxHeight, format = 'JPEG' }) => {
+  // Web: run the whole encode/search loop in a worker pool so the page keeps
+  // painting. Falls through to ImageManipulator if workers aren't available
+  // (or if the worker fails) - native always takes the path below.
+  if (Platform.OS === 'web' && canUseImageWorker()) {
+    try {
+      const sourceBytes = await fetchBytesFromUri(uri);
+      const out = await compressImageInWorker(sourceBytes, { targetBytes, maxWidth, maxHeight, format });
+      const blobUrl = URL.createObjectURL(new Blob([out.bytes], { type: out.mime }));
+      return {
+        uri: blobUrl,
+        size: out.bytes.length,
+        width: out.width,
+        height: out.height,
+        hitTarget: !targetBytes || out.bytes.length <= targetBytes
+      };
+    } catch (e) {
+      // fall through to the ImageManipulator implementation below
+    }
+  }
+
   const saveFormat =
     format === 'PNG' ? ImageManipulator.SaveFormat.PNG :
     format === 'WEBP' ? ImageManipulator.SaveFormat.WEBP :
@@ -7918,6 +7939,15 @@ function App() {
   // which one renders inside it.
   const [toolsScreenVisible, setToolsScreenVisible] = useState(false);
   const [activeTool, setActiveTool] = useState('hub'); // 'hub' | 'imageCompressor'
+
+  // Warm Tools' heavy dependencies as soon as the hub opens: pdf-lib (~500 KB)
+  // and the pdf.js engine + worker. The first PDF action then doesn't pay for
+  // a cold download.
+  useEffect(() => {
+    if (!toolsScreenVisible || Platform.OS !== 'web') return;
+    import('./src/pdfLib').then((m) => m.loadPdfLib()).catch(() => {});
+    warmPdfEngine();
+  }, [toolsScreenVisible]);
 
   // Safety reset for qrGeneratorReturnToResume: if the person leaves QR
   // Generator any way other than the capture button (Tools hub,
@@ -13657,6 +13687,7 @@ function App() {
     const outDoc = await PDFDocument.create();
     const compressedThumbnailUris = [];
     const total = container.pages.length;
+    const renderScale = 1.5;
     let done = 0;
 
     for (const page of container.pages) {
@@ -13672,7 +13703,7 @@ function App() {
             if (!bytesCache[page.sourceFileIndex]) {
               bytesCache[page.sourceFileIndex] = await fetchBytesFromUri(meta.uri);
             }
-            renderCache[page.sourceFileIndex] = await generateWebPdfThumbnails(bytesCache[page.sourceFileIndex], 1.5);
+            renderCache[page.sourceFileIndex] = await generateWebPdfThumbnails(bytesCache[page.sourceFileIndex], renderScale);
           } else {
             renderCache[page.sourceFileIndex] = await generateNativePdfThumbnails(meta.uri, 1200);
           }

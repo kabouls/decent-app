@@ -4,6 +4,9 @@
 
 export const generateWebPdfThumbnails = async () => null;
 
+// Native has no pdf.js worker to warm - the WebView/native path handles PDFs.
+export const warmPdfEngine = () => {};
+
 // A real, silent no-op - not a stub standing in for missing work. The
 // parsed-pdfjs-document cache this clears only ever exists on web
 // (pdfjsLib is a web-only library, never loaded here), so there's

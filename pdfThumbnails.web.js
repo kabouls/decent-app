@@ -145,6 +145,16 @@ const tick = () => (typeof document !== 'undefined' && document.hidden) ? Promis
 // what was actively crashing production.
 const documentCache = {};
 
+// Called when the Tools hub opens: downloads the pdf.js engine bundle and the
+// self-hosted worker ahead of the first preview, so opening a PDF doesn't wait
+// on ~1 MB of cold network.
+export const warmPdfEngine = () => {
+  import('pdfjs-dist').catch(() => {});
+  if (typeof fetch === 'function') {
+    fetch('/pdf.worker.min.mjs', { cache: 'force-cache' }).catch(() => {});
+  }
+};
+
 export const generateWebPdfThumbnails = async (source, scale = 0.4, pageNumber = null, onPageReady = null, cacheKey = null) => {
   let pdf = null;
   let fromCache = false;
