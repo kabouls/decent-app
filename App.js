@@ -1,14 +1,12 @@
+import { loadPdfLib } from './src/pdfLib';
 import { supabase } from './supabase';
 import AboutModal from './src/screens/AboutModal.js';
-import * as Sentry from '@sentry/react-native';
+import { initTelemetry, captureException, wrapRoot } from './src/telemetry';
 
-// Crash reporting - confirmed working on a real build. Only reports in
-// production builds now, not local dev/testing sessions.
-Sentry.init({
-  dsn: 'https://173e0ae3dd89b8d2a1c3b7e814f7a97c@o4511845362171904.ingest.us.sentry.io/4511845368725504',
-  tracesSampleRate: 1.0,
-  enabled: !__DEV__
-});
+// Crash reporting: initialised immediately on native, after first paint on web
+// (see src/telemetry.web.js - the Sentry SDK is ~770 KB and must not block the
+// initial download). Only reports in production builds.
+initTelemetry();
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
@@ -52,7 +50,7 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { PDFDocument, degrees, StandardFonts, rgb } from 'pdf-lib';
+
 import { generateWebPdfThumbnails, generateNativePdfThumbnails, clearPdfDocumentCache } from './pdfThumbnails';
 import { NativeAdCard, initAds } from './adsModule';
 import PdfNativePreview from './PdfNativePreview';
@@ -3672,6 +3670,7 @@ const PdfGridCardPreview = React.memo(({ container, page }) => {
     setUri(null);
     setFailed(false);
     (async () => {
+    const { PDFDocument, degrees, StandardFonts, rgb } = await loadPdfLib();
       try {
         const meta = container.sourceMeta[page.sourceFileIndex];
         if (!meta) throw new Error('Missing source for this page');
@@ -4570,6 +4569,7 @@ const pdfBytesToTempUri = async (bytes) => {
 const IMAGE_PDF_PAGE_DPI = 150;
 
 const loadImageAsPdfDoc = async (imageUri) => {
+    const { PDFDocument, degrees, StandardFonts, rgb } = await loadPdfLib();
   const doc = await PDFDocument.create();
   const bytes = await fetchBytesFromUri(imageUri);
   let embedded;
@@ -4589,6 +4589,7 @@ const loadImageAsPdfDoc = async (imageUri) => {
 };
 
 const loadSourceAsPdfDoc = async (uri, isImage) => {
+    const { PDFDocument, degrees, StandardFonts, rgb } = await loadPdfLib();
   if (isImage) return loadImageAsPdfDoc(uri);
   const bytes = await fetchBytesFromUri(uri);
   return PDFDocument.load(bytes, { ignoreEncryption: true });
@@ -4602,6 +4603,7 @@ const loadSourceAsPdfDoc = async (uri, isImage) => {
 // for the whole editing session specifically so this step can pull
 // from them without re-reading files from disk each time.
 const assemblePdfFromPages = async (sourceDocs, pages, onProgress = null, isCancelled = null, metadata = null) => {
+    const { PDFDocument, degrees, StandardFonts, rgb } = await loadPdfLib();
   const outDoc = await PDFDocument.create();
   let done = 0;
   for (const p of pages) {
@@ -8466,6 +8468,7 @@ function App() {
 
     let cancelled = false;
     (async () => {
+    const { PDFDocument, degrees, StandardFonts, rgb } = await loadPdfLib();
       try {
         let outDoc;
         if (meta.isImage) {
@@ -13135,6 +13138,7 @@ function App() {
   // addPdfContainerFromImages below - multiple photos picked together
   // build ONE container, not one each).
   const addPdfContainerFromSource = async (uri, isImage, displayName) => {
+    const { PDFDocument, degrees, StandardFonts, rgb } = await loadPdfLib();
     // Fetched once, right here, and reused for everything below - pdf-lib
     // needs raw bytes to parse anyway, so getting them first means: no
     // separate getFileSizeBytes fetch (bytes.length IS the size), and no
@@ -13647,6 +13651,7 @@ function App() {
   // came back over 1GB after "compression." Doing it in one pass, into
   // one document, from the start avoids that entirely.
   const compressOneContainer = async (container, preset, onProgress) => {
+    const { PDFDocument, degrees, StandardFonts, rgb } = await loadPdfLib();
     const renderCache = {}; // sourceFileIndex -> array of high-res page image URIs, scoped to this one container
     const bytesCache = {}; // sourceFileIndex -> already-fetched bytes, so a multi-page source only gets fetched once here
     const outDoc = await PDFDocument.create();
@@ -14086,6 +14091,7 @@ function App() {
   // file, unlike Merge which replaces the originals with one new
   // editable container.
   const handleCombineAndExport = async () => {
+    const { PDFDocument, degrees, StandardFonts, rgb } = await loadPdfLib();
     setPdfEditorExporting(true);
     setPdfExportProgress(null);
     pdfOperationCancelledRef.current = false;
@@ -14148,6 +14154,7 @@ function App() {
   // afterIndex, into the active container only. Reached from the "+
   // Page" menu's "Blank Page" option.
   const handleInsertBlankPage = async (afterIndex) => {
+    const { PDFDocument, degrees, StandardFonts, rgb } = await loadPdfLib();
     if (!activePdfContainer) return;
     pushPdfHistorySnapshot('Add page');
     triggerHaptic('light');
@@ -14263,6 +14270,7 @@ function App() {
   // acceptable simplification rather than the added geometry needed to
   // handle every rotation case perfectly.
   const handleAddPageNumbers = async () => {
+    const { PDFDocument, degrees, StandardFonts, rgb } = await loadPdfLib();
     if (!activePdfContainer || activePdfContainer.pages.length === 0) return;
     pushPdfHistorySnapshot('Add page numbers');
     triggerHaptic('light');
@@ -14373,6 +14381,7 @@ function App() {
   // in place, which would corrupt the global undo snapshot the same way
   // it always would have.
   const applyPdfCropAndFinish = async (insetsByPageId) => {
+    const { PDFDocument, degrees, StandardFonts, rgb } = await loadPdfLib();
     if (!activePdfContainer) return;
     pushPdfHistorySnapshot('Crop pages');
     triggerHaptic('light');
@@ -14476,6 +14485,7 @@ function App() {
   // container - adds new ones after it, same as how Merge/Add PDF both
   // already add rather than replace, so nothing is destroyed by mistake.
   const handleSplitPdf = async () => {
+    const { PDFDocument, degrees, StandardFonts, rgb } = await loadPdfLib();
     if (!activePdfContainer) return;
     const n = Math.max(1, parseInt(pdfSplitEveryN, 10) || 1);
     const pages = activePdfContainer.pages;
@@ -14537,6 +14547,7 @@ function App() {
   // genuinely useful (a document-wide mark, not per-page position
   // control), same "rebuild the whole document" pattern as Page Numbers.
   const applyPdfWatermark = async () => {
+    const { PDFDocument, degrees, StandardFonts, rgb } = await loadPdfLib();
     if (!activePdfContainer || !pdfWatermarkText.trim()) return;
     pushPdfHistorySnapshot('Add watermark');
     setPdfWatermarkModalVisible(false);
@@ -30149,7 +30160,7 @@ class CrashFallbackBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    Sentry.captureException(error);
+    captureException(error);
     console.warn('Caught by CrashFallbackBoundary:', error, errorInfo);
   }
 
@@ -30188,7 +30199,7 @@ class CrashFallbackBoundary extends React.Component {
 // Wrapping with Sentry gives automatic crash reporting and a basic
 // performance trace for the whole app, on top of the manual error
 // logging already scattered through the code via console.warn.
-export default Sentry.wrap(() => (
+export default wrapRoot(() => (
   <ThemeProvider>
     <LightweightModeProvider>
       <ReduceMotionProvider>

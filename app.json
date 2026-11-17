@@ -8,7 +8,7 @@
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
     "assetBundlePatterns": [
-      "**/*"
+      "assets/**"
     ],
     "ios": {
       "supportsTablet": true
